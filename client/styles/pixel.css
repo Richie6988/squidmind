@@ -105,11 +105,11 @@ h1 {
 }
 
 .panels-container {
-  width: 400px;
-  max-width: 90vw;
-  background: var(--ocean-deep);
-  border-left: 3px solid var(--border);
-  overflow-y: auto;
+  width: 0;
+  max-width: 0;
+  background: transparent;
+  border-left: none;
+  overflow: visible;
 }
 
 /* Panels */
