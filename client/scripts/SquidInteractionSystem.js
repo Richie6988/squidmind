@@ -501,12 +501,6 @@ class SquidInteractionSystem {
       }
     }, 200);
   }
-}
-
-// Make available globally
-if (typeof window !== 'undefined') {
-  window.SquidInteractionSystem = SquidInteractionSystem;
-}
 
   /**
    * Handle context menu (right-click)

@@ -18,7 +18,6 @@
         <button class="btn-nav" onclick="ui.showPanel('creator')">+ New Squid</button>
         <button class="btn-nav" onclick="ui.showPanel('teams')">👥 Teams</button>
         <button class="btn-nav" onclick="ui.showPanel('models')">📦 Models</button>
-        <button class="btn-nav" onclick="ui.showPanel('scheduler')">🎯 Scheduler</button>
         <button class="btn-nav" onclick="ui.showPanel('logs')">📜 Logs</button>
       </div>
       <div class="header-stats">
@@ -35,19 +34,12 @@
     <!-- Aquarium Canvas -->
     <div class="aquarium-wrapper">
       <canvas id="aquarium"></canvas>
-    </div>
-
-    <!-- Clear All Button (OUTSIDE panels container) -->
-    <div id="clear-all-panel" class="clear-all-button-container">
-      <button class="btn-clear-all" onclick="window.ui.clearAllPanels()">
-        🧹 Clear All Panels
+      
+      <!-- New Project Button -->
+      <button class="btn-new-project" onclick="window.ui.openNewProjectModal()">
+        + New Project
       </button>
     </div>
-    
-    <!-- New Project Button -->
-    <button class="btn-new-project" onclick="window.ui.openNewProjectModal()">
-      + New Project
-    </button>
     
     <!-- Control Panels -->
     <div class="panels-container">

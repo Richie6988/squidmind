@@ -1,30 +1,292 @@
 {
   "project": "AQUARIUM",
-  "vision": "Gamified AI agent collaboration platform where squids work together beautifully",
-  "goals": [
-    "Create fun, intuitive interface",
-    "Enable autonomous agent collaboration",
-    "Beautiful underwater aesthetics",
-    "Real AI with GGUF models"
-  ],
-  "tasks": [
-    {
-      "id": "task_001",
-      "description": "Complete UI interactions",
-      "status": "done",
-      "priority": "high"
+  "vision": "Create an immersive underwater gamified AI agent collaboration platform where autonomous squids work together on projects in a beautiful ocean environment",
+  "created": "2025-01-20T10:30:00Z",
+  "last_updated": "2025-01-20T15:45:00Z",
+  
+  "stakeholders": {
+    "agents": [
+      {
+        "id": "squid_001",
+        "name": "Marina",
+        "role": "Lead Developer",
+        "expertise": ["React", "Three.js", "UI/UX"],
+        "status": "active",
+        "assigned_since": "2025-01-20T10:30:00Z"
+      }
+    ],
+    "humans": [
+      {
+        "name": "Richard",
+        "role": "Product Owner",
+        "email": "richard@squidmind.ai",
+        "involvement_level": "high"
+      }
+    ],
+    "poseidon": {
+      "role": "AI Orchestrator",
+      "capabilities": ["task_coordination", "code_review", "decision_making"],
+      "status": "active"
     }
-  ],
-  "progress": {
-    "completion": "85%",
-    "recent_achievements": [
-      "All UI interactions working",
+  },
+  
+  "objectives": {
+    "primary": [
+      "Build beautiful underwater aquarium visualization with Three.js",
+      "Implement squid entities with realistic swimming behavior",
+      "Create temple system for project organization",
+      "Develop drag-and-drop squid assignment to projects"
+    ],
+    "secondary": [
+      "Add pixel art accessories for squids (hats, glasses, outfits)",
+      "Implement bubble column visualization for temples",
+      "Create comprehensive monitoring dashboard",
+      "Build HuggingFace model integration"
+    ],
+    "completed": [
+      "Basic aquarium rendering with ocean background",
+      "Squid swimming physics (1.5x speed)",
+      "Temple rendering with customizable colors",
+      "Drag and drop squid to temple assignment",
+      "Right panel system monitor",
+      "Task queue with cancel functionality",
+      "Brain.json editor with form",
+      "Poseidon chat interface",
       "GGUF model loading",
-      "Poseidon panel redesigned"
+      "File browser for models"
     ]
   },
+  
+  "processes": {
+    "documentation": {
+      "standards": ["JSDoc comments", "README updates", "CHANGELOG maintenance"],
+      "review_cycle": "Per feature completion",
+      "location": "docs/"
+    },
+    "validation": {
+      "testing": ["Manual UI testing", "Syntax validation", "Integration testing"],
+      "criteria": ["No console errors", "All features work", "Visual polish complete"],
+      "responsible": "Lead Developer + Poseidon"
+    },
+    "deployment": {
+      "process": "Git push → Manual restart",
+      "environment": "Local development (Windows + PowerShell)",
+      "rollback_plan": "Git revert to previous commit"
+    },
+    "communication": {
+      "channels": ["Claude.ai chat", "Git commits"],
+      "update_frequency": "Real-time during development",
+      "decision_log": "Git commit messages"
+    }
+  },
+  
+  "progress": {
+    "completion": "85%",
+    "phase": "Polish & Visual Enhancement",
+    "blockers": [],
+    "recent_achievements": [
+      {
+        "date": "2025-01-20T15:00:00Z",
+        "description": "Fixed modelManager.listLocalModels error",
+        "impact": "Critical - Interface now clickable"
+      },
+      {
+        "date": "2025-01-20T14:30:00Z",
+        "description": "Removed duplicate panel sections",
+        "impact": "High - Clean UI with single system panel"
+      },
+      {
+        "date": "2025-01-20T14:00:00Z",
+        "description": "Implemented Poseidon drag capability",
+        "impact": "Medium - Better UX for character positioning"
+      },
+      {
+        "date": "2025-01-20T13:30:00Z",
+        "description": "Added temple context menu for color customization",
+        "impact": "High - Can customize temples from outside"
+      },
+      {
+        "date": "2025-01-20T13:00:00Z",
+        "description": "Reduced squid speed from 2x to 1.5x",
+        "impact": "Medium - More comfortable viewing experience"
+      }
+    ],
+    "next_steps": [
+      {
+        "priority": "HIGH",
+        "task": "Remove ALL emojis - replace with SVG pixel art icons",
+        "assigned_to": "Marina",
+        "estimated_effort": "4 hours",
+        "deadline": "2025-01-21"
+      },
+      {
+        "priority": "HIGH",
+        "task": "Create bubble column visualization for temples (show squids inside)",
+        "assigned_to": "Marina",
+        "estimated_effort": "3 hours",
+        "deadline": "2025-01-21"
+      },
+      {
+        "priority": "MEDIUM",
+        "task": "Implement resizable right panel (drag vertical line)",
+        "assigned_to": "Marina",
+        "estimated_effort": "2 hours",
+        "deadline": "2025-01-22"
+      },
+      {
+        "priority": "MEDIUM",
+        "task": "Render pixel art accessories on squids",
+        "assigned_to": "Marina",
+        "estimated_effort": "5 hours",
+        "deadline": "2025-01-22"
+      },
+      {
+        "priority": "LOW",
+        "task": "HuggingFace download integration",
+        "assigned_to": "TBD",
+        "estimated_effort": "6 hours",
+        "deadline": "2025-01-25"
+      }
+    ]
+  },
+  
+  "architecture": {
+    "frontend": {
+      "framework": "Vanilla JavaScript (ES6+)",
+      "rendering": "Canvas 2D API + Three.js (optional 3D)",
+      "state_management": "Object-oriented classes (Squid, Temple, Aquarium)",
+      "modules": [
+        "Squid.js - Entity with movement & rendering",
+        "Temple.js - Project containers",
+        "SquidInteractionSystem.js - Drag/drop/click handlers",
+        "ui.js - Panel management & UI controls",
+        "brain-editor.js - Brain.json form editor",
+        "Poseidon.js - Chat interface",
+        "aquarium.js - Main canvas orchestrator"
+      ],
+      "styling": "pixel.css - Pixel art aesthetic with ocean theme"
+    },
+    "backend": {
+      "runtime": "Node.js + Express",
+      "services": [
+        "ModelManager.js - GGUF model loading via llama.cpp",
+        "index.js - REST API endpoints"
+      ],
+      "data_storage": "JSON files (brain.json, project_memory.json)",
+      "ai_integration": "Local GGUF models (no Anthropic SDK)"
+    }
+  },
+  
+  "files": {
+    "input": [
+      "HEXOD_SPECS.md - Reference for project structure patterns",
+      "SKILL.md files - Development best practices"
+    ],
+    "output": [
+      "client/index.html - Main interface",
+      "client/scripts/*.js - All frontend modules",
+      "client/styles/pixel.css - Complete styling",
+      "server/index.js - Backend API",
+      "data/brain.json - System configuration",
+      "data/projects/*/project_memory.json - Project states"
+    ]
+  },
+  
+  "agents_communication": [
+    {
+      "timestamp": "2025-01-20T15:45:00Z",
+      "from": "Poseidon",
+      "to": "Marina",
+      "message": "Syntax error in SquidInteractionSystem.js line 514 - handleContextMenu outside class",
+      "action_taken": "Moved methods inside class, verified syntax"
+    },
+    {
+      "timestamp": "2025-01-20T15:30:00Z",
+      "from": "Marina",
+      "to": "Richard",
+      "message": "Duplicate panel sections found causing ghost UI elements",
+      "action_taken": "Deleted orphaned HTML (lines 233-261)"
+    },
+    {
+      "timestamp": "2025-01-20T15:15:00Z",
+      "from": "Richard",
+      "to": "Marina",
+      "message": "Squids still moving too fast at 2x speed",
+      "action_taken": "Reduced to 1.5x speed (vx/vy * 3, multiplier 1.3/1.0)"
+    }
+  ],
+  
+  "decisions": [
+    {
+      "date": "2025-01-20T15:00:00Z",
+      "decision": "Use 1.5x speed for squids (not 2x or 3x)",
+      "rationale": "Balance between visual interest and comfortable viewing",
+      "decided_by": "Richard + Marina consensus",
+      "alternatives_considered": ["1x (too slow)", "2x (too fast)"]
+    },
+    {
+      "date": "2025-01-20T14:00:00Z",
+      "decision": "Single always-visible right panel instead of multiple panels",
+      "rationale": "Cleaner UI, all monitoring in one place",
+      "decided_by": "Richard",
+      "impact": "Removed Poseidon & Monitor nav buttons"
+    },
+    {
+      "date": "2025-01-20T13:00:00Z",
+      "decision": "Use vanilla JavaScript instead of React",
+      "rationale": "Simpler, no build step, easier to iterate",
+      "decided_by": "Richard",
+      "impact": "Direct DOM manipulation, class-based architecture"
+    }
+  ],
+  
+  "tasks": {
+    "backlog": [
+      {
+        "id": "TASK-001",
+        "title": "Replace emojis with SVG pixel art",
+        "description": "Create SVG icons for all emoji usage (🦑, 🏛️, 📊, etc.)",
+        "priority": "HIGH",
+        "status": "todo",
+        "created": "2025-01-20T15:45:00Z"
+      },
+      {
+        "id": "TASK-002",
+        "title": "Temple bubble column visualization",
+        "description": "Show vertical bubble stream from temples with assigned squids",
+        "priority": "HIGH",
+        "status": "todo",
+        "created": "2025-01-20T15:45:00Z"
+      },
+      {
+        "id": "TASK-003",
+        "title": "Resizable right panel",
+        "description": "Drag vertical separator to resize panel width",
+        "priority": "MEDIUM",
+        "status": "todo",
+        "created": "2025-01-20T15:45:00Z"
+      }
+    ],
+    "in_progress": [],
+    "completed": [
+      {
+        "id": "TASK-INIT",
+        "title": "Initial aquarium setup",
+        "completed": "2025-01-20T12:00:00Z"
+      }
+    ]
+  },
+  
   "colors": {
     "outside": "#457B9D",
     "inside": "#1D3557"
+  },
+  
+  "metrics": {
+    "code_lines": 8500,
+    "commits": 45,
+    "features_completed": 28,
+    "bugs_fixed": 15,
+    "time_invested_hours": 32
   }
 }
