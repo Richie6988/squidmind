@@ -215,21 +215,60 @@
           <button class="btn-close" onclick="ui.hidePanel('detail')">✕</button>
         </div>
         <div class="panel-content">
-          <div id="detail-content"></div>
-            <!-- Tools Selection -->
-            <div class="form-section">
-              <h3>🛠️ Available Tools</h3>
-              <div class="form-group">
-                <label>
-                  <input type="checkbox" name="enable_all_tools" onchange="ui.toggleAllTools(this.checked)" checked>
-                  Enable All Tools
-                </label>
-              </div>
-              <div id="tools-checklist" class="tools-grid"></div>
+          <div class="squid-detail-info">
+            <div class="detail-row">
+              <strong>Name:</strong>
+              <span id="squid-name-display">-</span>
             </div>
-
+            <div class="detail-row">
+              <strong>Specialty:</strong>
+              <span id="squid-specialty-display">-</span>
+            </div>
+            <div class="detail-row">
+              <strong>Status:</strong>
+              <span id="squid-status-display">-</span>
+            </div>
+            <div class="detail-row">
+              <strong>Thought:</strong>
+              <span id="squid-thought-display">-</span>
+            </div>
+          </div>
+          
+          <div class="squid-stats">
+            <h3>📊 Stats</h3>
+            <div class="detail-row">
+              <strong>Level:</strong>
+              <span id="squid-level">1</span>
+            </div>
+            <div class="detail-row">
+              <strong>XP:</strong>
+              <span id="squid-xp">0 / 100</span>
+            </div>
+            <div class="detail-row">
+              <strong>Tasks:</strong>
+              <span id="squid-tasks">0</span>
+            </div>
+            <div class="detail-row">
+              <strong>Energy:</strong>
+              <div class="stat-bar">
+                <div class="stat-bar-fill" style="width: 100%"></div>
+              </div>
+            </div>
+          </div>
+          
+          <div class="squid-brain">
+            <h3>🧠 Brain</h3>
+            <div id="squid-brain-info">
+              <p>No brain info available</p>
+            </div>
+          </div>
+          
           <div class="form-actions">
-            <button class="btn-primary" onclick="executeSquid()">▶ Execute Now</button>
+            <button class="btn-primary" onclick="ui.showPanel('edit')">✎ Edit</button>
+            <button class="btn-secondary" onclick="ui.hidePanel('detail')">Close</button>
+          </div>
+        </div>
+      </div>
             <button class="btn-secondary" onclick="editSquid()">✎ Edit</button>
             <button class="btn-danger" onclick="deleteSquid()">🗑 Delete</button>
           </div>

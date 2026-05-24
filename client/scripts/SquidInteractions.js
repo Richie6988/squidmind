@@ -33,6 +33,7 @@ const SquidInteractions = {
     squid.showConfetti = this.showConfetti.bind(squid);
     squid.generateThought = this.generateThought.bind(squid);
     squid.generateChainOfThought = this.generateChainOfThought.bind(squid);
+    squid.showFeedbackParticle = this.showFeedbackParticle.bind(squid);
   },
 
   /**
