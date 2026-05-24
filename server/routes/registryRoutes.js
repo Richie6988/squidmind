@@ -130,4 +130,61 @@ router.get('/models', async (req, res) => {
   } catch (err) { res.status(500).json({ success: false, error: err.message }); }
 });
 
+// ==================== GENERIC FIELD UPDATES ====================
+
+/**
+ * PATCH any field in any registry file
+ * Body: { filePath, fieldPath, newValue, reason }
+ */
+router.patch('/field', async (req, res) => {
+  try {
+    const { filePath, fieldPath, newValue, reason } = req.body;
+    if (!filePath || !fieldPath) {
+      return res.status(400).json({ success: false, error: 'filePath and fieldPath required' });
+    }
+    rm.invalidateCache();
+    const result = await rm.updateField(filePath, fieldPath, newValue, {
+      actor: 'human_richard',
+      actor_type: 'human',
+      reason: reason || 'manual_edit'
+    });
+    res.json({ success: true, ...result });
+  } catch (err) {
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
+
+/**
+ * GET schema introspection for any registry file
+ * Returns field types, read-only paths, enum options
+ */
+router.get('/schema/{*filePath}', async (req, res) => {
+  try {
+    rm.invalidateCache();
+    const filePath = Array.isArray(req.params.filePath)
+      ? req.params.filePath.join('/')
+      : req.params.filePath;
+    const schema = await rm.getFileSchema(filePath);
+    res.json({ success: true, filePath, ...schema });
+  } catch (err) {
+    res.status(404).json({ success: false, error: err.message });
+  }
+});
+
+/**
+ * GET full file contents (for editor to load)
+ */
+router.get('/file/{*filePath}', async (req, res) => {
+  try {
+    rm.invalidateCache();
+    const filePath = Array.isArray(req.params.filePath)
+      ? req.params.filePath.join('/')
+      : req.params.filePath;
+    const data = await rm.read(filePath);
+    res.json({ success: true, filePath, data });
+  } catch (err) {
+    res.status(404).json({ success: false, error: err.message });
+  }
+});
+
 module.exports = router;

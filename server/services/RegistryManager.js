@@ -72,6 +72,220 @@ class RegistryManager {
     return id;
   }
 
+  // ==================== GENERIC FIELD UPDATES ====================
+
+  /**
+   * Read-only field paths - cannot be modified via updateField
+   * Path uses dot notation. Wildcards: * matches any key.
+   */
+  static READ_ONLY_PATHS = [
+    'schema_version',
+    'schema_type',
+    'metadata.last_id_used',
+    'metadata.next_id',
+    'metadata.id_format',
+    'metadata.total_*',
+    'metadata.last_updated_at',
+    '*.agent_id',
+    '*.project_id',
+    '*.task_id',
+    '*.tool_id',
+    '*.model_id',
+    '*.team_id',
+    '*.created_at',
+    '*.last_updated_at',
+    '*.priority.computed_score',
+    '*.priority.score_history',
+    '*.performance_summary.success_rate',
+    '*.lifecycle.duration_seconds',
+    '*.lifecycle.status_history',
+    '*.closure_comments.duration_total_minutes',
+    '*.closure_comments.closed_at'
+  ];
+
+  /**
+   * Check if a field path is read-only.
+   * Pattern matching rules:
+   *   - "*.suffix" matches if path ends with ".suffix" (or equals "suffix")
+   *   - "prefix.*" matches if path starts with "prefix."
+   *   - exact path matches only itself
+   */
+  isReadOnly(fieldPath) {
+    for (const pattern of RegistryManager.READ_ONLY_PATHS) {
+      if (pattern.startsWith('*.')) {
+        const suffix = pattern.substring(2);
+        if (fieldPath === suffix || fieldPath.endsWith('.' + suffix)) {
+          return true;
+        }
+      } else if (pattern.endsWith('*')) {
+        const prefix = pattern.slice(0, -1);
+        if (fieldPath.startsWith(prefix)) {
+          return true;
+        }
+      } else if (pattern.includes('*')) {
+        // Handle internal wildcards: each * matches one path segment
+        const regex = new RegExp(
+          '^' + pattern.split('.').map(seg =>
+            seg === '*' ? '[^.]+' : seg.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+          ).join('\\.') + '$'
+        );
+        if (regex.test(fieldPath)) return true;
+      } else {
+        if (fieldPath === pattern) return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Get a value at a dot-notation path in an object
+   * Example: getValueAtPath(obj, 'agents.agent_001.display_name')
+   */
+  getValueAtPath(obj, path) {
+    return path.split('.').reduce((curr, key) => curr?.[key], obj);
+  }
+
+  /**
+   * Set a value at a dot-notation path in an object
+   */
+  setValueAtPath(obj, path, value) {
+    const keys = path.split('.');
+    const lastKey = keys.pop();
+    const target = keys.reduce((curr, key) => {
+      if (curr[key] === undefined) curr[key] = {};
+      return curr[key];
+    }, obj);
+    target[lastKey] = value;
+  }
+
+  /**
+   * Update any field in any registry file
+   * Logs the change with old -> new values
+   * 
+   * @param {string} filePath - e.g. 'agents/agent_registry.json'
+   * @param {string} fieldPath - e.g. 'agents.agent_001.display_name'
+   * @param {any} newValue - the new value
+   * @param {object} options - { actor, reason }
+   */
+  async updateField(filePath, fieldPath, newValue, options = {}) {
+    // Check read-only
+    if (this.isReadOnly(fieldPath)) {
+      throw new Error(`Field is read-only: ${fieldPath}`);
+    }
+
+    // Load file
+    const data = await this.read(filePath);
+    const oldValue = this.getValueAtPath(data, fieldPath);
+
+    // Skip if no change
+    if (JSON.stringify(oldValue) === JSON.stringify(newValue)) {
+      return { changed: false, message: 'No change needed' };
+    }
+
+    // Apply change
+    this.setValueAtPath(data, fieldPath, newValue);
+
+    // Update last_updated_at on the entity itself if applicable
+    const entityKey = fieldPath.split('.').slice(0, 2).join('.');
+    if (this.getValueAtPath(data, entityKey + '.last_updated_at') !== undefined) {
+      this.setValueAtPath(data, entityKey + '.last_updated_at', new Date().toISOString());
+    }
+
+    // Special handling: name change → update name_history
+    if (fieldPath.endsWith('.display_name')) {
+      const historyPath = fieldPath.replace('.display_name', '.name_history');
+      const history = this.getValueAtPath(data, historyPath) || [];
+      const now = new Date().toISOString();
+      // Mark old name as inactive
+      const activeName = history.find(n => n.active);
+      if (activeName) {
+        activeName.active = false;
+        activeName.ended_at = now;
+      }
+      // Add new name
+      history.push({
+        name: newValue,
+        given_at: now,
+        given_by: options.actor || 'human_richard',
+        active: true
+      });
+      this.setValueAtPath(data, historyPath, history);
+    }
+
+    await this.write(filePath, data);
+
+    // Log the change
+    await this.log({
+      event_type: 'json_update',
+      severity: 'info',
+      actor: { type: options.actor_type || 'human', id: options.actor || 'human_richard' },
+      subject: { type: 'field', id: fieldPath },
+      action: `Updated ${filePath}:${fieldPath}`,
+      changes: [{
+        file: filePath,
+        field: fieldPath,
+        from: oldValue,
+        to: newValue
+      }],
+      context: { reason: options.reason || 'manual_edit' }
+    });
+
+    return { changed: true, oldValue, newValue, fieldPath, filePath };
+  }
+
+  /**
+   * Build a schema description for a file by introspecting it
+   * Returns metadata that frontend uses to render editors
+   */
+  async getFileSchema(filePath) {
+    const data = await this.read(filePath);
+    const schema = this.introspectSchema(data, '');
+    
+    // Add registry-level info for enum lookups
+    const enums = {};
+    if (data.status_definitions) enums.status = Object.keys(data.status_definitions);
+    if (data.type_definitions) enums.type = Object.keys(data.type_definitions);
+    if (data.category_definitions) enums.category = Object.keys(data.category_definitions);
+    
+    return { schema, enums, readOnlyPaths: RegistryManager.READ_ONLY_PATHS };
+  }
+
+  /**
+   * Recursively analyze object structure
+   */
+  introspectSchema(value, path) {
+    if (value === null) return { type: 'null', path };
+    if (Array.isArray(value)) {
+      return {
+        type: 'array',
+        path,
+        readOnly: this.isReadOnly(path),
+        itemType: value.length > 0 ? typeof value[0] : 'string',
+        length: value.length
+      };
+    }
+    if (typeof value === 'object') {
+      const fields = {};
+      for (const key of Object.keys(value)) {
+        const childPath = path ? `${path}.${key}` : key;
+        fields[key] = this.introspectSchema(value[key], childPath);
+      }
+      return { type: 'object', path, fields };
+    }
+    
+    // Primitive
+    const result = { type: typeof value, path, readOnly: this.isReadOnly(path), value };
+    
+    // Detect special string types
+    if (typeof value === 'string') {
+      if (/^#[0-9A-Fa-f]{6}$/.test(value)) result.hint = 'color';
+      else if (/^\d{4}-\d{2}-\d{2}T/.test(value)) result.hint = 'datetime';
+      else if (value.length > 100) result.hint = 'textarea';
+    }
+    
+    return result;
+  }
+
   // ==================== POSEIDON BRAIN ====================
 
   async getPoseidonBrain() {
