@@ -408,7 +408,7 @@ app.get('/api/system/monitor', async (req, res) => {
 
 // ==================== SERVE FRONTEND ====================
 
-app.get('*', (req, res) => {
+app.get('/(.*)', (req, res) => {
   res.sendFile(path.join(__dirname, '../client/index.html'));
 });
 

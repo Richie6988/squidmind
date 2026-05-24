@@ -21,6 +21,7 @@
   "license": "MIT",
   "dependencies": {
     "@langchain/core": "^1.1.48",
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "axios": "^1.16.1",
     "body-parser": "^2.2.2",
     "cheerio": "^1.2.0",
