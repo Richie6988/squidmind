@@ -2607,3 +2607,56 @@ input[type="color"]::-webkit-color-swatch {
   margin-bottom: 12px;
   border-radius: 4px;
 }
+
+/* ========== POSEIDON PANEL - CENTERED ========== */
+
+.poseidon-panel-center {
+  position: fixed !important;
+  top: 50% !important;
+  left: 50% !important;
+  transform: translate(-50%, -50%) !important;
+  width: 600px !important;
+  max-width: 90vw !important;
+  height: 500px !important;
+  max-height: 80vh !important;
+}
+
+.btn-action {
+  background: linear-gradient(135deg, var(--ocean-deep) 0%, var(--ocean-mid) 100%);
+  border: 2px solid var(--success);
+  color: var(--text-primary);
+  padding: 10px 16px;
+  font-family: 'Press Start 2P';
+  font-size: 9px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-action:hover {
+  background: var(--success);
+  color: var(--ocean-deep);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(6, 255, 165, 0.3);
+}
+
+.chat-messages {
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.chat-message {
+  margin: 8px 0;
+  padding: 8px;
+  border-radius: 4px;
+}
+
+.chat-message.user {
+  background: rgba(100, 149, 237, 0.2);
+  border-left: 3px solid var(--accent);
+}
+
+.chat-message.poseidon {
+  background: rgba(6, 255, 165, 0.1);
+  border-left: 3px solid var(--success);
+}

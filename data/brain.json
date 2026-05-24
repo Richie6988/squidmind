@@ -1,0 +1,29 @@
+{
+  "version": "1.0.0",
+  "system": {
+    "name": "SquidMind",
+    "description": "Gamified AI agent collaboration platform",
+    "poseidon_personality": "Wise, powerful ocean god who dispatches squid agents"
+  },
+  "models": {
+    "loaded": [],
+    "default": null
+  },
+  "agents": {
+    "total": 3,
+    "active": 0
+  },
+  "projects": {
+    "total": 4,
+    "active": ["AQUARIUM", "BRAIN", "TRADING", "NEWSROOM"]
+  },
+  "processes": {
+    "total": 0,
+    "active": []
+  },
+  "settings": {
+    "auto_save": true,
+    "debug_mode": false,
+    "theme": "ocean"
+  }
+}

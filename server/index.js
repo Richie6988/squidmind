@@ -1037,3 +1037,28 @@ app.post('/api/files/browse', async (req, res) => {
 });
 
 console.log('  POST   /api/files/browse   - File browser');
+
+// Brain.json management
+const BRAIN_PATH = path.join(__dirname, '../data/brain.json');
+
+app.get('/api/brain', async (req, res) => {
+  try {
+    const brainData = await fs.readFile(BRAIN_PATH, 'utf8');
+    const brain = JSON.parse(brainData);
+    res.json({ success: true, brain });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.put('/api/brain', async (req, res) => {
+  try {
+    const { brain } = req.body;
+    await fs.writeFile(BRAIN_PATH, JSON.stringify(brain, null, 2));
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+console.log('  GET/PUT /api/brain      - Brain.json management');

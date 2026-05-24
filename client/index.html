@@ -537,75 +537,49 @@
       </div>
 
       <!-- Poseidon Chat Panel -->
-      <div id="poseidon-panel" class="panel poseidon-panel-top hidden">
+      <div id="poseidon-panel" class="panel poseidon-panel-center hidden">
         <div class="panel-header">
           <h2>🔱 Poseidon - God of the Ocean</h2>
           <select id="poseidon-model-select" class="poseidon-model-dropdown" onchange="ui.switchPoseidonModel(this.value)">
             <option value="">No model loaded</option>
           </select>
+          <button class="btn-secondary" onclick="ui.editBrainJson()" style="margin: 0 8px; font-size: 9px;">
+            🧠 Edit brain.json
+          </button>
           <button class="btn-close" onclick="ui.hidePanel('poseidon')">✕</button>
         </div>
-        <div class="panel-content poseidon-sections">
+        <div class="panel-content" style="display: flex; flex-direction: column; height: 100%;">
           
-          <!-- Section 1: CHAT -->
-          <div class="poseidon-section">
-            <h3>💬 Chat with Poseidon</h3>
-            <div id="poseidon-chat-messages" class="chat-messages"></div>
-            <div class="poseidon-suggestions" id="poseidon-suggestions"></div>
-            <div class="chat-input-container">
-              <input 
-                type="text" 
-                id="poseidon-chat-input" 
-                placeholder="Ask Poseidon..."
-                onkeypress="if(event.key==='Enter') ui.sendToPoseidon()"
-              >
-              <button class="btn-primary" onclick="ui.sendToPoseidon()">Send</button>
-            </div>
+          <!-- Quick Actions -->
+          <div class="poseidon-quick-actions" style="display: flex; gap: 8px; margin-bottom: 12px;">
+            <button class="btn-action" onclick="ui.quickCreateAgent()" style="flex: 1;">
+              🦑 Create Agent
+            </button>
+            <button class="btn-action" onclick="ui.quickCreateProcess()" style="flex: 1;">
+              ⚙️ Create Process
+            </button>
+            <button class="btn-action" onclick="ui.quickCreateProject()" style="flex: 1;">
+              🏛️ Create Project
+            </button>
           </div>
           
-          <!-- Section 2: PROCESS CREATION -->
-          <div class="poseidon-section">
-            <h3>⚙️ Create Process</h3>
-            <div class="process-form">
-              <label>Process Name:</label>
-              <input type="text" id="process-name" placeholder="Daily Report Generator" />
-              
-              <label>Description:</label>
-              <textarea id="process-description" placeholder="What should this process do?"></textarea>
-              
-              <label>Trigger:</label>
-              <select id="process-trigger">
-                <option>Manual</option>
-                <option>Cron Schedule</option>
-                <option>File Upload</option>
-                <option>API Call</option>
-              </select>
-              
-              <label>Assign Squids:</label>
-              <div id="process-squids-list"></div>
-              
-              <button class="btn-primary" onclick="ui.createProcess()" style="width: 100%; margin-top: 8px;">
-                Create Process
-              </button>
-            </div>
-          </div>
+          <!-- Chat Messages -->
+          <div id="poseidon-chat-messages" class="chat-messages" style="flex: 1; overflow-y: auto; margin-bottom: 12px; padding: 12px; background: rgba(0,0,0,0.3); border: 2px solid var(--border); border-radius: 4px;"></div>
           
-          <!-- Section 3: LOGS (JSON Modifications) -->
-          <div class="poseidon-section">
-            <h3>📜 System Logs</h3>
-            <div class="logs-filter">
-              <select id="log-filter" onchange="ui.filterLogs(this.value)">
-                <option value="all">All Changes</option>
-                <option value="json">JSON Modifications</option>
-                <option value="agents">Agent Changes</option>
-                <option value="projects">Project Changes</option>
-              </select>
-            </div>
-            <div id="poseidon-logs" class="logs-container">
-              <p class="hint">No recent changes</p>
-            </div>
-          </div>
+          <!-- Suggestions (optional) -->
+          <div class="poseidon-suggestions" id="poseidon-suggestions"></div>
           
+          <!-- Chat Input -->
+          <div class="chat-input-container">
+            <input 
+              type="text" 
+              id="poseidon-chat-input" 
+              placeholder="Ask Poseidon anything..."
+              onkeypress="if(event.key==='Enter') ui.sendToPoseidon()"
+              style="flex: 1;"
+            >
+            <button class="btn-primary" onclick="ui.sendToPoseidon()">⚡ Send</button>
+          </div>
         </div>
       </div>
 

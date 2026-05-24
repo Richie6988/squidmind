@@ -1663,3 +1663,90 @@ ui.selectGgufFile = function(path) {
 };
 
 console.log('✅ File browser system loaded');
+
+// ==================== POSEIDON QUICK ACTIONS ====================
+
+ui.quickCreateAgent = function() {
+  // Open squid creator modal
+  this.showPanel('creator');
+};
+
+ui.quickCreateProcess = function() {
+  const name = prompt('Process name:');
+  if (!name) return;
+  
+  const description = prompt('What should this process do?');
+  if (!description) return;
+  
+  const process = {
+    id: 'proc_' + Date.now(),
+    name,
+    description,
+    trigger: 'manual',
+    created: new Date().toISOString()
+  };
+  
+  console.log('✅ Quick process created:', process);
+  alert(`✅ Process "${name}" created!`);
+  
+  // Add to chat
+  this.addPoseidonMessage('system', `Process "${name}" created successfully!`);
+};
+
+ui.quickCreateProject = function() {
+  // Open new project modal
+  this.openNewProjectModal();
+};
+
+ui.editBrainJson = function() {
+  fetch('/api/brain')
+    .then(res => res.json())
+    .then(data => {
+      if (data.success) {
+        const brainJson = JSON.stringify(data.brain, null, 2);
+        const newBrain = prompt('Edit brain.json:', brainJson);
+        
+        if (newBrain && newBrain !== brainJson) {
+          try {
+            const parsed = JSON.parse(newBrain);
+            
+            // Save to backend
+            fetch('/api/brain', {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ brain: parsed })
+            })
+            .then(res => res.json())
+            .then(result => {
+              if (result.success) {
+                alert('✅ brain.json updated!');
+              } else {
+                alert('❌ Failed to save: ' + result.error);
+              }
+            });
+          } catch (error) {
+            alert('❌ Invalid JSON: ' + error.message);
+          }
+        }
+      } else {
+        alert('❌ Failed to load brain.json: ' + data.error);
+      }
+    })
+    .catch(error => {
+      alert('❌ Error: ' + error.message);
+    });
+};
+
+ui.addPoseidonMessage = function(role, content) {
+  const messagesDiv = document.getElementById('poseidon-chat-messages');
+  if (!messagesDiv) return;
+  
+  const messageDiv = document.createElement('div');
+  messageDiv.className = `chat-message ${role}`;
+  messageDiv.innerHTML = `<strong>${role === 'user' ? 'You' : 'Poseidon'}:</strong> ${content}`;
+  
+  messagesDiv.appendChild(messageDiv);
+  messagesDiv.scrollTop = messagesDiv.scrollHeight;
+};
+
+console.log('✅ Poseidon quick actions loaded');
