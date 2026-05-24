@@ -1,0 +1,576 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Team Management - SquidMind</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: #333;
+      padding: 20px;
+      min-height: 100vh;
+    }
+
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+
+    header {
+      background: white;
+      padding: 24px;
+      border-radius: 16px;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+      margin-bottom: 24px;
+    }
+
+    h1 {
+      font-size: 28px;
+      font-weight: 700;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: 8px;
+    }
+
+    .subtitle {
+      color: #666;
+      font-size: 14px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 2fr;
+      gap: 24px;
+      margin-bottom: 24px;
+    }
+
+    .card {
+      background: white;
+      border-radius: 16px;
+      padding: 24px;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    }
+
+    .card-title {
+      font-size: 18px;
+      font-weight: 600;
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .btn {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      border: none;
+      padding: 12px 24px;
+      border-radius: 8px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: transform 0.2s;
+    }
+
+    .btn:hover {
+      transform: translateY(-2px);
+    }
+
+    .btn-secondary {
+      background: #e0e7ff;
+      color: #667eea;
+    }
+
+    .team-list {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .team-item {
+      padding: 16px;
+      border: 2px solid #e5e7eb;
+      border-radius: 12px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .team-item:hover {
+      border-color: #667eea;
+      background: #f9fafb;
+    }
+
+    .team-item.active {
+      border-color: #667eea;
+      background: #eef2ff;
+    }
+
+    .team-name {
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+
+    .team-meta {
+      font-size: 12px;
+      color: #666;
+    }
+
+    .team-details {
+      display: none;
+    }
+
+    .team-details.active {
+      display: block;
+    }
+
+    .workflow-steps {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      margin-top: 16px;
+    }
+
+    .workflow-step {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px;
+      background: #f9fafb;
+      border-radius: 8px;
+    }
+
+    .step-number {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 600;
+      font-size: 14px;
+    }
+
+    .step-role {
+      flex: 1;
+      font-weight: 600;
+      color: #667eea;
+    }
+
+    .member-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 12px;
+      margin-top: 16px;
+    }
+
+    .member-card {
+      padding: 16px;
+      border: 2px solid #e5e7eb;
+      border-radius: 12px;
+      text-align: center;
+    }
+
+    .member-avatar {
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      margin: 0 auto 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-weight: 700;
+      font-size: 20px;
+    }
+
+    .member-name {
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+
+    .member-role {
+      font-size: 12px;
+      color: #666;
+      background: #eef2ff;
+      padding: 4px 8px;
+      border-radius: 4px;
+      display: inline-block;
+    }
+
+    .status-badge {
+      display: inline-block;
+      padding: 4px 12px;
+      border-radius: 12px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .status-idle {
+      background: #e5e7eb;
+      color: #666;
+    }
+
+    .status-working {
+      background: #fef3c7;
+      color: #92400e;
+    }
+
+    .status-completed {
+      background: #d1fae5;
+      color: #065f46;
+    }
+
+    .modal {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0,0,0,0.5);
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+    }
+
+    .modal.active {
+      display: flex;
+    }
+
+    .modal-content {
+      background: white;
+      padding: 32px;
+      border-radius: 16px;
+      max-width: 600px;
+      width: 90%;
+      max-height: 80vh;
+      overflow-y: auto;
+    }
+
+    .form-group {
+      margin-bottom: 20px;
+    }
+
+    .form-group label {
+      display: block;
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+
+    .form-group input,
+    .form-group select,
+    .form-group textarea {
+      width: 100%;
+      padding: 12px;
+      border: 2px solid #e5e7eb;
+      border-radius: 8px;
+      font-family: inherit;
+    }
+
+    .form-group input:focus,
+    .form-group select:focus,
+    .form-group textarea:focus {
+      outline: none;
+      border-color: #667eea;
+    }
+
+    .button-group {
+      display: flex;
+      gap: 12px;
+      margin-top: 24px;
+    }
+
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+      margin: 16px 0;
+    }
+
+    .stat-card {
+      padding: 16px;
+      background: #f9fafb;
+      border-radius: 8px;
+      text-align: center;
+    }
+
+    .stat-value {
+      font-size: 24px;
+      font-weight: 700;
+      color: #667eea;
+    }
+
+    .stat-label {
+      font-size: 12px;
+      color: #666;
+      margin-top: 4px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>👥 Team Management</h1>
+      <p class="subtitle">Create and manage operational agent teams with workflows</p>
+    </header>
+
+    <div class="grid">
+      <!-- Teams List -->
+      <div class="card">
+        <div class="card-title">
+          <span>Teams</span>
+          <button class="btn btn-secondary" onclick="openCreateTeamModal()" style="margin-left: auto; padding: 8px 16px; font-size: 14px;">
+            + New Team
+          </button>
+        </div>
+        <div class="team-list" id="teamList">
+          <!-- Teams will be loaded here -->
+        </div>
+      </div>
+
+      <!-- Team Details -->
+      <div class="card">
+        <div class="card-title" id="teamDetailsTitle">Select a team</div>
+        <div id="teamDetailsContent">
+          <p style="color: #666; text-align: center; padding: 40px 0;">Select a team from the list to view details</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Create Team Modal -->
+  <div class="modal" id="createTeamModal">
+    <div class="modal-content">
+      <h2 style="margin-bottom: 24px;">Create New Team</h2>
+      
+      <form id="createTeamForm" onsubmit="createTeam(event)">
+        <div class="form-group">
+          <label>Team Name</label>
+          <input type="text" name="name" required placeholder="e.g., Code Review Squad">
+        </div>
+
+        <div class="form-group">
+          <label>Description</label>
+          <textarea name="description" rows="3" placeholder="What does this team do?"></textarea>
+        </div>
+
+        <div class="form-group">
+          <label>Workflow Template</label>
+          <select name="workflow">
+            <option value="">No workflow (parallel execution)</option>
+            <option value="code_review_pipeline">Code Review Pipeline</option>
+            <option value="data_analysis_workflow">Data Analysis Workflow</option>
+            <option value="content_creation">Content Creation Pipeline</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label>Select Team Leader</label>
+          <select name="leader_id" id="leaderSelect">
+            <!-- Populated dynamically -->
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label>Select Team Members</label>
+          <div id="memberCheckboxes">
+            <!-- Populated dynamically -->
+          </div>
+        </div>
+
+        <div class="button-group">
+          <button type="submit" class="btn">Create Team</button>
+          <button type="button" class="btn btn-secondary" onclick="closeCreateTeamModal()">Cancel</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    let teams = [];
+    let agents = [];
+    let selectedTeamId = null;
+
+    async function loadTeams() {
+      const response = await fetch('/api/teams');
+      teams = await response.json();
+      renderTeamList();
+    }
+
+    async function loadAgents() {
+      const response = await fetch('/api/agents');
+      const data = await response.json();
+      agents = data.agents || [];
+    }
+
+    function renderTeamList() {
+      const list = document.getElementById('teamList');
+      
+      if (teams.length === 0) {
+        list.innerHTML = '<p style="color: #666; text-align: center; padding: 20px;">No teams yet. Create your first team!</p>';
+        return;
+      }
+
+      list.innerHTML = teams.map(team => `
+        <div class="team-item ${selectedTeamId === team.id ? 'active' : ''}" onclick="selectTeam('${team.id}')">
+          <div class="team-name">${team.name}</div>
+          <div class="team-meta">
+            ${team.members} members • 
+            <span class="status-badge status-${team.status}">${team.status}</span>
+            ${team.workflow ? ` • ${team.workflow}` : ''}
+          </div>
+        </div>
+      `).join('');
+    }
+
+    async function selectTeam(teamId) {
+      selectedTeamId = teamId;
+      renderTeamList();
+      
+      const response = await fetch(`/api/teams/${teamId}`);
+      const team = await response.json();
+      
+      document.getElementById('teamDetailsTitle').textContent = team.name;
+      document.getElementById('teamDetailsContent').innerHTML = renderTeamDetails(team);
+    }
+
+    function renderTeamDetails(team) {
+      return `
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-value">${team.members?.length || 0}</div>
+            <div class="stat-label">Members</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value">${team.performance?.tasks_completed || 0}</div>
+            <div class="stat-label">Tasks Done</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value">${Math.round((team.performance?.success_rate || 0) * 100)}%</div>
+            <div class="stat-label">Success Rate</div>
+          </div>
+        </div>
+
+        ${team.workflow ? `
+          <h3 style="margin: 24px 0 12px;">Workflow: ${team.workflow.name}</h3>
+          <div class="workflow-steps">
+            ${team.workflow.steps.map((step, i) => `
+              <div class="workflow-step">
+                <div class="step-number">${i + 1}</div>
+                <div class="step-role">${step.role}</div>
+                <div style="color: #666; font-size: 14px;">${step.task}</div>
+              </div>
+            `).join('')}
+          </div>
+        ` : ''}
+
+        <h3 style="margin: 24px 0 12px;">Team Members</h3>
+        <div class="member-grid">
+          ${team.members?.map(memberId => {
+            const agent = agents.find(a => a.id === memberId);
+            const role = team.roles?.[memberId] || 'worker';
+            return `
+              <div class="member-card">
+                <div class="member-avatar">${agent?.name?.[0] || '?'}</div>
+                <div class="member-name">${agent?.name || 'Unknown'}</div>
+                <div class="member-role">${role}</div>
+              </div>
+            `;
+          }).join('') || '<p style="color: #666;">No members</p>'}
+        </div>
+
+        <div class="button-group" style="margin-top: 24px;">
+          <button class="btn" onclick="executeTeamTask('${team.id}')">Execute Task</button>
+          <button class="btn btn-secondary" onclick="viewTeamLogs('${team.id}')">View Logs</button>
+        </div>
+      `;
+    }
+
+    function openCreateTeamModal() {
+      // Populate agent dropdowns
+      const leaderSelect = document.getElementById('leaderSelect');
+      const memberCheckboxes = document.getElementById('memberCheckboxes');
+      
+      leaderSelect.innerHTML = agents.map(agent => 
+        `<option value="${agent.id}">${agent.name}</option>`
+      ).join('');
+      
+      memberCheckboxes.innerHTML = agents.map(agent => `
+        <label style="display: block; margin-bottom: 8px;">
+          <input type="checkbox" name="members" value="${agent.id}">
+          ${agent.name}
+        </label>
+      `).join('');
+      
+      document.getElementById('createTeamModal').classList.add('active');
+    }
+
+    function closeCreateTeamModal() {
+      document.getElementById('createTeamModal').classList.remove('active');
+    }
+
+    async function createTeam(event) {
+      event.preventDefault();
+      const formData = new FormData(event.target);
+      
+      const members = Array.from(formData.getAll('members'));
+      
+      const teamData = {
+        name: formData.get('name'),
+        description: formData.get('description'),
+        workflow: formData.get('workflow') || null,
+        leader_id: formData.get('leader_id'),
+        members: members,
+        auto_assign_roles: true
+      };
+
+      const response = await fetch('/api/teams', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(teamData)
+      });
+
+      if (response.ok) {
+        closeCreateTeamModal();
+        await loadTeams();
+        alert('Team created successfully!');
+      }
+    }
+
+    async function executeTeamTask(teamId) {
+      const task = prompt('Enter task description:');
+      if (!task) return;
+
+      const response = await fetch(`/api/teams/${teamId}/execute`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ input: task, title: task })
+      });
+
+      if (response.ok) {
+        alert('Team task started! Refresh to see progress.');
+        await selectTeam(teamId);
+      }
+    }
+
+    // Initialize
+    (async () => {
+      await loadAgents();
+      await loadTeams();
+    })();
+  </script>
+</body>
+</html>

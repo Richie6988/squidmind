@@ -406,6 +406,194 @@ app.get('/api/system/monitor', async (req, res) => {
   }
 });
 
+// ==================== TEAM ROUTES ====================
+
+const teamCoordinator = require('./services/TeamCoordinator');
+
+app.get('/api/teams', (req, res) => {
+  try {
+    const teams = teamCoordinator.listTeams();
+    res.json(teams);
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.get('/api/teams/:id', (req, res) => {
+  try {
+    const team = teamCoordinator.activeTeams.get(req.params.id);
+    if (!team) {
+      return res.status(404).json({ success: false, error: 'Team not found' });
+    }
+    res.json(team);
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.post('/api/teams', async (req, res) => {
+  try {
+    const team = await teamCoordinator.createTeam(req.body);
+    res.json({ success: true, team });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.post('/api/teams/:id/execute', async (req, res) => {
+  try {
+    const result = await teamCoordinator.executeTeamTask(req.params.id, req.body);
+    res.json({ success: true, result });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.post('/api/teams/:id/consensus', async (req, res) => {
+  try {
+    const { question, options } = req.body;
+    const result = await teamCoordinator.teamConsensus(req.params.id, question, options);
+    res.json({ success: true, result });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// ==================== GPU SCHEDULER ROUTES ====================
+
+const gpuScheduler = require('./services/GPUScheduler');
+
+app.get('/api/scheduler/status', (req, res) => {
+  try {
+    const status = gpuScheduler.getQueueStatus();
+    res.json({ success: true, ...status });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.post('/api/scheduler/schedule', async (req, res) => {
+  try {
+    const taskId = await gpuScheduler.scheduleTask(req.body);
+    res.json({ success: true, task_id: taskId });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.get('/api/scheduler/task/:id', (req, res) => {
+  try {
+    const task = gpuScheduler.getTaskStatus(req.params.id);
+    if (!task) {
+      return res.status(404).json({ success: false, error: 'Task not found' });
+    }
+    res.json({ success: true, task });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.delete('/api/scheduler/task/:id', (req, res) => {
+  try {
+    const cancelled = gpuScheduler.cancelTask(req.params.id);
+    res.json({ success: cancelled, message: cancelled ? 'Task cancelled' : 'Task not found' });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// ==================== FINE-TUNING ROUTES ====================
+
+const fineTuningManager = require('./services/FineTuningManager');
+
+app.post('/api/fine-tuning/dataset', async (req, res) => {
+  try {
+    const dataset = await fineTuningManager.createDatasetFromLogs(req.body);
+    res.json({ success: true, dataset });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.post('/api/fine-tuning/claude', async (req, res) => {
+  try {
+    const job = await fineTuningManager.fineTuneClaude(req.body);
+    res.json({ success: true, job });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.post('/api/fine-tuning/local', async (req, res) => {
+  try {
+    const job = await fineTuningManager.fineTuneLocal(req.body);
+    res.json({ success: true, job });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.post('/api/fine-tuning/experiment', async (req, res) => {
+  try {
+    const experiment = await fineTuningManager.createExperiment(req.body);
+    res.json({ success: true, experiment });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.get('/api/fine-tuning/experiments', async (req, res) => {
+  try {
+    const experiments = await fineTuningManager.listExperiments();
+    res.json({ success: true, experiments });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.post('/api/fine-tuning/auto-improve', async (req, res) => {
+  try {
+    const result = await fineTuningManager.autoImproveBrain(req.body.brain_id, req.body);
+    res.json({ success: true, result });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// ==================== TASK CHUNKING ROUTES ====================
+
+const taskChunker = require('./services/TaskChunker');
+
+app.post('/api/tasks/analyze', async (req, res) => {
+  try {
+    const { input, taskType } = req.body;
+    const analysis = await taskChunker.analyzeTask(input, taskType);
+    res.json({ success: true, analysis });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.post('/api/tasks/split', async (req, res) => {
+  try {
+    const { input, taskType, options } = req.body;
+    const chunks = await taskChunker.splitTask(input, taskType, options);
+    res.json({ success: true, chunks });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.post('/api/tasks/optimize', (req, res) => {
+  try {
+    const { output, options } = req.body;
+    const result = taskChunker.optimizeOutput(output, options);
+    res.json({ success: true, result });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 // ==================== SERVE FRONTEND ====================
 
 // Serve static files
