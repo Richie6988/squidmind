@@ -2761,3 +2761,21 @@ input[type="color"]::-webkit-color-swatch {
 #aquarium-container {
   margin-right: 280px;
 }
+
+/* ========== LOGS PANEL AS CENTER POPUP ========== */
+
+#logs-panel {
+  position: fixed !important;
+  top: 50% !important;
+  left: 50% !important;
+  transform: translate(-50%, -50%) !important;
+  width: 700px !important;
+  max-width: 90vw !important;
+  max-height: 80vh !important;
+  z-index: 2000 !important;
+}
+
+#logs-panel .panel-content {
+  max-height: calc(80vh - 60px);
+  overflow-y: auto;
+}

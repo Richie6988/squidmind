@@ -1062,3 +1062,53 @@ app.put('/api/brain', async (req, res) => {
 });
 
 console.log('  GET/PUT /api/brain      - Brain.json management');
+
+// Repair missing project JSONs
+app.post('/api/projects/:name/repair', async (req, res) => {
+  try {
+    const projectDir = path.join(__dirname, '../data/projects', req.params.name.toUpperCase());
+    const memoryPath = path.join(projectDir, 'project_memory.json');
+    
+    // Check if project_memory.json exists
+    try {
+      await fs.access(memoryPath);
+      return res.json({ success: true, message: 'Project memory already exists' });
+    } catch {
+      // Create missing project_memory.json
+      const projectMemory = {
+        project: req.params.name.toUpperCase(),
+        vision: `${req.params.name} project workspace`,
+        goals: [],
+        tasks: [],
+        progress: {
+          completion: "0%",
+          blockers: [],
+          recent_achievements: [],
+          next_steps: []
+        },
+        architecture: {
+          frontend: {},
+          backend: {}
+        },
+        files: {
+          input: [],
+          output: []
+        },
+        agents_communication: [],
+        decisions: [],
+        colors: {
+          outside: '#667eea',
+          inside: '#764ba2'
+        },
+        created: new Date().toISOString()
+      };
+      
+      await fs.writeFile(memoryPath, JSON.stringify(projectMemory, null, 2), 'utf8');
+      res.json({ success: true, message: 'Created missing project_memory.json' });
+    }
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+console.log('✅ Project repair endpoint added');
