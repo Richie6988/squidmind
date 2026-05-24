@@ -49,6 +49,13 @@ class Squid {
     this.dragOffsetX = 0;
     this.dragOffsetY = 0;
     
+    // Target position for dragging/movement
+    this.targetX = this.x;
+    this.targetY = this.y;
+    
+    // Hover state
+    this.isHovered = false;
+    
     // Interaction state
     this.lastPetTime = 0;
     this.heartParticles = [];
@@ -87,11 +94,30 @@ class Squid {
       }
     }
     
-    // Movement (Pokemon-style slower, more deliberate)
-    if (!this.isDragging && this.status === 'idle') {
+    // Smooth movement toward target (for dragging)
+    const dx = this.targetX - this.x;
+    const dy = this.targetY - this.y;
+    const distance = Math.sqrt(dx * dx + dy * dy);
+    
+    if (distance > 1) {
+      // Lerp toward target (smooth following)
+      this.x += dx * 0.3; // 30% of distance per frame = smooth
+      this.y += dy * 0.3;
+    } else {
+      // Close enough, snap to target
+      this.x = this.targetX;
+      this.y = this.targetY;
+    }
+    
+    // Movement (Pokemon-style slower, more deliberate) - only when idle
+    if (!this.isDragging && this.status === 'idle' && distance < 1) {
       const speed = this.personality.animation_style === 'energetic' ? 1.5 : 0.8;
       this.x += this.vx * speed;
       this.y += this.vy * speed;
+      
+      // Update target to follow
+      this.targetX = this.x;
+      this.targetY = this.y;
       
       // Bounce off edges
       if (this.x < 50 || this.x > 750) this.vx *= -1;
@@ -199,7 +225,11 @@ class Squid {
     let glowColor = this.appearance.body_color;
     let intensity = this.appearance.glow_intensity;
     
-    if (this.status === 'thinking') {
+    // HOVER EFFECT: Brighter glow!
+    if (this.isHovered) {
+      intensity = 1.0; // Max brightness!
+      size = size * 1.2; // Bigger!
+    } else if (this.status === 'thinking') {
       glowColor = '#FFD60A';
       intensity = 0.8 + Math.sin(this.glowPulse) * 0.2;
     } else if (this.status === 'working') {
