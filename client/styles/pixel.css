@@ -2462,24 +2462,32 @@ input[type="color"]::-webkit-color-swatch {
 /* ========== NEW PROJECT BUTTON ========== */
 
 .btn-new-project {
-  position: fixed;
-  top: 120px; /* Lower to avoid header */
-  right: 320px; /* Further from right panel */
-  padding: 12px 20px;
+  position: absolute;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 10px 18px;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   color: white;
   border: 2px solid rgba(255, 255, 255, 0.3);
-  border-radius: 8px;
+  border-radius: 6px;
   font-family: 'Press Start 2P';
-  font-size: 10px;
+  font-size: 9px;
   cursor: pointer;
   box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
-  z-index: 1000;
+  z-index: 50;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .btn-new-project:hover {
-  transform: translateY(-2px);
+  transform: translateX(-50%) translateY(-2px);
   box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
+}
+
+.aquarium-wrapper {
+  position: relative;
 }
 
 /* ========== POSEIDON PANEL - TOP MIDDLE ========== */
@@ -2664,15 +2672,15 @@ input[type="color"]::-webkit-color-swatch {
 /* ========== ALWAYS VISIBLE RIGHT PANEL ========== */
 
 .right-panel-permanent {
-  position: fixed;
-  top: 60px; /* Below header */
-  right: 0;
-  width: 280px;
-  height: calc(100vh - 60px);
+  position: relative;
+  flex: 0 0 auto;
+  width: var(--right-panel-width, 280px);
+  height: calc(100vh - 70px);
   background: var(--ocean-deep);
   border-left: 2px solid var(--border);
   z-index: 100;
   overflow-y: auto;
+  overflow-x: visible;
   display: flex;
   flex-direction: column;
 }
@@ -2973,5 +2981,87 @@ input[type="color"]::-webkit-color-swatch {
 .editor-browser-modal .editor-browser-sidebar button.selected {
   background: var(--accent);
   color: black;
+}
+
+
+/* ========== RESIZABLE RIGHT PANEL ========== */
+
+.right-panel-permanent {
+  width: var(--right-panel-width, 280px) !important;
+}
+
+.right-panel-resizer {
+  position: absolute;
+  top: 0;
+  left: -4px;
+  width: 8px;
+  height: 100%;
+  cursor: ew-resize;
+  background: transparent;
+  z-index: 200;
+  border-left: 2px solid transparent;
+  transition: border-color 0.15s, background-color 0.15s;
+}
+
+.right-panel-resizer:hover,
+.right-panel-resizer.dragging {
+  border-left-color: var(--accent);
+  background: rgba(6, 255, 165, 0.15);
+}
+
+body.is-resizing {
+  cursor: ew-resize !important;
+  user-select: none;
+}
+
+body.is-resizing * {
+  cursor: ew-resize !important;
+  user-select: none !important;
+}
+
+
+/* ========== PIXEL ART ICONS ========== */
+
+.pixel-icon {
+  display: inline-block;
+  vertical-align: middle;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+
+.pixel-icon-text {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Default size for icons in headers */
+h1 .pixel-icon, h2 .pixel-icon, h3 .pixel-icon {
+  width: 20px;
+  height: 20px;
+}
+
+/* Icons in buttons */
+button .pixel-icon {
+  width: 12px;
+  height: 12px;
+}
+
+/* Icons inherit text color */
+.pixel-icon {
+  color: inherit;
+}
+
+/* Section header icons in right panel */
+.monitor-section h3 .pixel-icon {
+  width: 14px;
+  height: 14px;
+  color: var(--accent);
+}
+
+.right-panel-header h2 .pixel-icon {
+  width: 16px;
+  height: 16px;
+  color: var(--success);
 }
 
