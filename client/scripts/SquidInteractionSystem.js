@@ -340,12 +340,12 @@ class SquidInteractionSystem {
     }, bounceSpeed * 1000);
     
     // Show details panel
-    if (typeof ui !== 'undefined') {
-      ui.currentSquid = squid;
-      ui.showSquidDetails(squid); // Direct call instead of showPanel
+    if (typeof window.ui !== 'undefined') {
+      window.ui.currentSquid = squid;
+      window.ui.showSquidDetails(squid); // Direct call instead of showPanel
       console.log('   ✅ Detail panel opened!');
     } else {
-      console.error('   ❌ UI not defined!');
+      console.error('   ❌ UI not loaded yet - check script order in index.html');
     }
   }
 

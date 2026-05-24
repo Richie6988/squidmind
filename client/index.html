@@ -39,15 +39,14 @@
       <canvas id="aquarium"></canvas>
     </div>
 
-    <!-- Control Panels -->
-    <div class="panels-container">
-      
-      <!-- Clear All Panel (Always First) -->
-      <div id="clear-all-panel" class="panel panel-clear-all">
-        <button class="btn-clear-all-panel" onclick="ui.clearAllPanels()">
-          🧹 Clear All Panels
-        </button>
-      </div>
+    <!-- Clear All Button (OUTSIDE panels container) -->
+    <div id="clear-all-panel" class="clear-all-button-container">
+      <button class="btn-clear-all" onclick="window.ui.clearAllPanels()">
+        🧹 Clear All Panels
+      </button>
+    </div>
+    
+    <!-- Control Panels -->\n    <div class="panels-container">
       
       <!-- Squid Creator Panel -->
       <div id="creator-panel" class="panel hidden">
@@ -616,6 +615,7 @@
   <script src="scripts/SquidInteractions.js"></script>
   <script src="scripts/SquidInteractionSystem.js"></script>
   <script src="scripts/Squid.js"></script>
+  <script src="scripts/SquidAnimator.js"></script>
   <script src="scripts/aquarium.js"></script>
   <script src="scripts/ui.js"></script>
   <script>

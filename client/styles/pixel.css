@@ -2285,3 +2285,35 @@ input[type="color"]::-webkit-color-swatch {
   background: rgba(255, 255, 255, 0.2) !important;
   color: white !important;
 }
+
+/* ========== CLEAR ALL BUTTON (OUTSIDE PANELS) ========== */
+
+.clear-all-button-container {
+  position: fixed;
+  top: 80px;
+  right: 20px;
+  z-index: 9999;
+  pointer-events: auto;
+}
+
+.btn-clear-all {
+  padding: 12px 24px;
+  background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+  color: white;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-radius: 8px;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 10px;
+  cursor: pointer;
+  box-shadow: 0 4px 15px rgba(240, 147, 251, 0.4);
+  transition: all 0.3s ease;
+}
+
+.btn-clear-all:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(240, 147, 251, 0.6);
+}
+
+.btn-clear-all:active {
+  transform: translateY(0);
+}
