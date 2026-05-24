@@ -665,50 +665,122 @@
 
   <!-- Squid Detail Modal -->
   <div id="squid-detail-modal" class="squid-detail-modal hidden">
-    <div class="squid-detail-content">
+    <div class="squid-detail-content" style="max-height: 80vh; overflow-y: auto;">
       <div class="squid-detail-header">
         <h2 class="squid-detail-title" id="squid-detail-title">Squid Details</h2>
         <button class="squid-detail-close" onclick="window.ui.closeSquidDetailModal()">Close</button>
       </div>
       
+      <!-- Identity Section -->
       <div class="squid-detail-section">
-        <h3>Identity</h3>
+        <h3>🦑 Identity</h3>
         <div class="squid-detail-field">
           <label>Name</label>
           <input type="text" id="squid-name" />
         </div>
         <div class="squid-detail-field">
           <label>Specialty</label>
-          <input type="text" id="squid-specialty" />
+          <input type="text" id="squid-specialty" placeholder="e.g., Code Writer, Data Analyst" />
         </div>
         <div class="squid-detail-field">
           <label>Mission</label>
-          <textarea id="squid-mission"></textarea>
+          <textarea id="squid-mission" placeholder="What is this squid's purpose?"></textarea>
         </div>
       </div>
       
+      <!-- AI Brain Section -->
       <div class="squid-detail-section">
-        <h3>AI Brain</h3>
+        <h3>🧠 AI Brain Configuration</h3>
         <div class="squid-detail-field">
           <label>Model</label>
-          <input type="text" id="squid-model" />
+          <input type="text" id="squid-model" placeholder="e.g., llama-2-7b-chat.Q4_K_M.gguf" />
         </div>
         <div class="squid-detail-field">
-          <label>Temperature</label>
-          <input type="number" id="squid-temperature" step="0.1" />
+          <label>Temperature (0-2)</label>
+          <input type="number" id="squid-temperature" step="0.1" min="0" max="2" value="0.7" />
+        </div>
+        <div class="squid-detail-field">
+          <label>Max Tokens</label>
+          <input type="number" id="squid-max-tokens" step="100" value="2000" />
+        </div>
+        <div class="squid-detail-field">
+          <label>System Prompt</label>
+          <textarea id="squid-system-prompt" placeholder="You are a helpful AI assistant..." style="min-height: 80px;"></textarea>
+        </div>
+        <div class="squid-detail-field">
+          <label>Tools Enabled</label>
+          <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+            <label style="font-size: 9px;"><input type="checkbox" id="squid-tool-code"> Code</label>
+            <label style="font-size: 9px;"><input type="checkbox" id="squid-tool-web"> Web Search</label>
+            <label style="font-size: 9px;"><input type="checkbox" id="squid-tool-file"> File Ops</label>
+            <label style="font-size: 9px;"><input type="checkbox" id="squid-tool-git"> Git</label>
+          </div>
         </div>
       </div>
       
+      <!-- Appearance Section -->
       <div class="squid-detail-section">
-        <h3>Appearance</h3>
+        <h3>🎨 Appearance (Pixel Art)</h3>
         <div class="squid-detail-field">
           <label>Body Color</label>
           <input type="color" id="squid-body-color" />
         </div>
+        <div class="squid-detail-field">
+          <label>Accent Color</label>
+          <input type="color" id="squid-accent-color" />
+        </div>
+        <div class="squid-detail-field">
+          <label>Size</label>
+          <select id="squid-size">
+            <option value="small">Small</option>
+            <option value="medium" selected>Medium</option>
+            <option value="large">Large</option>
+          </select>
+        </div>
+        <div class="squid-detail-field">
+          <label>Hat (Pixel Art)</label>
+          <select id="squid-hat">
+            <option value="">None</option>
+            <option value="tophat">🎩 Top Hat</option>
+            <option value="wizard">🧙 Wizard Hat</option>
+            <option value="crown">👑 Crown</option>
+            <option value="cap">🧢 Baseball Cap</option>
+          </select>
+        </div>
+        <div class="squid-detail-field">
+          <label>Glasses (Pixel Art)</label>
+          <select id="squid-glasses">
+            <option value="">None</option>
+            <option value="round">🤓 Round</option>
+            <option value="sunglasses">😎 Sunglasses</option>
+            <option value="monocle">🧐 Monocle</option>
+            <option value="vr">🥽 VR Headset</option>
+          </select>
+        </div>
+        <div class="squid-detail-field">
+          <label>Eyes (Pixel Art)</label>
+          <select id="squid-eyes">
+            <option value="round" selected>⚫ Round</option>
+            <option value="happy">😊 Happy</option>
+            <option value="determined">😤 Determined</option>
+            <option value="sleepy">😴 Sleepy</option>
+            <option value="robot">🤖 Robot</option>
+          </select>
+        </div>
+        <div class="squid-detail-field">
+          <label>Outfit (Pixel Art)</label>
+          <select id="squid-outfit">
+            <option value="">None</option>
+            <option value="suit">🤵 Business Suit</option>
+            <option value="hoodie">👕 Hoodie</option>
+            <option value="lab_coat">🥼 Lab Coat</option>
+            <option value="armor">🛡️ Armor</option>
+          </select>
+        </div>
       </div>
       
       <button class="squid-detail-save" onclick="window.ui.saveSquidDetails()">
-        Save Changes
+        💾 Save Changes
       </button>
     </div>
   </div>
