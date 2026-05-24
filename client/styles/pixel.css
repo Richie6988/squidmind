@@ -2464,7 +2464,8 @@ input[type="color"]::-webkit-color-swatch {
 .btn-new-project {
   position: fixed;
   top: 80px;
-  left: 20px;
+  left: 50%;
+  transform: translateX(-50%);
   padding: 12px 20px;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   color: white;
@@ -2478,7 +2479,7 @@ input[type="color"]::-webkit-color-swatch {
 }
 
 .btn-new-project:hover {
-  transform: translateY(-2px);
+  transform: translateX(-50%) translateY(-2px);
   box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
 }
 
@@ -2659,4 +2660,105 @@ input[type="color"]::-webkit-color-swatch {
 .chat-message.poseidon {
   background: rgba(6, 255, 165, 0.1);
   border-left: 3px solid var(--success);
+}
+
+/* ========== ALWAYS VISIBLE RIGHT PANEL ========== */
+
+.right-panel-permanent {
+  position: fixed;
+  top: 60px; /* Below header */
+  right: 0;
+  width: 280px;
+  height: calc(100vh - 60px);
+  background: var(--ocean-deep);
+  border-left: 2px solid var(--border);
+  z-index: 100;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.right-panel-header {
+  background: linear-gradient(135deg, var(--ocean-mid) 0%, var(--ocean-deep) 100%);
+  padding: 12px;
+  border-bottom: 2px solid var(--border);
+}
+
+.right-panel-header h2 {
+  font-size: 12px;
+  color: var(--success);
+  margin: 0;
+}
+
+.right-panel-content {
+  flex: 1;
+  padding: 12px;
+  overflow-y: auto;
+}
+
+.monitor-section {
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.monitor-section:last-child {
+  border-bottom: none;
+}
+
+.monitor-section h3 {
+  font-size: 10px;
+  color: var(--accent);
+  margin: 0 0 8px 0;
+}
+
+.stat-item {
+  margin: 6px 0;
+}
+
+.stat-label {
+  font-size: 8px;
+  color: var(--text-secondary);
+  display: inline-block;
+  width: 50px;
+}
+
+.stat-bar {
+  display: inline-block;
+  width: 100px;
+  height: 8px;
+  background: rgba(255,255,255,0.1);
+  border: 1px solid var(--border);
+  position: relative;
+  vertical-align: middle;
+}
+
+.stat-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--success) 0%, var(--accent) 100%);
+  transition: width 0.3s;
+}
+
+.stat-value {
+  font-size: 8px;
+  color: var(--success);
+  margin-left: 8px;
+}
+
+.stat-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 9px;
+  margin: 4px 0;
+  color: var(--text-secondary);
+}
+
+.stat-row span:last-child {
+  color: var(--success);
+  font-weight: bold;
+}
+
+/* Adjust main content to not overlap right panel */
+#aquarium-container {
+  margin-right: 280px;
 }

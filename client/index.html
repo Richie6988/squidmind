@@ -15,13 +15,11 @@
     <div class="header-content">
       <h1>🦑 SquidMind</h1>
       <div class="header-nav">
-        <button class="btn-nav btn-nav-special" onclick="ui.showPanel('poseidon')">🔱 Poseidon</button>
         <button class="btn-nav" onclick="ui.showPanel('creator')">+ New Squid</button>
         <button class="btn-nav" onclick="ui.showPanel('teams')">👥 Teams</button>
         <button class="btn-nav" onclick="ui.showPanel('models')">📦 Models</button>
         <button class="btn-nav" onclick="ui.showPanel('scheduler')">🎯 Scheduler</button>
         <button class="btn-nav" onclick="ui.showPanel('logs')">📜 Logs</button>
-        <button class="btn-nav" onclick="ui.showPanel('monitor')">📊 System Monitor</button>
       </div>
       <div class="header-stats">
         <span id="agent-count">0 Squids</span>
@@ -142,15 +140,16 @@
       </div>
 
       <!-- System Monitor Panel -->
-      <div id="monitor-panel" class="panel hidden">
-        <div class="panel-header">
-          <h2>📊 System Monitor</h2>
-          <button class="btn-close" onclick="ui.hidePanel('monitor')">✕</button>
+      <!-- ALWAYS VISIBLE RIGHT PANEL - System Monitor + Task Queue -->
+      <div id="right-panel" class="right-panel-permanent">
+        <div class="right-panel-header">
+          <h2>📊 System</h2>
         </div>
-        <div class="panel-content">
+        <div class="right-panel-content">
+          
           <!-- System Resources -->
           <div class="monitor-section">
-            <h3>💻 System Resources</h3>
+            <h3>💻 Resources</h3>
             <div id="monitor-system-stats">
               <div class="stat-item">
                 <span class="stat-label">CPU</span>
@@ -160,7 +159,7 @@
                 <span id="monitor-cpu-value" class="stat-value">0%</span>
               </div>
               <div class="stat-item">
-                <span class="stat-label">Memory</span>
+                <span class="stat-label">RAM</span>
                 <div class="stat-bar">
                   <div id="monitor-mem-bar" class="stat-fill"></div>
                 </div>
@@ -169,20 +168,17 @@
             </div>
           </div>
           
+          <!-- Squad Status -->
           <div class="monitor-section">
-            <h3>🦑 Squad Status</h3>
+            <h3>🦑 Squad</h3>
             <div id="monitor-squad-stats">
               <div class="stat-row">
-                <span>Total Squids:</span>
+                <span>Total:</span>
                 <span id="monitor-total-squids">0</span>
               </div>
               <div class="stat-row">
                 <span>Active:</span>
                 <span id="monitor-active-squids">0</span>
-              </div>
-              <div class="stat-row">
-                <span>Idle:</span>
-                <span id="monitor-idle-squids">0</span>
               </div>
               <div class="stat-row">
                 <span>Working:</span>
@@ -191,23 +187,33 @@
             </div>
           </div>
           
+          <!-- Task Queue -->
           <div class="monitor-section">
-            <h3>📊 Performance</h3>
+            <h3>📋 Task Queue</h3>
+            <div id="task-queue" style="max-height: 200px; overflow-y: auto;">
+              <p class="hint" style="font-size: 9px;">No tasks queued</p>
+            </div>
+            <button class="btn-secondary" onclick="ui.addTestTask()" style="width: 100%; margin-top: 8px; font-size: 9px;">
+              ➕ Add Task
+            </button>
+          </div>
+          
+          <!-- Performance -->
+          <div class="monitor-section">
+            <h3>📊 Stats</h3>
             <div id="monitor-performance">
               <div class="stat-row">
-                <span>Tasks Today:</span>
+                <span>Today:</span>
                 <span id="monitor-tasks-today">0</span>
               </div>
               <div class="stat-row">
-                <span>Success Rate:</span>
+                <span>Success:</span>
                 <span id="monitor-success-rate">0%</span>
-              </div>
-              <div class="stat-row">
-                <span>Avg Response:</span>
-                <span id="monitor-avg-response">0s</span>
               </div>
             </div>
           </div>
+        </div>
+      </div>
           
           <div class="monitor-section">
             <h3>🏛️ Projects</h3>

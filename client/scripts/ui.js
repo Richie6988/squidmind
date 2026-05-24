@@ -1750,3 +1750,28 @@ ui.addPoseidonMessage = function(role, content) {
 };
 
 console.log('✅ Poseidon quick actions loaded');
+
+// ==================== CLICK OUTSIDE TO CLOSE PANELS ====================
+
+document.addEventListener('click', function(e) {
+  // Get all visible panels
+  const panels = document.querySelectorAll('.panel:not(.hidden), .squid-detail-modal:not(.hidden), .modal:not(.hidden)');
+  
+  panels.forEach(panel => {
+    // Check if click is outside panel
+    if (!panel.contains(e.target)) {
+      // Don't close if clicking a button that opens panels
+      if (e.target.closest('.btn-nav') || 
+          e.target.closest('.btn-action') ||
+          e.target.closest('button[onclick*="showPanel"]') ||
+          e.target.closest('button[onclick*="openModal"]')) {
+        return;
+      }
+      
+      // Close the panel
+      panel.classList.add('hidden');
+    }
+  });
+});
+
+console.log('✅ Click outside to close panels enabled');

@@ -900,3 +900,48 @@ TempleInterior.saveSquidAssignments = function() {
 };
 
 console.log('✅ Temple improvements loaded - Real memory + Squid assignment');
+
+/**
+ * Customize temple colors
+ */
+TempleInterior.customizeColors = function() {
+  if (!this.currentTemple) return;
+  
+  const currentColors = this.currentTemple.colors || { outside: '#457B9D', inside: '#1D3557' };
+  
+  const outsideColor = prompt('Temple outside color (hex):', currentColors.outside);
+  if (!outsideColor) return;
+  
+  const insideColor = prompt('Temple inside color (hex):', currentColors.inside);
+  if (!insideColor) return;
+  
+  // Update backend
+  fetch(`/api/projects/${this.currentTemple.name}/colors`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      outside: outsideColor,
+      inside: insideColor
+    })
+  })
+  .then(res => res.json())
+  .then(data => {
+    if (data.success) {
+      // Update local temple
+      this.currentTemple.colors = { outside: outsideColor, inside: insideColor };
+      alert(`✅ Temple colors updated!\n\nOutside: ${outsideColor}\nInside: ${insideColor}`);
+      
+      // Refresh aquarium to show new colors
+      if (window.aquarium && window.aquarium.loadTemples) {
+        window.aquarium.loadTemples();
+      }
+    } else {
+      alert('❌ Failed to update colors: ' + data.error);
+    }
+  })
+  .catch(error => {
+    alert('❌ Error: ' + error.message);
+  });
+};
+
+console.log('✅ Temple color customization loaded');
