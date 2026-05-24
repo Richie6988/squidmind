@@ -1553,3 +1553,113 @@ ui.switchPoseidonModel = function(modelName) {
 };
 
 console.log('✅ Poseidon process & logs system loaded');
+
+// ==================== FILE BROWSER FOR .GGUF MODELS ====================
+
+ui.currentBrowserPath = require('os').homedir ? require('os').homedir() : '/home';
+ui.browserHistory = [];
+
+ui.openFileBrowser = function() {
+  const modal = document.getElementById('file-browser-modal');
+  if (!modal) {
+    // Create modal if doesn't exist
+    this.createFileBrowserModal();
+  }
+  
+  document.getElementById('file-browser-modal').classList.remove('hidden');
+  this.browsePath(this.currentBrowserPath);
+};
+
+ui.createFileBrowserModal = function() {
+  const modal = document.createElement('div');
+  modal.id = 'file-browser-modal';
+  modal.className = 'modal hidden';
+  modal.innerHTML = `
+    <div class="modal-content" style="width: 800px; max-height: 600px;">
+      <div class="modal-header">
+        <h2>📂 Browse for .gguf Model</h2>
+        <button class="btn-close" onclick="ui.closeFileBrowser()">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="browser-toolbar" style="margin-bottom: 12px; display: flex; gap: 8px;">
+          <button onclick="ui.browserGoUp()" class="btn-secondary">⬆️ Up</button>
+          <button onclick="ui.browserGoHome()" class="btn-secondary">🏠 Home</button>
+          <input type="text" id="browser-path" readonly style="flex: 1; padding: 6px; font-family: monospace; font-size: 10px; background: var(--ocean-deep); border: 2px solid var(--border); color: var(--text-primary);" />
+        </div>
+        <div id="file-list" style="max-height: 400px; overflow-y: auto; border: 2px solid var(--border); padding: 8px; background: rgba(0,0,0,0.3);"></div>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+};
+
+ui.closeFileBrowser = function() {
+  document.getElementById('file-browser-modal').classList.add('hidden');
+};
+
+ui.browsePath = async function(path) {
+  this.currentBrowserPath = path;
+  document.getElementById('browser-path').value = path;
+  
+  const fileList = document.getElementById('file-list');
+  fileList.innerHTML = '<p class="hint">Loading...</p>';
+  
+  try {
+    const response = await fetch('/api/files/browse', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path })
+    });
+    
+    const data = await response.json();
+    
+    if (data.success && data.entries) {
+      // Sort: directories first, then files
+      const dirs = data.entries.filter(e => e.type === 'directory').sort((a, b) => a.name.localeCompare(b.name));
+      const files = data.entries.filter(e => e.type === 'file').sort((a, b) => a.name.localeCompare(b.name));
+      
+      fileList.innerHTML = [...dirs, ...files].map(entry => {
+        const icon = entry.type === 'directory' ? '📁' : (entry.name.endsWith('.gguf') ? '🎯' : '📄');
+        const isGguf = entry.name.endsWith('.gguf');
+        
+        return `
+          <div class="file-entry" style="padding: 8px; margin: 2px 0; background: ${isGguf ? 'rgba(6, 255, 165, 0.1)' : 'rgba(255,255,255,0.05)'}; border-radius: 2px; cursor: pointer; display: flex; justify-content: space-between; align-items: center;" 
+               onclick="ui.${entry.type === 'directory' ? `browsePath('${entry.path.replace(/'/g, "\\'")}')` : (isGguf ? `selectGgufFile('${entry.path.replace(/'/g, "\\'")}')` : '')}">
+            <span style="font-size: 10px;">
+              ${icon} ${entry.name}
+              ${entry.size ? ` (${(entry.size / 1024 / 1024).toFixed(1)} MB)` : ''}
+            </span>
+            ${isGguf ? `<button class="btn-primary" style="font-size: 9px; padding: 4px 8px;" onclick="event.stopPropagation(); ui.loadModel('${entry.path.replace(/'/g, "\\'")}')">Load</button>` : ''}
+          </div>
+        `;
+      }).join('');
+      
+      if (data.entries.length === 0) {
+        fileList.innerHTML = '<p class="hint">Empty directory</p>';
+      }
+    } else {
+      fileList.innerHTML = '<p class="hint">Error: ' + (data.error || 'Failed to list directory') + '</p>';
+    }
+  } catch (error) {
+    console.error('Browse error:', error);
+    fileList.innerHTML = '<p class="hint">Error: ' + error.message + '</p>';
+  }
+};
+
+ui.browserGoUp = function() {
+  const parts = this.currentBrowserPath.split('/').filter(Boolean);
+  parts.pop();
+  const newPath = '/' + parts.join('/');
+  this.browsePath(newPath || '/');
+};
+
+ui.browserGoHome = function() {
+  this.browsePath(process.env.HOME || '/home');
+};
+
+ui.selectGgufFile = function(path) {
+  document.getElementById('model-manual-path').value = path;
+  this.closeFileBrowser();
+};
+
+console.log('✅ File browser system loaded');

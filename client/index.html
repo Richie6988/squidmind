@@ -476,10 +476,15 @@
           <!-- Scan Section -->
           <div class="model-section">
             <h3>🔍 Find Models</h3>
-            <p class="hint">Scan for .gguf files in HuggingFace cache and common locations</p>
-            <button onclick="ui.scanForModels()" class="btn-primary" style="width: 100%;">
-              🔍 Scan for Models
-            </button>
+            <p class="hint">Scan HuggingFace cache OR browse your filesystem</p>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+              <button onclick="ui.scanForModels()" class="btn-primary">
+                🔍 Auto Scan
+              </button>
+              <button onclick="ui.openFileBrowser()" class="btn-primary">
+                📂 Browse Files
+              </button>
+            </div>
             <div id="scan-status" style="margin-top: 8px; font-size: 10px;"></div>
           </div>
           

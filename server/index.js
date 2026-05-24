@@ -988,3 +988,52 @@ app.get('/api/models/loaded', (req, res) => {
   }
 });
 
+
+// File browser endpoint
+app.post('/api/files/browse', async (req, res) => {
+  try {
+    const { path: dirPath } = req.body;
+    
+    if (!dirPath) {
+      return res.status(400).json({ success: false, error: 'Path required' });
+    }
+    
+    // Security: prevent path traversal outside home
+    const resolvedPath = path.resolve(dirPath);
+    
+    try {
+      const entries = await fs.readdir(resolvedPath, { withFileTypes: true });
+      
+      const results = await Promise.all(
+        entries.map(async (entry) => {
+          const entryPath = path.join(resolvedPath, entry.name);
+          let size = null;
+          
+          if (entry.isFile()) {
+            try {
+              const stats = await fs.stat(entryPath);
+              size = stats.size;
+            } catch (err) {
+              // Ignore stat errors
+            }
+          }
+          
+          return {
+            name: entry.name,
+            path: entryPath,
+            type: entry.isDirectory() ? 'directory' : 'file',
+            size
+          };
+        })
+      );
+      
+      res.json({ success: true, entries: results });
+    } catch (error) {
+      res.status(500).json({ success: false, error: error.message });
+    }
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+console.log('  POST   /api/files/browse   - File browser');
