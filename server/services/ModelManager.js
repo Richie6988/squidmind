@@ -1,6 +1,5 @@
 const fs = require('fs').promises;
 const path = require('path');
-const { LlamaModel, LlamaContext, LlamaChatSession } = require('node-llama-cpp');
 
 const MODELS_DIR = path.join(__dirname, '../../data/models');
 
@@ -8,11 +7,29 @@ class ModelManager {
   constructor() {
     this.loadedModels = new Map(); // modelPath -> LlamaModel instance
     this.sessions = new Map(); // sessionId -> LlamaChatSession
+    this.llamaLib = null; // Will be loaded on demand
   }
 
   async init() {
     await fs.mkdir(MODELS_DIR, { recursive: true });
     console.log('📦 ModelManager initialized');
+  }
+
+  /**
+   * Lazy load node-llama-cpp only when needed
+   */
+  async ensureLlamaLib() {
+    if (!this.llamaLib) {
+      try {
+        this.llamaLib = await import('node-llama-cpp');
+        console.log('✅ node-llama-cpp loaded');
+      } catch (error) {
+        console.error('❌ Failed to load node-llama-cpp:', error.message);
+        console.log('💡 Install with: npm install node-llama-cpp');
+        throw new Error('node-llama-cpp not available. Local GGUF models disabled.');
+      }
+    }
+    return this.llamaLib;
   }
 
   /**
@@ -31,6 +48,8 @@ class ModelManager {
       }
 
       console.log(`📦 Loading GGUF model: ${modelPath}...`);
+      
+      const { LlamaModel } = await this.ensureLlamaLib();
       
       const model = new LlamaModel({
         modelPath: fullPath,
@@ -52,6 +71,7 @@ class ModelManager {
    * Create a chat session with a loaded model
    */
   async createSession(modelPath, options = {}) {
+    const { LlamaContext, LlamaChatSession } = await this.ensureLlamaLib();
     const model = await this.loadModel(modelPath, options);
     
     const context = new LlamaContext({
