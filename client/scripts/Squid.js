@@ -708,9 +708,19 @@ class Squid {
     const dy = y - (this.y - this.jumpHeight);
     const distance = Math.sqrt(dx * dx + dy * dy);
     const size = 40 * this.baseSize;
+    const hitRadius = size * 1.2;
+    const isOver = distance < hitRadius;
     
-    // Hit detection radius (slightly larger for easier clicking)
-    return distance < size * 1.2;
+    // DEBUG: Log all checks
+    if (Math.abs(dx) < 100 && Math.abs(dy) < 100) { // Only log when close
+      console.log(`   🔍 Checking ${this.name}:`);
+      console.log(`      Position: (${this.x}, ${this.y})`);
+      console.log(`      Click: (${x}, ${y})`);
+      console.log(`      Distance: ${distance.toFixed(2)} vs ${hitRadius.toFixed(2)}`);
+      console.log(`      Result: ${isOver ? '✅ HIT!' : '❌ MISS'}`);
+    }
+    
+    return isOver;
   }
   
   onClick() {

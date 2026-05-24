@@ -346,7 +346,17 @@ document.addEventListener('DOMContentLoaded', () => {
           ui.showNotification('Squid updated successfully!', 'success');
           ui.hidePanel('edit');
           
-          // Reload squids
+          // Update squid in memory immediately
+          const squid = aquarium.squids.find(s => s.id === agentId);
+          if (squid) {
+            squid.name = updatedAgent.name;
+            squid.specialty = updatedAgent.specialty;
+            squid.brain = updatedAgent.brain;
+            squid.outfit = updatedAgent.outfit || squid.outfit;
+            console.log('✅ Squid updated in memory:', squid.name);
+          }
+          
+          // Also reload from server to be safe
           await aquarium.loadSquids();
         }
       } catch (error) {

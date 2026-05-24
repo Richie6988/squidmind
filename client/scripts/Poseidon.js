@@ -429,13 +429,23 @@ AVAILABLE SQUIDS:
       return;
     }
     
-    console.log('🔱 Poseidon loading model:', modelPath);
+    console.log('🔱 Poseidon loading model from path:', modelPath);
+    
+    // Simple validation
+    if (typeof modelPath !== 'string') {
+      console.error('❌ Invalid model path type:', typeof modelPath);
+      alert('Invalid model path');
+      return;
+    }
     
     try {
       const response = await fetch('/api/models/load', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ modelPath })
+        body: JSON.stringify({ 
+          path: modelPath,
+          modelPath: modelPath // Send both for compatibility
+        })
       });
       
       const data = await response.json();
@@ -446,7 +456,7 @@ AVAILABLE SQUIDS:
         alert('Model loaded successfully for Poseidon!');
       } else {
         console.error('❌ Failed to load model:', data.error);
-        alert('Failed to load model: ' + data.error);
+        alert('Failed to load model: ' + (data.error || 'Unknown error'));
       }
     } catch (error) {
       console.error('❌ Model load error:', error);
