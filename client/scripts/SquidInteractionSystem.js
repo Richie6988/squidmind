@@ -298,12 +298,16 @@ class SquidInteractionSystem {
    * Handle single click on squid
    */
   handleSquidClick(squid) {
-    console.log('Clicked squid:', squid.name);
+    console.log('🦑 CLICKED SQUID:', squid.name);
+    console.log('   Opening detail panel...');
     
     // Show details panel
     if (typeof ui !== 'undefined') {
       ui.currentSquid = squid;
       ui.showPanel('detail');
+      console.log('   ✅ Detail panel opened!');
+    } else {
+      console.error('   ❌ UI not defined!');
     }
   }
 

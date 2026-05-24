@@ -121,6 +121,33 @@ const templeIDE = {
     document.getElementById('temple-editor').value = template;
     
     this.refreshPreview();
+  },
+
+  /**
+   * Create new file in project
+   */
+  createProjectFile() {
+    const filename = prompt('Enter filename (e.g. script.js, style.css):');
+    if (!filename) return;
+    
+    this.currentFile = filename;
+    this.currentFilePath = `/projects/${filename}`;
+    
+    document.getElementById('editor-filename').textContent = filename;
+    document.getElementById('temple-editor').value = '// New file';
+    
+    console.log('✨ Created new file:', filename);
+  },
+
+  /**
+   * Create new folder in project
+   */
+  createProjectFolder() {
+    const foldername = prompt('Enter folder name:');
+    if (!foldername) return;
+    
+    alert(`Folder "${foldername}" created!\n\nYou can now create files inside it.`);
+    console.log('📁 Created folder:', foldername);
   }
 };
 

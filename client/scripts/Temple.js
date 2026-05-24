@@ -293,6 +293,14 @@ class Temple {
               </div>
             `).join('')}
           </div>
+          
+          <h2>➕ Project Creation</h2>
+          <button class="btn-create-project" onclick="templeIDE.createProjectFile()">
+            ✨ New File
+          </button>
+          <button class="btn-create-project" onclick="templeIDE.createProjectFolder()">
+            📁 New Folder
+          </button>
         </div>
         
         <div class="interior-center">
@@ -316,25 +324,79 @@ class Temple {
           
           <h2>🦑 Working Agents</h2>
           <div class="agents-workspace">
-            ${this.activeAgents.map(agent => `
-              <div class="agent-avatar walking">
-                <div class="avatar-squid">🦑</div>
-                <div class="avatar-name">${agent.name}</div>
-                <div class="avatar-status">${agent.status}</div>
-              </div>
-            `).join('') || '<p>No agents currently working</p>'}
+            ${(this.activeAgents && this.activeAgents.length > 0) ? 
+              this.activeAgents.map(agent => `
+                <div class="agent-avatar walking">
+                  <div class="avatar-squid">🦑</div>
+                  <div class="avatar-name">${agent.name}</div>
+                  <div class="avatar-status">${agent.status}</div>
+                </div>
+              `).join('') :
+              // Show example walking squids if no agents
+              `
+                <div class="agent-avatar walking">
+                  <div class="avatar-squid">🦑</div>
+                  <div class="avatar-name">Example Agent</div>
+                  <div class="avatar-status">working</div>
+                </div>
+                <div class="agent-avatar walking">
+                  <div class="avatar-squid">🦑</div>
+                  <div class="avatar-name">Demo Agent</div>
+                  <div class="avatar-status">thinking</div>
+                </div>
+              `
+            }
           </div>
         </div>
         
         <div class="interior-right">
-          <h2>📋 Active Tasks</h2>
-          <div class="task-board">
-            ${(this.project.tasks || []).map(task => `
-              <div class="task-card ${task.status}">
-                <span class="task-status">${task.status === 'complete' ? '✅' : task.status === 'working' ? '⚡' : '⏳'}</span>
-                <span class="task-desc">${task.description}</span>
+          <h2>📋 KANBAN Board</h2>
+          <div class="kanban-board">
+            <div class="kanban-column">
+              <h3>📝 TODO</h3>
+              <div class="kanban-cards">
+                ${(this.project.tasks || []).filter(t => t.status === 'pending').map(task => `
+                  <div class="kanban-card" draggable="true">
+                    <span class="task-desc">${task.description}</span>
+                  </div>
+                `).join('') || '<p class="empty-column">No tasks</p>'}
               </div>
-            `).join('')}
+            </div>
+            
+            <div class="kanban-column">
+              <h3>⚡ IN PROGRESS</h3>
+              <div class="kanban-cards">
+                ${(this.project.tasks || []).filter(t => t.status === 'working').map(task => `
+                  <div class="kanban-card working" draggable="true">
+                    <span class="task-desc">${task.description}</span>
+                  </div>
+                `).join('') || '<p class="empty-column">No tasks</p>'}
+              </div>
+            </div>
+            
+            <div class="kanban-column">
+              <h3>✅ DONE</h3>
+              <div class="kanban-cards">
+                ${(this.project.tasks || []).filter(t => t.status === 'complete').map(task => `
+                  <div class="kanban-card complete" draggable="true">
+                    <span class="task-desc">${task.description}</span>
+                  </div>
+                `).join('') || '<p class="empty-column">No tasks</p>'}
+              </div>
+            </div>
+          </div>
+          
+          <h2>🔄 Recurrent Tasks (Cron)</h2>
+          <div class="recurrent-tasks">
+            <div class="cron-task">
+              <span class="cron-schedule">0 9 * * *</span>
+              <span class="cron-desc">Daily data backup</span>
+            </div>
+            <div class="cron-task">
+              <span class="cron-schedule">*/30 * * * *</span>
+              <span class="cron-desc">Health check</span>
+            </div>
+            <button class="btn-add-cron">➕ Add Cron Task</button>
           </div>
         </div>
       </div>

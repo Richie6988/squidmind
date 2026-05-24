@@ -473,36 +473,29 @@
           <button class="btn-close" onclick="ui.hidePanel('models')">✕</button>
         </div>
         <div class="panel-content">
-          <!-- File Browser Section -->
-          <div class="model-section">
-            <h3>📁 Add Model from Computer</h3>
-            <input type="file" id="model-file-browser" accept=".gguf" 
-                   onchange="ui.addModelFromFile(this)"
-                   style="width: 100%; padding: 8px; margin: 8px 0;">
-            <p class="hint">Select a .gguf model file to add</p>
-          </div>
           
-          <hr style="margin: 20px 0; border-color: var(--border);">
-          
-          <!-- Manual Path Section -->
+          <!-- Manual Path Section (PRIMARY) -->
           <div class="model-section">
-            <h3>📂 Add Model by Path</h3>
-            <input type="text" id="model-manual-path" placeholder="/path/to/your/model.gguf" 
+            <h3>📂 Add Model by Full Path</h3>
+            <p class="hint">Example: /home/user/.cache/huggingface/hub/models--TheBloke--Llama-2-7B-Chat-GGUF/snapshots/[hash]/llama-2-7b-chat.Q4_K_M.gguf</p>
+            <input type="text" id="model-manual-path" placeholder="Paste full path to .gguf file" 
                    style="width: 100%; padding: 8px; margin: 8px 0; font-family: monospace; font-size: 11px;">
-            <button onclick="ui.addModelByPath()" class="btn-primary">
+            <button onclick="ui.addModelByPath()" class="btn-primary" style="width: 100%;">
               ➕ Add Model
             </button>
           </div>
           
           <hr style="margin: 20px 0; border-color: var(--border);">
           
-          <!-- Scan for Models -->
+          <!-- Common Paths Helper -->
           <div class="model-section">
-            <h3>🔍 Scan for Models</h3>
-            <button onclick="ui.scanForModels()" class="btn-secondary">
-              🔄 Scan Common Locations
-            </button>
-            <p class="hint">Scans: ~/.cache/huggingface, ~/models, etc.</p>
+            <h3>💡 Common Model Locations</h3>
+            <div class="path-examples">
+              <code>~/.cache/huggingface/hub/models--*/snapshots/*/*.gguf</code><br>
+              <code>~/models/*.gguf</code><br>
+              <code>/usr/local/share/models/*.gguf</code>
+            </div>
+            <p class="hint">Use 'ls' command in terminal to find your .gguf files</p>
           </div>
           
           <hr style="margin: 20px 0; border-color: var(--border);">
