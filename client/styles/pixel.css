@@ -1782,3 +1782,41 @@ input[type="color"]::-webkit-color-swatch {
   font-size: 10px;
   color: #06FFA5;
 }
+
+/* Modal/Popup Panels (Centered & Above Aquarium) */
+#models-panel,
+#creator-panel,
+#edit-panel {
+  position: fixed !important;
+  top: 50% !important;
+  left: 50% !important;
+  transform: translate(-50%, -50%) !important;
+  z-index: 1000 !important;
+  max-height: 80vh !important;
+  overflow-y: auto !important;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5) !important;
+}
+
+/* Modal Backdrop */
+.panel-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(0, 0, 0, 0.7);
+  z-index: 999;
+  display: none;
+}
+
+.panel-backdrop.active {
+  display: block;
+}
+
+/* Make Clear All panel always visible and on top */
+#clear-all-panel {
+  position: sticky !important;
+  top: 0 !important;
+  z-index: 9999 !important;
+  margin-bottom: 8px !important;
+}

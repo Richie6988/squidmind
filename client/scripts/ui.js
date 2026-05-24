@@ -78,11 +78,20 @@ const ui = {
   showPanel(panelId) {
     const panel = document.getElementById(`${panelId}-panel`);
     if (panel) {
-      // NEWEST AT TOP: Move panel to top of DOM
+      // NEWEST AT TOP: Move panel to top of DOM (but after Clear All)
       const container = panel.parentElement;
       if (container) {
         panel.remove();
-        container.insertBefore(panel, container.firstChild);
+        
+        // Find Clear All panel
+        const clearAllPanel = document.getElementById('clear-all-panel');
+        
+        // Insert after Clear All panel (so Clear All stays on top)
+        if (clearAllPanel && clearAllPanel.nextSibling) {
+          container.insertBefore(panel, clearAllPanel.nextSibling);
+        } else {
+          container.insertBefore(panel, container.firstChild);
+        }
       }
       
       panel.classList.remove('hidden');
@@ -94,7 +103,7 @@ const ui = {
       });
       panel.style.zIndex = '200';
       
-      console.log(`📌 Panel "${panelId}" at TOP of list`);
+      console.log(`📌 Panel "${panelId}" at TOP of list (below Clear All)`);
     }
   },
 
