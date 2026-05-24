@@ -7,7 +7,20 @@ const { evaluate } = require('mathjs');
 class ToolRegistry {
   constructor() {
     this.tools = new Map();
+    this.initialized = false;
+  }
+
+  async init() {
+    if (this.initialized) return;
+    
+    // Initialize filesystem tools
+    const filesystemTools = require('./FilesystemTools');
+    await filesystemTools.init();
+    
+    // Register all tools
     this.registerBuiltinTools();
+    
+    this.initialized = true;
   }
 
   /**
@@ -257,6 +270,197 @@ class ToolRegistry {
         try {
           const json = JSON.stringify(data, null, 2);
           return { success: true, json };
+        } catch (error) {
+          return { success: false, error: error.message };
+        }
+      }
+    });
+
+    // Advanced Filesystem Tools
+    const filesystemTools = require('./FilesystemTools');
+    
+    this.registerTool({
+      name: 'create_directory',
+      description: 'Create directory with parent directories',
+      category: 'filesystem',
+      parameters: {
+        path: { type: 'string', required: true, description: 'Directory path to create' }
+      },
+      execute: async ({ path }) => filesystemTools.createDirectory(path)
+    });
+
+    this.registerTool({
+      name: 'directory_tree',
+      description: 'Get recursive directory tree structure',
+      category: 'filesystem',
+      parameters: {
+        path: { type: 'string', required: false, description: 'Directory path (default: workspace root)' },
+        excludePatterns: { type: 'array', required: false, description: 'Patterns to exclude' }
+      },
+      execute: async ({ path = '.', excludePatterns = [] }) => filesystemTools.directoryTree(path, excludePatterns)
+    });
+
+    this.registerTool({
+      name: 'search_files',
+      description: 'Search files by pattern (glob-style)',
+      category: 'filesystem',
+      parameters: {
+        path: { type: 'string', required: false, description: 'Search root (default: workspace)' },
+        pattern: { type: 'string', required: true, description: 'Pattern (e.g., *.tsx, **/*.json)' }
+      },
+      execute: async ({ path = '.', pattern }) => filesystemTools.searchFiles(path, pattern)
+    });
+
+    this.registerTool({
+      name: 'get_file_info',
+      description: 'Get file metadata (size, dates, permissions)',
+      category: 'filesystem',
+      parameters: {
+        path: { type: 'string', required: true, description: 'File or directory path' }
+      },
+      execute: async ({ path }) => filesystemTools.getFileInfo(path)
+    });
+
+    this.registerTool({
+      name: 'move_file',
+      description: 'Move or rename file/directory',
+      category: 'filesystem',
+      parameters: {
+        source: { type: 'string', required: true, description: 'Source path' },
+        destination: { type: 'string', required: true, description: 'Destination path' }
+      },
+      execute: async ({ source, destination }) => filesystemTools.moveFile(source, destination)
+    });
+
+    this.registerTool({
+      name: 'run_javascript',
+      description: 'Execute JavaScript code in sandbox (timeout: 60s max)',
+      category: 'code',
+      parameters: {
+        code: { type: 'string', required: true, description: 'JavaScript code to execute' },
+        timeout_seconds: { type: 'number', required: false, description: 'Timeout in seconds (default: 5)' }
+      },
+      execute: async ({ code, timeout_seconds = 5 }) => filesystemTools.runJavaScript(code, timeout_seconds)
+    });
+
+    this.registerTool({
+      name: 'read_media_file',
+      description: 'Read image/audio file as base64',
+      category: 'filesystem',
+      parameters: {
+        path: { type: 'string', required: true, description: 'Media file path' }
+      },
+      execute: async ({ path }) => filesystemTools.readMediaFile(path)
+    });
+
+    // HuggingFace AI Tools
+    const hfInference = require('./HuggingFaceInference');
+    
+    this.registerTool({
+      name: 'hf_search_models',
+      description: 'Search HuggingFace models',
+      category: 'ai',
+      parameters: {
+        query: { type: 'string', required: true, description: 'Search query' },
+        task: { type: 'string', required: false, description: 'Filter by task (text-generation, etc.)' },
+        limit: { type: 'number', required: false, description: 'Number of results (default: 20)' }
+      },
+      execute: async ({ query, task = 'text-generation', limit = 20 }) => {
+        return await hfInference.searchModels(query, { task, limit });
+      }
+    });
+
+    this.registerTool({
+      name: 'hf_generate',
+      description: 'Generate text with HuggingFace Inference API',
+      category: 'ai',
+      parameters: {
+        model: { type: 'string', required: true, description: 'Model ID (e.g., mistralai/Mistral-7B-Instruct-v0.2)' },
+        input: { type: 'string', required: true, description: 'Input prompt' },
+        max_tokens: { type: 'number', required: false, description: 'Max tokens (default: 500)' },
+        temperature: { type: 'number', required: false, description: 'Temperature (default: 0.7)' }
+      },
+      execute: async ({ model, input, max_tokens = 500, temperature = 0.7 }) => {
+        try {
+          const result = await hfInference.generateText(model, input, {
+            max_new_tokens: max_tokens,
+            temperature
+          });
+          return { success: true, output: result };
+        } catch (error) {
+          return { success: false, error: error.message };
+        }
+      }
+    });
+
+    this.registerTool({
+      name: 'hf_generate_code',
+      description: 'Generate code with HuggingFace models',
+      category: 'ai',
+      parameters: {
+        prompt: { type: 'string', required: true, description: 'Code generation prompt' },
+        language: { type: 'string', required: false, description: 'Programming language (default: python)' },
+        max_tokens: { type: 'number', required: false, description: 'Max tokens (default: 1000)' }
+      },
+      execute: async ({ prompt, language = 'python', max_tokens = 1000 }) => {
+        try {
+          const result = await hfInference.generateCode(prompt, language, { max_tokens });
+          return { success: true, code: result };
+        } catch (error) {
+          return { success: false, error: error.message };
+        }
+      }
+    });
+
+    // Local Model Scanner Tools
+    const localModelScanner = require('./LocalModelScanner');
+    
+    this.registerTool({
+      name: 'scan_local_models',
+      description: 'Scan PC for GGUF/GGML models (HF cache, Ollama, LM Studio, etc.)',
+      category: 'ai',
+      parameters: {},
+      execute: async () => {
+        try {
+          const models = await localModelScanner.scanSystem();
+          return { 
+            success: true, 
+            models, 
+            count: models.length,
+            stats: localModelScanner.getStats()
+          };
+        } catch (error) {
+          return { success: false, error: error.message };
+        }
+      }
+    });
+
+    this.registerTool({
+      name: 'find_local_model',
+      description: 'Search for specific model by name',
+      category: 'ai',
+      parameters: {
+        searchTerm: { type: 'string', required: true, description: 'Model name or partial match' }
+      },
+      execute: async ({ searchTerm }) => {
+        try {
+          const models = await localModelScanner.findModel(searchTerm);
+          return { success: true, models, count: models.length };
+        } catch (error) {
+          return { success: false, error: error.message };
+        }
+      }
+    });
+
+    this.registerTool({
+      name: 'get_model_stats',
+      description: 'Get statistics about local models',
+      category: 'ai',
+      parameters: {},
+      execute: async () => {
+        try {
+          const stats = localModelScanner.getStats();
+          return { success: true, stats };
         } catch (error) {
           return { success: false, error: error.message };
         }
