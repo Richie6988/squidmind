@@ -120,7 +120,7 @@ const templeIDE = {
   </style>
 </head>
 <body>
-  <h1>🏛️ ${projectName}</h1>
+  <h1>[TEMPLE] ${projectName}</h1>
   <p>Your project starts here!</p>
 </body>
 </html>`;
@@ -166,4 +166,4 @@ if (typeof window !== 'undefined') {
   window.templeIDE = templeIDE;
 }
 
-console.log('💻 Temple IDE loaded');
+console.log('[CPU] Temple IDE loaded');

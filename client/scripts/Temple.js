@@ -102,7 +102,7 @@ class Temple {
     if (this.agentCount > 0) {
       ctx.fillStyle = '#06FFA5';
       ctx.font = '8px "Press Start 2P"';
-      ctx.fillText(`${this.agentCount} 🦑`, this.x + this.width / 2, floatY + this.height + 35);
+      ctx.fillText(`${this.agentCount} [SQUID]`, this.x + this.width / 2, floatY + this.height + 35);
     }
   }
 
@@ -216,7 +216,7 @@ class Temple {
     for (let i = 0; i < Math.min(this.agentCount, 5); i++) {
       ctx.fillStyle = '#06FFA5';
       ctx.font = '12px Arial';
-      ctx.fillText('🦑', startX + i * 16, y);
+      ctx.fillText('[SQUID]', startX + i * 16, y);
     }
     
     if (this.agentCount > 5) {
@@ -240,7 +240,7 @@ class Temple {
    * Handle click - enter the temple!
    */
   handleClick() {
-    console.log('🏛️ Entering temple:', this.name);
+    console.log('[TEMPLE] Entering temple:', this.name);
     
     // Use new TempleInterior module
     if (window.TempleInterior) {
@@ -276,14 +276,14 @@ class Temple {
     
     interior.innerHTML = `
       <div class="interior-header">
-        <h1>🏛️ ${this.name} TEMPLE</h1>
+        <h1>[TEMPLE] ${this.name} TEMPLE</h1>
         <button onclick="document.getElementById('temple-interior').classList.add('hidden')">
           ✕ Exit Temple
         </button>
       </div>
       <div class="interior-content">
         <div class="interior-left">
-          <h2>📦 Project Resources</h2>
+          <h2>[MODELS] Project Resources</h2>
           <div class="resource-list">
             ${(this.project.files || []).map(file => `
               <div class="resource-item" onclick="templeIDE.openFile('${file.name}', '${file.path}')">
@@ -304,7 +304,7 @@ class Temple {
         </div>
         
         <div class="interior-center">
-          <h2>💻 IDE Workspace</h2>
+          <h2>[CPU] IDE Workspace</h2>
           <div class="ide-container">
             <div class="ide-editor">
               <div class="editor-header">
@@ -322,12 +322,12 @@ class Temple {
             </div>
           </div>
           
-          <h2>🦑 Working Agents</h2>
+          <h2>[SQUID] Working Agents</h2>
           <div class="agents-workspace">
             ${(this.activeAgents && this.activeAgents.length > 0) ? 
               this.activeAgents.map(agent => `
                 <div class="agent-avatar walking">
-                  <div class="avatar-squid">🦑</div>
+                  <div class="avatar-squid">[SQUID]</div>
                   <div class="avatar-name">${agent.name}</div>
                   <div class="avatar-status">${agent.status}</div>
                 </div>
@@ -335,12 +335,12 @@ class Temple {
               // Show example walking squids if no agents
               `
                 <div class="agent-avatar walking">
-                  <div class="avatar-squid">🦑</div>
+                  <div class="avatar-squid">[SQUID]</div>
                   <div class="avatar-name">Example Agent</div>
                   <div class="avatar-status">working</div>
                 </div>
                 <div class="agent-avatar walking">
-                  <div class="avatar-squid">🦑</div>
+                  <div class="avatar-squid">[SQUID]</div>
                   <div class="avatar-name">Demo Agent</div>
                   <div class="avatar-status">thinking</div>
                 </div>
@@ -350,7 +350,7 @@ class Temple {
         </div>
         
         <div class="interior-right">
-          <h2>📋 KANBAN Board</h2>
+          <h2>[TASKS] KANBAN Board</h2>
           <div class="kanban-board">
             <div class="kanban-column">
               <h3>📝 TODO</h3>
@@ -375,7 +375,7 @@ class Temple {
             </div>
             
             <div class="kanban-column">
-              <h3>✅ DONE</h3>
+              <h3>[OK] DONE</h3>
               <div class="kanban-cards">
                 ${(this.project.tasks || []).filter(t => t.status === 'complete').map(task => `
                   <div class="kanban-card complete" draggable="true">

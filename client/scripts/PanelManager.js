@@ -36,4 +36,4 @@ if (typeof window !== 'undefined') {
   window.panelManager = panelManager;
 }
 
-console.log('📋 PanelManager loaded');
+console.log('[TASKS] PanelManager loaded');

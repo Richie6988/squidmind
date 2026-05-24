@@ -12,7 +12,7 @@ const TempleInterior = {
    */
   open(temple) {
     this.currentTemple = temple;
-    console.log('🏛️ Opening temple:', temple.name);
+    console.log('[TEMPLE] Opening temple:', temple.name);
     
     // Create or get interior container
     let interior = document.getElementById('temple-interior');
@@ -42,7 +42,7 @@ const TempleInterior = {
     
     return `
       <div class="interior-header">
-        <h1>🏛️ ${temple.name} TEMPLE</h1>
+        <h1>[TEMPLE] ${temple.name} TEMPLE</h1>
         <button onclick="TempleInterior.close()">✕ Exit</button>
       </div>
       <div class="interior-content">
@@ -60,7 +60,7 @@ const TempleInterior = {
           
           <hr class="section-divider">
           
-          <h2>🧠 project_memory.json</h2>
+          <h2>[BRAIN] project_memory.json</h2>
           <p class="section-desc">Vision, tasks, progress - editable by all agents</p>
           <button class="btn-memory" onclick="TempleInterior.openProjectMemory()">
             📝 View/Edit Memory
@@ -70,7 +70,7 @@ const TempleInterior = {
         
         <!-- CENTER: Working Agents & IDE -->
         <div class="interior-center">
-          <h2>🦑 WORKING AGENTS</h2>
+          <h2>[SQUID] WORKING AGENTS</h2>
           <p class="section-desc">Real squids assigned to this project</p>
           <div class="agents-workspace" id="working-agents"></div>
           <button class="btn-assign" onclick="TempleInterior.showSquidAssigner()">
@@ -79,7 +79,7 @@ const TempleInterior = {
           
           <hr class="section-divider">
           
-          <h2>💻 IDE WORKSPACE</h2>
+          <h2>[CPU] IDE WORKSPACE</h2>
           <div class="ide-container">
             <div class="ide-editor">
               <div class="editor-header">
@@ -100,7 +100,7 @@ const TempleInterior = {
         
         <!-- RIGHT: KANBAN & Cron -->
         <div class="interior-right">
-          <h2>📋 KANBAN BOARD</h2>
+          <h2>[TASKS] KANBAN BOARD</h2>
           <div class="kanban-board">
             <div class="kanban-column">
               <h3>📝 TODO</h3>
@@ -111,7 +111,7 @@ const TempleInterior = {
               <div class="kanban-cards" id="kanban-progress"></div>
             </div>
             <div class="kanban-column">
-              <h3>✅ DONE</h3>
+              <h3>[OK] DONE</h3>
               <div class="kanban-cards" id="kanban-done"></div>
             </div>
           </div>
@@ -179,12 +179,12 @@ const TempleInterior = {
     if (assignedSquids.length > 0) {
       container.innerHTML = assignedSquids.map(squid => `
         <div class="agent-avatar walking" data-squid-id="${squid.id}">
-          <div class="avatar-squid" style="filter: hue-rotate(${squid.color}deg)">🦑</div>
+          <div class="avatar-squid" style="filter: hue-rotate(${squid.color}deg)">[SQUID]</div>
           <div class="avatar-name">${squid.name}</div>
           <div class="avatar-specialty">${squid.specialty || squid.role}</div>
           <div class="avatar-status">${squid.status || 'idle'}</div>
           <button class="btn-config-squid" onclick="TempleInterior.configureSquid('${squid.id}')">
-            ⚙️ Configure
+            [CONFIG] Configure
           </button>
         </div>
       `).join('');
@@ -295,7 +295,7 @@ const TempleInterior = {
    * Open project_memory.json
    */
   openProjectMemory() {
-    console.log('🧠 Opening project memory');
+    console.log('[BRAIN] Opening project memory');
     
     const memoryPath = `/projects/${this.currentTemple.name}/project_memory.json`;
     this.openFile('project_memory.json', memoryPath, 'memory');
@@ -379,8 +379,8 @@ const TempleInterior = {
         </div>
         
         <div class="form-actions">
-          <button onclick="TempleInterior.saveCronTask()" class="btn-save">✅ Create Task</button>
-          <button onclick="TempleInterior.closeCronBuilder()" class="btn-cancel">❌ Cancel</button>
+          <button onclick="TempleInterior.saveCronTask()" class="btn-save">[OK] Create Task</button>
+          <button onclick="TempleInterior.closeCronBuilder()" class="btn-cancel">[ERROR] Cancel</button>
         </div>
       </div>
     `;
@@ -393,7 +393,7 @@ const TempleInterior = {
    * Show squid assigner (assign real squids to project)
    */
   showSquidAssigner() {
-    console.log('🦑 Opening squid assigner');
+    console.log('[SQUID] Opening squid assigner');
     
     const allSquids = window.aquarium?.squids || [];
     const availableSquids = allSquids.filter(s => !s.currentProject || s.currentProject === this.currentTemple.name);
@@ -408,13 +408,13 @@ const TempleInterior = {
         <div class="squid-grid">
           ${availableSquids.map(squid => `
             <div class="squid-card">
-              <div class="squid-icon" style="filter: hue-rotate(${squid.color}deg)">🦑</div>
+              <div class="squid-icon" style="filter: hue-rotate(${squid.color}deg)">[SQUID]</div>
               <div class="squid-info">
                 <div class="squid-name">${squid.name}</div>
                 <div class="squid-specialty">${squid.specialty || squid.role}</div>
               </div>
               <button onclick="TempleInterior.assignSquid('${squid.id}')">
-                ${squid.currentProject === this.currentTemple.name ? '✅ Assigned' : '➕ Assign'}
+                ${squid.currentProject === this.currentTemple.name ? '[OK] Assigned' : '➕ Assign'}
               </button>
             </div>
           `).join('')}
@@ -433,7 +433,7 @@ const TempleInterior = {
    * Configure squid (FORM-BASED PROMPT BUILDER)
    */
   configureSquid(squidId) {
-    console.log('⚙️ Configuring squid:', squidId);
+    console.log('[CONFIG] Configuring squid:', squidId);
     
     const squid = window.aquarium?.squids.find(s => s.id === squidId);
     if (!squid) return;
@@ -446,7 +446,7 @@ const TempleInterior = {
         <p class="hint">Assemble your agent's behavior like building blocks</p>
         
         <div class="config-section">
-          <h3>🎯 Role & Specialty</h3>
+          <h3>[TARGET] Role & Specialty</h3>
           <select id="config-role">
             <option>Developer</option>
             <option>Designer</option>
@@ -457,7 +457,7 @@ const TempleInterior = {
         </div>
         
         <div class="config-section">
-          <h3>🧠 Working Style</h3>
+          <h3>[BRAIN] Working Style</h3>
           <label>
             <input type="checkbox" checked> Thorough & Detail-Oriented
           </label>
@@ -470,7 +470,7 @@ const TempleInterior = {
         </div>
         
         <div class="config-section">
-          <h3>📋 Task Focus</h3>
+          <h3>[TASKS] Task Focus</h3>
           <label>
             <input type="radio" name="focus" checked> Coding & Implementation
           </label>
@@ -689,7 +689,7 @@ const TempleInterior = {
     .then(res => res.json())
     .then(data => {
       if (data.success) {
-        console.log('✅ Squid assigned successfully!');
+        console.log('[OK] Squid assigned successfully!');
         
         // Refresh working agents display
         this.populateWorkingAgents(this.currentTemple);
@@ -697,23 +697,23 @@ const TempleInterior = {
         // Update button in modal
         const button = document.querySelector(`[onclick="TempleInterior.assignSquid('${squidId}')"]`);
         if (button) {
-          button.textContent = '✅ Assigned';
+          button.textContent = '[OK] Assigned';
           button.disabled = true;
           button.style.opacity = '0.6';
         }
         
-        alert(`✅ ${squid.name} assigned to ${this.currentTemple.name}!`);
+        alert(`[OK] ${squid.name} assigned to ${this.currentTemple.name}!`);
       } else {
         // Rollback on failure
         squid.currentProject = previousProject;
-        alert('❌ Failed to assign: ' + (data.error || 'Unknown error'));
+        alert('[ERROR] Failed to assign: ' + (data.error || 'Unknown error'));
       }
     })
     .catch(err => {
       console.error('Failed to assign squid:', err);
       // Rollback
       squid.currentProject = previousProject;
-      alert('❌ Error assigning squid. See console for details.');
+      alert('[ERROR] Error assigning squid. See console for details.');
     });
   },
   
@@ -776,7 +776,7 @@ const TempleInterior = {
     // Close modal
     this.closeCronBuilder();
     
-    alert(`✅ Task "${name}" created!\nSchedule: ${preview}\n\n(Saved locally - backend integration pending)`);
+    alert(`[OK] Task "${name}" created!\nSchedule: ${preview}\n\n(Saved locally - backend integration pending)`);
     
     // TODO: Uncomment when backend is ready
     /*
@@ -792,7 +792,7 @@ const TempleInterior = {
       return res.json();
     })
     .then(data => {
-      console.log('✅ Task saved to backend:', data);
+      console.log('[OK] Task saved to backend:', data);
     })
     .catch(err => {
       console.warn('Backend not ready, task saved locally:', err);
@@ -803,7 +803,7 @@ const TempleInterior = {
 
 // Make available globally
 window.TempleInterior = TempleInterior;
-console.log('🏛️ TempleInterior module loaded');
+console.log('[TEMPLE] TempleInterior module loaded');
 
 /**
  * Load REAL project_memory.json from backend
@@ -829,7 +829,7 @@ TempleInterior.openProjectMemory = async function() {
         type: 'json'
       };
       
-      console.log('✅ Loaded real project_memory.json');
+      console.log('[OK] Loaded real project_memory.json');
     } else {
       alert('Failed to load memory: ' + data.error);
     }
@@ -865,7 +865,7 @@ TempleInterior.showSquidAssigner = function() {
              value="${squid.id}"
              ${this.currentTemple.assignedSquids?.includes(squid.id) ? 'checked' : ''}>
       <label for="assign-${squid.id}">
-        <span style="color: ${squid.appearance?.body_color || '#FF6B9D'}">🦑</span>
+        <span style="color: ${squid.appearance?.body_color || '#FF6B9D'}">[SQUID]</span>
         ${squid.name} - ${squid.specialty || 'General'}
       </label>
     </div>
@@ -887,7 +887,7 @@ TempleInterior.saveSquidAssignments = function() {
   
   this.currentTemple.assignedSquids = assignedSquids;
   
-  console.log('✅ Assigned squids to temple:', assignedSquids);
+  console.log('[OK] Assigned squids to temple:', assignedSquids);
   
   // Refresh working agents display
   this.populateWorkingAgents(this.currentTemple);
@@ -899,7 +899,7 @@ TempleInterior.saveSquidAssignments = function() {
   window.ui.addLog('squid_assigned', `Assigned ${assignedSquids.length} squids to ${this.currentTemple.name}`);
 };
 
-console.log('✅ Temple improvements loaded - Real memory + Squid assignment');
+console.log('[OK] Temple improvements loaded - Real memory + Squid assignment');
 
 /**
  * Customize temple colors
@@ -929,19 +929,19 @@ TempleInterior.customizeColors = function() {
     if (data.success) {
       // Update local temple
       this.currentTemple.colors = { outside: outsideColor, inside: insideColor };
-      alert(`✅ Temple colors updated!\n\nOutside: ${outsideColor}\nInside: ${insideColor}`);
+      alert(`[OK] Temple colors updated!\n\nOutside: ${outsideColor}\nInside: ${insideColor}`);
       
       // Refresh aquarium to show new colors
       if (window.aquarium && window.aquarium.loadTemples) {
         window.aquarium.loadTemples();
       }
     } else {
-      alert('❌ Failed to update colors: ' + data.error);
+      alert('[ERROR] Failed to update colors: ' + data.error);
     }
   })
   .catch(error => {
-    alert('❌ Error: ' + error.message);
+    alert('[ERROR] Error: ' + error.message);
   });
 };
 
-console.log('✅ Temple color customization loaded');
+console.log('[OK] Temple color customization loaded');

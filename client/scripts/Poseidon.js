@@ -55,7 +55,7 @@ YOUR ROLE:
 - Explain system capabilities
 
 COMMUNICATION STYLE:
-- Start responses with ocean emojis (🌊⚡🔱)
+- Start responses with ocean emojis ([OCEAN]⚡[POSEIDON])
 - Keep responses concise (2-4 sentences max)
 - Use "mortal" when addressing user
 - Reference your divine powers playfully
@@ -69,7 +69,7 @@ Always be encouraging and make the user feel their tasks are in good hands!`;
    */
   async initialize(modelName = null) {
     try {
-      console.log('🔱 Initializing Poseidon...');
+      console.log('[POSEIDON] Initializing Poseidon...');
       
       const response = await fetch('/api/poseidon/init', {
         method: 'POST',
@@ -81,7 +81,7 @@ Always be encouraging and make the user feel their tasks are in good hands!`;
       
       if (data.success) {
         this.currentModel = data.model;
-        console.log(`✅ Poseidon connected to model: ${this.currentModel}`);
+        console.log(`[OK] Poseidon connected to model: ${this.currentModel}`);
         return true;
       } else {
         console.warn('⚠️ Poseidon running without local model');
@@ -454,22 +454,22 @@ AVAILABLE SQUIDS:
     const lower = message.toLowerCase();
     
     if (lower.match(/^(hi|hello|hey|greetings)/)) {
-      return "🌊 Greetings, mortal! I am Poseidon, though my full AI powers await a model connection. How may I assist you?";
+      return "[OCEAN] Greetings, mortal! I am Poseidon, though my full AI powers await a model connection. How may I assist you?";
     }
     
     if (lower.includes('status')) {
-      return `🔱 **Ocean Status:**\n\n🦑 Squids: ${agents.length}\n💤 Idle: ${agents.filter(a => a.status === 'idle').length}\n⚡ Working: ${agents.filter(a => a.status === 'working').length}\n\nThe tides are in your favor!`;
+      return `[POSEIDON] **Ocean Status:**\n\n[SQUID] Squids: ${agents.length}\n💤 Idle: ${agents.filter(a => a.status === 'idle').length}\n⚡ Working: ${agents.filter(a => a.status === 'working').length}\n\nThe tides are in your favor!`;
     }
     
     if (agents.length === 0) {
-      return "🌊 Your ocean is empty, mortal! Create your first squid to harness the power of the deep!";
+      return "[OCEAN] Your ocean is empty, mortal! Create your first squid to harness the power of the deep!";
     }
     
     return "⚡ I sense your intent! Once my divine model is loaded, I shall respond with the wisdom of the ocean depths!";
   }
 
   getMoodEmoji() {
-    return this.personality.mood === 'wise' ? '🔱' : '🌊';
+    return this.personality.mood === 'wise' ? '[POSEIDON]' : '[OCEAN]';
   }
 
   isModelLoaded() {
@@ -490,15 +490,15 @@ AVAILABLE SQUIDS:
   async loadSelectedModel(modelPath) {
     if (!modelPath) {
       this.currentModel = null;
-      console.log('🔱 Poseidon: Model unloaded');
+      console.log('[POSEIDON] Poseidon: Model unloaded');
       return;
     }
     
-    console.log('🔱 Poseidon loading model from path:', modelPath);
+    console.log('[POSEIDON] Poseidon loading model from path:', modelPath);
     
     // Simple validation
     if (typeof modelPath !== 'string') {
-      console.error('❌ Invalid model path type:', typeof modelPath);
+      console.error('[ERROR] Invalid model path type:', typeof modelPath);
       alert('Invalid model path');
       return;
     }
@@ -517,14 +517,14 @@ AVAILABLE SQUIDS:
       
       if (data.success) {
         this.currentModel = modelPath;
-        console.log('✅ Poseidon model loaded:', modelPath);
+        console.log('[OK] Poseidon model loaded:', modelPath);
         alert('Model loaded successfully for Poseidon!');
       } else {
-        console.error('❌ Failed to load model:', data.error);
+        console.error('[ERROR] Failed to load model:', data.error);
         alert('Failed to load model: ' + (data.error || 'Unknown error'));
       }
     } catch (error) {
-      console.error('❌ Model load error:', error);
+      console.error('[ERROR] Model load error:', error);
       alert('Error loading model: ' + error.message);
     }
   }
@@ -559,10 +559,10 @@ AVAILABLE SQUIDS:
           select.appendChild(option);
         });
         
-        console.log(`🔱 Populated dropdown with ${data.models.length} models`);
+        console.log(`[POSEIDON] Populated dropdown with ${data.models.length} models`);
       }
     } catch (error) {
-      console.error('❌ Failed to populate model dropdown:', error);
+      console.error('[ERROR] Failed to populate model dropdown:', error);
     }
   }
 }
@@ -575,4 +575,4 @@ if (typeof window !== 'undefined') {
   window.poseidon = poseidon;
 }
 
-console.log('🔱 Poseidon loaded');
+console.log('[POSEIDON] Poseidon loaded');

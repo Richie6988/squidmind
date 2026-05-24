@@ -2,7 +2,7 @@ const ui = {
   currentSquid: null,
 
   async init() {
-    console.log('🎮 Initializing UI...');
+    console.log('[INTERACT] Initializing UI...');
     
     // Setup form handlers
     this.setupFormHandlers();
@@ -57,7 +57,7 @@ const ui = {
       const response = await api.createAgent(agentData);
       
       if (response.success) {
-        console.log('✅ Squid created:', response.agent);
+        console.log('[OK] Squid created:', response.agent);
         
         // Add to aquarium
         aquarium.addSquid(response.agent);
@@ -67,7 +67,7 @@ const ui = {
         this.hidePanel('creator');
         
         // Show success message
-        this.showNotification(`🦑 ${response.agent.name} hatched!`, 'success');
+        this.showNotification(`[SQUID] ${response.agent.name} hatched!`, 'success');
       }
     } catch (error) {
       console.error('Failed to create squid:', error);
@@ -125,7 +125,7 @@ const ui = {
         const agent = response.agent;
         
         // Update panel title
-        document.getElementById('detail-title').textContent = `🦑 ${agent.name}`;
+        document.getElementById('detail-title').textContent = `[SQUID] ${agent.name}`;
         
         // Build detail content
         const content = document.getElementById('detail-content');
@@ -176,7 +176,7 @@ const ui = {
 
   showNotification(message, type = 'info') {
     // Simple console notification for now
-    const icon = type === 'success' ? '✅' : type === 'error' ? '❌' : 'ℹ️';
+    const icon = type === 'success' ? '[OK]' : type === 'error' ? '[ERROR]' : '[INFO]';
     console.log(`${icon} ${message}`);
     
     // TODO: Implement toast notification UI
@@ -185,7 +185,7 @@ const ui = {
 
 // CRITICAL: Export to window IMMEDIATELY so onclick handlers work
 window.ui = ui;
-console.log('✅ UI exported to window');
+console.log('[OK] UI exported to window');
 
 // Global functions called from HTML
 async function executeSquid() {
@@ -366,7 +366,7 @@ document.addEventListener('DOMContentLoaded', () => {
             squid.specialty = updatedAgent.specialty;
             squid.brain = updatedAgent.brain;
             squid.outfit = updatedAgent.outfit || squid.outfit;
-            console.log('✅ Squid updated in memory:', squid.name);
+            console.log('[OK] Squid updated in memory:', squid.name);
           }
           
           // Also reload from server to be safe
@@ -721,7 +721,7 @@ ui.addPoseidonMessage = function(message, sender) {
   
   const header = document.createElement('div');
   header.className = 'chat-message-header';
-  header.textContent = sender === 'poseidon' ? '🔱 Poseidon' : '👤 You';
+  header.textContent = sender === 'poseidon' ? '[POSEIDON] Poseidon' : '👤 You';
   
   const content = document.createElement('div');
   content.className = 'chat-message-content';
@@ -763,7 +763,7 @@ ui.interactWithSquid = function(action) {
       break;
     case 'play':
       squid.play();
-      this.showNotification('🎮 Playing with squid!', 'success');
+      this.showNotification('[INTERACT] Playing with squid!', 'success');
       break;
     case 'sleep':
       squid.sleep();
@@ -792,7 +792,7 @@ ui.showSquidContextMenu = function(squid, x, y) {
 };
 
 ui.showSquidDetails = function(squid) {
-  console.log('📋 Showing squid details:', squid.name);
+  console.log('[TASKS] Showing squid details:', squid.name);
   this.currentSquid = squid;
   
   // Populate detail panel
@@ -857,7 +857,7 @@ ui.showPanel = function(panelName) {
     const messagesDiv = document.getElementById('poseidon-chat-messages');
     if (!messagesDiv.hasChildNodes()) {
       // Initialize Poseidon chat with greeting
-      const greeting = "🌊 Greetings, mortal! I am Poseidon, God of the Ocean. I command the squids of this realm. How may I assist you?";
+      const greeting = "[OCEAN] Greetings, mortal! I am Poseidon, God of the Ocean. I command the squids of this realm. How may I assist you?";
       this.addPoseidonMessage(greeting, 'poseidon');
       this.updatePoseidonSuggestions(['Show my squids', 'Create a task', 'Help me']);
     }
@@ -885,12 +885,12 @@ document.addEventListener('click', (e) => {
   }
 });
 
-console.log('✅ Poseidon & Interaction UI loaded');
+console.log('[OK] Poseidon & Interaction UI loaded');
 
 // Initialize Poseidon AI on startup
 async function initializePoseidonAI() {
   try {
-    console.log('🔱 Initializing Poseidon AI...');
+    console.log('[POSEIDON] Initializing Poseidon AI...');
     const poseidonReady = await poseidon.initialize();
     
     if (poseidonReady) {
@@ -918,7 +918,7 @@ if (document.readyState === 'loading') {
   initializePoseidonAI();
 }
 
-console.log('🔱 Poseidon AI module loaded');
+console.log('[POSEIDON] Poseidon AI module loaded');
 
 // Tool Selection for Squids
 ui.loadAvailableTools = async function() {
@@ -982,11 +982,11 @@ ui.enterTemple = function(temple) {
   console.log('enterTemple deprecated - using TempleInterior.open() instead');
 };
 
-console.log('🏛️ Temple UI functions loaded');
+console.log('[TEMPLE] Temple UI functions loaded');
 
 // Clear All Panels
 ui.clearAllPanels = function() {
-  console.log('🧹 Clearing all panels');
+  console.log('[CLEAN] Clearing all panels');
   
   // Get all panels
   const panels = document.querySelectorAll('.panel:not(.hidden)');
@@ -1007,7 +1007,7 @@ ui.clearAllPanels = function() {
     modelSelector.classList.add('hidden');
   }
   
-  console.log(`✅ Closed ${panels.length} panels`);
+  console.log(`[OK] Closed ${panels.length} panels`);
 };
 
 // Update System Monitor Stats
@@ -1074,7 +1074,7 @@ setInterval(() => {
   }
 }, 2000);
 
-console.log('🧹 Clear All & Monitor system loaded');
+console.log('[CLEAN] Clear All & Monitor system loaded');
 
 // Model Management Functions
 
@@ -1136,7 +1136,7 @@ ui.addModelByPath = async function(pathOverride) {
       alert('Failed to add model: ' + data.error);
     }
   } catch (error) {
-    console.error('❌ Add model error:', error);
+    console.error('[ERROR] Add model error:', error);
     alert('Error adding model: ' + error.message);
   }
 };
@@ -1164,12 +1164,12 @@ ui.scanForModels = async function() {
       alert('Scan failed: ' + data.error);
     }
   } catch (error) {
-    console.error('❌ Scan error:', error);
+    console.error('[ERROR] Scan error:', error);
     alert('Error scanning: ' + error.message);
   }
 };
 
-console.log('📦 Model management functions loaded');
+console.log('[MODELS] Model management functions loaded');
 
 // ==================== NEW PROJECT MODAL ====================
 
@@ -1215,7 +1215,7 @@ ui.createNewProject = async function() {
     const data = await response.json();
     
     if (data.success) {
-      alert(`✅ Project "${name}" created successfully!`);
+      alert(`[OK] Project "${name}" created successfully!`);
       this.closeNewProjectModal();
       
       // Refresh temples
@@ -1230,7 +1230,7 @@ ui.createNewProject = async function() {
       alert('Failed to create project: ' + data.error);
     }
   } catch (error) {
-    console.error('❌ Create project error:', error);
+    console.error('[ERROR] Create project error:', error);
     alert('Error creating project: ' + error.message);
   }
 };
@@ -1288,7 +1288,7 @@ ui.saveSquidDetails = async function() {
   if (!squid.appearance) squid.appearance = {};
   squid.appearance.body_color = bodyColor;
   
-  console.log('✅ Squid updated visually:', name);
+  console.log('[OK] Squid updated visually:', name);
   
   // Save to backend
   try {
@@ -1318,18 +1318,18 @@ ui.saveSquidDetails = async function() {
     const data = await response.json();
     
     if (data.success) {
-      console.log('✅ Squid saved to backend:', name);
+      console.log('[OK] Squid saved to backend:', name);
       this.closeSquidDetailModal();
     } else {
       alert('Failed to save: ' + data.error);
     }
   } catch (error) {
-    console.error('❌ Save squid error:', error);
+    console.error('[ERROR] Save squid error:', error);
     alert('Error saving squid (changes applied locally): ' + error.message);
   }
 };
 
-console.log('✅ UI module with modals loaded');
+console.log('[OK] UI module with modals loaded');
 
 // ==================== GGUF MODEL LOADING ====================
 
@@ -1349,7 +1349,7 @@ ui.scanForModels = async function() {
     
     if (data.success && data.models) {
       this.availableModels = data.models;
-      statusDiv.textContent = `✅ Found ${data.models.length} models!`;
+      statusDiv.textContent = `[OK] Found ${data.models.length} models!`;
       
       if (data.models.length === 0) {
         listDiv.innerHTML = '<p class="hint">No .gguf files found. Try manual path below.</p>';
@@ -1361,18 +1361,18 @@ ui.scanForModels = async function() {
             <div style="font-size: 8px; color: #888; font-family: monospace; margin: 4px 0; overflow-wrap: break-word;">${model.full_path}</div>
             <button onclick="ui.loadModel('${model.full_path.replace(/'/g, "\\'")}')" 
                     class="btn-primary" style="margin-top: 8px; width: 100%; font-size: 10px;">
-              🚀 Load Model
+              [LAUNCH] Load Model
             </button>
           </div>
         `).join('');
       }
     } else {
-      statusDiv.textContent = '❌ Scan failed';
+      statusDiv.textContent = '[ERROR] Scan failed';
       listDiv.innerHTML = '<p class="hint">Scan failed. Try manual path below.</p>';
     }
   } catch (error) {
     console.error('Scan error:', error);
-    statusDiv.textContent = '❌ Error: ' + error.message;
+    statusDiv.textContent = '[ERROR] Error: ' + error.message;
     listDiv.innerHTML = '<p class="hint">Error scanning. Check console.</p>';
   }
 };
@@ -1393,16 +1393,16 @@ ui.loadModel = async function(modelPath) {
     const data = await response.json();
     
     if (data.success) {
-      console.log('✅ Model loaded:', data.model);
-      alert(`✅ Model loaded successfully!\n\n${data.model.name}\n\nReady for chat with Poseidon!`);
+      console.log('[OK] Model loaded:', data.model);
+      alert(`[OK] Model loaded successfully!\n\n${data.model.name}\n\nReady for chat with Poseidon!`);
       await this.refreshLoadedModels();
     } else {
-      alert('❌ Failed to load model:\n\n' + data.error);
+      alert('[ERROR] Failed to load model:\n\n' + data.error);
       listDiv.innerHTML = '<p class="hint">No models loaded yet</p>';
     }
   } catch (error) {
     console.error('Load error:', error);
-    alert('❌ Error loading model:\n\n' + error.message);
+    alert('[ERROR] Error loading model:\n\n' + error.message);
     listDiv.innerHTML = '<p class="hint">No models loaded yet</p>';
   }
 };
@@ -1429,7 +1429,7 @@ ui.refreshLoadedModels = async function() {
       
       listDiv.innerHTML = data.models.map(model => `
         <div class="model-item" style="margin: 8px 0; padding: 12px; background: rgba(6, 255, 165, 0.1); border: 2px solid var(--success); border-radius: 4px;">
-          <div style="font-size: 11px; font-weight: bold; color: var(--success);">✅ ${model.name}</div>
+          <div style="font-size: 11px; font-weight: bold; color: var(--success);">[OK] ${model.name}</div>
           <div style="font-size: 8px; color: #888; margin-top: 4px;">Ready for chat!</div>
           <button onclick="ui.unloadModel('${model.name.replace(/'/g, "\\'")}')" 
                   class="btn-secondary" style="margin-top: 8px; width: 100%; font-size: 10px;">
@@ -1457,7 +1457,7 @@ ui.unloadModel = async function(modelName) {
     const data = await response.json();
     
     if (data.success) {
-      alert(`✅ Model "${modelName}" unloaded`);
+      alert(`[OK] Model "${modelName}" unloaded`);
       await this.refreshLoadedModels();
     } else {
       alert('Failed to unload: ' + data.error);
@@ -1468,7 +1468,7 @@ ui.unloadModel = async function(modelName) {
   }
 };
 
-console.log('✅ GGUF Model loading system ready!');
+console.log('[OK] GGUF Model loading system ready!');
 
 // ==================== POSEIDON PROCESS CREATION ====================
 
@@ -1491,8 +1491,8 @@ ui.createProcess = function() {
     status: 'active'
   };
   
-  console.log('✅ Process created:', process);
-  alert(`✅ Process "${name}" created!\n\nTrigger: ${trigger}`);
+  console.log('[OK] Process created:', process);
+  alert(`[OK] Process "${name}" created!\n\nTrigger: ${trigger}`);
   
   // Add to logs
   this.addLog('process_created', `Created process: ${name}`, process);
@@ -1552,7 +1552,7 @@ ui.switchPoseidonModel = function(modelName) {
   this.addLog('model_switch', `Switched to model: ${modelName}`);
 };
 
-console.log('✅ Poseidon process & logs system loaded');
+console.log('[OK] Poseidon process & logs system loaded');
 
 // ==================== FILE BROWSER FOR .GGUF MODELS ====================
 
@@ -1619,7 +1619,7 @@ ui.browsePath = async function(path) {
       const files = data.entries.filter(e => e.type === 'file').sort((a, b) => a.name.localeCompare(b.name));
       
       fileList.innerHTML = [...dirs, ...files].map(entry => {
-        const icon = entry.type === 'directory' ? '📁' : (entry.name.endsWith('.gguf') ? '🎯' : '📄');
+        const icon = entry.type === 'directory' ? '📁' : (entry.name.endsWith('.gguf') ? '[TARGET]' : '📄');
         const isGguf = entry.name.endsWith('.gguf');
         
         return `
@@ -1662,7 +1662,7 @@ ui.selectGgufFile = function(path) {
   this.closeFileBrowser();
 };
 
-console.log('✅ File browser system loaded');
+console.log('[OK] File browser system loaded');
 
 // ==================== POSEIDON QUICK ACTIONS ====================
 
@@ -1686,8 +1686,8 @@ ui.quickCreateProcess = function() {
     created: new Date().toISOString()
   };
   
-  console.log('✅ Quick process created:', process);
-  alert(`✅ Process "${name}" created!`);
+  console.log('[OK] Quick process created:', process);
+  alert(`[OK] Process "${name}" created!`);
   
   // Add to chat
   this.addPoseidonMessage('system', `Process "${name}" created successfully!`);
@@ -1719,21 +1719,21 @@ ui.editBrainJson = function() {
             .then(res => res.json())
             .then(result => {
               if (result.success) {
-                alert('✅ brain.json updated!');
+                alert('[OK] brain.json updated!');
               } else {
-                alert('❌ Failed to save: ' + result.error);
+                alert('[ERROR] Failed to save: ' + result.error);
               }
             });
           } catch (error) {
-            alert('❌ Invalid JSON: ' + error.message);
+            alert('[ERROR] Invalid JSON: ' + error.message);
           }
         }
       } else {
-        alert('❌ Failed to load brain.json: ' + data.error);
+        alert('[ERROR] Failed to load brain.json: ' + data.error);
       }
     })
     .catch(error => {
-      alert('❌ Error: ' + error.message);
+      alert('[ERROR] Error: ' + error.message);
     });
 };
 
@@ -1749,7 +1749,7 @@ ui.addPoseidonMessage = function(role, content) {
   messagesDiv.scrollTop = messagesDiv.scrollHeight;
 };
 
-console.log('✅ Poseidon quick actions loaded');
+console.log('[OK] Poseidon quick actions loaded');
 
 // ==================== CLICK OUTSIDE TO CLOSE PANELS ====================
 
@@ -1778,7 +1778,7 @@ document.addEventListener('click', function(e) {
   }
 });
 
-console.log('✅ Click outside to close panels enabled (FIXED)');
+console.log('[OK] Click outside to close panels enabled (FIXED)');
 
 // ==================== TASK QUEUE CANCEL ====================
 
@@ -1794,13 +1794,13 @@ ui.cancelTask = function(taskId) {
     .then(res => res.json())
     .then(data => {
       if (data.success) {
-        console.log('✅ Task cancelled:', taskId);
+        console.log('[OK] Task cancelled:', taskId);
       }
     })
     .catch(err => console.warn('Failed to cancel task:', err));
 };
 
-console.log('✅ Task cancel functionality loaded');
+console.log('[OK] Task cancel functionality loaded');
 
 // ==================== TASK QUEUE MANAGEMENT ====================
 
@@ -1826,10 +1826,10 @@ ui.addTestTask = function() {
   `;
   
   taskQueue.appendChild(taskDiv);
-  console.log('✅ Task added:', taskName);
+  console.log('[OK] Task added:', taskName);
 };
 
-console.log('✅ Task queue management loaded');
+console.log('[OK] Task queue management loaded');
 
 // ==================== OPEN FILE BROWSER ====================
 
@@ -1842,7 +1842,7 @@ ui.openFileBrowser = function() {
   this.currentBrowserPath = homeDir;
   this.browsePath(homeDir);
   
-  console.log('✅ File browser opened');
+  console.log('[OK] File browser opened');
 };
 
-console.log('✅ ui.openFileBrowser() loaded');
+console.log('[OK] ui.openFileBrowser() loaded');

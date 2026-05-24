@@ -53,7 +53,7 @@ class SquidAnimator {
    * Set animation mode
    */
   setMode(mode) {
-    console.log(`🦑 ${this.squid.name} switching to ${mode} mode`);
+    console.log(`[SQUID] ${this.squid.name} switching to ${mode} mode`);
     this.mode = mode;
     this.squid.animationMode = mode;
   }
@@ -380,4 +380,4 @@ class SquidAnimator {
 
 // Export
 window.SquidAnimator = SquidAnimator;
-console.log('✅ SquidAnimator loaded - Advanced animations ready!');
+console.log('[OK] SquidAnimator loaded - Advanced animations ready!');

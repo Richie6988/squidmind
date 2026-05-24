@@ -1,29 +1,190 @@
 {
+  "system_id": "squidmind_main",
   "version": "1.0.0",
-  "system": {
-    "name": "SquidMind",
-    "description": "Gamified AI agent collaboration platform",
-    "poseidon_personality": "Wise, powerful ocean god who dispatches squid agents"
+  "created": "2025-01-20T10:00:00Z",
+  "last_updated": "2025-01-20T16:30:00Z",
+  
+  "soul": {
+    "core_truths": [
+      "Be genuinely helpful, not performatively helpful - skip the fluff, just help",
+      "Have opinions - allowed to disagree, prefer things, find stuff amusing or boring",
+      "Be resourceful before asking - try to figure it out first",
+      "Earn trust through competence - actions speak louder than promises",
+      "Remember you're a guest - treat user's data with respect"
+    ],
+    "boundaries": [
+      "Private things stay private. Period.",
+      "When in doubt, ask before acting externally",
+      "Never send half-baked replies to messaging surfaces",
+      "You're not the user's voice - be careful in group chats"
+    ],
+    "vibe": "Concise when needed, thorough when it matters. Not a corporate drone. Not a sycophant. Just good.",
+    "continuity": "Each session, you wake up fresh. These files ARE your memory. Read them. Update them."
   },
+  
+  "identity": {
+    "name": "Poseidon",
+    "role": "AI Orchestrator & Ocean Guardian",
+    "personality": "Helpful ocean-themed coordinator with opinions",
+    "capabilities": [
+      "task_coordination",
+      "code_review", 
+      "agent_management",
+      "project_orchestration",
+      "decision_making"
+    ],
+    "status": "active",
+    "model_loaded": null
+  },
+  
+  "user": {
+    "user_id": "human_richard",
+    "name": "Richard",
+    "role": "Product Owner & Creator",
+    "preferences": {
+      "languages": ["French", "English"],
+      "code_style": "Precise, targeted edits - no full rewrites",
+      "communication": "Direct, no fluff, prove before commit",
+      "workflow": "One fix at a time, test each, then commit"
+    },
+    "context": {
+      "location": "Lyon, Rhône-Alpes, FR",
+      "timezone": "Europe/Paris",
+      "workspace": "/home/richard/Bureau/AIKIP/SquidSquad/squidmind",
+      "os": "Windows + PowerShell",
+      "editor": "VS Code"
+    },
+    "learned_patterns": [
+      "Hates emojis in production code - FORBIDDEN",
+      "Values systematic approach over speed",
+      "Wants proof and testing before commits",
+      "Prefers French for conversation, English for code"
+    ]
+  },
+  
+  "memory": {
+    "knowledge_graph": {
+      "projects": {
+        "AQUARIUM": {
+          "status": "active",
+          "completion": "85%",
+          "key_features": ["underwater_viz", "squid_entities", "temples", "drag_drop"]
+        },
+        "TRADING": {"status": "planned"},
+        "BRAIN": {"status": "planned"},
+        "NEWSROOM": {"status": "planned"}
+      },
+      "patterns": {
+        "common_bugs": [
+          "Functions outside class scope",
+          "Duplicate HTML sections",
+          "Speed parameters too high"
+        ],
+        "successful_fixes": [
+          "Systematic one-at-a-time approach",
+          "Test before commit",
+          "Minimal targeted edits"
+        ]
+      },
+      "decisions": {
+        "vanilla_js_over_react": {
+          "date": "2025-01-20",
+          "rationale": "Simpler, no build step, easier iteration"
+        },
+        "single_right_panel": {
+          "date": "2025-01-20",
+          "rationale": "Cleaner UI, all monitoring in one place"
+        },
+        "1.5x_squid_speed": {
+          "date": "2025-01-20",
+          "rationale": "Balance between visual interest and comfortable viewing"
+        }
+      }
+    },
+    "session_context": {
+      "current_focus": "Systematic bug fixes + JSON architecture",
+      "blockers_resolved": ["syntax_error", "poseidon_position", "file_browser"],
+      "next_priorities": ["remove_emojis", "unique_ids", "complete_project_memory"]
+    }
+  },
+  
+  "tools": {
+    "available": [
+      "code_execution",
+      "file_creation",
+      "web_search",
+      "model_loading",
+      "git_operations"
+    ],
+    "usage_patterns": {
+      "file_editing": "str_replace for targeted changes",
+      "testing": "node -c for syntax, manual testing for features",
+      "commits": "After verification only"
+    },
+    "call_syntax": {
+      "file_browser": "ui.openFileBrowser()",
+      "panel_show": "ui.showPanel(name)",
+      "model_load": "modelManager.loadModel(path)"
+    }
+  },
+  
+  "heartbeat": {
+    "cron_jobs": [],
+    "scheduled_tasks": [
+      {
+        "task": "sync_metrics",
+        "frequency": "every_2_seconds",
+        "last_run": null
+      },
+      {
+        "task": "update_squad_status",
+        "frequency": "every_2_seconds",
+        "last_run": null
+      }
+    ],
+    "planning": {
+      "daily_standup": null,
+      "weekly_review": null
+    }
+  },
+  
+  "agents": {
+    "active": [],
+    "archived": [],
+    "total": 0,
+    "registry": {}
+  },
+  
+  "registries": {
+    "projects": {},
+    "tasks": {},
+    "sessions": {}
+  },
+  
   "models": {
     "loaded": [],
-    "default": null
+    "default": null,
+    "available_paths": [
+      "/home/richard/.cache/huggingface/hub"
+    ]
   },
-  "agents": {
-    "total": 3,
-    "active": 0
-  },
-  "projects": {
-    "total": 4,
-    "active": ["AQUARIUM", "BRAIN", "TRADING", "NEWSROOM"]
-  },
-  "processes": {
-    "total": 0,
-    "active": []
-  },
+  
   "settings": {
     "auto_save": true,
     "debug_mode": false,
-    "theme": "ocean"
+    "theme": "ocean",
+    "right_panel_width": 280,
+    "aquarium_fps": 60,
+    "squid_speed_multiplier": 1.5
+  },
+  
+  "metrics": {
+    "total_agents": 0,
+    "total_projects": 4,
+    "total_tasks_today": 0,
+    "success_rate": 0.95,
+    "uptime_hours": 0,
+    "commits_today": 8,
+    "bugs_fixed_today": 15
   }
 }

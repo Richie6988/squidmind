@@ -9,7 +9,7 @@ const BrainEditor = {
       const data = await response.json();
       
       if (!data.success) {
-        alert('❌ Failed to load brain.json: ' + data.error);
+        alert('[ERROR] Failed to load brain.json: ' + data.error);
         return;
       }
       
@@ -17,7 +17,7 @@ const BrainEditor = {
       this.showModal();
       this.populateForm();
     } catch (error) {
-      alert('❌ Error loading brain.json: ' + error.message);
+      alert('[ERROR] Error loading brain.json: ' + error.message);
     }
   },
   
@@ -31,7 +31,7 @@ const BrainEditor = {
       modal.innerHTML = `
         <div class="modal-content" style="width: 700px; max-height: 80vh; overflow-y: auto;">
           <div class="modal-header">
-            <h2>🧠 brain.json Editor</h2>
+            <h2>[BRAIN] brain.json Editor</h2>
             <button class="btn-close" onclick="BrainEditor.close()">✕</button>
           </div>
           <div class="modal-body">
@@ -156,13 +156,13 @@ const BrainEditor = {
       const data = await response.json();
       
       if (data.success) {
-        alert('✅ brain.json saved successfully!');
+        alert('[OK] brain.json saved successfully!');
         this.close();
       } else {
-        alert('❌ Failed to save: ' + data.error);
+        alert('[ERROR] Failed to save: ' + data.error);
       }
     } catch (error) {
-      alert('❌ Error saving: ' + error.message);
+      alert('[ERROR] Error saving: ' + error.message);
     }
   },
   
@@ -177,4 +177,4 @@ const BrainEditor = {
 // Make globally available
 window.BrainEditor = BrainEditor;
 
-console.log('✅ Brain editor loaded');
+console.log('[OK] Brain editor loaded');

@@ -19,9 +19,9 @@ const aquarium = {
     if (typeof poseidon !== 'undefined') {
       if (!poseidon.x || !poseidon.y) {
         poseidon.setPosition(150, 120);
-        console.log('🔱 Poseidon positioned in aquarium (initial)');
+        console.log('[POSEIDON] Poseidon positioned in aquarium (initial)');
       } else {
-        console.log('🔱 Poseidon position restored:', poseidon.x, poseidon.y);
+        console.log('[POSEIDON] Poseidon position restored:', poseidon.x, poseidon.y);
       }
     }
     
@@ -29,13 +29,13 @@ const aquarium = {
     if (typeof TempleManager !== 'undefined') {
       this.templeManager = new TempleManager();
       await this.loadTemples();
-      console.log('🏛️ Temples initialized');
+      console.log('[TEMPLE] Temples initialized');
     }
     
     // Initialize interaction system
     if (typeof SquidInteractionSystem !== 'undefined') {
       this.interactionSystem = new SquidInteractionSystem(this);
-      console.log('🎮 Interaction system initialized');
+      console.log('[INTERACT] Interaction system initialized');
     }
     
     // Load agents and create squids
@@ -47,7 +47,7 @@ const aquarium = {
     // Poll for updates every 2 seconds
     setInterval(() => this.updateSquidsStatus(), 2000);
     
-    console.log('🌊 Aquarium initialized');
+    console.log('[OCEAN] Aquarium initialized');
   },
 
   async loadTemples() {
@@ -114,7 +114,7 @@ const aquarium = {
     // Arrange temples in aquarium
     this.templeManager.arrangeTemples(this.canvas.width, this.canvas.height);
     
-    console.log('🏛️ Created 4 project temples: BRAIN, AQUARIUM, TRADING, NEWSROOM');
+    console.log('[TEMPLE] Created 4 project temples: BRAIN, AQUARIUM, TRADING, NEWSROOM');
   },
 
   async updateSquidsStatus() {

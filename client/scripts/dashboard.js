@@ -2,7 +2,7 @@ const dashboard = {
   updateInterval: null,
 
   async init() {
-    console.log('📊 Initializing dashboard...');
+    console.log('[STATS] Initializing dashboard...');
     this.createDashboardHTML();
     await this.update();
     
@@ -18,7 +18,7 @@ const dashboard = {
     dashboardPanel.className = 'panel';
     dashboardPanel.innerHTML = `
       <div class="panel-header">
-        <h2>📊 System Monitor</h2>
+        <h2>[STATS] System Monitor</h2>
         <button class="btn-close" onclick="dashboard.toggle()">−</button>
       </div>
       <div class="panel-content">

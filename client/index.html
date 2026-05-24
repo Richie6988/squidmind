@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>🦑 SquidMind - Agent Aquarium</title>
+  <title>[SQUID] SquidMind - Agent Aquarium</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
@@ -13,12 +13,12 @@
   <!-- Header -->
   <header>
     <div class="header-content">
-      <h1>🦑 SquidMind</h1>
+      <h1>[SQUID] SquidMind</h1>
       <div class="header-nav">
         <button class="btn-nav" onclick="ui.showPanel('creator')">+ New Squid</button>
-        <button class="btn-nav" onclick="ui.showPanel('teams')">👥 Teams</button>
-        <button class="btn-nav" onclick="ui.showPanel('models')">📦 Models</button>
-        <button class="btn-nav" onclick="ui.showPanel('logs')">📜 Logs</button>
+        <button class="btn-nav" onclick="ui.showPanel('teams')">[TEAM] Teams</button>
+        <button class="btn-nav" onclick="ui.showPanel('models')">[MODELS] Models</button>
+        <button class="btn-nav" onclick="ui.showPanel('logs')">[LOGS] Logs</button>
       </div>
       <div class="header-stats">
         <span id="agent-count">0 Squids</span>
@@ -47,7 +47,7 @@
       <!-- Squid Creator Panel -->
       <div id="creator-panel" class="panel hidden">
         <div class="panel-header">
-          <h2>🥚 Create New Squid</h2>
+          <h2>[CREATE] Create New Squid</h2>
           <button class="btn-close" onclick="ui.hidePanel('creator')">✕</button>
         </div>
         <div class="panel-content">
@@ -103,7 +103,7 @@
             </div>
 
             <div class="form-actions">
-              <button type="submit" class="btn-primary">🦑 Hatch Squid</button>
+              <button type="submit" class="btn-primary">[SQUID] Hatch Squid</button>
               <button type="button" class="btn-secondary" onclick="ui.hidePanel('creator')">Cancel</button>
             </div>
           </form>
@@ -113,7 +113,7 @@
       <!-- Logs Panel -->
       <div id="logs-panel" class="panel hidden">
         <div class="panel-header">
-          <h2>📜 Execution Logs</h2>
+          <h2>[LOGS] Execution Logs</h2>
           <button class="btn-close" onclick="ui.hidePanel('logs')">✕</button>
         </div>
         <div class="panel-content">
@@ -136,13 +136,13 @@
       <!-- ALWAYS VISIBLE RIGHT PANEL - System Monitor + Task Queue -->
       <div id="right-panel" class="right-panel-permanent">
         <div class="right-panel-header">
-          <h2>📊 System</h2>
+          <h2>[STATS] System</h2>
         </div>
         <div class="right-panel-content">
           
           <!-- System Resources -->
           <div class="monitor-section">
-            <h3>💻 Resources</h3>
+            <h3>[CPU] Resources</h3>
             <div id="monitor-system-stats">
               <div class="stat-item">
                 <span class="stat-label">CPU</span>
@@ -163,7 +163,7 @@
           
           <!-- Squad Status -->
           <div class="monitor-section">
-            <h3>🦑 Squad</h3>
+            <h3>[SQUID] Squad</h3>
             <div id="monitor-squad-stats">
               <div class="stat-row">
                 <span>Total:</span>
@@ -182,7 +182,7 @@
           
           <!-- Task Queue -->
           <div class="monitor-section">
-            <h3>📋 Task Queue</h3>
+            <h3>[TASKS] Task Queue</h3>
             <div id="task-queue" style="max-height: 200px; overflow-y: auto;">
               <p class="hint" style="font-size: 9px;">No tasks queued</p>
             </div>
@@ -193,7 +193,7 @@
           
           <!-- Performance -->
           <div class="monitor-section">
-            <h3>📊 Stats</h3>
+            <h3>[STATS] Stats</h3>
             <div id="monitor-performance">
               <div class="stat-row">
                 <span>Today:</span>
@@ -208,14 +208,14 @@
           
           <!-- Scheduler (Absorbed) -->
           <div class="monitor-section">
-            <h3>🎯 Scheduler</h3>
+            <h3>[TARGET] Scheduler</h3>
             <div id="monitor-scheduler">
               <div class="stat-row">
                 <span>Next Run:</span>
                 <span id="scheduler-next-run" style="font-size: 8px;">--:--</span>
               </div>
               <button class="btn-secondary" onclick="ui.showPanel('scheduler')" style="width: 100%; margin-top: 8px; font-size: 9px;">
-                ⚙️ Configure
+                [CONFIG] Configure
               </button>
             </div>
           </div>
@@ -249,7 +249,7 @@
           </div>
           
           <div class="squid-stats">
-            <h3>📊 Stats</h3>
+            <h3>[STATS] Stats</h3>
             <div class="detail-row">
               <strong>Level:</strong>
               <span id="squid-level">1</span>
@@ -271,7 +271,7 @@
           </div>
           
           <div class="squid-brain">
-            <h3>🧠 Brain</h3>
+            <h3>[BRAIN] Brain</h3>
             <div id="squid-brain-info">
               <p>No brain info available</p>
             </div>
@@ -384,7 +384,7 @@
                 <select name="tool">
                   <option value="">None</option>
                   <option value="wand">🪄 Wand</option>
-                  <option value="laptop">💻 Laptop</option>
+                  <option value="laptop">[CPU] Laptop</option>
                   <option value="sword">⚔️ Sword</option>
                 </select>
               </div>
@@ -405,7 +405,7 @@
                 <button type="button" class="btn-schedule" onclick="ui.setSchedule('hourly')">🕐 Every Hour</button>
                 <button type="button" class="btn-schedule" onclick="ui.setSchedule('daily')">📅 Daily 9am</button>
                 <button type="button" class="btn-schedule" onclick="ui.setSchedule('weekly')">📆 Weekly Mon</button>
-                <button type="button" class="btn-schedule" onclick="ui.setSchedule('custom')">⚙️ Custom</button>
+                <button type="button" class="btn-schedule" onclick="ui.setSchedule('custom')">[CONFIG] Custom</button>
               </div>
               
               <div id="schedule-preview" class="schedule-preview"></div>
@@ -436,7 +436,7 @@
       <!-- Teams Panel -->
       <div id="teams-panel" class="panel hidden">
         <div class="panel-header">
-          <h2>👥 Agent Teams</h2>
+          <h2>[TEAM] Agent Teams</h2>
           <button class="btn-close" onclick="ui.hidePanel('teams')">✕</button>
         </div>
         <div class="panel-content">
@@ -451,7 +451,7 @@
       <!-- Models Panel -->
       <div id="models-panel" class="panel hidden">
         <div class="panel-header">
-          <h2>📦 GGUF Models</h2>
+          <h2>[MODELS] GGUF Models</h2>
           <button class="btn-close" onclick="ui.hidePanel('models')">✕</button>
         </div>
         <div class="panel-content">
@@ -475,7 +475,7 @@
           
           <!-- Available Models -->
           <div class="model-section">
-            <h3>📋 Available Models</h3>
+            <h3>[TASKS] Available Models</h3>
             <div id="available-models-list" class="content-list">
               <p class="hint">Click "Scan for Models" to find .gguf files</p>
             </div>
@@ -485,7 +485,7 @@
           
           <!-- Loaded Models -->
           <div class="model-section">
-            <h3>✅ Loaded Models (Ready for Chat)</h3>
+            <h3>[OK] Loaded Models (Ready for Chat)</h3>
             <div id="loaded-models-list" class="content-list">
               <p class="hint">No models loaded yet</p>
             </div>
@@ -508,7 +508,7 @@
       <!-- Scheduler Panel -->
       <div id="scheduler-panel" class="panel hidden">
         <div class="panel-header">
-          <h2>🎯 GPU Scheduler</h2>
+          <h2>[TARGET] GPU Scheduler</h2>
           <button class="btn-close" onclick="ui.hidePanel('scheduler')">✕</button>
         </div>
         <div class="panel-content">
@@ -522,12 +522,12 @@
       <!-- Poseidon Chat Panel -->
       <div id="poseidon-panel" class="panel poseidon-panel-center hidden">
         <div class="panel-header">
-          <h2>🔱 Poseidon - God of the Ocean</h2>
+          <h2>[POSEIDON] Poseidon - God of the Ocean</h2>
           <select id="poseidon-model-select" class="poseidon-model-dropdown" onchange="ui.switchPoseidonModel(this.value)">
             <option value="">No model loaded</option>
           </select>
           <button class="btn-secondary" onclick="BrainEditor.open()" style="margin: 0 8px; font-size: 9px;">
-            🧠 Edit brain.json
+            [BRAIN] Edit brain.json
           </button>
           <button class="btn-close" onclick="ui.hidePanel('poseidon')">✕</button>
         </div>
@@ -536,13 +536,13 @@
           <!-- Quick Actions -->
           <div class="poseidon-quick-actions" style="display: flex; gap: 8px; margin-bottom: 12px;">
             <button class="btn-action" onclick="ui.quickCreateAgent()" style="flex: 1;">
-              🦑 Create Agent
+              [SQUID] Create Agent
             </button>
             <button class="btn-action" onclick="ui.quickCreateProcess()" style="flex: 1;">
-              ⚙️ Create Process
+              [CONFIG] Create Process
             </button>
             <button class="btn-action" onclick="ui.quickCreateProject()" style="flex: 1;">
-              🏛️ Create Project
+              [TEMPLE] Create Project
             </button>
           </div>
           
@@ -569,28 +569,28 @@
       <!-- Squid Interaction Menu (appears on right-click) -->
       <div id="squid-menu" class="context-menu hidden">
         <div class="menu-item" onclick="ui.interactWithSquid('feed')">🍕 Feed</div>
-        <div class="menu-item" onclick="ui.interactWithSquid('play')">🎮 Play</div>
+        <div class="menu-item" onclick="ui.interactWithSquid('play')">[INTERACT] Play</div>
         <div class="menu-item" onclick="ui.interactWithSquid('sleep')">💤 Sleep</div>
         <div class="menu-item" onclick="ui.interactWithSquid('celebrate')">🎉 Celebrate</div>
         <div class="menu-divider"></div>
-        <div class="menu-item" onclick="ui.interactWithSquid('details')">ℹ️ Details</div>
+        <div class="menu-item" onclick="ui.interactWithSquid('details')">[INFO] Details</div>
       </div>
 
       <!-- Temple Data Room Panel -->
       <div id="temple-panel" class="panel hidden">
         <div class="panel-header">
-          <h2 id="temple-title">🏛️ Temple Data Room</h2>
+          <h2 id="temple-title">[TEMPLE] Temple Data Room</h2>
           <button class="btn-close" onclick="ui.hidePanel('temple')">✕</button>
         </div>
         <div class="panel-content">
           <div class="temple-info">
             <div class="info-section">
-              <h3>📊 Project Status</h3>
+              <h3>[STATS] Project Status</h3>
               <div id="temple-status"></div>
             </div>
             
             <div class="info-section">
-              <h3>🦑 Agents Inside</h3>
+              <h3>[SQUID] Agents Inside</h3>
               <div id="temple-agents"></div>
             </div>
             
@@ -600,7 +600,7 @@
             </div>
             
             <div class="info-section">
-              <h3>📋 Active Tasks</h3>
+              <h3>[TASKS] Active Tasks</h3>
               <div id="temple-tasks"></div>
             </div>
           </div>
@@ -656,7 +656,7 @@
       
       <!-- Identity Section -->
       <div class="squid-detail-section">
-        <h3>🦑 Identity</h3>
+        <h3>[SQUID] Identity</h3>
         <div class="squid-detail-field">
           <label>Name</label>
           <input type="text" id="squid-name" />
@@ -673,7 +673,7 @@
       
       <!-- AI Brain Section -->
       <div class="squid-detail-section">
-        <h3>🧠 AI Brain Configuration</h3>
+        <h3>[BRAIN] AI Brain Configuration</h3>
         <div class="squid-detail-field">
           <label>Model</label>
           <input type="text" id="squid-model" placeholder="e.g., llama-2-7b-chat.Q4_K_M.gguf" />
@@ -787,10 +787,10 @@
   <script>
     // Initialize on load
     window.addEventListener('load', async () => {
-      console.log('🦑 SquidMind initializing...');
+      console.log('[SQUID] SquidMind initializing...');
       await aquarium.init();
       await ui.init();
-      console.log('✅ SquidMind ready!');
+      console.log('[OK] SquidMind ready!');
     });
   </script>
 </body>

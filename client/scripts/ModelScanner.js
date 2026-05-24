@@ -21,18 +21,18 @@ class ModelScanner {
       const response = await fetch('/api/models/scan');
       const data = await response.json();
       
-      console.log('📦 Scan result:', data);
+      console.log('[MODELS] Scan result:', data);
       
       if (data.success) {
         this.models = data.models || [];
-        console.log(`✅ Found ${this.models.length} models`);
+        console.log(`[OK] Found ${this.models.length} models`);
         return this.models;
       } else {
-        console.error('❌ Scan failed:', data.error);
+        console.error('[ERROR] Scan failed:', data.error);
         return [];
       }
     } catch (error) {
-      console.error('❌ Scan error:', error);
+      console.error('[ERROR] Scan error:', error);
       return [];
     } finally {
       this.scanning = false;
@@ -53,11 +53,11 @@ class ModelScanner {
       });
       
       const data = await response.json();
-      console.log('📦 Load result:', data);
+      console.log('[MODELS] Load result:', data);
       
       if (data.success) {
         this.selectedModel = modelPath;
-        console.log('✅ Model loaded successfully!');
+        console.log('[OK] Model loaded successfully!');
         
         // Connect to Poseidon
         if (typeof poseidon !== 'undefined') {
@@ -66,12 +66,12 @@ class ModelScanner {
         
         return true;
       } else {
-        console.error('❌ Load failed:', data.error);
+        console.error('[ERROR] Load failed:', data.error);
         alert('Failed to load model: ' + (data.error || 'Unknown error'));
         return false;
       }
     } catch (error) {
-      console.error('❌ Load error:', error);
+      console.error('[ERROR] Load error:', error);
       alert('Error loading model: ' + error.message);
       return false;
     }
@@ -84,10 +84,10 @@ class ModelScanner {
     try {
       const response = await fetch('/api/models/loaded');
       const data = await response.json();
-      console.log('📦 Loaded models:', data);
+      console.log('[MODELS] Loaded models:', data);
       return data.models || [];
     } catch (error) {
-      console.error('❌ Error getting loaded models:', error);
+      console.error('[ERROR] Error getting loaded models:', error);
       return [];
     }
   }
@@ -136,7 +136,7 @@ class ModelScanner {
             <li>/usr/local/share/models/*.gguf</li>
           </ul>
         ` : `
-          <h4>📦 Found Models (${models.length})</h4>
+          <h4>[MODELS] Found Models (${models.length})</h4>
           <div class="model-list">
             ${models.map(model => `
               <div class="model-item" onclick="modelScanner.loadModel('${model.path}')">

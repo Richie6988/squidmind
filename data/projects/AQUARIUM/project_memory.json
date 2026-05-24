@@ -1,276 +1,251 @@
 {
-  "project": "AQUARIUM",
+  "project_id": "project_1737386400_aqua",
+  "project_name": "AQUARIUM",
+  "version": "1.0.0",
+  "created": "2025-01-20T10:00:00Z",
+  "last_updated": "2025-01-20T16:30:00Z",
+  
   "vision": "Create an immersive underwater gamified AI agent collaboration platform where autonomous squids work together on projects in a beautiful ocean environment",
-  "created": "2025-01-20T10:30:00Z",
-  "last_updated": "2025-01-20T15:45:00Z",
+  
+  "repository": {
+    "type": "git",
+    "platform": "github",
+    "url": "https://github.com/Richie6988/squidmind.git",
+    "ssh_url": "git@github.com:Richie6988/squidmind.git",
+    "branch": "main",
+    "last_commit": "b9b4051",
+    "local_path": "/home/richard/Bureau/AIKIP/SquidSquad/squidmind",
+    "credentials": {
+      "type": "ssh_key",
+      "key_path": "~/.ssh/id_rsa",
+      "username": "Richie6988"
+    },
+    "tokens": {
+      "github_pat": "NONE_REQUIRED_SSH",
+      "notes": "Using SSH authentication"
+    }
+  },
+  
+  "structure": {
+    "root": "/home/richard/Bureau/AIKIP/SquidSquad/squidmind",
+    "directories": {
+      "client": {
+        "path": "client/",
+        "purpose": "Frontend application",
+        "files_of_interest": [
+          {
+            "file": "index.html",
+            "status": "stable",
+            "lines": 799,
+            "last_modified": "2025-01-20T15:00:00Z",
+            "purpose": "Main HTML structure"
+          },
+          {
+            "file": "scripts/aquarium.js",
+            "status": "stable",
+            "lines": 300,
+            "purpose": "Canvas orchestrator, main loop"
+          },
+          {
+            "file": "scripts/Squid.js",
+            "status": "stable",
+            "lines": 250,
+            "purpose": "Squid entity with movement physics"
+          },
+          {
+            "file": "scripts/SquidInteractionSystem.js",
+            "status": "stable",
+            "lines": 609,
+            "purpose": "Drag/drop/click/context menu handlers"
+          },
+          {
+            "file": "scripts/ui.js",
+            "status": "active",
+            "lines": 1900,
+            "purpose": "Panel management, UI controls"
+          },
+          {
+            "file": "styles/pixel.css",
+            "status": "stable",
+            "lines": 2800,
+            "purpose": "Pixel art ocean theme styling"
+          }
+        ],
+        "not_finished": [
+          "Remove emojis throughout codebase",
+          "SVG pixel art icon system",
+          "Temple bubble columns",
+          "Resizable right panel"
+        ]
+      },
+      "server": {
+        "path": "server/",
+        "purpose": "Backend API + model management",
+        "files_of_interest": [
+          {
+            "file": "index.js",
+            "status": "stable",
+            "lines": 1115,
+            "purpose": "Express API, endpoints"
+          },
+          {
+            "file": "services/ModelManager.js",
+            "status": "stable",
+            "lines": 200,
+            "purpose": "GGUF model loading via llama.cpp"
+          }
+        ],
+        "not_finished": [
+          "Complete unique ID system integration",
+          "Session management for Poseidon"
+        ]
+      },
+      "data": {
+        "path": "data/",
+        "purpose": "JSON storage",
+        "files_of_interest": [
+          {
+            "file": "brain.json",
+            "status": "active",
+            "purpose": "Global system configuration with soul"
+          },
+          {
+            "file": "projects/*/project_memory.json",
+            "status": "active",
+            "purpose": "Per-project state and history"
+          }
+        ]
+      },
+      "docs": {
+        "path": "docs/",
+        "purpose": "Architecture documentation",
+        "files_of_interest": [
+          {
+            "file": "JSON_ARCHITECTURE.md",
+            "status": "complete",
+            "purpose": "Three-tier JSON system design"
+          }
+        ]
+      }
+    },
+    "external_dependencies": [
+      {
+        "name": "llama.cpp",
+        "purpose": "Local GGUF model execution",
+        "installation": "Manual compile",
+        "status": "installed"
+      },
+      {
+        "name": "HuggingFace cache",
+        "path": "~/.cache/huggingface/hub",
+        "purpose": "GGUF model storage"
+      }
+    ]
+  },
   
   "stakeholders": {
-    "agents": [
-      {
-        "id": "squid_001",
-        "name": "Marina",
-        "role": "Lead Developer",
-        "expertise": ["React", "Three.js", "UI/UX"],
-        "status": "active",
-        "assigned_since": "2025-01-20T10:30:00Z"
-      }
-    ],
+    "agents": [],
     "humans": [
       {
+        "user_id": "human_richard",
         "name": "Richard",
-        "role": "Product Owner",
-        "email": "richard@squidmind.ai",
-        "involvement_level": "high"
+        "role": "Product Owner & Creator",
+        "involvement_level": "high",
+        "communication_channels": ["Claude.ai chat", "Git commits"]
       }
     ],
     "poseidon": {
       "role": "AI Orchestrator",
-      "capabilities": ["task_coordination", "code_review", "decision_making"],
-      "status": "active"
+      "status": "active",
+      "sessions": [],
+      "capabilities": ["task_coordination", "code_review", "decision_making"]
     }
   },
   
   "objectives": {
     "primary": [
-      "Build beautiful underwater aquarium visualization with Three.js",
-      "Implement squid entities with realistic swimming behavior",
-      "Create temple system for project organization",
-      "Develop drag-and-drop squid assignment to projects"
+      "Beautiful underwater aquarium with Three.js",
+      "Squid entities with realistic swimming (1.5x speed)",
+      "Temple system for project organization",
+      "Drag-and-drop assignment system"
     ],
     "secondary": [
-      "Add pixel art accessories for squids (hats, glasses, outfits)",
-      "Implement bubble column visualization for temples",
-      "Create comprehensive monitoring dashboard",
-      "Build HuggingFace model integration"
+      "Pixel art accessories (hats, glasses, outfits)",
+      "Bubble column visualization for temples",
+      "Comprehensive monitoring dashboard",
+      "HuggingFace model integration"
     ],
     "completed": [
-      "Basic aquarium rendering with ocean background",
-      "Squid swimming physics (1.5x speed)",
-      "Temple rendering with customizable colors",
-      "Drag and drop squid to temple assignment",
+      "Basic aquarium rendering",
+      "Squid swimming physics",
+      "Temple rendering with colors",
+      "Drag & drop to temples",
       "Right panel system monitor",
-      "Task queue with cancel functionality",
-      "Brain.json editor with form",
+      "Task queue with cancel",
+      "Brain.json editor",
       "Poseidon chat interface",
       "GGUF model loading",
-      "File browser for models"
+      "File browser",
+      "Click outside to close panels",
+      "Poseidon drag & position persistence",
+      "Temple context menu for customization"
     ]
   },
   
-  "processes": {
-    "documentation": {
-      "standards": ["JSDoc comments", "README updates", "CHANGELOG maintenance"],
-      "review_cycle": "Per feature completion",
-      "location": "docs/"
-    },
-    "validation": {
-      "testing": ["Manual UI testing", "Syntax validation", "Integration testing"],
-      "criteria": ["No console errors", "All features work", "Visual polish complete"],
-      "responsible": "Lead Developer + Poseidon"
-    },
-    "deployment": {
-      "process": "Git push → Manual restart",
-      "environment": "Local development (Windows + PowerShell)",
-      "rollback_plan": "Git revert to previous commit"
-    },
-    "communication": {
-      "channels": ["Claude.ai chat", "Git commits"],
-      "update_frequency": "Real-time during development",
-      "decision_log": "Git commit messages"
-    }
-  },
-  
   "progress": {
-    "completion": "85%",
-    "phase": "Polish & Visual Enhancement",
+    "completion": "88%",
+    "phase": "Bug Fixes & Architecture",
     "blockers": [],
     "recent_achievements": [
       {
-        "date": "2025-01-20T15:00:00Z",
-        "description": "Fixed modelManager.listLocalModels error",
-        "impact": "Critical - Interface now clickable"
+        "timestamp": "2025-01-20T16:30:00Z",
+        "description": "Created comprehensive JSON architecture with soul",
+        "impact": "Critical - Defines entire data structure"
       },
       {
-        "date": "2025-01-20T14:30:00Z",
-        "description": "Removed duplicate panel sections",
-        "impact": "High - Clean UI with single system panel"
-      },
-      {
-        "date": "2025-01-20T14:00:00Z",
-        "description": "Implemented Poseidon drag capability",
-        "impact": "Medium - Better UX for character positioning"
-      },
-      {
-        "date": "2025-01-20T13:30:00Z",
-        "description": "Added temple context menu for color customization",
-        "impact": "High - Can customize temples from outside"
-      },
-      {
-        "date": "2025-01-20T13:00:00Z",
-        "description": "Reduced squid speed from 2x to 1.5x",
-        "impact": "Medium - More comfortable viewing experience"
+        "timestamp": "2025-01-20T16:00:00Z",
+        "description": "Fixed ui.openFileBrowser, Poseidon position, click outside",
+        "impact": "Critical - All 3 blocking bugs resolved"
       }
     ],
     "next_steps": [
       {
+        "task_id": "task_1737386500_emoj",
         "priority": "HIGH",
-        "task": "Remove ALL emojis - replace with SVG pixel art icons",
-        "assigned_to": "Marina",
-        "estimated_effort": "4 hours",
+        "title": "Remove ALL emojis - replace with text/SVG",
+        "estimated_effort": "2 hours",
         "deadline": "2025-01-21"
       },
       {
+        "task_id": "task_1737386501_bubb",
         "priority": "HIGH",
-        "task": "Create bubble column visualization for temples (show squids inside)",
-        "assigned_to": "Marina",
+        "title": "Temple bubble column visualization",
         "estimated_effort": "3 hours",
         "deadline": "2025-01-21"
       },
       {
+        "task_id": "task_1737386502_svg",
         "priority": "MEDIUM",
-        "task": "Implement resizable right panel (drag vertical line)",
-        "assigned_to": "Marina",
-        "estimated_effort": "2 hours",
-        "deadline": "2025-01-22"
-      },
-      {
-        "priority": "MEDIUM",
-        "task": "Render pixel art accessories on squids",
-        "assigned_to": "Marina",
+        "title": "Create SVG pixel art icon system",
         "estimated_effort": "5 hours",
         "deadline": "2025-01-22"
-      },
-      {
-        "priority": "LOW",
-        "task": "HuggingFace download integration",
-        "assigned_to": "TBD",
-        "estimated_effort": "6 hours",
-        "deadline": "2025-01-25"
       }
     ]
   },
   
-  "architecture": {
-    "frontend": {
-      "framework": "Vanilla JavaScript (ES6+)",
-      "rendering": "Canvas 2D API + Three.js (optional 3D)",
-      "state_management": "Object-oriented classes (Squid, Temple, Aquarium)",
-      "modules": [
-        "Squid.js - Entity with movement & rendering",
-        "Temple.js - Project containers",
-        "SquidInteractionSystem.js - Drag/drop/click handlers",
-        "ui.js - Panel management & UI controls",
-        "brain-editor.js - Brain.json form editor",
-        "Poseidon.js - Chat interface",
-        "aquarium.js - Main canvas orchestrator"
-      ],
-      "styling": "pixel.css - Pixel art aesthetic with ocean theme"
-    },
-    "backend": {
-      "runtime": "Node.js + Express",
-      "services": [
-        "ModelManager.js - GGUF model loading via llama.cpp",
-        "index.js - REST API endpoints"
-      ],
-      "data_storage": "JSON files (brain.json, project_memory.json)",
-      "ai_integration": "Local GGUF models (no Anthropic SDK)"
-    }
-  },
-  
-  "files": {
-    "input": [
-      "HEXOD_SPECS.md - Reference for project structure patterns",
-      "SKILL.md files - Development best practices"
-    ],
-    "output": [
-      "client/index.html - Main interface",
-      "client/scripts/*.js - All frontend modules",
-      "client/styles/pixel.css - Complete styling",
-      "server/index.js - Backend API",
-      "data/brain.json - System configuration",
-      "data/projects/*/project_memory.json - Project states"
-    ]
-  },
-  
-  "agents_communication": [
-    {
-      "timestamp": "2025-01-20T15:45:00Z",
-      "from": "Poseidon",
-      "to": "Marina",
-      "message": "Syntax error in SquidInteractionSystem.js line 514 - handleContextMenu outside class",
-      "action_taken": "Moved methods inside class, verified syntax"
-    },
-    {
-      "timestamp": "2025-01-20T15:30:00Z",
-      "from": "Marina",
-      "to": "Richard",
-      "message": "Duplicate panel sections found causing ghost UI elements",
-      "action_taken": "Deleted orphaned HTML (lines 233-261)"
-    },
-    {
-      "timestamp": "2025-01-20T15:15:00Z",
-      "from": "Richard",
-      "to": "Marina",
-      "message": "Squids still moving too fast at 2x speed",
-      "action_taken": "Reduced to 1.5x speed (vx/vy * 3, multiplier 1.3/1.0)"
-    }
-  ],
-  
-  "decisions": [
-    {
-      "date": "2025-01-20T15:00:00Z",
-      "decision": "Use 1.5x speed for squids (not 2x or 3x)",
-      "rationale": "Balance between visual interest and comfortable viewing",
-      "decided_by": "Richard + Marina consensus",
-      "alternatives_considered": ["1x (too slow)", "2x (too fast)"]
-    },
-    {
-      "date": "2025-01-20T14:00:00Z",
-      "decision": "Single always-visible right panel instead of multiple panels",
-      "rationale": "Cleaner UI, all monitoring in one place",
-      "decided_by": "Richard",
-      "impact": "Removed Poseidon & Monitor nav buttons"
-    },
-    {
-      "date": "2025-01-20T13:00:00Z",
-      "decision": "Use vanilla JavaScript instead of React",
-      "rationale": "Simpler, no build step, easier to iterate",
-      "decided_by": "Richard",
-      "impact": "Direct DOM manipulation, class-based architecture"
-    }
-  ],
-  
   "tasks": {
     "backlog": [
       {
-        "id": "TASK-001",
-        "title": "Replace emojis with SVG pixel art",
-        "description": "Create SVG icons for all emoji usage (🦑, 🏛️, 📊, etc.)",
-        "priority": "HIGH",
-        "status": "todo",
-        "created": "2025-01-20T15:45:00Z"
-      },
-      {
-        "id": "TASK-002",
-        "title": "Temple bubble column visualization",
-        "description": "Show vertical bubble stream from temples with assigned squids",
-        "priority": "HIGH",
-        "status": "todo",
-        "created": "2025-01-20T15:45:00Z"
-      },
-      {
-        "id": "TASK-003",
-        "title": "Resizable right panel",
-        "description": "Drag vertical separator to resize panel width",
-        "priority": "MEDIUM",
-        "status": "todo",
-        "created": "2025-01-20T15:45:00Z"
+        "task_id": "task_1737386500_emoj",
+        "title": "Remove emojis",
+        "status": "in_progress",
+        "priority": "HIGH"
       }
     ],
     "in_progress": [],
     "completed": [
       {
-        "id": "TASK-INIT",
+        "task_id": "task_init",
         "title": "Initial aquarium setup",
         "completed": "2025-01-20T12:00:00Z"
       }
@@ -284,9 +259,9 @@
   
   "metrics": {
     "code_lines": 8500,
-    "commits": 45,
-    "features_completed": 28,
-    "bugs_fixed": 15,
-    "time_invested_hours": 32
+    "commits": 48,
+    "features_completed": 31,
+    "bugs_fixed": 18,
+    "time_invested_hours": 35
   }
 }

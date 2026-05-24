@@ -75,7 +75,7 @@ const SquidInteractions = {
     this.personality.affection = Math.min(100, this.personality.affection + 10);
     
     this.doSpin();
-    this.showFeedbackParticle('🎮', '#00FF88');
+    this.showFeedbackParticle('[INTERACT]', '#00FF88');
   },
 
   /**
@@ -229,10 +229,10 @@ const SquidInteractions = {
       const thoughts = [
         '🤔 Analyzing...',
         '💭 Thinking...',
-        '⚙️ Processing...',
+        '[CONFIG] Processing...',
         '🔍 Searching...',
         '✨ Creating...',
-        '✅ Finalizing...'
+        '[OK] Finalizing...'
       ];
       const index = Math.floor(Date.now() / 2000) % thoughts.length;
       return thoughts[index];
@@ -254,7 +254,7 @@ const SquidInteractions = {
       return ['💪 Powerful!', '🏆 Expert', '⚡ Bring it'][Math.floor(Math.random() * 3)];
     }
     
-    return ['🤔 Hmm...', '👋 Hi there!', '🦑 Squid mode'][Math.floor(Math.random() * 3)];
+    return ['🤔 Hmm...', '👋 Hi there!', '[SQUID] Squid mode'][Math.floor(Math.random() * 3)];
   },
 
   /**
@@ -289,7 +289,7 @@ const SquidInteractions = {
       thoughts.push('🥺 Lonely');
     }
     
-    thoughts.push('🎯 Waiting...');
+    thoughts.push('[TARGET] Waiting...');
     
     return thoughts;
   },

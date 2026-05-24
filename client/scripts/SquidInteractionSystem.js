@@ -241,7 +241,7 @@ class SquidInteractionSystem {
           
           if (!temple.assignedSquids.includes(squid.id)) {
             temple.assignedSquids.push(squid.id);
-            console.log(`✅ Assigned ${squid.name} to ${temple.name} temple`);
+            console.log(`[OK] Assigned ${squid.name} to ${temple.name} temple`);
             
             // Visual feedback - move squid inside temple
             squid.x = temple.x;
@@ -254,7 +254,7 @@ class SquidInteractionSystem {
               window.ui.addLog('squid_assigned', `Assigned ${squid.name} to ${temple.name}`);
             }
           } else {
-            console.log(`ℹ️ ${squid.name} already assigned to ${temple.name}`);
+            console.log(`[INFO] ${squid.name} already assigned to ${temple.name}`);
           }
         }
       }
@@ -369,7 +369,7 @@ class SquidInteractionSystem {
    * Handle single click on squid
    */
   handleSquidClick(squid) {
-    console.log('🦑 CLICKED SQUID:', squid.name);
+    console.log('[SQUID] CLICKED SQUID:', squid.name);
     console.log('   Opening detail panel...');
     
     // Visual feedback - bounce animation
@@ -387,9 +387,9 @@ class SquidInteractionSystem {
     // Show details in CENTER MODAL!
     if (typeof window.ui !== 'undefined') {
       window.ui.openSquidDetailModal(squid); // Center modal!
-      console.log('   ✅ Detail modal opened!');
+      console.log('   [OK] Detail modal opened!');
     } else {
-      console.error('   ❌ UI not loaded yet - check script order in index.html');
+      console.error('   [ERROR] UI not loaded yet - check script order in index.html');
     }
   }
 
@@ -546,7 +546,7 @@ class SquidInteractionSystem {
         🎨 Customize Colors
       </button>
       <button onclick="TempleInterior.open('${temple.name}')" style="width: 100%; padding: 6px; margin: 2px 0; font-size: 9px; background: var(--success); color: black; border: none; cursor: pointer;">
-        🏛️ Enter Temple
+        [TEMPLE] Enter Temple
       </button>
     `;
     
@@ -583,20 +583,20 @@ class SquidInteractionSystem {
     .then(res => res.json())
     .then(data => {
       if (data.success) {
-        alert(`✅ Temple colors updated!`);
+        alert(`[OK] Temple colors updated!`);
         // Reload temples
         if (window.aquarium && window.aquarium.loadTemples) {
           window.aquarium.loadTemples();
         }
       } else {
-        alert('❌ Failed: ' + data.error);
+        alert('[ERROR] Failed: ' + data.error);
       }
     })
-    .catch(error => alert('❌ Error: ' + error.message));
+    .catch(error => alert('[ERROR] Error: ' + error.message));
   }
 }
 
 // Enable context menu
 window.SquidInteractionSystem = SquidInteractionSystem;
 
-console.log('✅ Temple context menu enabled');
+console.log('[OK] Temple context menu enabled');

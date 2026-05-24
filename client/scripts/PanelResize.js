@@ -21,7 +21,7 @@ const PanelResize = {
     const panels = document.querySelectorAll('.panel:not(#clear-all-panel)');
     panels.forEach(panel => this.addResizeHandles(panel));
     
-    console.log(`✅ Added resize handles to ${panels.length} panels`);
+    console.log(`[OK] Added resize handles to ${panels.length} panels`);
   },
   
   /**
@@ -123,4 +123,4 @@ if (document.readyState === 'loading') {
 
 // Export
 window.PanelResize = PanelResize;
-console.log('✅ PanelResize module loaded');
+console.log('[OK] PanelResize module loaded');
