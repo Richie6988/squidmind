@@ -14,6 +14,13 @@
   <header>
     <div class="header-content">
       <h1>🦑 SquidMind</h1>
+      <div class="header-nav">
+        <button class="btn-nav" onclick="ui.showPanel('creator')">+ New Squid</button>
+        <button class="btn-nav" onclick="ui.showPanel('teams')">👥 Teams</button>
+        <button class="btn-nav" onclick="ui.showPanel('models')">📦 Models</button>
+        <button class="btn-nav" onclick="ui.showPanel('scheduler')">🎯 Scheduler</button>
+        <button class="btn-nav" onclick="ui.showPanel('logs')">📜 Logs</button>
+      </div>
       <div class="header-stats">
         <span id="agent-count">0 Squids</span>
         <span id="task-count">0 Tasks</span>
@@ -125,6 +132,104 @@
             <button class="btn-secondary" onclick="editSquid()">✎ Edit</button>
             <button class="btn-danger" onclick="deleteSquid()">🗑 Delete</button>
           </div>
+        </div>
+      </div>
+
+      <!-- Edit Squid Panel -->
+      <div id="edit-panel" class="panel hidden">
+        <div class="panel-header">
+          <h2>✎ Edit Squid</h2>
+          <button class="btn-close" onclick="ui.hidePanel('edit')">✕</button>
+        </div>
+        <div class="panel-content">
+          <form id="edit-squid-form">
+            <input type="hidden" name="id">
+            
+            <div class="form-group">
+              <label>Squid Name</label>
+              <input type="text" name="name" required>
+            </div>
+            
+            <div class="form-group">
+              <label>System Prompt</label>
+              <textarea name="system_prompt" rows="4" required></textarea>
+            </div>
+            
+            <div class="form-group">
+              <label>LLM Model</label>
+              <select name="model">
+                <option value="claude-sonnet-4-20250514">Claude Sonnet 4</option>
+                <option value="claude-opus-4-20250514">Claude Opus 4</option>
+                <option value="claude-haiku-4-20250514">Claude Haiku 4</option>
+              </select>
+            </div>
+            
+            <div class="form-group">
+              <label>Temperature</label>
+              <input type="range" name="temperature" min="0" max="1" step="0.1" value="0.7">
+              <span class="range-value">0.7</span>
+            </div>
+            
+            <div class="form-group">
+              <label>Schedule (Cron)</label>
+              <input type="text" name="cron" placeholder="e.g., 0 9 * * * (9 AM daily)">
+            </div>
+            
+            <div class="form-group">
+              <label>
+                <input type="checkbox" name="schedule_enabled">
+                Enable Scheduling
+              </label>
+            </div>
+            
+            <div class="form-actions">
+              <button type="submit" class="btn-primary">💾 Save Changes</button>
+              <button type="button" class="btn-secondary" onclick="ui.hidePanel('edit')">Cancel</button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <!-- Teams Panel -->
+      <div id="teams-panel" class="panel hidden">
+        <div class="panel-header">
+          <h2>👥 Agent Teams</h2>
+          <button class="btn-close" onclick="ui.hidePanel('teams')">✕</button>
+        </div>
+        <div class="panel-content">
+          <div class="panel-toolbar">
+            <button class="btn-primary" onclick="ui.showCreateTeam()">+ Create Team</button>
+            <button class="btn-secondary" onclick="ui.loadTeams()">🔄 Refresh</button>
+          </div>
+          <div id="teams-list" class="content-list"></div>
+        </div>
+      </div>
+
+      <!-- Models Panel -->
+      <div id="models-panel" class="panel hidden">
+        <div class="panel-header">
+          <h2>📦 Available Models</h2>
+          <button class="btn-close" onclick="ui.hidePanel('models')">✕</button>
+        </div>
+        <div class="panel-content">
+          <div class="panel-toolbar">
+            <button class="btn-secondary" onclick="ui.loadModels()">🔄 Refresh</button>
+          </div>
+          <div id="models-list" class="content-list"></div>
+        </div>
+      </div>
+
+      <!-- Scheduler Panel -->
+      <div id="scheduler-panel" class="panel hidden">
+        <div class="panel-header">
+          <h2>🎯 GPU Scheduler</h2>
+          <button class="btn-close" onclick="ui.hidePanel('scheduler')">✕</button>
+        </div>
+        <div class="panel-content">
+          <div class="panel-toolbar">
+            <button class="btn-secondary" onclick="ui.loadSchedulerStatus()">🔄 Refresh</button>
+          </div>
+          <div id="scheduler-status" class="content-list"></div>
         </div>
       </div>
 

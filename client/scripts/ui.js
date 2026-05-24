@@ -189,10 +189,252 @@ async function executeSquid() {
   }
 }
 
-function editSquid() {
-  // TODO: Implement edit functionality
-  console.log('Edit squid:', ui.currentSquid);
+async function editSquid() {
+  if (!ui.currentSquid) return;
+  
+  // Populate edit form with current squid data
+  const form = document.getElementById('edit-squid-form');
+  const squid = ui.currentSquid;
+  
+  form.elements['id'].value = squid.id;
+  form.elements['name'].value = squid.name;
+  form.elements['system_prompt'].value = squid.system_prompt || '';
+  form.elements['model'].value = squid.model || 'claude-sonnet-4-20250514';
+  form.elements['temperature'].value = squid.temperature || 0.7;
+  form.elements['cron'].value = squid.schedule?.cron || '';
+  form.elements['schedule_enabled'].checked = squid.schedule?.enabled || false;
+  
+  // Update range display
+  const rangeValue = form.querySelector('.range-value');
+  if (rangeValue) rangeValue.textContent = squid.temperature || 0.7;
+  
+  // Hide detail panel, show edit panel
+  ui.hidePanel('detail');
+  ui.showPanel('edit');
 }
+
+// Handle edit form submission
+document.addEventListener('DOMContentLoaded', () => {
+  const editForm = document.getElementById('edit-squid-form');
+  if (editForm) {
+    editForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      
+      const formData = new FormData(editForm);
+      const agentId = formData.get('id');
+      
+      const updatedAgent = {
+        name: formData.get('name'),
+        system_prompt: formData.get('system_prompt'),
+        model: formData.get('model'),
+        temperature: parseFloat(formData.get('temperature')),
+        schedule: {
+          enabled: formData.get('schedule_enabled') === 'on',
+          cron: formData.get('cron') || null
+        }
+      };
+      
+      try {
+        const response = await api.updateAgent(agentId, updatedAgent);
+        
+        if (response.success) {
+          ui.showNotification('Squid updated successfully!', 'success');
+          ui.hidePanel('edit');
+          
+          // Reload agents
+          await aquarium.loadAgents();
+        }
+      } catch (error) {
+        ui.showNotification('Failed to update squid: ' + error.message, 'error');
+      }
+    });
+  }
+});
+
+// Load teams
+ui.loadTeams = async function() {
+  try {
+    const response = await fetch('/api/teams');
+    const teams = await response.json();
+    
+    const teamsList = document.getElementById('teams-list');
+    if (!teamsList) return;
+    
+    if (!teams || teams.length === 0) {
+      teamsList.innerHTML = '<p class="empty-message">No teams yet. Create your first team!</p>';
+      return;
+    }
+    
+    teamsList.innerHTML = teams.map(team => `
+      <div class="list-item" onclick="ui.showTeamDetails('${team.id}')">
+        <div class="list-item-header">
+          <strong>${team.name}</strong>
+          <span class="badge badge-${team.status}">${team.status}</span>
+        </div>
+        <div class="list-item-meta">
+          ${team.members} members ${team.workflow ? `• ${team.workflow}` : ''}
+        </div>
+      </div>
+    `).join('');
+  } catch (error) {
+    console.error('Failed to load teams:', error);
+  }
+};
+
+// Load models
+ui.loadModels = async function() {
+  try {
+    const response = await fetch('/api/models');
+    const data = await response.json();
+    const models = data.models || [];
+    
+    const modelsList = document.getElementById('models-list');
+    if (!modelsList) return;
+    
+    if (models.length === 0) {
+      modelsList.innerHTML = '<p class="empty-message">No models found. Download GGUF models to data/models/</p>';
+      return;
+    }
+    
+    modelsList.innerHTML = models.map(model => `
+      <div class="list-item">
+        <div class="list-item-header">
+          <strong>${model.name || model.file}</strong>
+          ${model.loaded ? '<span class="badge badge-success">Loaded</span>' : '<span class="badge badge-idle">Not Loaded</span>'}
+        </div>
+        <div class="list-item-meta">
+          ${model.size_mb ? `${model.size_mb} MB` : ''} • ${model.source}
+        </div>
+        <div class="list-item-actions">
+          ${!model.loaded ? `<button class="btn-small" onclick="ui.loadModel('${model.file}')">Load</button>` : ''}
+          ${model.loaded ? `<button class="btn-small" onclick="ui.unloadModel('${model.file}')">Unload</button>` : ''}
+        </div>
+      </div>
+    `).join('');
+  } catch (error) {
+    console.error('Failed to load models:', error);
+  }
+};
+
+// Load scheduler status
+ui.loadSchedulerStatus = async function() {
+  try {
+    const response = await fetch('/api/scheduler/status');
+    const data = await response.json();
+    
+    const statusDiv = document.getElementById('scheduler-status');
+    if (!statusDiv) return;
+    
+    const queues = data.queues || {};
+    const resources = data.resources || {};
+    const stats = data.stats || {};
+    
+    statusDiv.innerHTML = `
+      <div class="status-section">
+        <h3>Queue Status</h3>
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-label">VIP</div>
+            <div class="stat-value">${queues.vip || 0}</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">High</div>
+            <div class="stat-value">${queues.high || 0}</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Normal</div>
+            <div class="stat-value">${queues.normal || 0}</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Low</div>
+            <div class="stat-value">${queues.low || 0}</div>
+          </div>
+        </div>
+      </div>
+      
+      <div class="status-section">
+        <h3>Resources</h3>
+        <div class="resource-bar">
+          <div class="resource-label">GPU VRAM</div>
+          <div class="progress-bar">
+            <div class="progress-fill" style="width: ${resources.gpu ? (resources.gpu.in_use ? 100 : 0) : 0}%"></div>
+          </div>
+          <div class="resource-info">${resources.gpu ? `${resources.gpu.available_vram.toFixed(1)}GB / ${resources.gpu.total_vram.toFixed(1)}GB` : 'N/A'}</div>
+        </div>
+        
+        <div class="resource-bar">
+          <div class="resource-label">CPU</div>
+          <div class="progress-bar">
+            <div class="progress-fill" style="width: ${resources.cpu ? resources.cpu.utilization : 0}%"></div>
+          </div>
+          <div class="resource-info">${resources.cpu ? `${resources.cpu.utilization}% utilization` : 'N/A'}</div>
+        </div>
+      </div>
+      
+      <div class="status-section">
+        <h3>Statistics</h3>
+        <div class="stats-list">
+          <div class="stat-row">
+            <span>Total Scheduled:</span>
+            <strong>${stats.total_scheduled || 0}</strong>
+          </div>
+          <div class="stat-row">
+            <span>Completed:</span>
+            <strong>${stats.total_completed || 0}</strong>
+          </div>
+          <div class="stat-row">
+            <span>Failed:</span>
+            <strong>${stats.total_failed || 0}</strong>
+          </div>
+          <div class="stat-row">
+            <span>Avg Wait Time:</span>
+            <strong>${stats.avg_wait_time_ms ? (stats.avg_wait_time_ms / 1000).toFixed(1) + 's' : 'N/A'}</strong>
+          </div>
+        </div>
+      </div>
+    `;
+  } catch (error) {
+    console.error('Failed to load scheduler status:', error);
+  }
+};
+
+// Load model
+ui.loadModel = async function(modelPath) {
+  try {
+    const response = await fetch('/api/models/load', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ modelPath })
+    });
+    
+    const data = await response.json();
+    if (data.success) {
+      ui.showNotification('Model loaded successfully!', 'success');
+      await ui.loadModels();
+    }
+  } catch (error) {
+    ui.showNotification('Failed to load model: ' + error.message, 'error');
+  }
+};
+
+// Unload model
+ui.unloadModel = async function(modelPath) {
+  try {
+    const response = await fetch('/api/models/unload', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ modelPath })
+    });
+    
+    const data = await response.json();
+    if (data.success) {
+      ui.showNotification('Model unloaded successfully!', 'success');
+      await ui.loadModels();
+    }
+  } catch (error) {
+    ui.showNotification('Failed to unload model: ' + error.message, 'error');
+  }
+};
 
 async function deleteSquid() {
   if (!ui.currentSquid) return;
