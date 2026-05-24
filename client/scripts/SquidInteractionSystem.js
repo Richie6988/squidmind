@@ -18,6 +18,11 @@ class SquidInteractionSystem {
     this.lastClickTime = 0;
     this.doubleClickDelay = 300;
     
+    // Track mouse movement for drag detection
+    this.mouseDownPos = null;
+    this.mouseMoved = false;
+    this.dragThreshold = 5; // pixels moved before considering it a drag
+    
     this.setupEventListeners();
   }
 
@@ -98,8 +103,20 @@ class SquidInteractionSystem {
   handleMouseMove(e) {
     const pos = this.getMousePos(e);
     
-    // Handle dragging
-    if (this.draggedSquid) {
+    // Check if mouse actually moved (for drag detection)
+    if (this.mouseDownPos && !this.mouseMoved) {
+      const dx = Math.abs(pos.x - this.mouseDownPos.x);
+      const dy = Math.abs(pos.y - this.mouseDownPos.y);
+      const distance = Math.sqrt(dx * dx + dy * dy);
+      
+      if (distance > this.dragThreshold) {
+        this.mouseMoved = true;
+        console.log('   🚀 Mouse MOVED - starting drag');
+      }
+    }
+    
+    // Handle dragging (only if mouse actually moved)
+    if (this.draggedSquid && this.mouseMoved) {
       this.draggedSquid.targetX = pos.x - this.dragOffset.x;
       this.draggedSquid.targetY = pos.y - this.dragOffset.y;
       this.aquarium.canvas.style.cursor = 'grabbing';
@@ -170,17 +187,18 @@ class SquidInteractionSystem {
     if (e.button !== 0) return; // Only left click
     
     const pos = this.getMousePos(e);
+    this.mouseDownPos = { x: pos.x, y: pos.y };
+    this.mouseMoved = false;
+    
     const result = this.findEntityAt(pos.x, pos.y);
     
     if (result && result.type === 'squid') {
       const squid = result.entity;
       
-      // Start dragging
+      // Prepare for potential drag (but don't commit yet)
       this.draggedSquid = squid;
       this.dragOffset.x = pos.x - squid.x;
       this.dragOffset.y = pos.y - squid.y;
-      
-      this.aquarium.canvas.style.cursor = 'grabbing';
       
       e.preventDefault();
     }
@@ -195,18 +213,24 @@ class SquidInteractionSystem {
     const pos = this.getMousePos(e);
     console.log('🖱️ Mouse UP at:', pos.x, pos.y);
     
-    // Check for click (not drag)
-    const wasDragging = this.draggedSquid !== null;
+    // Check for click (not drag) - mouse must NOT have moved
+    const wasDragging = this.mouseMoved;
     console.log('   Was dragging:', wasDragging);
     
     if (this.draggedSquid) {
-      // End drag
-      console.log('   Ending drag:', this.draggedSquid.name);
+      if (wasDragging) {
+        // End drag
+        console.log('   Ending drag:', this.draggedSquid.name);
+      }
       this.draggedSquid = null;
-      this.aquarium.canvas.style.cursor = 'grab';
+      this.aquarium.canvas.style.cursor = 'default';
     }
     
-    // Handle click (if not dragging)
+    // Reset tracking
+    this.mouseDownPos = null;
+    this.mouseMoved = false;
+    
+    // Handle click (if NOT dragging)
     if (!wasDragging) {
       const result = this.findEntityAt(pos.x, pos.y);
       console.log('   Entity at click:', result ? result.type : 'none');
@@ -248,6 +272,8 @@ class SquidInteractionSystem {
       } else {
         console.log('   → Clicked empty space');
       }
+    } else {
+      console.log('   → Was dragging, not a click');
     }
   }
 

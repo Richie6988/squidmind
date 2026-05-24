@@ -510,4 +510,4 @@ if (typeof window !== 'undefined') {
   window.poseidon = poseidon;
 }
 
-module.exports = poseidon;
+console.log('🔱 Poseidon loaded');
