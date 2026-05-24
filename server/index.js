@@ -457,7 +457,7 @@ app.post('/api/poseidon/init', async (req, res) => {
     
     if (!poseidonModel) {
       // Try to load a default model if available
-      const availableModels = await modelManager.listLocalModels();
+      const availableModels = await modelManager.listModels();
       if (availableModels.length > 0) {
         const firstModel = availableModels[0];
         await modelManager.loadModel(firstModel.path);

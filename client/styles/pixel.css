@@ -2463,8 +2463,8 @@ input[type="color"]::-webkit-color-swatch {
 
 .btn-new-project {
   position: fixed;
-  top: 80px;
-  right: 300px; /* Right side, not blocking system panel */
+  top: 120px; /* Lower to avoid header */
+  right: 320px; /* Further from right panel */
   padding: 12px 20px;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   color: white;

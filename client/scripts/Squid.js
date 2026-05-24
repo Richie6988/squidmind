@@ -5,8 +5,8 @@ class Squid {
     this.nickname = data.nickname || data.name;
     this.x = data.x || Math.random() * 700 + 50;
     this.y = data.y || Math.random() * 500 + 50;
-    this.vx = (Math.random() - 0.5) * 4; // 2x faster (was 6)
-    this.vy = (Math.random() - 0.5) * 4;
+    this.vx = (Math.random() - 0.5) * 3; // 1.5x speed
+    this.vy = (Math.random() - 0.5) * 3;
     this.status = data.status || 'idle';
     this.current_thought = data.current_thought;
     
@@ -111,7 +111,7 @@ class Squid {
     
     // Movement (good swimming speed) - only when idle
     if (!this.isDragging && this.status === 'idle' && distance < 1) {
-      const speed = this.personality.animation_style === 'energetic' ? 1.8 : 1.2; // Balanced speed
+      const speed = this.personality.animation_style === 'energetic' ? 1.3 : 1.0; // Slower: 1.3x/1.0x
       this.x += this.vx * speed;
       this.y += this.vy * speed;
       
@@ -125,8 +125,8 @@ class Squid {
       
       // Random direction changes
       if (Math.random() < 0.015) {
-        this.vx = (Math.random() - 0.5) * 4; // 2x
-        this.vy = (Math.random() - 0.5) * 4;
+        this.vx = (Math.random() - 0.5) * 3; // 1.5x
+        this.vy = (Math.random() - 0.5) * 3;
       }
     }
     
