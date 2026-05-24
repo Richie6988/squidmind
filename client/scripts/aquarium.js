@@ -15,10 +15,14 @@ const aquarium = {
     this.resizeCanvas();
     window.addEventListener('resize', () => this.resizeCanvas());
     
-    // Initialize Poseidon's position (top-left area)
+    // Initialize Poseidon's position (only if not already set)
     if (typeof poseidon !== 'undefined') {
-      poseidon.setPosition(150, 120);
-      console.log('🔱 Poseidon positioned in aquarium');
+      if (!poseidon.x || !poseidon.y) {
+        poseidon.setPosition(150, 120);
+        console.log('🔱 Poseidon positioned in aquarium (initial)');
+      } else {
+        console.log('🔱 Poseidon position restored:', poseidon.x, poseidon.y);
+      }
     }
     
     // Initialize Temple Manager

@@ -1753,16 +1753,10 @@ console.log('✅ Poseidon quick actions loaded');
 
 // ==================== CLICK OUTSIDE TO CLOSE PANELS ====================
 
-document.addEventListener('mousedown', function(e) {
-  // Don't close if clicking buttons that open things
-  if (e.target.closest('.btn-nav') || 
-      e.target.closest('.btn-action') ||
-      e.target.closest('.btn-new-project') ||
-      e.target.closest('.btn-primary') ||
-      e.target.closest('.btn-secondary') ||
-      e.target.closest('button[onclick*="showPanel"]') ||
-      e.target.closest('button[onclick*="openModal"]') ||
-      e.target.closest('button[onclick*="BrainEditor"]')) {
+document.addEventListener('click', function(e) {
+  // ONLY exclude navigation buttons that OPEN panels
+  if (e.target.closest('.header-nav') || 
+      e.target.closest('.btn-new-project')) {
     return;
   }
   
@@ -1781,11 +1775,10 @@ document.addEventListener('mousedown', function(e) {
     panels.forEach(panel => {
       panel.classList.add('hidden');
     });
-    console.log('✅ Closed all panels (clicked outside)');
   }
-}, true); // Use capture phase
+});
 
-console.log('✅ Click outside to close ALL panels enabled');
+console.log('✅ Click outside to close panels enabled (FIXED)');
 
 // ==================== TASK QUEUE CANCEL ====================
 
@@ -1837,3 +1830,19 @@ ui.addTestTask = function() {
 };
 
 console.log('✅ Task queue management loaded');
+
+// ==================== OPEN FILE BROWSER ====================
+
+ui.openFileBrowser = function() {
+  // Show models panel
+  this.showPanel('models');
+  
+  // Initialize file browser at home directory
+  const homeDir = '/home';
+  this.currentBrowserPath = homeDir;
+  this.browsePath(homeDir);
+  
+  console.log('✅ File browser opened');
+};
+
+console.log('✅ ui.openFileBrowser() loaded');
