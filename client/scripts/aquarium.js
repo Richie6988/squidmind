@@ -47,20 +47,70 @@ const aquarium = {
   },
 
   async loadTemples() {
-    // For now, create example temples
-    // TODO: Load from actual projects
-    const exampleProjects = [
-      { id: 1, name: 'WebApp', status: 'active', files: [], tasks: [] },
-      { id: 2, name: 'API', status: 'active', files: [], tasks: [] },
-      { id: 3, name: 'Docs', status: 'active', files: [], tasks: [] }
+    // Create the 4 main project temples
+    const projects = [
+      { 
+        id: 'brain', 
+        name: 'BRAIN', 
+        status: 'active', 
+        files: [
+          { name: 'neural_network.py', size: '45KB' },
+          { name: 'training_data.json', size: '2.3MB' }
+        ], 
+        tasks: [
+          { description: 'Train model on new data', status: 'working' },
+          { description: 'Optimize inference speed', status: 'pending' }
+        ]
+      },
+      { 
+        id: 'aquarium', 
+        name: 'AQUARIUM', 
+        status: 'active', 
+        files: [
+          { name: 'Squid.js', size: '12KB' },
+          { name: 'aquarium.js', size: '8KB' }
+        ], 
+        tasks: [
+          { description: 'Enhance squid AI', status: 'working' },
+          { description: 'Add new animations', status: 'complete' }
+        ]
+      },
+      { 
+        id: 'trading', 
+        name: 'TRADING', 
+        status: 'active', 
+        files: [
+          { name: 'market_analyzer.py', size: '28KB' },
+          { name: 'strategies.json', size: '156KB' }
+        ], 
+        tasks: [
+          { description: 'Backtest new strategy', status: 'pending' },
+          { description: 'Monitor live trades', status: 'working' }
+        ]
+      },
+      { 
+        id: 'newsroom', 
+        name: 'NEWSROOM', 
+        status: 'active', 
+        files: [
+          { name: 'news_scraper.js', size: '15KB' },
+          { name: 'articles.db', size: '4.5MB' }
+        ], 
+        tasks: [
+          { description: 'Aggregate latest news', status: 'working' },
+          { description: 'Analyze sentiment', status: 'pending' }
+        ]
+      }
     ];
     
-    exampleProjects.forEach(project => {
+    projects.forEach(project => {
       this.templeManager.createTemple(project);
     });
     
     // Arrange temples in aquarium
     this.templeManager.arrangeTemples(this.canvas.width, this.canvas.height);
+    
+    console.log('🏛️ Created 4 project temples: BRAIN, AQUARIUM, TRADING, NEWSROOM');
   },
 
   async updateSquidsStatus() {
@@ -95,7 +145,14 @@ const aquarium = {
       const response = await api.getAgents();
       
       if (response.success) {
-        this.squids = response.agents.map(agent => new Squid(agent, this.canvas));
+        this.squids = response.agents.map(agent => {
+          const squid = new Squid(agent, this.canvas);
+          // Enhance with interactions
+          if (typeof SquidInteractions !== 'undefined') {
+            SquidInteractions.enhance(squid);
+          }
+          return squid;
+        });
         console.log(`Loaded ${this.squids.length} squids`);
         
         // Update header count
@@ -108,6 +165,10 @@ const aquarium = {
 
   addSquid(agentData) {
     const squid = new Squid(agentData, this.canvas);
+    // Enhance with interactions
+    if (typeof SquidInteractions !== 'undefined') {
+      SquidInteractions.enhance(squid);
+    }
     this.squids.push(squid);
     document.getElementById('agent-count').textContent = `${this.squids.length} Squids`;
     console.log(`Added squid: ${agentData.name}`);

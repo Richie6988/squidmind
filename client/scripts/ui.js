@@ -767,7 +767,9 @@ ui.showPanel = function(panelName) {
     // Initialize Poseidon chat if empty
     const messagesDiv = document.getElementById('poseidon-chat-messages');
     if (!messagesDiv.hasChildNodes()) {
-      this.addPoseidonMessage(poseidon.getRandomWisdom('greetings'), 'poseidon');
+      // Initialize Poseidon chat with greeting
+      const greeting = "🌊 Greetings, mortal! I am Poseidon, God of the Ocean. I command the squids of this realm. How may I assist you?";
+      this.addPoseidonMessage(greeting, 'poseidon');
       this.updatePoseidonSuggestions(['Show my squids', 'Create a task', 'Help me']);
     }
   }
