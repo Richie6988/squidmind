@@ -761,7 +761,25 @@ const TempleInterior = {
       createdAt: new Date().toISOString()
     };
     
-    // Save to backend
+    // Save to backend (TEMPORARY: Save locally until backend ready)
+    console.log('💾 Saving cron task:', task);
+    
+    // Add to temple project immediately (works without backend)
+    if (!this.currentTemple.project.cronTasks) {
+      this.currentTemple.project.cronTasks = [];
+    }
+    this.currentTemple.project.cronTasks.push(task);
+    
+    // Refresh display
+    this.populateCronTasks(this.currentTemple);
+    
+    // Close modal
+    this.closeCronBuilder();
+    
+    alert(`✅ Task "${name}" created!\nSchedule: ${preview}\n\n(Saved locally - backend integration pending)`);
+    
+    // TODO: Uncomment when backend is ready
+    /*
     fetch('/api/cron/create', {
       method: 'POST',
       headers: {
@@ -769,32 +787,17 @@ const TempleInterior = {
       },
       body: JSON.stringify(task)
     })
-    .then(res => res.json())
+    .then(res => {
+      if (!res.ok) throw new Error('Backend not available');
+      return res.json();
+    })
     .then(data => {
-      if (data.success) {
-        console.log('✅ Cron task created!', data);
-        
-        // Add to temple project
-        if (!this.currentTemple.project.cronTasks) {
-          this.currentTemple.project.cronTasks = [];
-        }
-        this.currentTemple.project.cronTasks.push(task);
-        
-        // Refresh display
-        this.populateCronTasks(this.currentTemple);
-        
-        // Close modal
-        this.closeCronBuilder();
-        
-        alert(`✅ Task "${name}" created!\nSchedule: ${preview}`);
-      } else {
-        alert('❌ Failed to create task: ' + (data.error || 'Unknown error'));
-      }
+      console.log('✅ Task saved to backend:', data);
     })
     .catch(err => {
-      console.error('Failed to create cron task:', err);
-      alert('❌ Error creating task. See console for details.');
+      console.warn('Backend not ready, task saved locally:', err);
     });
+    */
   }
 };
 

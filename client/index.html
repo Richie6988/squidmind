@@ -603,7 +603,8 @@
     </div>
   </div>
 
-  <!-- Scripts -->
+  <!-- Scripts - ui.js MUST load FIRST! -->
+  <script src="scripts/ui.js"></script>
   <script src="scripts/api.js"></script>
   <script src="scripts/PanelManager.js"></script>
   <script src="scripts/ModelScanner.js"></script>
@@ -617,7 +618,6 @@
   <script src="scripts/Squid.js"></script>
   <script src="scripts/SquidAnimator.js"></script>
   <script src="scripts/aquarium.js"></script>
-  <script src="scripts/ui.js"></script>
   <script>
     // Initialize on load
     window.addEventListener('load', async () => {

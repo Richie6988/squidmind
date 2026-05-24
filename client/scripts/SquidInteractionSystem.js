@@ -106,16 +106,16 @@ class SquidInteractionSystem {
       
       if (distance > this.dragThreshold) {
         this.mouseMoved = true;
-        console.log('   🚀 Mouse MOVED - starting drag');
+        // console.log('   🚀 Mouse MOVED - starting drag'); // Removed verbose log
       }
     }
     
-    // Handle dragging (only if mouse actually moved)
-    if (this.draggedSquid && this.mouseMoved) {
+    // Handle dragging (as soon as draggedSquid is set, move it!)
+    if (this.draggedSquid) {
       this.draggedSquid.targetX = pos.x - this.dragOffset.x;
       this.draggedSquid.targetY = pos.y - this.dragOffset.y;
       this.aquarium.canvas.style.cursor = 'grabbing';
-      return;
+      return; // Skip hover detection while dragging
     }
     
     // Handle hovering

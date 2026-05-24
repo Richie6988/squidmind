@@ -2009,7 +2009,7 @@ input[type="color"]::-webkit-color-swatch {
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 2000;
+  z-index: 10000; /* ABOVE temple (9999) */
 }
 
 .cron-builder,
