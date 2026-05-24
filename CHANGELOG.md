@@ -1,5 +1,111 @@
 # 🦑 SquidMind - Changelog
 
+## Version 2.0.0 - Brain System & Multi-Model (2025-05-24)
+
+### 🚀 Major Features
+
+#### 🧠 Brain System
+- **Brain Model** (`server/models/Brain.js`) - Reusable intelligence profiles
+- **Brain Structure:** Identity, prompts, tools, memory, model config
+- **Example Brains:** Code Reviewer Pro, Data Analyst Expert
+- **Brain API:** Full CRUD + clone functionality
+- Agents reference brains via `brain_id`
+
+#### 📦 Local GGUF Model Support
+- **ModelManager** (`server/services/ModelManager.js`) - Load/unload GGUF models
+- **llama.cpp integration** - Run Llama, Mistral, Phi locally
+- **CPU/GPU support** - Configure layers for acceleration
+- **Session management** - Create/close inference sessions
+- **Model API:** `/api/models/*` endpoints
+
+#### 🔧 Tool System
+- **ToolRegistry** (`server/services/ToolRegistry.js`) - 9 built-in tools
+- **Filesystem:** read_file, write_file, list_files, delete_file
+- **Web:** web_search (DuckDuckGo), web_fetch
+- **Utilities:** calculator, get_datetime, json_parse, json_stringify
+- **Tool API:** `/api/tools/*` endpoints
+- Custom tool registration supported
+
+#### 🎯 Unified Orchestration
+- **UnifiedOrchestrator** - Supports Claude API + local GGUF
+- Auto-selects provider based on brain config
+- Tool execution integration
+- Extended thinking (2000 tokens)
+- Metrics tracking (success rate, response time, tokens)
+
+#### 🔌 MCP Server
+- **MCP Server** (`server/mcp-server.js`) - Claude Desktop integration
+- **12 MCP tools:** Agents, brains, groups, tools, logs
+- **Resources:** `squidmind://agents/{id}`, `squidmind://brains/{id}`
+- **Stdio transport** - Compatible with any MCP client
+- **Setup guide:** MCP_SETUP.md
+
+### 🔧 Bug Fixes
+- Fixed Express 5 wildcard route (`'*'` → `'/(.*)'`)
+
+### 📚 Documentation
+- **BRAIN_TOOLS_GUIDE.md** - Complete guide (2,600 lines)
+- **MCP_SETUP.md** - Claude Desktop integration
+- Example brain configs in `data/brains/`
+
+### 📦 New Dependencies
+- `node-llama-cpp` - GGUF model support
+- `@langchain/core` - LLM abstractions
+- `axios` - HTTP client
+- `cheerio` - HTML parsing
+- `mathjs` - Calculator
+- `@modelcontextprotocol/sdk` - MCP server
+
+### 🏗️ Architecture
+```
+Old: Agent → AgentOrchestrator → Claude API
+New: Agent → Brain → UnifiedOrchestrator → (Claude API | GGUF) + Tools
+```
+
+### 🔄 Migration
+No breaking changes! Existing agents work as-is.
+
+New workflow:
+1. Create brain: `POST /api/brains`
+2. Create agent: `POST /api/agents {"brain_id": "..."}`
+3. Execute: `POST /api/agents/:id/execute`
+
+### 📁 New Files
+```
+data/brains/
+  brain_code_reviewer.json
+  brain_data_analyst.json
+server/models/Brain.js
+server/services/ModelManager.js
+server/services/ToolRegistry.js
+server/services/UnifiedOrchestrator.js
+server/mcp-server.js
+BRAIN_TOOLS_GUIDE.md
+MCP_SETUP.md
+```
+
+### 🎯 New API Routes
+```
+Brains:
+  GET    /api/brains
+  POST   /api/brains
+  GET    /api/brains/:id
+  PUT    /api/brains/:id
+  DELETE /api/brains/:id
+  POST   /api/brains/:id/clone
+
+Models:
+  GET    /api/models
+  POST   /api/models/load
+  POST   /api/models/unload
+
+Tools:
+  GET    /api/tools
+  POST   /api/tools/execute
+```
+
+---
+
 ## Version 1.0.0 - Initial Release (2025-05-24)
 
 ### 🎉 Core Features
