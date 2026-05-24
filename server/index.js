@@ -117,6 +117,130 @@ app.post('/api/agents/:id/execute', async (req, res) => {
   }
 });
 
+// ==================== PROJECT ROUTES ====================
+
+const fs = require('fs').promises;
+
+// List all projects
+app.get('/api/projects', async (req, res) => {
+  try {
+    const projectsDir = path.join(__dirname, '../data/projects');
+    const folders = await fs.readdir(projectsDir);
+    
+    const projects = [];
+    for (const folder of folders) {
+      const memoryPath = path.join(projectsDir, folder, 'project_memory.json');
+      try {
+        const memoryData = await fs.readFile(memoryPath, 'utf8');
+        const memory = JSON.parse(memoryData);
+        projects.push({
+          name: folder,
+          ...memory
+        });
+      } catch (err) {
+        // Project folder exists but no memory file
+        projects.push({
+          name: folder,
+          vision: 'No description',
+          colors: { outside: '#667eea', inside: '#764ba2' }
+        });
+      }
+    }
+    
+    res.json({ success: true, projects });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Create new project
+app.post('/api/projects', async (req, res) => {
+  try {
+    const { name, vision, colors } = req.body;
+    
+    if (!name) {
+      return res.status(400).json({ success: false, error: 'Project name required' });
+    }
+    
+    const projectDir = path.join(__dirname, '../data/projects', name.toUpperCase());
+    
+    // Create project folder structure
+    await fs.mkdir(projectDir, { recursive: true });
+    await fs.mkdir(path.join(projectDir, 'input'), { recursive: true });
+    await fs.mkdir(path.join(projectDir, 'output'), { recursive: true });
+    
+    // Create project_memory.json
+    const projectMemory = {
+      project: name.toUpperCase(),
+      vision: vision || `${name} project workspace`,
+      goals: [],
+      tasks: [],
+      progress: {
+        completion: "0%",
+        blockers: [],
+        recent_achievements: [],
+        next_steps: []
+      },
+      architecture: {
+        frontend: {},
+        backend: {}
+      },
+      files: {
+        input: [],
+        output: []
+      },
+      agents_communication: [],
+      decisions: [],
+      colors: colors || {
+        outside: '#667eea',
+        inside: '#764ba2'
+      },
+      created: new Date().toISOString()
+    };
+    
+    await fs.writeFile(
+      path.join(projectDir, 'project_memory.json'),
+      JSON.stringify(projectMemory, null, 2),
+      'utf8'
+    );
+    
+    res.json({ success: true, project: projectMemory });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Get project memory
+app.get('/api/projects/:name/memory', async (req, res) => {
+  try {
+    const memoryPath = path.join(__dirname, '../data/projects', req.params.name.toUpperCase(), 'project_memory.json');
+    const memoryData = await fs.readFile(memoryPath, 'utf8');
+    const memory = JSON.parse(memoryData);
+    res.json({ success: true, memory });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Update project colors
+app.put('/api/projects/:name/colors', async (req, res) => {
+  try {
+    const { outside, inside } = req.body;
+    const memoryPath = path.join(__dirname, '../data/projects', req.params.name.toUpperCase(), 'project_memory.json');
+    
+    const memoryData = await fs.readFile(memoryPath, 'utf8');
+    const memory = JSON.parse(memoryData);
+    
+    memory.colors = { outside, inside };
+    
+    await fs.writeFile(memoryPath, JSON.stringify(memory, null, 2), 'utf8');
+    
+    res.json({ success: true, memory });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 // ==================== LOG ROUTES ====================
 
 app.get('/api/logs', async (req, res) => {

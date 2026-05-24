@@ -1170,3 +1170,163 @@ ui.scanForModels = async function() {
 };
 
 console.log('📦 Model management functions loaded');
+
+// ==================== NEW PROJECT MODAL ====================
+
+ui.openNewProjectModal = function() {
+  const modal = document.getElementById('new-project-modal');
+  if (modal) {
+    modal.classList.remove('hidden');
+  }
+};
+
+ui.closeNewProjectModal = function() {
+  const modal = document.getElementById('new-project-modal');
+  if (modal) {
+    modal.classList.add('hidden');
+  }
+};
+
+ui.createNewProject = async function() {
+  const name = document.getElementById('new-project-name').value.trim();
+  const vision = document.getElementById('new-project-vision').value.trim();
+  const colorOutside = document.getElementById('new-project-color-outside').value;
+  const colorInside = document.getElementById('new-project-color-inside').value;
+  
+  if (!name) {
+    alert('Project name is required!');
+    return;
+  }
+  
+  try {
+    const response = await fetch('/api/projects', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name,
+        vision,
+        colors: {
+          outside: colorOutside,
+          inside: colorInside
+        }
+      })
+    });
+    
+    const data = await response.json();
+    
+    if (data.success) {
+      alert(`✅ Project "${name}" created successfully!`);
+      this.closeNewProjectModal();
+      
+      // Refresh temples
+      if (typeof aquarium !== 'undefined' && aquarium.templeManager) {
+        await aquarium.templeManager.loadTemples();
+      }
+      
+      // Clear form
+      document.getElementById('new-project-name').value = '';
+      document.getElementById('new-project-vision').value = '';
+    } else {
+      alert('Failed to create project: ' + data.error);
+    }
+  } catch (error) {
+    console.error('❌ Create project error:', error);
+    alert('Error creating project: ' + error.message);
+  }
+};
+
+// ==================== SQUID DETAIL MODAL ====================
+
+ui.currentSquidForEdit = null;
+
+ui.openSquidDetailModal = function(squid) {
+  this.currentSquidForEdit = squid;
+  
+  const modal = document.getElementById('squid-detail-modal');
+  if (!modal) return;
+  
+  // Populate fields
+  document.getElementById('squid-detail-title').textContent = `Edit ${squid.name}`;
+  document.getElementById('squid-name').value = squid.name || '';
+  document.getElementById('squid-specialty').value = squid.specialty || '';
+  document.getElementById('squid-mission').value = squid.mission || '';
+  document.getElementById('squid-model').value = squid.brain?.model || '';
+  document.getElementById('squid-temperature').value = squid.brain?.temperature || 0.7;
+  document.getElementById('squid-body-color').value = squid.appearance?.body_color || '#FF6B9D';
+  
+  modal.classList.remove('hidden');
+};
+
+ui.closeSquidDetailModal = function() {
+  const modal = document.getElementById('squid-detail-modal');
+  if (modal) {
+    modal.classList.add('hidden');
+  }
+  this.currentSquidForEdit = null;
+};
+
+ui.saveSquidDetails = async function() {
+  if (!this.currentSquidForEdit) return;
+  
+  const squid = this.currentSquidForEdit;
+  
+  // Get values from form
+  const name = document.getElementById('squid-name').value.trim();
+  const specialty = document.getElementById('squid-specialty').value.trim();
+  const mission = document.getElementById('squid-mission').value.trim();
+  const model = document.getElementById('squid-model').value.trim();
+  const temperature = parseFloat(document.getElementById('squid-temperature').value);
+  const bodyColor = document.getElementById('squid-body-color').value;
+  
+  // Update squid object IMMEDIATELY (visual update)
+  squid.name = name;
+  squid.specialty = specialty;
+  squid.mission = mission;
+  if (!squid.brain) squid.brain = {};
+  squid.brain.model = model;
+  squid.brain.temperature = temperature;
+  if (!squid.appearance) squid.appearance = {};
+  squid.appearance.body_color = bodyColor;
+  
+  console.log('✅ Squid updated visually:', name);
+  
+  // Save to backend
+  try {
+    const response = await fetch(`/api/agents/${squid.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name,
+        specialty,
+        mission,
+        brain: {
+          model,
+          temperature,
+          system_prompt: squid.brain.system_prompt || ''
+        },
+        appearance: {
+          body_color: bodyColor,
+          accent_color: squid.appearance.accent_color || '#FFE66D',
+          eye_style: squid.appearance.eye_style || 'round',
+          tentacle_style: squid.appearance.tentacle_style || 'wavy',
+          size: squid.appearance.size || 'medium',
+          glow_intensity: squid.appearance.glow_intensity || 0.5
+        }
+      })
+    });
+    
+    const data = await response.json();
+    
+    if (data.success) {
+      console.log('✅ Squid saved to backend:', name);
+      this.closeSquidDetailModal();
+    } else {
+      alert('Failed to save: ' + data.error);
+    }
+  } catch (error) {
+    console.error('❌ Save squid error:', error);
+    alert('Error saving squid (changes applied locally): ' + error.message);
+  }
+};
+
+console.log('✅ UI module with modals loaded');

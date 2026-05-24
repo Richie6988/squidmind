@@ -46,6 +46,11 @@
       </button>
     </div>
     
+    <!-- New Project Button -->
+    <button class="btn-new-project" onclick="window.ui.openNewProjectModal()">
+      + New Project
+    </button>
+    
     <!-- Control Panels -->\n    <div class="panels-container">
       
       <!-- Squid Creator Panel -->
@@ -600,6 +605,92 @@
         </div>
       </div>
 
+    </div>
+  </div>
+
+  <!-- New Project Modal -->
+  <div id="new-project-modal" class="squid-detail-modal hidden">
+    <div class="squid-detail-content">
+      <div class="squid-detail-header">
+        <h2 class="squid-detail-title">Create New Project</h2>
+        <button class="squid-detail-close" onclick="window.ui.closeNewProjectModal()">Close</button>
+      </div>
+      
+      <div class="squid-detail-section">
+        <div class="squid-detail-field">
+          <label>Project Name *</label>
+          <input type="text" id="new-project-name" placeholder="MY_PROJECT" />
+        </div>
+        
+        <div class="squid-detail-field">
+          <label>Vision / Description</label>
+          <textarea id="new-project-vision" placeholder="What is this project about?"></textarea>
+        </div>
+        
+        <div class="squid-detail-field">
+          <label>Temple Outside Color</label>
+          <input type="color" id="new-project-color-outside" value="#667eea" />
+        </div>
+        
+        <div class="squid-detail-field">
+          <label>Temple Inside Color</label>
+          <input type="color" id="new-project-color-inside" value="#764ba2" />
+        </div>
+      </div>
+      
+      <button class="squid-detail-save" onclick="window.ui.createNewProject()">
+        Create Project
+      </button>
+    </div>
+  </div>
+
+  <!-- Squid Detail Modal -->
+  <div id="squid-detail-modal" class="squid-detail-modal hidden">
+    <div class="squid-detail-content">
+      <div class="squid-detail-header">
+        <h2 class="squid-detail-title" id="squid-detail-title">Squid Details</h2>
+        <button class="squid-detail-close" onclick="window.ui.closeSquidDetailModal()">Close</button>
+      </div>
+      
+      <div class="squid-detail-section">
+        <h3>Identity</h3>
+        <div class="squid-detail-field">
+          <label>Name</label>
+          <input type="text" id="squid-name" />
+        </div>
+        <div class="squid-detail-field">
+          <label>Specialty</label>
+          <input type="text" id="squid-specialty" />
+        </div>
+        <div class="squid-detail-field">
+          <label>Mission</label>
+          <textarea id="squid-mission"></textarea>
+        </div>
+      </div>
+      
+      <div class="squid-detail-section">
+        <h3>AI Brain</h3>
+        <div class="squid-detail-field">
+          <label>Model</label>
+          <input type="text" id="squid-model" />
+        </div>
+        <div class="squid-detail-field">
+          <label>Temperature</label>
+          <input type="number" id="squid-temperature" step="0.1" />
+        </div>
+      </div>
+      
+      <div class="squid-detail-section">
+        <h3>Appearance</h3>
+        <div class="squid-detail-field">
+          <label>Body Color</label>
+          <input type="color" id="squid-body-color" />
+        </div>
+      </div>
+      
+      <button class="squid-detail-save" onclick="window.ui.saveSquidDetails()">
+        Save Changes
+      </button>
     </div>
   </div>
 

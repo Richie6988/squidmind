@@ -341,11 +341,10 @@ class SquidInteractionSystem {
       squid.targetY = originalY;
     }, bounceSpeed * 1000);
     
-    // Show details panel
+    // Show details in CENTER MODAL!
     if (typeof window.ui !== 'undefined') {
-      window.ui.currentSquid = squid;
-      window.ui.showSquidDetails(squid); // Direct call instead of showPanel
-      console.log('   ✅ Detail panel opened!');
+      window.ui.openSquidDetailModal(squid); // Center modal!
+      console.log('   ✅ Detail modal opened!');
     } else {
       console.error('   ❌ UI not loaded yet - check script order in index.html');
     }
