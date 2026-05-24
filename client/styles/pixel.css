@@ -1295,3 +1295,51 @@ input[type="color"]::-webkit-color-swatch {
   color: white;
   font-size: 11px;
 }
+
+/* System Monitor Panel */
+.monitor-section {
+  background: var(--ocean-mid);
+  border: 2px solid var(--border);
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+.monitor-section h3 {
+  font-size: 11px;
+  color: var(--accent);
+  margin-bottom: 12px;
+  border-bottom: 2px solid var(--border);
+  padding-bottom: 8px;
+}
+
+.stat-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px;
+  background: var(--ocean-deep);
+  border: 1px solid var(--border);
+  margin-bottom: 4px;
+  font-size: 10px;
+}
+
+.stat-row span:first-child {
+  color: var(--text-secondary);
+}
+
+.stat-row span:last-child {
+  color: var(--accent);
+  font-weight: bold;
+}
+
+/* Clear All Button */
+.btn-clear-all {
+  background: #e74c3c !important;
+  color: white !important;
+  border: 2px solid var(--border) !important;
+  margin-left: 8px;
+}
+
+.btn-clear-all:hover {
+  background: #c0392b !important;
+  transform: translateY(-2px);
+}

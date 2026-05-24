@@ -21,6 +21,8 @@
         <button class="btn-nav" onclick="ui.showPanel('models')">📦 Models</button>
         <button class="btn-nav" onclick="ui.showPanel('scheduler')">🎯 Scheduler</button>
         <button class="btn-nav" onclick="ui.showPanel('logs')">📜 Logs</button>
+        <button class="btn-nav" onclick="ui.showPanel('monitor')">📊 System Monitor</button>
+        <button class="btn-nav btn-clear-all" onclick="ui.clearAllPanels()">🧹 Clear All</button>
       </div>
       <div class="header-stats">
         <span id="agent-count">0 Squids</span>
@@ -126,6 +128,83 @@
             <button onclick="loadLogs()">Refresh</button>
           </div>
           <div id="log-list" class="log-list"></div>
+        </div>
+      </div>
+
+      <!-- System Monitor Panel -->
+      <div id="monitor-panel" class="panel hidden">
+        <div class="panel-header">
+          <h2>📊 System Monitor</h2>
+          <button class="btn-close" onclick="ui.hidePanel('monitor')">✕</button>
+        </div>
+        <div class="panel-content">
+          <div class="monitor-section">
+            <h3>🦑 Squad Status</h3>
+            <div id="monitor-squad-stats">
+              <div class="stat-row">
+                <span>Total Squids:</span>
+                <span id="monitor-total-squids">0</span>
+              </div>
+              <div class="stat-row">
+                <span>Active:</span>
+                <span id="monitor-active-squids">0</span>
+              </div>
+              <div class="stat-row">
+                <span>Idle:</span>
+                <span id="monitor-idle-squids">0</span>
+              </div>
+              <div class="stat-row">
+                <span>Working:</span>
+                <span id="monitor-working-squids">0</span>
+              </div>
+            </div>
+          </div>
+          
+          <div class="monitor-section">
+            <h3>📊 Performance</h3>
+            <div id="monitor-performance">
+              <div class="stat-row">
+                <span>Tasks Today:</span>
+                <span id="monitor-tasks-today">0</span>
+              </div>
+              <div class="stat-row">
+                <span>Success Rate:</span>
+                <span id="monitor-success-rate">0%</span>
+              </div>
+              <div class="stat-row">
+                <span>Avg Response:</span>
+                <span id="monitor-avg-response">0s</span>
+              </div>
+            </div>
+          </div>
+          
+          <div class="monitor-section">
+            <h3>🏛️ Projects</h3>
+            <div id="monitor-projects">
+              <div class="stat-row">
+                <span>Active Projects:</span>
+                <span id="monitor-active-projects">4</span>
+              </div>
+              <div class="stat-row">
+                <span>Total Agents:</span>
+                <span id="monitor-project-agents">0</span>
+              </div>
+            </div>
+          </div>
+          
+          <div class="monitor-section">
+            <h3>🔱 Poseidon Status</h3>
+            <div id="monitor-poseidon">
+              <div class="stat-row">
+                <span>Model Loaded:</span>
+                <span id="monitor-poseidon-model">No</span>
+              </div>
+              <div class="stat-row">
+                <span>Mode:</span>
+                <span id="monitor-poseidon-mode">Fallback</span>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 

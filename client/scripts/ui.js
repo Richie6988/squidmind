@@ -79,6 +79,20 @@ const ui = {
     const panel = document.getElementById(`${panelId}-panel`);
     if (panel) {
       panel.classList.remove('hidden');
+      
+      // PANEL STACKING: Last clicked panel on top
+      // Get all visible panels
+      const allPanels = document.querySelectorAll('.panel:not(.hidden)');
+      
+      // Reset all panels to base z-index
+      allPanels.forEach(p => {
+        p.style.zIndex = '100';
+      });
+      
+      // Bring this panel to top
+      panel.style.zIndex = '200';
+      
+      console.log(`📌 Panel "${panelId}" brought to top`);
     }
   },
 
@@ -814,6 +828,15 @@ ui.showPanel = function(panelName) {
       this.updatePoseidonSuggestions(['Show my squids', 'Create a task', 'Help me']);
     }
   }
+  
+  if (panelName === 'monitor') {
+    // Update system monitor stats
+    this.updateSystemMonitor();
+  }
+  
+  if (panelName === 'creator' || panelName === 'edit') {
+    this.loadAvailableTools();
+  }
 };
 
 // Close context menu on click outside
@@ -968,3 +991,72 @@ ui.enterTemple = function(temple) {
 };
 
 console.log('🏛️ Temple UI functions loaded');
+
+// Clear All Panels
+ui.clearAllPanels = function() {
+  console.log('🧹 Clearing all panels');
+  
+  // Get all panels
+  const panels = document.querySelectorAll('.panel:not(.hidden)');
+  
+  panels.forEach(panel => {
+    panel.classList.add('hidden');
+  });
+  
+  // Also close temple interior if open
+  const interior = document.getElementById('temple-interior');
+  if (interior) {
+    interior.classList.add('hidden');
+  }
+  
+  // Close model selector if open
+  const modelSelector = document.getElementById('model-selector-panel');
+  if (modelSelector) {
+    modelSelector.classList.add('hidden');
+  }
+  
+  console.log(`✅ Closed ${panels.length} panels`);
+};
+
+// Update System Monitor Stats
+ui.updateSystemMonitor = function() {
+  if (!aquarium || !aquarium.squids) return;
+  
+  const squids = aquarium.squids;
+  
+  // Squad stats
+  document.getElementById('monitor-total-squids').textContent = squids.length;
+  document.getElementById('monitor-active-squids').textContent = 
+    squids.filter(s => s.status !== 'sleeping').length;
+  document.getElementById('monitor-idle-squids').textContent = 
+    squids.filter(s => s.status === 'idle').length;
+  document.getElementById('monitor-working-squids').textContent = 
+    squids.filter(s => s.status === 'working').length;
+  
+  // Poseidon status
+  if (typeof poseidon !== 'undefined') {
+    const info = poseidon.getModelInfo();
+    document.getElementById('monitor-poseidon-model').textContent = 
+      info.loaded ? 'Yes' : 'No';
+    document.getElementById('monitor-poseidon-mode').textContent = info.mode;
+  }
+  
+  // Count agents in projects
+  if (aquarium.templeManager) {
+    let totalAgentsInProjects = 0;
+    aquarium.templeManager.temples.forEach(temple => {
+      totalAgentsInProjects += temple.agentCount;
+    });
+    document.getElementById('monitor-project-agents').textContent = totalAgentsInProjects;
+  }
+};
+
+// Auto-update monitor every 2 seconds
+setInterval(() => {
+  const monitorPanel = document.getElementById('monitor-panel');
+  if (monitorPanel && !monitorPanel.classList.contains('hidden')) {
+    ui.updateSystemMonitor();
+  }
+}, 2000);
+
+console.log('🧹 Clear All & Monitor system loaded');
