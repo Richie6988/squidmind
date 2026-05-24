@@ -817,3 +817,75 @@ async function start() {
 }
 
 start();
+
+// ==================== MODEL MANAGEMENT ROUTES ====================
+
+// Scan for available models
+app.get('/api/models/scan', async (req, res) => {
+  try {
+    console.log('🔍 Scanning for models...');
+    const models = await modelManager.listModels();
+    console.log(`✅ Found ${models.length} models`);
+    
+    res.json({
+      success: true,
+      models: models.map(m => ({
+        name: m.name || m.file,
+        path: m.full_path,
+        size: m.size_mb ? m.size_mb * 1024 * 1024 : 0,
+        source: m.source,
+        loaded: m.loaded
+      }))
+    });
+  } catch (error) {
+    console.error('❌ Model scan error:', error);
+    res.json({
+      success: false,
+      error: error.message,
+      models: []
+    });
+  }
+});
+
+// Load a specific model
+app.post('/api/models/load', async (req, res) => {
+  try {
+    const { path: modelPath } = req.body;
+    console.log('📥 Loading model:', modelPath);
+    
+    const model = await modelManager.loadModel(modelPath);
+    
+    res.json({
+      success: true,
+      message: 'Model loaded successfully',
+      model: {
+        path: modelPath
+      }
+    });
+  } catch (error) {
+    console.error('❌ Model load error:', error);
+    res.json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// Get loaded models
+app.get('/api/models/loaded', (req, res) => {
+  try {
+    const models = modelManager.getLoadedModels();
+    res.json({
+      success: true,
+      models
+    });
+  } catch (error) {
+    console.error('❌ Get loaded models error:', error);
+    res.json({
+      success: false,
+      error: error.message,
+      models: []
+    });
+  }
+});
+

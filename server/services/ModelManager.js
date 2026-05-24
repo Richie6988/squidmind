@@ -120,18 +120,32 @@ class ModelManager {
    * Load model from local path or HuggingFace cache
    */
   async loadModel(modelPath, options = {}) {
+    console.log('🔍 ========== LOAD MODEL DEBUG ==========');
+    console.log('📥 Requested model:', modelPath);
+    console.log('⚙️  Options:', JSON.stringify(options, null, 2));
+    
     try {
       let fullPath = modelPath;
       
+      console.log('📂 Step 1: Resolving path...');
+      
       // Check if it's a relative path (local model)
       if (!path.isAbsolute(modelPath)) {
+        console.log('   → Relative path detected');
+        
         // Try local models dir first
         const localPath = path.join(MODELS_DIR, modelPath);
+        console.log('   → Checking local:', localPath);
+        
         const localExists = await fs.access(localPath).then(() => true).catch(() => false);
         
         if (localExists) {
           fullPath = localPath;
+          console.log('   ✅ Found in local directory');
         } else {
+          console.log('   ❌ Not found in local directory');
+          console.log('   → Searching HuggingFace cache...');
+          
           // Search in HuggingFace cache
           const hfModel = this.hfModels.find(m => 
             m.file === modelPath || 
@@ -140,35 +154,55 @@ class ModelManager {
           
           if (hfModel) {
             fullPath = hfModel.full_path;
-            console.log(`📦 Found in HuggingFace cache: ${hfModel.name}/${hfModel.file}`);
+            console.log(`   ✅ Found in HuggingFace cache: ${hfModel.name}/${hfModel.file}`);
           } else {
+            console.log('   ❌ NOT FOUND in HuggingFace cache');
+            console.log('   Available HF models:', this.hfModels.length);
+            this.hfModels.slice(0, 3).forEach(m => console.log('      -', m.file));
             throw new Error(`Model not found: ${modelPath}`);
           }
         }
+      } else {
+        console.log('   → Absolute path provided');
       }
+      
+      console.log('📍 Final path:', fullPath);
       
       // Check if already loaded
       if (this.loadedModels.has(fullPath)) {
-        console.log(`📦 Model already loaded: ${path.basename(fullPath)}`);
+        console.log(`✅ Model already loaded: ${path.basename(fullPath)}`);
+        console.log('=======================================');
         return this.loadedModels.get(fullPath);
       }
 
-      console.log(`📦 Loading GGUF model: ${path.basename(fullPath)}...`);
-      
+      console.log('📂 Step 2: Loading node-llama-cpp...');
       const { LlamaModel } = await this.ensureLlamaLib();
+      console.log('   ✅ node-llama-cpp loaded');
+      
+      console.log('📂 Step 3: Creating LlamaModel instance...');
+      console.log('   Model path:', fullPath);
+      console.log('   GPU layers:', options.nGpuLayers || 0);
       
       const model = new LlamaModel({
         modelPath: fullPath,
         gpuLayers: options.nGpuLayers || 0,
         ...options
       });
+      
+      console.log('   ✅ LlamaModel instance created');
 
       this.loadedModels.set(fullPath, model);
-      console.log(`✅ Model loaded: ${path.basename(fullPath)}`);
+      console.log(`✅ SUCCESS! Model loaded: ${path.basename(fullPath)}`);
+      console.log('📊 Total loaded models:', this.loadedModels.size);
+      console.log('=======================================');
       
       return model;
     } catch (error) {
-      console.error(`❌ Failed to load model ${modelPath}:`, error);
+      console.error('❌ ========== LOAD FAILED ==========');
+      console.error('Model path:', modelPath);
+      console.error('Error:', error.message);
+      console.error('Stack:', error.stack);
+      console.error('====================================');
       throw error;
     }
   }
@@ -179,8 +213,9 @@ class ModelManager {
   async ensureLlamaLib() {
     if (!this.llamaLib) {
       try {
+        console.log('📦 Loading node-llama-cpp...');
         this.llamaLib = await import('node-llama-cpp');
-        console.log('✅ node-llama-cpp loaded');
+        console.log('✅ node-llama-cpp loaded successfully');
       } catch (error) {
         console.error('❌ Failed to load node-llama-cpp:', error.message);
         console.log('💡 Install with: npm install node-llama-cpp');
@@ -188,41 +223,6 @@ class ModelManager {
       }
     }
     return this.llamaLib;
-  }
-
-  /**
-   * Load a GGUF model from disk
-   * @param {string} modelPath - Path to .gguf file
-   * @param {object} options - Model options (nCtx, nGpuLayers, etc.)
-   */
-  async loadModel(modelPath, options = {}) {
-    try {
-      const fullPath = path.join(MODELS_DIR, modelPath);
-      
-      // Check if already loaded
-      if (this.loadedModels.has(modelPath)) {
-        console.log(`📦 Model already loaded: ${modelPath}`);
-        return this.loadedModels.get(modelPath);
-      }
-
-      console.log(`📦 Loading GGUF model: ${modelPath}...`);
-      
-      const { LlamaModel } = await this.ensureLlamaLib();
-      
-      const model = new LlamaModel({
-        modelPath: fullPath,
-        gpuLayers: options.nGpuLayers || 0, // 0 = CPU only
-        ...options
-      });
-
-      this.loadedModels.set(modelPath, model);
-      console.log(`✅ Model loaded: ${modelPath}`);
-      
-      return model;
-    } catch (error) {
-      console.error(`❌ Failed to load model ${modelPath}:`, error);
-      throw error;
-    }
   }
 
   /**
@@ -275,64 +275,6 @@ class ModelManager {
   }
 
   /**
-   * List available models in the models directory
-   */
-  async listModels() {
-    try {
-      const files = await fs.readdir(MODELS_DIR);
-      const ggufFiles = files.filter(f => f.endsWith('.gguf'));
-      
-      return ggufFiles.map(file => ({
-        name: file,
-        path: file,
-        size: null, // Could add file size check
-        loaded: this.loadedModels.has(file)
-      }));
-    } catch (error) {
-      console.error('Error listing models:', error);
-      return [];
-    }
-  }
-
-  /**
-   * Unload a model to free memory
-   */
-  async unloadModel(modelPath) {
-    if (this.loadedModels.has(modelPath)) {
-      const model = this.loadedModels.get(modelPath);
-      // Cleanup associated sessions
-      for (const [sessionId, session] of this.sessions.entries()) {
-        if (session.context.model === model) {
-          this.sessions.delete(sessionId);
-        }
-      }
-      
-      this.loadedModels.delete(modelPath);
-      console.log(`🗑️  Model unloaded: ${modelPath}`);
-      return true;
-    }
-    return false;
-  }
-
-  /**
-   * Get model info
-   */
-  getModelInfo(modelPath) {
-    const model = this.loadedModels.get(modelPath);
-    if (!model) {
-      return null;
-    }
-
-    return {
-      path: modelPath,
-      loaded: true,
-      sessions: Array.from(this.sessions.entries())
-        .filter(([_, session]) => session.context.model === model)
-        .map(([id]) => id)
-    };
-  }
-
-  /**
    * Close a session
    */
   closeSession(sessionId) {
@@ -342,6 +284,16 @@ class ModelManager {
       return true;
     }
     return false;
+  }
+
+  /**
+   * Get list of currently loaded models
+   */
+  getLoadedModels() {
+    return Array.from(this.loadedModels.keys()).map(path => ({
+      path,
+      name: path.split('/').pop()
+    }));
   }
 
   /**
