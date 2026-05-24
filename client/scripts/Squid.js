@@ -163,10 +163,21 @@ class Squid {
     // Tentacles
     this.drawTentacles(ctx, size);
     
-    // Eyes
-    this.drawEyes(ctx, size);
+    // Eyes (custom from accessories, falls back to default)
+    if (this.accessories && this.accessories.eyes && this.accessories.eyes !== 'round' && typeof SquidAccessories !== 'undefined') {
+      SquidAccessories.drawEyes(ctx, this.accessories.eyes, size);
+    } else {
+      this.drawEyes(ctx, size);
+    }
     
-    // Outfit accessories
+    // === V2 Pixel Art Accessories (from agent.appearance.accessories) ===
+    if (typeof SquidAccessories !== 'undefined' && this.accessories) {
+      if (this.accessories.outfit) SquidAccessories.drawOutfit(ctx, this.accessories.outfit, size);
+      if (this.accessories.hat) SquidAccessories.drawHat(ctx, this.accessories.hat, size);
+      if (this.accessories.glasses) SquidAccessories.drawGlasses(ctx, this.accessories.glasses, size);
+    }
+    
+    // Legacy outfit accessories (older format)
     if (this.outfit.hat) this.drawHat(ctx, size);
     if (this.outfit.accessory) this.drawAccessory(ctx, size);
     if (this.outfit.tool) this.drawTool(ctx, size);

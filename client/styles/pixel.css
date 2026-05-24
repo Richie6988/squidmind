@@ -3298,3 +3298,31 @@ button .pixel-icon {
   background: var(--danger);
   color: white;
 }
+
+/* ========== TEMPLE SQUID ASSIGNER (with search) ========== */
+
+.squid-assigner-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.squid-card.assigned-here {
+  border: 2px solid var(--success);
+  background: rgba(6, 255, 165, 0.08);
+}
+
+.squid-assigned-elsewhere {
+  font-size: 8px;
+  color: var(--warning, #FBBF24);
+  margin-top: 2px;
+}
+
+.squid-card button:disabled {
+  background: var(--success);
+  color: black;
+  cursor: default;
+  opacity: 0.7;
+}
+

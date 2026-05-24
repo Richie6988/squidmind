@@ -288,6 +288,25 @@ const AgentForm = {
     const key = `${file}::${fieldPath}`;
     this.dirty.set(key, { file, fieldPath, newValue });
     this._updateSaveButton();
+    
+    // LIVE PREVIEW for appearance changes
+    this._livePreview(fieldPath, newValue);
+  },
+
+  _livePreview(fieldPath, value) {
+    // Find the squid this agent represents and update its visuals immediately
+    if (!window.squids) return;
+    const squid = window.squids.find(s => s.agent_id === this.agentId || s.agentId === this.agentId);
+    if (!squid) return;
+    
+    if (fieldPath === 'appearance.primary_color') squid.color = value;
+    if (fieldPath === 'appearance.secondary_color') squid.colorDark = value;
+    if (fieldPath === 'appearance.size_scale') squid.baseSize = value;
+    if (fieldPath.startsWith('appearance.accessories.')) {
+      if (!squid.accessories) squid.accessories = {};
+      const slot = fieldPath.split('.').pop();
+      squid.accessories[slot] = value === 'none' ? null : value;
+    }
   },
 
   _updateSaveButton() {

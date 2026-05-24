@@ -2,24 +2,58 @@
   "schema_version": "2.0.0",
   "schema_type": "logs",
   "metadata": {
-    "total_entries": 1, "last_entry_id": 1,
+    "total_entries": 1,
+    "last_entry_id": 1,
     "rotation_policy": "Archive entries older than 30 days or when exceeding 10000",
     "archive_path": "logs/archive/",
     "last_updated_at": "2025-01-20T17:00:00.000Z"
   },
   "event_types": [
-    "system_startup", "system_shutdown",
-    "agent_created", "agent_woken", "agent_slept", "agent_archived",
-    "task_created", "task_assigned", "task_started", "task_chunk_completed",
-    "task_completed", "task_failed", "task_cancelled", "task_reassigned",
-    "project_created", "project_updated", "project_archived",
-    "model_loaded", "model_unloaded", "model_overloaded",
-    "tool_invoked", "tool_failed",
-    "json_update", "user_input", "poseidon_decision",
-    "approval_granted", "approval_denied",
-    "checkpoint_created", "checkpoint_restored"
+    "system_startup",
+    "system_shutdown",
+    "agent_created",
+    "agent_woken",
+    "agent_slept",
+    "agent_archived",
+    "task_created",
+    "task_assigned",
+    "task_started",
+    "task_chunk_completed",
+    "task_completed",
+    "task_failed",
+    "task_cancelled",
+    "task_reassigned",
+    "project_created",
+    "project_updated",
+    "project_archived",
+    "model_loaded",
+    "model_unloaded",
+    "model_overloaded",
+    "tool_invoked",
+    "tool_failed",
+    "json_update",
+    "user_input",
+    "poseidon_decision",
+    "approval_granted",
+    "approval_denied",
+    "checkpoint_created",
+    "checkpoint_restored"
   ],
   "entries": [
-    {"log_id": 1, "timestamp": "2025-01-20T17:00:00.000Z", "event_type": "system_startup", "severity": "info", "actor": {"type": "system", "id": "poseidon_main"}, "subject": {"type": "system", "id": "data_architecture"}, "action": "Neuronal architecture v2.0.0 initialized"}
+    {
+      "log_id": 1,
+      "timestamp": "2025-01-20T17:00:00.000Z",
+      "event_type": "system_startup",
+      "severity": "info",
+      "actor": {
+        "type": "system",
+        "id": "poseidon_main"
+      },
+      "subject": {
+        "type": "system",
+        "id": "data_architecture"
+      },
+      "action": "Neuronal architecture v2.0.0 initialized"
+    }
   ]
 }
