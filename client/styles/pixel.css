@@ -2464,8 +2464,7 @@ input[type="color"]::-webkit-color-swatch {
 .btn-new-project {
   position: fixed;
   top: 80px;
-  left: 50%;
-  transform: translateX(-50%);
+  right: 300px; /* Right side, not blocking system panel */
   padding: 12px 20px;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   color: white;
@@ -2479,7 +2478,7 @@ input[type="color"]::-webkit-color-swatch {
 }
 
 .btn-new-project:hover {
-  transform: translateX(-50%) translateY(-2px);
+  transform: translateY(-2px);
   box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
 }
 

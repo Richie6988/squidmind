@@ -1753,27 +1753,87 @@ console.log('✅ Poseidon quick actions loaded');
 
 // ==================== CLICK OUTSIDE TO CLOSE PANELS ====================
 
-document.addEventListener('click', function(e) {
+document.addEventListener('mousedown', function(e) {
   // Don't close if clicking buttons that open things
   if (e.target.closest('.btn-nav') || 
       e.target.closest('.btn-action') ||
       e.target.closest('.btn-new-project') ||
+      e.target.closest('.btn-primary') ||
+      e.target.closest('.btn-secondary') ||
       e.target.closest('button[onclick*="showPanel"]') ||
       e.target.closest('button[onclick*="openModal"]') ||
       e.target.closest('button[onclick*="BrainEditor"]')) {
     return;
   }
   
-  // Get all visible panels
+  // Get all visible panels (excluding permanent right panel)
   const panels = document.querySelectorAll('.panel:not(.hidden):not(.right-panel-permanent), .squid-detail-modal:not(.hidden), .modal:not(.hidden)');
   
+  let clickedInsideAnyPanel = false;
   panels.forEach(panel => {
-    // Check if click is outside panel
-    if (!panel.contains(e.target)) {
-      // Close the panel
-      panel.classList.add('hidden');
+    if (panel.contains(e.target)) {
+      clickedInsideAnyPanel = true;
     }
   });
-});
+  
+  // If clicked outside all panels, close them all
+  if (!clickedInsideAnyPanel && panels.length > 0) {
+    panels.forEach(panel => {
+      panel.classList.add('hidden');
+    });
+    console.log('✅ Closed all panels (clicked outside)');
+  }
+}, true); // Use capture phase
 
 console.log('✅ Click outside to close ALL panels enabled');
+
+// ==================== TASK QUEUE CANCEL ====================
+
+ui.cancelTask = function(taskId) {
+  if (!confirm('Cancel this task?')) return;
+  
+  // Remove from UI
+  const taskEl = document.querySelector(`[data-task-id="${taskId}"]`);
+  if (taskEl) taskEl.remove();
+  
+  // Update backend (if API exists)
+  fetch(`/api/tasks/${taskId}`, { method: 'DELETE' })
+    .then(res => res.json())
+    .then(data => {
+      if (data.success) {
+        console.log('✅ Task cancelled:', taskId);
+      }
+    })
+    .catch(err => console.warn('Failed to cancel task:', err));
+};
+
+console.log('✅ Task cancel functionality loaded');
+
+// ==================== TASK QUEUE MANAGEMENT ====================
+
+ui.addTestTask = function() {
+  const taskQueue = document.getElementById('task-queue');
+  if (!taskQueue) return;
+  
+  // Clear hint if first task
+  if (taskQueue.querySelector('.hint')) {
+    taskQueue.innerHTML = '';
+  }
+  
+  const taskId = 'task_' + Date.now();
+  const taskName = prompt('Task name:', 'Test Task');
+  if (!taskName) return;
+  
+  const taskDiv = document.createElement('div');
+  taskDiv.setAttribute('data-task-id', taskId);
+  taskDiv.style.cssText = 'padding: 8px; margin: 4px 0; background: rgba(6, 255, 165, 0.1); border-left: 3px solid var(--accent); font-size: 9px; display: flex; justify-content: space-between; align-items: center;';
+  taskDiv.innerHTML = `
+    <span>${taskName}</span>
+    <button onclick="ui.cancelTask('${taskId}')" style="font-size: 8px; padding: 2px 6px; background: var(--danger); color: white; border: none; cursor: pointer;">✕</button>
+  `;
+  
+  taskQueue.appendChild(taskDiv);
+  console.log('✅ Task added:', taskName);
+};
+
+console.log('✅ Task queue management loaded');

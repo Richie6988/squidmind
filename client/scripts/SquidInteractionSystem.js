@@ -106,16 +106,23 @@ class SquidInteractionSystem {
       
       if (distance > this.dragThreshold) {
         this.mouseMoved = true;
-        // console.log('   🚀 Mouse MOVED - starting drag'); // Removed verbose log
       }
     }
     
-    // Handle dragging (as soon as draggedSquid is set, move it!)
+    // Handle dragging squid
     if (this.draggedSquid) {
       this.draggedSquid.targetX = pos.x - this.dragOffset.x;
       this.draggedSquid.targetY = pos.y - this.dragOffset.y;
       this.aquarium.canvas.style.cursor = 'grabbing';
-      return; // Skip hover detection while dragging
+      return;
+    }
+    
+    // Handle dragging Poseidon
+    if (this.draggedPoseidon) {
+      this.draggedPoseidon.x = pos.x - this.dragOffset.x;
+      this.draggedPoseidon.y = pos.y - this.dragOffset.y;
+      this.aquarium.canvas.style.cursor = 'grabbing';
+      return;
     }
     
     // Handle hovering
@@ -190,18 +197,19 @@ class SquidInteractionSystem {
     if (result && result.type === 'squid') {
       const squid = result.entity;
       
-      console.log(`🖱️ Mouse DOWN on squid: ${squid.name} at (${squid.x.toFixed(0)}, ${squid.y.toFixed(0)})`);
-      
-      // Prepare for potential drag (but don't commit yet)
+      // Prepare for potential drag
       this.draggedSquid = squid;
       this.dragOffset.x = pos.x - squid.x;
       this.dragOffset.y = pos.y - squid.y;
       
-      console.log(`   Ready to drag! Offset: (${this.dragOffset.x.toFixed(0)}, ${this.dragOffset.y.toFixed(0)})`);
+      e.preventDefault();
+    } else if (result && result.type === 'poseidon') {
+      // Prepare to drag Poseidon
+      this.draggedPoseidon = result.entity;
+      this.dragOffset.x = pos.x - result.entity.x;
+      this.dragOffset.y = pos.y - result.entity.y;
       
       e.preventDefault();
-    } else {
-      console.log(`🖱️ Mouse DOWN on empty space`);
     }
   }
 
@@ -212,11 +220,11 @@ class SquidInteractionSystem {
     if (e.button !== 0) return; // Only left click
     
     const pos = this.getMousePos(e);
-    console.log('🖱️ Mouse UP at:', pos.x, pos.y);
+    
     
     // Check for click (not drag) - mouse must NOT have moved
     const wasDragging = this.mouseMoved;
-    console.log('   Was dragging:', wasDragging);
+    
     
     if (this.draggedSquid) {
       if (wasDragging) {
@@ -235,8 +243,11 @@ class SquidInteractionSystem {
             temple.assignedSquids.push(squid.id);
             console.log(`✅ Assigned ${squid.name} to ${temple.name} temple`);
             
-            // Show confirmation
-            alert(`✅ ${squid.name} assigned to ${temple.name}!`);
+            // Visual feedback - move squid inside temple
+            squid.x = temple.x;
+            squid.y = temple.y;
+            squid.targetX = temple.x;
+            squid.targetY = temple.y;
             
             // Log the assignment
             if (window.ui && window.ui.addLog) {
@@ -247,7 +258,16 @@ class SquidInteractionSystem {
           }
         }
       }
+      
+      // Reset squid drag state completely
+      this.draggedSquid.isDragging = false;
       this.draggedSquid = null;
+      this.aquarium.canvas.style.cursor = 'default';
+    }
+    
+    // Reset Poseidon drag
+    if (this.draggedPoseidon) {
+      this.draggedPoseidon = null;
       this.aquarium.canvas.style.cursor = 'default';
     }
     
@@ -258,7 +278,7 @@ class SquidInteractionSystem {
     // Handle click (if NOT dragging)
     if (!wasDragging) {
       const result = this.findEntityAt(pos.x, pos.y);
-      console.log('   Entity at click:', result ? result.type : 'none');
+      
       
       if (result) {
         const now = Date.now();
@@ -295,10 +315,10 @@ class SquidInteractionSystem {
           }
         }
       } else {
-        console.log('   → Clicked empty space');
+        
       }
     } else {
-      console.log('   → Was dragging, not a click');
+      
     }
   }
 
@@ -487,3 +507,102 @@ class SquidInteractionSystem {
 if (typeof window !== 'undefined') {
   window.SquidInteractionSystem = SquidInteractionSystem;
 }
+
+  /**
+   * Handle context menu (right-click)
+   */
+  handleContextMenu(e) {
+    e.preventDefault();
+    
+    const pos = this.getMousePos(e);
+    const result = this.findEntityAt(pos.x, pos.y);
+    
+    if (result && result.type === 'temple') {
+      const temple = result.entity;
+      this.showTempleContextMenu(temple, pos.x, pos.y);
+    }
+  }
+  
+  /**
+   * Show temple context menu
+   */
+  showTempleContextMenu(temple, x, y) {
+    // Remove existing menu
+    const existing = document.getElementById('temple-context-menu');
+    if (existing) existing.remove();
+    
+    // Create context menu
+    const menu = document.createElement('div');
+    menu.id = 'temple-context-menu';
+    menu.style.cssText = `
+      position: fixed;
+      left: ${x}px;
+      top: ${y}px;
+      background: var(--ocean-deep);
+      border: 2px solid var(--border);
+      border-radius: 4px;
+      padding: 8px;
+      z-index: 10000;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+    `;
+    
+    menu.innerHTML = `
+      <div style="font-size: 10px; color: var(--accent); margin-bottom: 8px;">${temple.name}</div>
+      <button onclick="SquidInteractionSystem.customizeTempleColors('${temple.name}')" style="width: 100%; padding: 6px; margin: 2px 0; font-size: 9px; background: var(--accent); color: black; border: none; cursor: pointer;">
+        🎨 Customize Colors
+      </button>
+      <button onclick="TempleInterior.open('${temple.name}')" style="width: 100%; padding: 6px; margin: 2px 0; font-size: 9px; background: var(--success); color: black; border: none; cursor: pointer;">
+        🏛️ Enter Temple
+      </button>
+    `;
+    
+    document.body.appendChild(menu);
+    
+    // Close on click outside
+    setTimeout(() => {
+      document.addEventListener('click', function closeMenu() {
+        menu.remove();
+        document.removeEventListener('click', closeMenu);
+      }, { once: true });
+    }, 100);
+  }
+  
+  /**
+   * Customize temple colors
+   */
+  static customizeTempleColors(templeName) {
+    const outsideColor = prompt('Temple outside color (hex):', '#457B9D');
+    if (!outsideColor) return;
+    
+    const insideColor = prompt('Temple inside color (hex):', '#1D3557');
+    if (!insideColor) return;
+    
+    // Update backend
+    fetch(`/api/projects/${templeName}/colors`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        outside: outsideColor,
+        inside: insideColor
+      })
+    })
+    .then(res => res.json())
+    .then(data => {
+      if (data.success) {
+        alert(`✅ Temple colors updated!`);
+        // Reload temples
+        if (window.aquarium && window.aquarium.loadTemples) {
+          window.aquarium.loadTemples();
+        }
+      } else {
+        alert('❌ Failed: ' + data.error);
+      }
+    })
+    .catch(error => alert('❌ Error: ' + error.message));
+  }
+}
+
+// Enable context menu
+window.SquidInteractionSystem = SquidInteractionSystem;
+
+console.log('✅ Temple context menu enabled');
