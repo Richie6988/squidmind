@@ -305,13 +305,21 @@ class SquidInteractionSystem {
           console.log('   → Clicked Squid:', squid.name);
           
           if (isDoubleClick) {
-            // Double click - quick action
+            // Double click - cancel pending single-click and run animation
             console.log('   → DOUBLE CLICK - Celebrate!');
+            if (this.pendingSingleClick) {
+              clearTimeout(this.pendingSingleClick);
+              this.pendingSingleClick = null;
+            }
             this.handleSquidDoubleClick(squid);
           } else {
-            // Single click - show details
-            console.log('   → SINGLE CLICK - Show details');
-            this.handleSquidClick(squid);
+            // Schedule single-click - may be canceled by a follow-up double-click
+            if (this.pendingSingleClick) clearTimeout(this.pendingSingleClick);
+            this.pendingSingleClick = setTimeout(() => {
+              console.log('   → SINGLE CLICK - Show details');
+              this.handleSquidClick(squid);
+              this.pendingSingleClick = null;
+            }, this.doubleClickDelay + 20);
           }
         }
       } else {
@@ -370,24 +378,25 @@ class SquidInteractionSystem {
    */
   handleSquidClick(squid) {
     console.log('[SQUID] CLICKED SQUID:', squid.name);
-    console.log('   Opening detail panel...');
     
-    // Visual feedback - bounce animation
+    // Bounce visual feedback
     const originalY = squid.targetY;
-    const bounceHeight = 30;
-    const bounceSpeed = 0.3;
+    squid.targetY = originalY - 30;
+    setTimeout(() => { squid.targetY = originalY; }, 300);
     
-    // Bounce up
-    squid.targetY = originalY - bounceHeight;
-    setTimeout(() => {
-      // Bounce down
-      squid.targetY = originalY;
-    }, bounceSpeed * 1000);
+    // Prefer V2 AgentForm if the squid has a registered agent_id
+    const agentId = squid.agent_id || squid.agentId;
+    if (agentId && typeof AgentForm !== 'undefined') {
+      AgentForm.open(agentId).catch(err => {
+        console.warn('[SQUID] AgentForm failed, falling back:', err.message);
+        if (window.ui?.openSquidDetailModal) window.ui.openSquidDetailModal(squid);
+      });
+      return;
+    }
     
-    // Show details in CENTER MODAL!
-    if (typeof window.ui !== 'undefined') {
-      window.ui.openSquidDetailModal(squid); // Center modal!
-      console.log('   [OK] Detail modal opened!');
+    // Fall back to legacy detail modal
+    if (typeof window.ui !== 'undefined' && window.ui.openSquidDetailModal) {
+      window.ui.openSquidDetailModal(squid);
     } else {
       console.error('   [ERROR] UI not loaded yet - check script order in index.html');
     }

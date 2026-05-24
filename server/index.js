@@ -221,10 +221,24 @@ app.post('/api/projects', async (req, res) => {
   }
 });
 
+// Helper: map project name (e.g. "AQUARIUM") to folder (e.g. "PROJECT_001")
+async function resolveProjectFolder(name) {
+  const registryPath = path.join(__dirname, '../data/projects/project_registry.json');
+  const data = JSON.parse(await fs.readFile(registryPath, 'utf8'));
+  for (const [id, entry] of Object.entries(data.projects)) {
+    if (entry.name === name.toUpperCase() || entry.folder === name.toUpperCase()) {
+      return entry.folder;
+    }
+  }
+  // Fallback: assume name IS folder
+  return name.toUpperCase();
+}
+
 // Get project memory
 app.get('/api/projects/:name/memory', async (req, res) => {
   try {
-    const memoryPath = path.join(__dirname, '../data/projects', req.params.name.toUpperCase(), 'project_memory.json');
+    const folder = await resolveProjectFolder(req.params.name);
+    const memoryPath = path.join(__dirname, '../data/projects', folder, 'project_memory.json');
     const memoryData = await fs.readFile(memoryPath, 'utf8');
     const memory = JSON.parse(memoryData);
     res.json({ success: true, memory });
@@ -237,7 +251,8 @@ app.get('/api/projects/:name/memory', async (req, res) => {
 app.put('/api/projects/:name/colors', async (req, res) => {
   try {
     const { outside, inside } = req.body;
-    const memoryPath = path.join(__dirname, '../data/projects', req.params.name.toUpperCase(), 'project_memory.json');
+    const folder = await resolveProjectFolder(req.params.name);
+    const memoryPath = path.join(__dirname, '../data/projects', folder, 'project_memory.json');
     
     const memoryData = await fs.readFile(memoryPath, 'utf8');
     const memory = JSON.parse(memoryData);

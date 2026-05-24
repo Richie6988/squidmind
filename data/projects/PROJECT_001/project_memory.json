@@ -1,13 +1,10 @@
 {
   "schema_version": "2.0.0",
   "schema_type": "project_memory",
-  
   "project_id": "project_001",
   "name": "AQUARIUM",
   "registered_in": "projects/project_registry.json",
-  
   "vision": "Create an immersive underwater gamified AI agent collaboration platform where autonomous squids work together on projects in a beautiful ocean environment",
-  
   "lifecycle": {
     "created_at": "2025-01-20T10:00:00.000Z",
     "first_commit_at": "2025-01-20T10:30:00.000Z",
@@ -15,7 +12,6 @@
     "status": "active",
     "phase": "Bug fixes and architecture refinement"
   },
-  
   "repository": {
     "type": "github",
     "url": "https://github.com/Richie6988/squidmind.git",
@@ -40,7 +36,6 @@
       "notes": "Use SSH for git operations, PAT for API calls"
     }
   },
-  
   "structure": {
     "root": "/home/richard/Bureau/AIKIP/SquidSquad/squidmind",
     "directories": {
@@ -48,12 +43,42 @@
         "path": "client/",
         "purpose": "Frontend application (vanilla JS)",
         "files_of_interest": [
-          {"file": "index.html", "lines": 799, "status": "stable", "purpose": "Main HTML structure"},
-          {"file": "scripts/aquarium.js", "lines": 300, "status": "stable", "purpose": "Canvas orchestrator"},
-          {"file": "scripts/Squid.js", "lines": 250, "status": "stable", "purpose": "Squid entity physics"},
-          {"file": "scripts/SquidInteractionSystem.js", "lines": 609, "status": "stable", "purpose": "Drag/drop/click handlers"},
-          {"file": "scripts/ui.js", "lines": 1900, "status": "active", "purpose": "Panel management"},
-          {"file": "styles/pixel.css", "lines": 2800, "status": "stable", "purpose": "Ocean theme styling"}
+          {
+            "file": "index.html",
+            "lines": 799,
+            "status": "stable",
+            "purpose": "Main HTML structure"
+          },
+          {
+            "file": "scripts/aquarium.js",
+            "lines": 300,
+            "status": "stable",
+            "purpose": "Canvas orchestrator"
+          },
+          {
+            "file": "scripts/Squid.js",
+            "lines": 250,
+            "status": "stable",
+            "purpose": "Squid entity physics"
+          },
+          {
+            "file": "scripts/SquidInteractionSystem.js",
+            "lines": 609,
+            "status": "stable",
+            "purpose": "Drag/drop/click handlers"
+          },
+          {
+            "file": "scripts/ui.js",
+            "lines": 1900,
+            "status": "active",
+            "purpose": "Panel management"
+          },
+          {
+            "file": "styles/pixel.css",
+            "lines": 2800,
+            "status": "stable",
+            "purpose": "Ocean theme styling"
+          }
         ],
         "not_finished": [
           "SVG pixel art icon system (replace [TAGS] with icons)",
@@ -66,9 +91,24 @@
         "path": "server/",
         "purpose": "Backend API + model management",
         "files_of_interest": [
-          {"file": "index.js", "lines": 1115, "status": "stable", "purpose": "Express API"},
-          {"file": "services/ModelManager.js", "lines": 200, "status": "stable", "purpose": "GGUF loading"},
-          {"file": "utils/idGenerator.js", "lines": 15, "status": "active", "purpose": "Unique ID generation"}
+          {
+            "file": "index.js",
+            "lines": 1115,
+            "status": "stable",
+            "purpose": "Express API"
+          },
+          {
+            "file": "services/ModelManager.js",
+            "lines": 200,
+            "status": "stable",
+            "purpose": "GGUF loading"
+          },
+          {
+            "file": "utils/idGenerator.js",
+            "lines": 15,
+            "status": "active",
+            "purpose": "Unique ID generation"
+          }
         ],
         "not_finished": [
           "RegistryManager class for new neuronal architecture",
@@ -81,36 +121,77 @@
         "path": "data/",
         "purpose": "Neuronal architecture storage",
         "files_of_interest": [
-          {"file": "main/poseidon_brain.json", "status": "active", "purpose": "Conductor"},
-          {"file": "agents/agent_registry.json", "status": "active", "purpose": "Agent index"},
-          {"file": "projects/project_registry.json", "status": "active", "purpose": "Project index"},
-          {"file": "tasks/tasks_registry.json", "status": "active", "purpose": "Task tracking"},
-          {"file": "logs/logs.json", "status": "active", "purpose": "Audit trail"}
+          {
+            "file": "main/poseidon_brain.json",
+            "status": "active",
+            "purpose": "Conductor"
+          },
+          {
+            "file": "agents/agent_registry.json",
+            "status": "active",
+            "purpose": "Agent index"
+          },
+          {
+            "file": "projects/project_registry.json",
+            "status": "active",
+            "purpose": "Project index"
+          },
+          {
+            "file": "tasks/tasks_registry.json",
+            "status": "active",
+            "purpose": "Task tracking"
+          },
+          {
+            "file": "logs/logs.json",
+            "status": "active",
+            "purpose": "Audit trail"
+          }
         ]
       },
       "docs": {
         "path": "docs/",
         "purpose": "Architecture documentation",
         "files_of_interest": [
-          {"file": "DATA_ARCHITECTURE.md", "status": "complete", "purpose": "Folder structure design"},
-          {"file": "WHY_THIS_ARCHITECTURE.md", "status": "active", "purpose": "Rationale for design choices"}
+          {
+            "file": "DATA_ARCHITECTURE.md",
+            "status": "complete",
+            "purpose": "Folder structure design"
+          },
+          {
+            "file": "WHY_THIS_ARCHITECTURE.md",
+            "status": "active",
+            "purpose": "Rationale for design choices"
+          }
         ]
       }
     },
     "external_dependencies": [
-      {"name": "llama.cpp", "purpose": "Local GGUF execution", "status": "installed"},
-      {"name": "HuggingFace cache", "path": "~/.cache/huggingface/hub", "purpose": "Model storage"}
+      {
+        "name": "llama.cpp",
+        "purpose": "Local GGUF execution",
+        "status": "installed"
+      },
+      {
+        "name": "HuggingFace cache",
+        "path": "~/.cache/huggingface/hub",
+        "purpose": "Model storage"
+      }
     ]
   },
-  
   "stakeholders": {
     "humans": [
-      {"user_id": "human_richard", "role": "Product Owner", "involvement": "high"}
+      {
+        "user_id": "human_richard",
+        "role": "Product Owner",
+        "involvement": "high"
+      }
     ],
     "agents": [],
-    "poseidon": {"role": "Orchestrator", "status": "active"}
+    "poseidon": {
+      "role": "Orchestrator",
+      "status": "active"
+    }
   },
-  
   "objectives": {
     "primary": [
       "Beautiful underwater aquarium with Three.js",
@@ -136,19 +217,32 @@
       "Neuronal architecture v2.0.0 designed"
     ]
   },
-  
   "progress": {
     "completion_percent": 88,
     "blockers": [],
     "next_steps": [
-      {"priority": "HIGH", "title": "Implement RegistryManager backend class"},
-      {"priority": "HIGH", "title": "Update API endpoints to use new architecture"},
-      {"priority": "HIGH", "title": "Update frontend to use new IDs"},
-      {"priority": "MEDIUM", "title": "Temple bubble columns visualization"},
-      {"priority": "MEDIUM", "title": "Resizable right panel"}
+      {
+        "priority": "HIGH",
+        "title": "Implement RegistryManager backend class"
+      },
+      {
+        "priority": "HIGH",
+        "title": "Update API endpoints to use new architecture"
+      },
+      {
+        "priority": "HIGH",
+        "title": "Update frontend to use new IDs"
+      },
+      {
+        "priority": "MEDIUM",
+        "title": "Temple bubble columns visualization"
+      },
+      {
+        "priority": "MEDIUM",
+        "title": "Resizable right panel"
+      }
     ]
   },
-  
   "metrics": {
     "code_lines": 8500,
     "commits": 48,
@@ -156,7 +250,6 @@
     "bugs_fixed": 18,
     "time_invested_hours": 35
   },
-  
   "colors": {
     "outside": "#457B9D",
     "inside": "#1D3557"

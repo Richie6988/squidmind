@@ -185,11 +185,11 @@
           <!-- Task Queue -->
           <div class="monitor-section">
             <h3>[TASKS] Task Queue</h3>
-            <div id="task-queue" style="max-height: 200px; overflow-y: auto;">
-              <p class="hint" style="font-size: 9px;">No tasks queued</p>
+            <div id="task-queue" style="max-height: 240px; overflow-y: auto;">
+              <p class="hint" style="font-size: 9px; color: var(--text-secondary);">Loading...</p>
             </div>
-            <button class="btn-secondary" onclick="ui.addTestTask()" style="width: 100%; margin-top: 8px; font-size: 9px;">
-              ➕ Add Task
+            <button class="btn-secondary" onclick="TaskQueueUI.addTask()" style="width: 100%; margin-top: 8px; font-size: 9px;">
+              + Add Task
             </button>
           </div>
           
@@ -790,6 +790,8 @@
   <script src="scripts/PanelResizer.js"></script>
   <script src="scripts/JsonEditor.js"></script>
   <script src="scripts/EditorBrowser.js"></script>
+  <script src="scripts/AgentForm.js"></script>
+  <script src="scripts/TaskQueueUI.js"></script>
   <script src="scripts/PanelManager.js"></script>
   <script src="scripts/ModelScanner.js"></script>
   <script src="scripts/Poseidon.js"></script>

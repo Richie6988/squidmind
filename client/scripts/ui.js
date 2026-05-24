@@ -1754,31 +1754,29 @@ console.log('[OK] Poseidon quick actions loaded');
 // ==================== CLICK OUTSIDE TO CLOSE PANELS ====================
 
 document.addEventListener('click', function(e) {
-  // ONLY exclude navigation buttons that OPEN panels
+  // Skip if clicking on something that opens panels
   if (e.target.closest('.header-nav') || 
       e.target.closest('.btn-new-project')) {
     return;
   }
   
-  // Get all visible panels (excluding permanent right panel)
-  const panels = document.querySelectorAll('.panel:not(.hidden):not(.right-panel-permanent), .squid-detail-modal:not(.hidden), .modal:not(.hidden)');
+  // Skip if click is INSIDE any panel/modal (including buttons inside them)
+  if (e.target.closest('.panel') ||
+      e.target.closest('.modal') ||
+      e.target.closest('.squid-detail-modal') ||
+      e.target.closest('.right-panel-permanent')) {
+    return;
+  }
   
-  let clickedInsideAnyPanel = false;
-  panels.forEach(panel => {
-    if (panel.contains(e.target)) {
-      clickedInsideAnyPanel = true;
+  // Click was truly outside - close all visible non-permanent panels
+  document.querySelectorAll('.panel:not(.hidden), .modal:not(.hidden), .squid-detail-modal:not(.hidden)').forEach(p => {
+    if (!p.classList.contains('right-panel-permanent')) {
+      p.classList.add('hidden');
     }
   });
-  
-  // If clicked outside all panels, close them all
-  if (!clickedInsideAnyPanel && panels.length > 0) {
-    panels.forEach(panel => {
-      panel.classList.add('hidden');
-    });
-  }
 });
 
-console.log('[OK] Click outside to close panels enabled (FIXED)');
+console.log('[OK] Click outside to close panels enabled');
 
 // ==================== TASK QUEUE CANCEL ====================
 
