@@ -222,6 +222,20 @@
             </div>
           </div>
           
+          <!-- Model Loader -->
+          <div class="monitor-section">
+            <h3>[MODELS] Models</h3>
+            <div id="monitor-model-status" style="font-size: 8px; color: var(--text-secondary); margin-bottom: 6px;">
+              Checking...
+            </div>
+            <button class="btn-secondary" onclick="ModelLoader.open()" style="width: 100%; font-size: 9px; margin-bottom: 4px;">
+              Load / Manage Models
+            </button>
+            <button class="btn-secondary" onclick="PoseidonChat.open()" style="width: 100%; font-size: 9px;">
+              Chat with Poseidon
+            </button>
+          </div>
+          
           <!-- JSON Registry Editor -->
           <div class="monitor-section">
             <h3>[DATA] Edit Registries</h3>
@@ -792,6 +806,8 @@
   <script src="scripts/EditorBrowser.js"></script>
   <script src="scripts/AgentForm.js"></script>
   <script src="scripts/TaskQueueUI.js"></script>
+  <script src="scripts/ModelLoader.js"></script>
+  <script src="scripts/PoseidonChat.js"></script>
   <script src="scripts/PanelManager.js"></script>
   <script src="scripts/ModelScanner.js"></script>
   <script src="scripts/Poseidon.js"></script>

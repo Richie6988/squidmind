@@ -32,6 +32,20 @@ const heartbeatRm = new RegistryManager(path.join(__dirname, '../data'));
 const heartbeat = new HeartbeatService(heartbeatRm, 5000);
 heartbeat.start();
 
+// === V2 MODEL SERVICE (GGUF loading + Poseidon chat) ===
+const V2ModelService = require('./services/V2ModelService');
+const { buildRouter: buildModelRouter, buildPoseidonChatRoute } = require('./routes/modelRoutes');
+const v2ModelService = new V2ModelService(heartbeatRm, path.join(__dirname, '../data/models'));
+app.use('/api/v2/models', buildModelRouter(v2ModelService));
+app.post('/api/v2/poseidon/chat', buildPoseidonChatRoute(v2ModelService));
+
+// Hook V2ModelService TTL check into heartbeat (runs every 5s)
+const _originalTick = heartbeat.tick.bind(heartbeat);
+heartbeat.tick = async function() {
+  await _originalTick();
+  await v2ModelService.checkTtl();
+};
+
 // Initialize services
 const orchestrator = new UnifiedOrchestrator();
 const scheduler = new Scheduler();

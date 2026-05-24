@@ -332,7 +332,12 @@ Always be encouraging and make the user feel their tasks are in good hands!`;
    * Handle click
    */
   handleClick() {
-    // Open chat panel
+    // V2: Open the streaming chat with poseidon_brain context
+    if (typeof PoseidonChat !== 'undefined') {
+      PoseidonChat.open();
+      return;
+    }
+    // Fallback to legacy panel if V2 chat not loaded
     if (typeof ui !== 'undefined') {
       ui.showPanel('poseidon');
     }
