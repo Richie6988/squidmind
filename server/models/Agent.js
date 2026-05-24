@@ -7,6 +7,7 @@ class Agent {
   constructor(data) {
     this.id = data.id || `squid_${Date.now()}`;
     this.name = data.name || 'Unnamed Squid';
+    this.nickname = data.nickname || null; // Pokemon-style nickname
     this.type = data.type || 'worker';
     this.created_at = data.created_at || new Date().toISOString();
     this.status = data.status || 'idle'; // idle, working, thinking, sleeping, error
@@ -14,11 +15,62 @@ class Agent {
     this.group_id = data.group_id || null;
     this.brain_id = data.brain_id || null; // Reference to Brain
     
+    // Visual customization (Pokemon-style)
+    this.appearance = data.appearance || {
+      body_color: '#FF6B9D', // Main squid color
+      accent_color: '#FFE66D', // Secondary color
+      eye_style: 'round', // round, cute, sleepy, sharp
+      tentacle_style: 'wavy', // wavy, straight, curly
+      size: 'medium', // small, medium, large
+      glow_intensity: 0.5 // 0-1
+    };
+    
+    // Outfit/Accessories (unlock system)
+    this.outfit = data.outfit || {
+      hat: null, // 'wizard_hat', 'crown', 'cap', 'headphones'
+      accessory: null, // 'glasses', 'bowtie', 'scarf', 'necklace'
+      tool: null, // 'wand', 'laptop', 'magnifying_glass'
+      background_effect: null // 'sparkles', 'code_rain', 'flames'
+    };
+    
+    // Stats & Performance (for marketplace)
+    this.stats = data.stats || {
+      level: 1,
+      experience: 0,
+      total_executions: 0,
+      success_count: 0,
+      average_quality: 0, // 0-10 rating
+      speed_rating: 0, // tokens/second
+      specialization_score: 0, // How good at its brain specialty
+      user_ratings: [], // Array of {user_id, rating, comment}
+      badges: [] // Earned achievements
+    };
+    
+    // Personality & Behavior (Pokemon-style traits)
+    this.personality = data.personality || {
+      mood: 'happy', // happy, focused, tired, excited, grumpy
+      energy: 100, // 0-100, decreases with use
+      affection: 50, // 0-100, increases with interaction
+      traits: [], // 'curious', 'careful', 'speedy', 'thorough'
+      favorite_tasks: [], // Track what it likes doing
+      animation_style: 'bouncy' // bouncy, smooth, energetic, calm
+    };
+    
+    // Marketplace data
+    this.marketplace = data.marketplace || {
+      is_for_sale: false,
+      price: 0,
+      owner_id: null,
+      clone_count: 0, // How many times cloned/sold
+      original_creator: null,
+      royalty_percentage: 10 // % to original creator on resale
+    };
+
     this.llm = data.llm || {
       provider: 'anthropic',
-      model: 'claude-haiku-4-20250514', // Petits modèles par défaut
+      model: 'claude-haiku-4-20250514',
       temperature: 0.7,
-      max_tokens: 500 // Réponses courtes
+      max_tokens: 500
     };
     
     this.prompt = data.prompt || {

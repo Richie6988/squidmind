@@ -87,14 +87,48 @@ class ToolRegistry {
     // Web tools
     this.registerTool({
       name: 'web_search',
-      description: 'Search the web using DuckDuckGo',
+      description: 'Search the web using Brave Search API',
       parameters: {
         query: { type: 'string', required: true, description: 'Search query' },
-        max_results: { type: 'number', required: false, description: 'Max results (default: 5)' }
+        count: { type: 'number', required: false, description: 'Number of results (default: 5, max: 20)' },
+        freshness: { type: 'string', required: false, description: 'Time filter: day, week, month, year' }
       },
-      execute: async ({ query, max_results = 5 }) => {
+      execute: async ({ query, count = 5, freshness = null }) => {
         try {
-          // Simple DuckDuckGo HTML scraping (for demo - use proper API in production)
+          const braveApiKey = process.env.BRAVE_API_KEY;
+          
+          // If Brave API key exists, use it (better results)
+          if (braveApiKey) {
+            const params = new URLSearchParams({
+              q: query,
+              count: Math.min(count, 20)
+            });
+            
+            if (freshness) {
+              params.append('freshness', freshness);
+            }
+            
+            const response = await axios.get(`https://api.search.brave.com/res/v1/web/search?${params}`, {
+              headers: {
+                'Accept': 'application/json',
+                'X-Subscription-Token': braveApiKey
+              }
+            });
+            
+            const results = response.data.web?.results || [];
+            return {
+              success: true,
+              provider: 'brave',
+              results: results.map(r => ({
+                title: r.title,
+                url: r.url,
+                description: r.description,
+                age: r.age
+              }))
+            };
+          }
+          
+          // Fallback to DuckDuckGo HTML scraping
           const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
           const response = await axios.get(url, {
             headers: { 'User-Agent': 'Mozilla/5.0' }
@@ -103,17 +137,25 @@ class ToolRegistry {
           const $ = cheerio.load(response.data);
           const results = [];
           
-          $('.result').slice(0, max_results).each((i, elem) => {
+          $('.result').slice(0, count).each((i, elem) => {
             const title = $(elem).find('.result__title').text().trim();
             const snippet = $(elem).find('.result__snippet').text().trim();
             const url = $(elem).find('.result__url').text().trim();
             
             if (title) {
-              results.push({ title, snippet, url });
+              results.push({ 
+                title, 
+                description: snippet, 
+                url 
+              });
             }
           });
           
-          return { success: true, results };
+          return { 
+            success: true,
+            provider: 'duckduckgo',
+            results 
+          };
         } catch (error) {
           return { success: false, error: error.message };
         }

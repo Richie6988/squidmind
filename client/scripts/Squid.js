@@ -1,323 +1,688 @@
 class Squid {
-  constructor(agentData, canvas) {
-    this.id = agentData.id;
-    this.name = agentData.name;
-    this.type = agentData.type;
-    this.status = agentData.status;
-    this.current_thought = agentData.current_thought;
-    this.group_id = agentData.group_id;
-    this.color = agentData.visual?.color || '#06FFA5';
-    this.size = agentData.visual?.size === 'large' ? 48 : 32;
-    
-    // Position
-    this.x = Math.random() * (canvas.width - this.size);
-    this.y = Math.random() * (canvas.height - this.size);
-    
-    // Movement
+  constructor(data) {
+    this.id = data.id;
+    this.name = data.name;
+    this.nickname = data.nickname || data.name;
+    this.x = data.x || Math.random() * 700 + 50;
+    this.y = data.y || Math.random() * 500 + 50;
     this.vx = (Math.random() - 0.5) * 2;
     this.vy = (Math.random() - 0.5) * 2;
-    this.targetX = this.x;
-    this.targetY = this.y;
+    this.status = data.status || 'idle';
+    this.current_thought = data.current_thought;
     
-    // Animation
-    this.frame = 0;
-    this.frameTimer = 0;
-    this.frameDelay = 100; // ms
+    // Appearance & outfit
+    this.appearance = data.appearance || {
+      body_color: '#FF6B9D',
+      accent_color: '#FFE66D',
+      eye_style: 'round',
+      tentacle_style: 'wavy',
+      size: 'medium',
+      glow_intensity: 0.5
+    };
     
-    // States
-    this.isHovered = false;
-    this.isSelected = false;
+    this.outfit = data.outfit || {
+      hat: null,
+      accessory: null,
+      tool: null,
+      background_effect: null
+    };
     
-    // Bounds
-    this.canvas = canvas;
+    // Personality & animation
+    this.personality = data.personality || {
+      mood: 'happy',
+      energy: 100,
+      affection: 50,
+      animation_style: 'bouncy'
+    };
+    
+    this.stats = data.stats || {
+      level: 1,
+      experience: 0
+    };
+    
+    // Animation state
+    this.baseSize = this.getSizeMultiplier();
+    this.animFrame = 0;
+    this.bobOffset = Math.random() * Math.PI * 2;
+    this.glowPulse = 0;
+    this.isDragging = false;
+    this.dragOffsetX = 0;
+    this.dragOffsetY = 0;
+    
+    // Interaction state
+    this.lastPetTime = 0;
+    this.heartParticles = [];
+    this.clickedTime = 0;
+    this.isJumping = false;
+    this.jumpHeight = 0;
+    
+    // Idle animations
+    this.idleAnimations = ['bob', 'wiggle', 'blink', 'wave'];
+    this.currentIdleAnim = 'bob';
+    this.idleTimer = 0;
   }
 
-  update(deltaTime) {
-    // Smooth movement towards target
-    const dx = this.targetX - this.x;
-    const dy = this.targetY - this.y;
-    const distance = Math.sqrt(dx * dx + dy * dy);
+  getSizeMultiplier() {
+    const sizes = { small: 0.8, medium: 1.0, large: 1.3 };
+    return sizes[this.appearance.size] || 1.0;
+  }
+
+  update(deltaTime = 16) {
+    this.animFrame += deltaTime * 0.001;
+    this.glowPulse += deltaTime * 0.003;
+    this.idleTimer += deltaTime;
     
-    if (distance > 1) {
-      this.x += dx * 0.02;
-      this.y += dy * 0.02;
-    } else {
-      // Pick new random target
-      this.targetX = Math.random() * (this.canvas.width - this.size);
-      this.targetY = Math.random() * (this.canvas.height - this.size);
+    // Change idle animation every 3 seconds
+    if (this.idleTimer > 3000) {
+      this.currentIdleAnim = this.idleAnimations[Math.floor(Math.random() * this.idleAnimations.length)];
+      this.idleTimer = 0;
     }
     
-    // Keep in bounds
-    this.x = Math.max(0, Math.min(this.canvas.width - this.size, this.x));
-    this.y = Math.max(0, Math.min(this.canvas.height - this.size, this.y));
-    
-    // Update animation frame
-    this.frameTimer += deltaTime;
-    if (this.frameTimer > this.frameDelay) {
-      this.frame = (this.frame + 1) % 4;
-      this.frameTimer = 0;
+    // Jump animation
+    if (this.isJumping) {
+      this.jumpHeight = Math.sin(this.animFrame * 10) * 20;
+      if (this.animFrame * 10 > Math.PI) {
+        this.isJumping = false;
+        this.jumpHeight = 0;
+      }
     }
+    
+    // Movement (Pokemon-style slower, more deliberate)
+    if (!this.isDragging && this.status === 'idle') {
+      const speed = this.personality.animation_style === 'energetic' ? 1.5 : 0.8;
+      this.x += this.vx * speed;
+      this.y += this.vy * speed;
+      
+      // Bounce off edges
+      if (this.x < 50 || this.x > 750) this.vx *= -1;
+      if (this.y < 50 || this.y > 550) this.vy *= -1;
+      
+      // Random direction changes (Pokemon-style wandering)
+      if (Math.random() < 0.01) {
+        this.vx = (Math.random() - 0.5) * 2;
+        this.vy = (Math.random() - 0.5) * 2;
+      }
+    }
+    
+    // Update heart particles
+    this.heartParticles = this.heartParticles.filter(p => {
+      p.y -= 2;
+      p.alpha -= 0.02;
+      return p.alpha > 0;
+    });
   }
 
   draw(ctx) {
     ctx.save();
+    ctx.translate(this.x, this.y - this.jumpHeight);
+    
+    const size = 40 * this.baseSize;
+    
+    // Background effect
+    if (this.outfit.background_effect) {
+      this.drawBackgroundEffect(ctx, size);
+    }
+    
+    // Glow effect
+    if (this.status !== 'sleeping') {
+      this.drawGlow(ctx, size);
+    }
     
     // Shadow
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+    this.drawShadow(ctx, size);
+    
+    // Main body
+    this.drawBody(ctx, size);
+    
+    // Tentacles
+    this.drawTentacles(ctx, size);
+    
+    // Eyes
+    this.drawEyes(ctx, size);
+    
+    // Outfit accessories
+    if (this.outfit.hat) this.drawHat(ctx, size);
+    if (this.outfit.accessory) this.drawAccessory(ctx, size);
+    if (this.outfit.tool) this.drawTool(ctx, size);
+    
+    // Status indicators
+    this.drawStatusIndicator(ctx, size);
+    
+    // Name tag with level
+    this.drawNameTag(ctx, size);
+    
+    // Heart particles (when pet)
+    this.heartParticles.forEach(p => this.drawHeart(ctx, p));
+    
+    ctx.restore();
+  }
+
+  drawBackgroundEffect(ctx, size) {
+    switch (this.outfit.background_effect) {
+      case 'sparkles':
+        for (let i = 0; i < 5; i++) {
+          const angle = (this.animFrame + i) * 2;
+          const radius = size * 1.5;
+          const x = Math.cos(angle) * radius;
+          const y = Math.sin(angle) * radius;
+          ctx.fillStyle = `rgba(255, 230, 109, ${0.5 + Math.sin(this.animFrame * 5 + i) * 0.3})`;
+          ctx.beginPath();
+          ctx.arc(x, y, 3, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        break;
+      
+      case 'flames':
+        for (let i = 0; i < 3; i++) {
+          const x = (Math.random() - 0.5) * size;
+          const y = size + i * 10;
+          ctx.fillStyle = `rgba(255, 100, 50, ${0.6 - i * 0.2})`;
+          ctx.beginPath();
+          ctx.arc(x, y, 8 - i * 2, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        break;
+      
+      case 'code_rain':
+        ctx.fillStyle = 'rgba(0, 255, 100, 0.3)';
+        ctx.font = '10px monospace';
+        for (let i = 0; i < 3; i++) {
+          const x = (Math.random() - 0.5) * size * 2;
+          const y = -size + (this.animFrame * 50 + i * 20) % (size * 3);
+          ctx.fillText('01', x, y);
+        }
+        break;
+    }
+  }
+
+  drawGlow(ctx, size) {
+    let glowColor = this.appearance.body_color;
+    let intensity = this.appearance.glow_intensity;
+    
+    if (this.status === 'thinking') {
+      glowColor = '#FFD60A';
+      intensity = 0.8 + Math.sin(this.glowPulse) * 0.2;
+    } else if (this.status === 'working') {
+      glowColor = '#06FFA5';
+      intensity = 0.6 + Math.sin(this.glowPulse * 2) * 0.2;
+    }
+    
+    const gradient = ctx.createRadialGradient(0, 0, size * 0.5, 0, 0, size * 1.5);
+    gradient.addColorStop(0, `${glowColor}00`);
+    gradient.addColorStop(0.5, `${glowColor}${Math.floor(intensity * 50).toString(16).padStart(2, '0')}`);
+    gradient.addColorStop(1, `${glowColor}00`);
+    
+    ctx.fillStyle = gradient;
     ctx.beginPath();
-    ctx.ellipse(
-      this.x + this.size / 2,
-      this.y + this.size + 5,
-      this.size * 0.4,
-      this.size * 0.2,
-      0, 0, Math.PI * 2
-    );
+    ctx.arc(0, 0, size * 1.5, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  drawShadow(ctx, size) {
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
+    ctx.beginPath();
+    ctx.ellipse(0, size + 10, size * 0.8, size * 0.3, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  drawBody(ctx, size) {
+    // Main body with gradient
+    const gradient = ctx.createRadialGradient(0, -size * 0.2, 0, 0, 0, size);
+    gradient.addColorStop(0, this.appearance.body_color);
+    gradient.addColorStop(1, this.darkenColor(this.appearance.body_color, 0.7));
+    
+    ctx.fillStyle = gradient;
+    ctx.beginPath();
+    
+    // Pokemon-style round body
+    const bobAmount = this.personality.animation_style === 'bouncy' ? 8 : 4;
+    const bob = Math.sin(this.animFrame * 2 + this.bobOffset) * bobAmount;
+    
+    ctx.arc(0, bob, size, 0, Math.PI * 2);
     ctx.fill();
     
-    // Glow effect based on status
-    if (this.status === 'working') {
-      ctx.shadowColor = this.color;
-      ctx.shadowBlur = 20;
-    } else if (this.status === 'thinking') {
-      ctx.shadowColor = '#FFD60A';
-      ctx.shadowBlur = 15;
-    } else if (this.status === 'error') {
-      ctx.shadowColor = '#E63946';
-      ctx.shadowBlur = 25;
+    // Accent spots (Pokemon-style patterns)
+    ctx.fillStyle = this.appearance.accent_color;
+    const spots = [
+      { x: -size * 0.3, y: bob - size * 0.2, r: size * 0.2 },
+      { x: size * 0.3, y: bob + size * 0.1, r: size * 0.15 },
+    ];
+    
+    spots.forEach(spot => {
+      ctx.beginPath();
+      ctx.arc(spot.x, spot.y, spot.r, 0, Math.PI * 2);
+      ctx.fill();
+    });
+  }
+
+  drawTentacles(ctx, size) {
+    ctx.strokeStyle = this.appearance.body_color;
+    ctx.lineWidth = 4;
+    ctx.lineCap = 'round';
+    
+    const tentacleCount = 6;
+    for (let i = 0; i < tentacleCount; i++) {
+      ctx.save();
+      ctx.rotate((Math.PI * 2 / tentacleCount) * i);
+      
+      ctx.beginPath();
+      ctx.moveTo(0, size * 0.7);
+      
+      if (this.appearance.tentacle_style === 'wavy') {
+        // Pokemon-style wavy tentacles
+        const wave = Math.sin(this.animFrame * 3 + i) * 5;
+        ctx.quadraticCurveTo(
+          wave, size * 1.2,
+          wave * 2, size * 1.5
+        );
+      } else if (this.appearance.tentacle_style === 'curly') {
+        ctx.bezierCurveTo(
+          10, size,
+          -10, size * 1.3,
+          5, size * 1.6
+        );
+      } else {
+        ctx.lineTo(0, size * 1.5);
+      }
+      
+      ctx.stroke();
+      ctx.restore();
     }
+  }
+
+  drawEyes(ctx, size) {
+    const eyeY = this.currentIdleAnim === 'blink' && this.idleTimer < 200 ? 5 : 0;
     
-    // Sleeping: dimmed and slow animation
-    if (this.status === 'sleeping') {
-      ctx.globalAlpha = 0.5;
+    ctx.fillStyle = '#FFFFFF';
+    
+    // Eye style variations
+    if (this.appearance.eye_style === 'round') {
+      // Classic round eyes
+      ctx.beginPath();
+      ctx.arc(-size * 0.25, eyeY, size * 0.15, 0, Math.PI * 2);
+      ctx.arc(size * 0.25, eyeY, size * 0.15, 0, Math.PI * 2);
+      ctx.fill();
+      
+      // Pupils
+      ctx.fillStyle = '#000000';
+      const pupilX = this.isDragging ? 2 : 0;
+      ctx.beginPath();
+      ctx.arc(-size * 0.25 + pupilX, eyeY, size * 0.08, 0, Math.PI * 2);
+      ctx.arc(size * 0.25 + pupilX, eyeY, size * 0.08, 0, Math.PI * 2);
+      ctx.fill();
+      
+      // Sparkle
+      ctx.fillStyle = '#FFFFFF';
+      ctx.beginPath();
+      ctx.arc(-size * 0.25 + 3, eyeY - 3, 2, 0, Math.PI * 2);
+      ctx.arc(size * 0.25 + 3, eyeY - 3, 2, 0, Math.PI * 2);
+      ctx.fill();
+      
+    } else if (this.appearance.eye_style === 'cute') {
+      // Cute ^ ^ eyes
+      ctx.strokeStyle = '#000000';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(-size * 0.25, eyeY, size * 0.1, 0.2, Math.PI - 0.2);
+      ctx.arc(size * 0.25, eyeY, size * 0.1, 0.2, Math.PI - 0.2);
+      ctx.stroke();
     }
+  }
+
+  drawHat(ctx, size) {
+    ctx.save();
+    ctx.translate(0, -size * 1.2);
     
-    // Squid body (simplified pixel art)
-    this.drawSquidBody(ctx);
-    
-    // Reset alpha
-    ctx.globalAlpha = 1.0;
-    
-    // Status-specific effects
-    if (this.status === 'sleeping') {
-      this.drawSleepingIndicator(ctx);
-    } else if (this.status === 'thinking') {
-      this.drawThinkingIndicator(ctx);
-    }
-    
-    // Hover/Select outline
-    if (this.isHovered || this.isSelected) {
-      ctx.strokeStyle = this.isSelected ? '#FFD60A' : '#FFFFFF';
-      ctx.lineWidth = 2;
-      ctx.strokeRect(this.x - 4, this.y - 4, this.size + 8, this.size + 8);
-    }
-    
-    // Name tag
-    if (this.isHovered) {
-      this.drawNameTag(ctx);
-    }
-    
-    // Status indicator
-    if (this.status === 'working') {
-      this.drawWorkingIndicator(ctx);
+    switch (this.outfit.hat) {
+      case 'wizard_hat':
+        // Purple wizard hat
+        ctx.fillStyle = '#9B59B6';
+        ctx.beginPath();
+        ctx.moveTo(0, -size * 0.5);
+        ctx.lineTo(-size * 0.3, 0);
+        ctx.lineTo(size * 0.3, 0);
+        ctx.closePath();
+        ctx.fill();
+        
+        // Stars
+        ctx.fillStyle = '#FFD700';
+        for (let i = 0; i < 3; i++) {
+          this.drawStar(ctx, (i - 1) * 10, -size * 0.2 - i * 5, 4);
+        }
+        break;
+      
+      case 'crown':
+        // Gold crown
+        ctx.fillStyle = '#FFD700';
+        ctx.beginPath();
+        ctx.rect(-size * 0.35, -5, size * 0.7, 10);
+        ctx.fill();
+        
+        // Crown points
+        for (let i = 0; i < 3; i++) {
+          ctx.beginPath();
+          ctx.moveTo((i - 1) * size * 0.25, -5);
+          ctx.lineTo((i - 1) * size * 0.25, -15);
+          ctx.lineTo((i - 1) * size * 0.25 + 5, -5);
+          ctx.fill();
+        }
+        break;
+      
+      case 'headphones':
+        // Gaming headphones
+        ctx.strokeStyle = '#FF1744';
+        ctx.lineWidth = 5;
+        ctx.beginPath();
+        ctx.arc(0, 0, size * 0.5, Math.PI, 0);
+        ctx.stroke();
+        
+        // Ear cups
+        ctx.fillStyle = '#FF1744';
+        ctx.beginPath();
+        ctx.arc(-size * 0.5, 0, 8, 0, Math.PI * 2);
+        ctx.arc(size * 0.5, 0, 8, 0, Math.PI * 2);
+        ctx.fill();
+        break;
     }
     
     ctx.restore();
   }
 
-  drawSleepingIndicator(ctx) {
-    // Zzz animation
-    ctx.font = '12px "Press Start 2P"';
-    ctx.fillStyle = '#A8DADC';
-    
-    const time = Date.now() / 500;
-    const offset1 = Math.sin(time) * 3;
-    const offset2 = Math.sin(time + 0.5) * 3;
-    const offset3 = Math.sin(time + 1) * 3;
-    
-    ctx.fillText('z', this.x + this.size + 5, this.y + offset1);
-    ctx.fillText('z', this.x + this.size + 15, this.y - 5 + offset2);
-    ctx.fillText('Z', this.x + this.size + 25, this.y - 10 + offset3);
-  }
-
-  drawThinkingIndicator(ctx) {
-    // Thought bubbles
-    const time = Date.now() / 200;
-    
-    for (let i = 0; i < 3; i++) {
-      const angle = (i * Math.PI * 2 / 3) + time;
-      const radius = 15;
-      const x = this.x + this.size / 2 + Math.cos(angle) * radius;
-      const y = this.y + Math.sin(angle) * radius;
-      const size = 3 + Math.sin(time + i) * 1;
+  drawAccessory(ctx, size) {
+    switch (this.outfit.accessory) {
+      case 'glasses':
+        ctx.strokeStyle = '#000000';
+        ctx.lineWidth = 2;
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+        
+        // Left lens
+        ctx.beginPath();
+        ctx.arc(-size * 0.25, 0, size * 0.18, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        
+        // Right lens
+        ctx.beginPath();
+        ctx.arc(size * 0.25, 0, size * 0.18, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        
+        // Bridge
+        ctx.beginPath();
+        ctx.moveTo(-size * 0.07, 0);
+        ctx.lineTo(size * 0.07, 0);
+        ctx.stroke();
+        break;
       
-      ctx.fillStyle = '#FFD60A';
-      ctx.globalAlpha = 0.7;
-      ctx.beginPath();
-      ctx.arc(x, y, size, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.globalAlpha = 1.0;
+      case 'bowtie':
+        ctx.fillStyle = '#E74C3C';
+        ctx.save();
+        ctx.translate(0, size * 0.6);
+        
+        // Bowtie
+        ctx.beginPath();
+        ctx.moveTo(-15, -5);
+        ctx.lineTo(-20, 0);
+        ctx.lineTo(-15, 5);
+        ctx.lineTo(-5, 0);
+        ctx.closePath();
+        ctx.fill();
+        
+        ctx.beginPath();
+        ctx.moveTo(15, -5);
+        ctx.lineTo(20, 0);
+        ctx.lineTo(15, 5);
+        ctx.lineTo(5, 0);
+        ctx.closePath();
+        ctx.fill();
+        
+        // Center
+        ctx.fillRect(-5, -3, 10, 6);
+        
+        ctx.restore();
+        break;
     }
   }
 
-  drawSquidBody(ctx) {
-    // Main body
-    ctx.fillStyle = this.color;
-    ctx.beginPath();
-    ctx.ellipse(
-      this.x + this.size / 2,
-      this.y + this.size / 3,
-      this.size * 0.35,
-      this.size * 0.4,
-      0, 0, Math.PI * 2
-    );
-    ctx.fill();
+  drawTool(ctx, size) {
+    ctx.save();
+    ctx.translate(size * 0.6, size * 0.3);
     
-    // Eyes (animated blink)
-    const eyeSize = this.size * 0.12;
-    const eyeY = this.y + this.size / 3;
-    ctx.fillStyle = '#FFFFFF';
-    ctx.beginPath();
-    ctx.arc(this.x + this.size * 0.35, eyeY, eyeSize, 0, Math.PI * 2);
-    ctx.arc(this.x + this.size * 0.65, eyeY, eyeSize, 0, Math.PI * 2);
-    ctx.fill();
-    
-    // Pupils
-    ctx.fillStyle = '#000000';
-    ctx.beginPath();
-    ctx.arc(this.x + this.size * 0.35, eyeY, eyeSize * 0.5, 0, Math.PI * 2);
-    ctx.arc(this.x + this.size * 0.65, eyeY, eyeSize * 0.5, 0, Math.PI * 2);
-    ctx.fill();
-    
-    // Tentacles (animated wave)
-    const tentacleCount = 8;
-    const tentacleLength = this.size * 0.6;
-    ctx.strokeStyle = this.color;
-    ctx.lineWidth = 3;
-    
-    for (let i = 0; i < tentacleCount; i++) {
-      const angle = (Math.PI / tentacleCount) * i + Math.PI * 0.7;
-      const wave = Math.sin(Date.now() / 200 + i) * 5;
+    switch (this.outfit.tool) {
+      case 'wand':
+        // Magic wand
+        ctx.strokeStyle = '#8B4513';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.lineTo(10, 20);
+        ctx.stroke();
+        
+        // Star tip
+        ctx.fillStyle = '#FFD700';
+        this.drawStar(ctx, 0, 0, 6);
+        
+        // Sparkles
+        ctx.fillStyle = 'rgba(255, 215, 0, 0.6)';
+        for (let i = 0; i < 3; i++) {
+          const angle = this.animFrame * 3 + i * Math.PI * 2 / 3;
+          const x = Math.cos(angle) * 15;
+          const y = Math.sin(angle) * 15;
+          ctx.beginPath();
+          ctx.arc(x, y, 2, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        break;
       
+      case 'laptop':
+        // Mini laptop
+        ctx.fillStyle = '#34495E';
+        ctx.fillRect(-12, 0, 24, 16);
+        
+        // Screen
+        ctx.fillStyle = '#3498DB';
+        ctx.fillRect(-10, 2, 20, 10);
+        
+        // Code lines
+        ctx.strokeStyle = '#2ECC71';
+        ctx.lineWidth = 1;
+        for (let i = 0; i < 3; i++) {
+          ctx.beginPath();
+          ctx.moveTo(-8, 4 + i * 3);
+          ctx.lineTo(8, 4 + i * 3);
+          ctx.stroke();
+        }
+        break;
+    }
+    
+    ctx.restore();
+  }
+
+  drawStatusIndicator(ctx, size) {
+    if (this.status === 'thinking') {
+      // Thought bubbles (Pokemon-style)
+      const bubbles = [
+        { x: size * 0.7, y: -size * 0.8, r: 8 },
+        { x: size * 0.9, y: -size * 1.1, r: 6 },
+        { x: size * 1.1, y: -size * 1.4, r: 4 }
+      ];
+      
+      ctx.fillStyle = 'rgba(255, 214, 10, 0.8)';
+      bubbles.forEach(b => {
+        ctx.beginPath();
+        ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2);
+        ctx.fill();
+      });
+    }
+    
+    if (this.status === 'working') {
+      // Loading spinner
+      ctx.strokeStyle = '#06FFA5';
+      ctx.lineWidth = 3;
+      ctx.lineCap = 'round';
+      ctx.save();
+      ctx.translate(size, -size);
+      ctx.rotate(this.animFrame * 5);
       ctx.beginPath();
-      ctx.moveTo(
-        this.x + this.size / 2,
-        this.y + this.size * 0.6
-      );
-      ctx.quadraticCurveTo(
-        this.x + this.size / 2 + Math.cos(angle) * (tentacleLength / 2) + wave,
-        this.y + this.size * 0.8 + wave,
-        this.x + this.size / 2 + Math.cos(angle) * tentacleLength,
-        this.y + this.size + Math.sin(angle) * tentacleLength
-      );
+      ctx.arc(0, 0, 10, 0, Math.PI * 1.5);
       ctx.stroke();
+      ctx.restore();
+    }
+    
+    if (this.status === 'sleeping') {
+      // Zzz (Pokemon-style)
+      ctx.fillStyle = 'rgba(100, 100, 200, 0.6)';
+      ctx.font = 'bold 16px Arial';
+      const zzz = ['Z', 'z', 'z'];
+      zzz.forEach((z, i) => {
+        const y = -size - 20 - i * 15 + Math.sin(this.animFrame + i) * 5;
+        ctx.fillText(z, size * 0.5 + i * 10, y);
+      });
     }
   }
 
-  drawNameTag(ctx) {
-    ctx.font = '10px "Press Start 2P"';
-    const nameWidth = ctx.measureText(this.name).width;
-    
-    // Status indicator text
-    let statusText = '';
-    let statusColor = '#FFFFFF';
-    
-    if (this.current_thought) {
-      statusText = this.current_thought;
-      statusColor = '#FFD60A';
-    } else if (this.status === 'sleeping') {
-      statusText = 'Zzz...';
-      statusColor = '#A8DADC';
-    } else if (this.status === 'working') {
-      statusText = 'Working...';
-      statusColor = '#06FFA5';
-    }
-    
-    const maxTextWidth = Math.max(nameWidth, ctx.measureText(statusText).width);
-    const padding = 8;
-    const lineHeight = 16;
-    const totalHeight = statusText ? 48 : 24;
+  drawNameTag(ctx, size) {
+    ctx.save();
+    ctx.translate(0, size + 35);
     
     // Background
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.9)';
-    ctx.fillRect(
-      this.x + this.size / 2 - maxTextWidth / 2 - padding,
-      this.y - totalHeight - 10,
-      maxTextWidth + padding * 2,
-      totalHeight
-    );
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+    ctx.fillRect(-60, -12, 120, 24);
     
-    // Border
-    ctx.strokeStyle = this.color;
-    ctx.lineWidth = 2;
-    ctx.strokeRect(
-      this.x + this.size / 2 - maxTextWidth / 2 - padding,
-      this.y - totalHeight - 10,
-      maxTextWidth + padding * 2,
-      totalHeight
-    );
-    
-    // Name
+    // Name with level
     ctx.fillStyle = '#FFFFFF';
-    ctx.fillText(
-      this.name,
-      this.x + this.size / 2 - nameWidth / 2,
-      this.y - totalHeight + 4
-    );
+    ctx.font = 'bold 12px "Press Start 2P"';
+    ctx.textAlign = 'center';
+    ctx.fillText(this.nickname, 0, -2);
     
-    // Thinking/Status
-    if (statusText) {
-      ctx.font = '8px "Press Start 2P"';
-      const statusWidth = ctx.measureText(statusText).width;
-      ctx.fillStyle = statusColor;
+    // Level indicator
+    ctx.fillStyle = '#FFD700';
+    ctx.font = '10px "Press Start 2P"';
+    ctx.fillText(`Lv.${this.stats.level}`, 0, 8);
+    
+    // Thinking text if available
+    if (this.current_thought && this.status === 'thinking') {
+      ctx.fillStyle = 'rgba(255, 214, 10, 0.9)';
+      ctx.fillRect(-100, 15, 200, 40);
       
-      // Wrap text if too long
-      const maxWidth = 200;
-      if (statusWidth > maxWidth) {
-        const words = statusText.split(' ');
-        let line = '';
-        let y = this.y - totalHeight + 20;
-        
-        for (const word of words) {
-          const testLine = line + word + ' ';
-          const testWidth = ctx.measureText(testLine).width;
-          if (testWidth > maxWidth && line !== '') {
-            ctx.fillText(line, this.x + this.size / 2 - ctx.measureText(line).width / 2, y);
-            line = word + ' ';
-            y += lineHeight;
-          } else {
-            line = testLine;
-          }
+      ctx.fillStyle = '#000000';
+      ctx.font = '9px Arial';
+      const words = this.current_thought.split(' ');
+      let line = '';
+      let y = 30;
+      
+      words.forEach(word => {
+        const testLine = line + word + ' ';
+        if (ctx.measureText(testLine).width > 180 && line !== '') {
+          ctx.fillText(line, 0, y);
+          line = word + ' ';
+          y += 12;
+        } else {
+          line = testLine;
         }
-        ctx.fillText(line, this.x + this.size / 2 - ctx.measureText(line).width / 2, y);
-      } else {
-        ctx.fillText(
-          statusText,
-          this.x + this.size / 2 - statusWidth / 2,
-          this.y - totalHeight + 28
-        );
-      }
+      });
+      ctx.fillText(line, 0, y);
+    }
+    
+    ctx.restore();
+  }
+
+  drawHeart(ctx, particle) {
+    ctx.save();
+    ctx.globalAlpha = particle.alpha;
+    ctx.fillStyle = '#FF1744';
+    ctx.translate(particle.x, particle.y);
+    ctx.scale(particle.scale, particle.scale);
+    
+    // Heart shape
+    ctx.beginPath();
+    ctx.moveTo(0, 3);
+    ctx.bezierCurveTo(-5, -2, -10, 1, 0, 10);
+    ctx.bezierCurveTo(10, 1, 5, -2, 0, 3);
+    ctx.fill();
+    
+    ctx.restore();
+  }
+
+  drawStar(ctx, x, y, size) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.beginPath();
+    for (let i = 0; i < 5; i++) {
+      const angle = (i * 4 * Math.PI) / 5 - Math.PI / 2;
+      const x = Math.cos(angle) * size;
+      const y = Math.sin(angle) * size;
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  }
+
+  darkenColor(hex, factor) {
+    const r = parseInt(hex.slice(1, 3), 16);
+    const g = parseInt(hex.slice(3, 5), 16);
+    const b = parseInt(hex.slice(5, 7), 16);
+    
+    return `rgb(${Math.floor(r * factor)}, ${Math.floor(g * factor)}, ${Math.floor(b * factor)})`;
+  }
+
+  // Interaction methods
+  onClick() {
+    this.clickedTime = Date.now();
+    this.isJumping = true;
+    this.animFrame = 0;
+    
+    // Increase affection
+    if (this.personality.affection < 100) {
+      this.personality.affection += 5;
     }
   }
 
-  drawWorkingIndicator(ctx) {
-    const pulseSize = 5 + Math.sin(Date.now() / 200) * 2;
-    ctx.fillStyle = this.color;
-    ctx.beginPath();
-    ctx.arc(
-      this.x + this.size - 8,
-      this.y + 8,
-      pulseSize,
-      0, Math.PI * 2
-    );
-    ctx.fill();
+  onPet() {
+    this.lastPetTime = Date.now();
+    
+    // Spawn heart particles
+    for (let i = 0; i < 3; i++) {
+      this.heartParticles.push({
+        x: (Math.random() - 0.5) * 40,
+        y: 0,
+        alpha: 1,
+        scale: 0.5 + Math.random() * 0.5
+      });
+    }
+    
+    // Increase affection
+    if (this.personality.affection < 100) {
+      this.personality.affection += 10;
+    }
+    
+    // Improve mood
+    this.personality.mood = 'happy';
   }
 
   containsPoint(x, y) {
-    return x >= this.x && x <= this.x + this.size &&
-           y >= this.y && y <= this.y + this.size;
+    const dx = x - this.x;
+    const dy = y - (this.y - this.jumpHeight);
+    const size = 40 * this.baseSize;
+    return Math.sqrt(dx * dx + dy * dy) < size;
   }
 
-  updateStatus(status) {
-    this.status = status;
+  startDrag(x, y) {
+    this.isDragging = true;
+    this.dragOffsetX = x - this.x;
+    this.dragOffsetY = y - this.y;
+  }
+
+  drag(x, y) {
+    if (this.isDragging) {
+      this.x = x - this.dragOffsetX;
+      this.y = y - this.dragOffsetY;
+    }
+  }
+
+  endDrag() {
+    this.isDragging = false;
   }
 }
