@@ -78,21 +78,23 @@ const ui = {
   showPanel(panelId) {
     const panel = document.getElementById(`${panelId}-panel`);
     if (panel) {
+      // NEWEST AT TOP: Move panel to top of DOM
+      const container = panel.parentElement;
+      if (container) {
+        panel.remove();
+        container.insertBefore(panel, container.firstChild);
+      }
+      
       panel.classList.remove('hidden');
       
-      // PANEL STACKING: Last clicked panel on top
-      // Get all visible panels
+      // Z-index for overlapping
       const allPanels = document.querySelectorAll('.panel:not(.hidden)');
-      
-      // Reset all panels to base z-index
       allPanels.forEach(p => {
         p.style.zIndex = '100';
       });
-      
-      // Bring this panel to top
       panel.style.zIndex = '200';
       
-      console.log(`📌 Panel "${panelId}" brought to top`);
+      console.log(`📌 Panel "${panelId}" at TOP of list`);
     }
   },
 
@@ -344,8 +346,8 @@ document.addEventListener('DOMContentLoaded', () => {
           ui.showNotification('Squid updated successfully!', 'success');
           ui.hidePanel('edit');
           
-          // Reload agents
-          await aquarium.loadAgents();
+          // Reload squids
+          await aquarium.loadSquids();
         }
       } catch (error) {
         ui.showNotification('Failed to update squid: ' + error.message, 'error');
@@ -1019,7 +1021,7 @@ ui.clearAllPanels = function() {
 };
 
 // Update System Monitor Stats
-ui.updateSystemMonitor = function() {
+ui.updateSystemMonitor = async function() {
   if (!aquarium || !aquarium.squids) return;
   
   const squids = aquarium.squids;
@@ -1032,6 +1034,29 @@ ui.updateSystemMonitor = function() {
     squids.filter(s => s.status === 'idle').length;
   document.getElementById('monitor-working-squids').textContent = 
     squids.filter(s => s.status === 'working').length;
+  
+  // Fetch system stats (CPU/Memory)
+  try {
+    const response = await fetch('/api/system/monitor');
+    const data = await response.json();
+    
+    if (data.success && data.system) {
+      const cpuUsage = parseFloat(data.system.cpu_usage || 0);
+      const memUsage = parseFloat(data.system.memory_usage || 0);
+      
+      const cpuBar = document.getElementById('monitor-cpu-bar');
+      const cpuValue = document.getElementById('monitor-cpu-value');
+      const memBar = document.getElementById('monitor-mem-bar');
+      const memValue = document.getElementById('monitor-mem-value');
+      
+      if (cpuBar) cpuBar.style.width = `${cpuUsage}%`;
+      if (cpuValue) cpuValue.textContent = `${cpuUsage.toFixed(1)}%`;
+      if (memBar) memBar.style.width = `${memUsage}%`;
+      if (memValue) memValue.textContent = `${memUsage.toFixed(1)}%`;
+    }
+  } catch (error) {
+    console.log('System monitor API not available:', error.message);
+  }
   
   // Poseidon status
   if (typeof poseidon !== 'undefined') {

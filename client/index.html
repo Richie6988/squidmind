@@ -138,6 +138,27 @@
           <button class="btn-close" onclick="ui.hidePanel('monitor')">✕</button>
         </div>
         <div class="panel-content">
+          <!-- System Resources -->
+          <div class="monitor-section">
+            <h3>💻 System Resources</h3>
+            <div id="monitor-system-stats">
+              <div class="stat-item">
+                <span class="stat-label">CPU</span>
+                <div class="stat-bar">
+                  <div id="monitor-cpu-bar" class="stat-fill"></div>
+                </div>
+                <span id="monitor-cpu-value" class="stat-value">0%</span>
+              </div>
+              <div class="stat-item">
+                <span class="stat-label">Memory</span>
+                <div class="stat-bar">
+                  <div id="monitor-mem-bar" class="stat-fill"></div>
+                </div>
+                <span id="monitor-mem-value" class="stat-value">0%</span>
+              </div>
+            </div>
+          </div>
+          
           <div class="monitor-section">
             <h3>🦑 Squad Status</h3>
             <div id="monitor-squad-stats">
@@ -545,6 +566,7 @@
 
   <!-- Scripts -->
   <script src="scripts/api.js"></script>
+  <script src="scripts/PanelManager.js"></script>
   <script src="scripts/ModelScanner.js"></script>
   <script src="scripts/Poseidon.js"></script>
   <script src="scripts/Temple.js"></script>

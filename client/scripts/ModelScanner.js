@@ -104,9 +104,20 @@ class ModelScanner {
       <div class="model-selector">
         <h3>🔍 Select Model for Poseidon</h3>
         
+        <!-- File Browser -->
+        <div class="file-browser-section">
+          <h4>📁 Browse Computer</h4>
+          <input type="file" id="model-file-browser" accept=".gguf" 
+                 onchange="modelScanner.loadFromFileBrowser(this)"
+                 style="width: 100%; padding: 8px; margin: 8px 0;">
+          <p class="hint">Select a .gguf model file from your computer</p>
+        </div>
+        
+        <hr style="margin: 20px 0; border-color: var(--border);">
+        
         <!-- Manual Path Input -->
         <div class="manual-path-section">
-          <h4>📂 Manual Path</h4>
+          <h4>📂 Or Enter Path</h4>
           <input type="text" id="manual-model-path" placeholder="/path/to/your/model.gguf" 
                  style="width: 100%; padding: 8px; margin: 8px 0; font-family: monospace; font-size: 11px;">
           <button onclick="modelScanner.loadModelByPath()" class="btn-load-manual">
@@ -117,7 +128,7 @@ class ModelScanner {
         <hr style="margin: 20px 0; border-color: var(--border);">
         
         ${models.length === 0 ? `
-          <p class="no-models">No models found in scan. Use manual path above.</p>
+          <p class="no-models">No models found in scan. Use file browser or manual path above.</p>
           <p class="hint">Common locations:</p>
           <ul>
             <li>~/.cache/huggingface/hub/models--*/snapshots/*/*.gguf</li>
@@ -161,11 +172,34 @@ class ModelScanner {
   }
 
   /**
+   * Load model from file browser
+   */
+  loadFromFileBrowser(input) {
+    const file = input.files[0];
+    if (!file) return;
+    
+    const path = file.path || file.name; // Electron provides .path
+    console.log('📁 File browser selected:', path);
+    
+    // If we have the full path (Electron/desktop), use it
+    if (file.path) {
+      this.loadModelByPath(file.path);
+    } else {
+      // Web browser - can't get full path for security
+      alert('File browser selected: ' + file.name + '\n\nPlease copy the full path and use "Enter Path" instead.\n\nExample:\n/home/user/.cache/huggingface/hub/models--TheBloke--Llama-2-7B/snapshots/abc123/' + file.name);
+    }
+  }
+
+  /**
    * Load model from manual path input
    */
-  async loadModelByPath() {
-    const input = document.getElementById('manual-model-path');
-    const path = input.value.trim();
+  async loadModelByPath(pathOverride) {
+    let path = pathOverride;
+    
+    if (!path) {
+      const input = document.getElementById('manual-model-path');
+      path = input ? input.value.trim() : '';
+    }
     
     if (!path) {
       alert('Please enter a model path');
@@ -177,7 +211,8 @@ class ModelScanner {
     
     if (success) {
       alert('Model loaded successfully!');
-      document.getElementById('model-selector-panel').classList.add('hidden');
+      const panel = document.getElementById('model-selector-panel');
+      if (panel) panel.classList.add('hidden');
     }
   }
 

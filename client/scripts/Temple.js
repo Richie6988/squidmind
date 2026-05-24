@@ -286,20 +286,43 @@ class Temple {
           <h2>📦 Project Resources</h2>
           <div class="resource-list">
             ${(this.project.files || []).map(file => `
-              <div class="resource-item">
+              <div class="resource-item" onclick="templeIDE.openFile('${file.name}', '${file.path}')">
                 <span class="resource-icon">📄</span>
                 <span class="resource-name">${file.name}</span>
                 <span class="resource-size">${file.size}</span>
               </div>
             `).join('')}
           </div>
+          
+          <h2>➕ Create Project</h2>
+          <button class="btn-create-project" onclick="templeIDE.createNewProject()">
+            ✨ New Project
+          </button>
         </div>
         
         <div class="interior-center">
-          <h2>🦑 Agents Working</h2>
+          <h2>💻 IDE Workspace</h2>
+          <div class="ide-container">
+            <div class="ide-editor">
+              <div class="editor-header">
+                <span id="editor-filename">No file open</span>
+                <button onclick="templeIDE.saveFile()">💾 Save</button>
+              </div>
+              <textarea id="temple-editor" placeholder="// Open a file or create a new project..."></textarea>
+            </div>
+            <div class="ide-preview">
+              <div class="preview-header">
+                <span>Preview</span>
+                <button onclick="templeIDE.refreshPreview()">🔄 Refresh</button>
+              </div>
+              <iframe id="temple-preview" sandbox="allow-scripts"></iframe>
+            </div>
+          </div>
+          
+          <h2>🦑 Working Agents</h2>
           <div class="agents-workspace">
             ${this.activeAgents.map(agent => `
-              <div class="agent-avatar">
+              <div class="agent-avatar walking">
                 <div class="avatar-squid">🦑</div>
                 <div class="avatar-name">${agent.name}</div>
                 <div class="avatar-status">${agent.status}</div>
@@ -324,6 +347,25 @@ class Temple {
     
     interior.style.background = backgrounds[this.name] || backgrounds['BRAIN'];
     interior.classList.remove('hidden');
+    
+    // Initialize walking animation for agents
+    this.initWalkingAgents();
+  }
+
+  /**
+   * Initialize walking animations for agents in temple
+   */
+  initWalkingAgents() {
+    setTimeout(() => {
+      const agents = document.querySelectorAll('.agent-avatar.walking');
+      agents.forEach((agent, index) => {
+        // Random walking animation
+        const walkDuration = 5 + Math.random() * 3;
+        const walkDelay = index * 0.5;
+        
+        agent.style.animation = `walk ${walkDuration}s linear ${walkDelay}s infinite`;
+      });
+    }, 100);
   }
 
   /**
