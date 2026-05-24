@@ -302,57 +302,91 @@ const TempleInterior = {
   },
   
   /**
-   * Open visual cron builder (HUMAN INTUITIVE)
+   * Open visual cron builder (HUMAN INTUITIVE + REAL)
    */
   openCronBuilder() {
-    console.log('🔄 Opening cron builder');
+    console.log('🔄 Opening REAL cron builder');
+    
+    // Create modal INSIDE temple interior (not browser popup)
+    const interior = document.getElementById('temple-interior');
+    if (!interior) return;
     
     const modal = document.createElement('div');
     modal.className = 'cron-builder-modal';
     modal.innerHTML = `
       <div class="cron-builder">
-        <h2>Create Scheduled Task</h2>
+        <h2>⏰ Create Scheduled Task</h2>
         <p class="hint">Build your schedule visually - no cron syntax needed!</p>
         
         <div class="form-section">
           <label>Task Name:</label>
-          <input type="text" id="cron-name" placeholder="e.g., Daily backup">
+          <input type="text" id="cron-name" placeholder="e.g., Daily backup" required>
         </div>
         
         <div class="form-section">
           <label>Description:</label>
-          <textarea id="cron-desc" placeholder="What should this task do?"></textarea>
+          <textarea id="cron-desc" placeholder="What should this task do?" required></textarea>
         </div>
         
         <div class="form-section">
           <label>Frequency:</label>
           <select id="cron-frequency" onchange="TempleInterior.updateCronPreview()">
+            <option value="every_minute">Every Minute (testing)</option>
+            <option value="every_5_min">Every 5 Minutes</option>
+            <option value="every_15_min">Every 15 Minutes</option>
+            <option value="every_30_min">Every 30 Minutes</option>
             <option value="hourly">Every Hour</option>
-            <option value="daily">Every Day</option>
+            <option value="daily" selected>Every Day</option>
             <option value="weekly">Every Week</option>
             <option value="monthly">Every Month</option>
-            <option value="custom">Custom...</option>
+            <option value="custom">Custom (advanced)...</option>
           </select>
         </div>
         
         <div class="form-section" id="cron-time-section">
-          <label>Time:</label>
+          <label>Time (24h format):</label>
           <input type="time" id="cron-time" value="09:00" onchange="TempleInterior.updateCronPreview()">
+        </div>
+        
+        <div class="form-section" id="cron-day-section" style="display: none;">
+          <label>Day of Week:</label>
+          <select id="cron-day">
+            <option value="1">Monday</option>
+            <option value="2">Tuesday</option>
+            <option value="3">Wednesday</option>
+            <option value="4">Thursday</option>
+            <option value="5">Friday</option>
+            <option value="6">Saturday</option>
+            <option value="0">Sunday</option>
+          </select>
+        </div>
+        
+        <div class="form-section" id="cron-date-section" style="display: none;">
+          <label>Day of Month:</label>
+          <input type="number" id="cron-date" min="1" max="31" value="1" onchange="TempleInterior.updateCronPreview()">
+        </div>
+        
+        <div class="form-section" id="cron-custom-section" style="display: none;">
+          <label>Custom Cron Expression:</label>
+          <input type="text" id="cron-custom" placeholder="* * * * *" pattern="[0-9\*,\-/]+ [0-9\*,\-/]+ [0-9\*,\-/]+ [0-9\*,\-/]+ [0-9\*,\-/]+">
+          <small>Format: minute hour day month weekday</small>
         </div>
         
         <div class="form-section">
           <label>Preview:</label>
           <div id="cron-preview" class="cron-preview">Every day at 9:00 AM</div>
+          <div id="cron-expression" class="cron-expression">0 9 * * *</div>
         </div>
         
         <div class="form-actions">
-          <button onclick="TempleInterior.saveCronTask()">✅ Create Task</button>
-          <button onclick="this.closest('.cron-builder-modal').remove()">❌ Cancel</button>
+          <button onclick="TempleInterior.saveCronTask()" class="btn-save">✅ Create Task</button>
+          <button onclick="TempleInterior.closeCronBuilder()" class="btn-cancel">❌ Cancel</button>
         </div>
       </div>
     `;
     
-    document.body.appendChild(modal);
+    interior.appendChild(modal);
+    this.updateCronPreview();
   },
   
   /**
@@ -504,23 +538,86 @@ const TempleInterior = {
   },
   
   /**
-   * Update cron preview
+   * Update cron preview (REAL IMPLEMENTATION)
    */
   updateCronPreview() {
     const freq = document.getElementById('cron-frequency')?.value;
     const time = document.getElementById('cron-time')?.value || '09:00';
+    const day = document.getElementById('cron-day')?.value || '1';
+    const date = document.getElementById('cron-date')?.value || '1';
     const preview = document.getElementById('cron-preview');
+    const expression = document.getElementById('cron-expression');
     
-    if (!preview) return;
+    if (!preview || !expression) return;
     
-    const texts = {
-      'hourly': 'Every hour',
-      'daily': `Every day at ${time}`,
-      'weekly': `Every week on Monday at ${time}`,
-      'monthly': `First day of every month at ${time}`
-    };
+    // Show/hide sections based on frequency
+    const daySection = document.getElementById('cron-day-section');
+    const dateSection = document.getElementById('cron-date-section');
+    const customSection = document.getElementById('cron-custom-section');
+    const timeSection = document.getElementById('cron-time-section');
     
-    preview.textContent = texts[freq] || 'Custom schedule';
+    if (daySection) daySection.style.display = freq === 'weekly' ? 'block' : 'none';
+    if (dateSection) dateSection.style.display = freq === 'monthly' ? 'block' : 'none';
+    if (customSection) customSection.style.display = freq === 'custom' ? 'block' : 'none';
+    if (timeSection) timeSection.style.display = ['daily', 'weekly', 'monthly'].includes(freq) ? 'block' : 'none';
+    
+    // Parse time
+    const [hour, minute] = time.split(':').map(Number);
+    
+    // Generate cron expression and human text
+    let cronExpr = '';
+    let humanText = '';
+    
+    switch(freq) {
+      case 'every_minute':
+        cronExpr = '* * * * *';
+        humanText = 'Every minute';
+        break;
+      case 'every_5_min':
+        cronExpr = '*/5 * * * *';
+        humanText = 'Every 5 minutes';
+        break;
+      case 'every_15_min':
+        cronExpr = '*/15 * * * *';
+        humanText = 'Every 15 minutes';
+        break;
+      case 'every_30_min':
+        cronExpr = '*/30 * * * *';
+        humanText = 'Every 30 minutes';
+        break;
+      case 'hourly':
+        cronExpr = '0 * * * *';
+        humanText = 'Every hour';
+        break;
+      case 'daily':
+        cronExpr = `${minute} ${hour} * * *`;
+        humanText = `Every day at ${time}`;
+        break;
+      case 'weekly':
+        const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+        cronExpr = `${minute} ${hour} * * ${day}`;
+        humanText = `Every ${days[day]} at ${time}`;
+        break;
+      case 'monthly':
+        cronExpr = `${minute} ${hour} ${date} * *`;
+        humanText = `Day ${date} of every month at ${time}`;
+        break;
+      case 'custom':
+        cronExpr = document.getElementById('cron-custom')?.value || '* * * * *';
+        humanText = 'Custom schedule: ' + cronExpr;
+        break;
+    }
+    
+    preview.textContent = humanText;
+    expression.textContent = cronExpr;
+  },
+  
+  /**
+   * Close cron builder
+   */
+  closeCronBuilder() {
+    const modal = document.querySelector('.cron-builder-modal');
+    if (modal) modal.remove();
   },
   
   /**
@@ -563,18 +660,61 @@ const TempleInterior = {
   },
   
   /**
-   * Assign squid to project
+   * Assign squid to project (REAL IMPLEMENTATION)
    */
   assignSquid(squidId) {
-    console.log('➕ Assigning squid:', squidId, 'to', this.currentTemple.name);
+    console.log('➕ REALLY assigning squid:', squidId, 'to', this.currentTemple.name);
     
-    // TODO: Update squid's currentProject
     const squid = window.aquarium?.squids.find(s => s.id === squidId);
-    if (squid) {
-      squid.currentProject = this.currentTemple.name;
-      this.populateWorkingAgents(this.currentTemple);
-      alert(`${squid.name} assigned to ${this.currentTemple.name}!`);
+    if (!squid) {
+      alert('Squid not found!');
+      return;
     }
+    
+    // Update squid's project assignment
+    const previousProject = squid.currentProject;
+    squid.currentProject = this.currentTemple.name;
+    
+    // Save to backend
+    fetch('/api/agents/assign', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        agentId: squidId,
+        project: this.currentTemple.name
+      })
+    })
+    .then(res => res.json())
+    .then(data => {
+      if (data.success) {
+        console.log('✅ Squid assigned successfully!');
+        
+        // Refresh working agents display
+        this.populateWorkingAgents(this.currentTemple);
+        
+        // Update button in modal
+        const button = document.querySelector(`[onclick="TempleInterior.assignSquid('${squidId}')"]`);
+        if (button) {
+          button.textContent = '✅ Assigned';
+          button.disabled = true;
+          button.style.opacity = '0.6';
+        }
+        
+        alert(`✅ ${squid.name} assigned to ${this.currentTemple.name}!`);
+      } else {
+        // Rollback on failure
+        squid.currentProject = previousProject;
+        alert('❌ Failed to assign: ' + (data.error || 'Unknown error'));
+      }
+    })
+    .catch(err => {
+      console.error('Failed to assign squid:', err);
+      // Rollback
+      squid.currentProject = previousProject;
+      alert('❌ Error assigning squid. See console for details.');
+    });
   },
   
   /**
@@ -587,20 +727,74 @@ const TempleInterior = {
   },
   
   /**
-   * Save cron task
+   * Save cron task (REAL IMPLEMENTATION)
    */
   saveCronTask() {
     const name = document.getElementById('cron-name')?.value;
     const desc = document.getElementById('cron-desc')?.value;
+    const expression = document.getElementById('cron-expression')?.textContent;
+    const preview = document.getElementById('cron-preview')?.textContent;
     
     if (!name || !desc) {
-      alert('Please fill in all fields');
+      alert('Please fill in task name and description');
       return;
     }
     
-    console.log('💾 Creating cron task:', name);
-    alert('Task created!');
-    document.querySelector('.cron-builder-modal')?.remove();
+    if (!expression || expression === '') {
+      alert('Invalid cron expression');
+      return;
+    }
+    
+    console.log('💾 Creating REAL cron task:', name);
+    console.log('   Expression:', expression);
+    console.log('   Description:', desc);
+    
+    // Create task object
+    const task = {
+      id: Date.now().toString(),
+      name: name,
+      description: desc,
+      schedule: expression,
+      humanSchedule: preview,
+      project: this.currentTemple.name,
+      enabled: true,
+      createdAt: new Date().toISOString()
+    };
+    
+    // Save to backend
+    fetch('/api/cron/create', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(task)
+    })
+    .then(res => res.json())
+    .then(data => {
+      if (data.success) {
+        console.log('✅ Cron task created!', data);
+        
+        // Add to temple project
+        if (!this.currentTemple.project.cronTasks) {
+          this.currentTemple.project.cronTasks = [];
+        }
+        this.currentTemple.project.cronTasks.push(task);
+        
+        // Refresh display
+        this.populateCronTasks(this.currentTemple);
+        
+        // Close modal
+        this.closeCronBuilder();
+        
+        alert(`✅ Task "${name}" created!\nSchedule: ${preview}`);
+      } else {
+        alert('❌ Failed to create task: ' + (data.error || 'Unknown error'));
+      }
+    })
+    .catch(err => {
+      console.error('Failed to create cron task:', err);
+      alert('❌ Error creating task. See console for details.');
+    });
   }
 };
 

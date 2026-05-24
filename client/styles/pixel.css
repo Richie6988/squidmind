@@ -2201,3 +2201,87 @@ input[type="color"]::-webkit-color-swatch {
 .prompt-preview strong {
   color: #f5576c;
 }
+
+/* ========== PANEL RESIZE HANDLES ========== */
+
+.resize-handle {
+  position: absolute;
+  z-index: 10;
+}
+
+.resize-handle-e {
+  right: 0;
+  top: 0;
+  width: 6px;
+  height: 100%;
+  cursor: ew-resize;
+}
+
+.resize-handle-s {
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 6px;
+  cursor: ns-resize;
+}
+
+.resize-handle-se {
+  right: 0;
+  bottom: 0;
+  width: 12px;
+  height: 12px;
+  cursor: nwse-resize;
+  background: rgba(79, 172, 254, 0.5);
+  border-radius: 2px;
+}
+
+.resize-handle:hover {
+  background: rgba(79, 172, 254, 0.3);
+}
+
+.panel.resizing {
+  user-select: none;
+  transition: none;
+}
+
+.panel {
+  position: relative;
+  min-width: 250px;
+  min-height: 200px;
+}
+
+/* Cron Expression Display */
+.cron-expression {
+  background: rgba(0, 0, 0, 0.3);
+  padding: 8px;
+  border-radius: 4px;
+  font-family: 'Courier New', monospace;
+  font-size: 11px;
+  color: #4facfe;
+  margin-top: 8px;
+  text-align: center;
+  border: 1px solid rgba(79, 172, 254, 0.3);
+}
+
+.cron-builder {
+  max-width: 600px;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+.form-section small {
+  display: block;
+  font-size: 9px;
+  color: rgba(255, 255, 255, 0.5);
+  margin-top: 4px;
+}
+
+.btn-save {
+  background: #4facfe !important;
+  color: white !important;
+}
+
+.btn-cancel {
+  background: rgba(255, 255, 255, 0.2) !important;
+  color: white !important;
+}

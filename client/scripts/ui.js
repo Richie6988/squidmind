@@ -1225,3 +1225,7 @@ ui.scanForModels = async function() {
 };
 
 console.log('📦 Model management functions loaded');
+
+// Export ui to window for HTML onclick handlers
+window.ui = ui;
+console.log('✅ UI module exported to window');
