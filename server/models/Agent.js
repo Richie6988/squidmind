@@ -12,6 +12,7 @@ class Agent {
     this.status = data.status || 'idle'; // idle, working, thinking, sleeping, error
     this.current_thought = data.current_thought || null;
     this.group_id = data.group_id || null;
+    this.brain_id = data.brain_id || null; // Reference to Brain
     
     this.llm = data.llm || {
       provider: 'anthropic',

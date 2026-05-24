@@ -5,10 +5,13 @@ const bodyParser = require('body-parser');
 const path = require('path');
 const os = require('os');
 const Agent = require('./models/Agent');
+const Brain = require('./models/Brain');
 const Group = require('./models/Group');
 const Log = require('./models/Log');
-const AgentOrchestrator = require('./services/AgentOrchestrator');
+const UnifiedOrchestrator = require('./services/UnifiedOrchestrator');
 const Scheduler = require('./services/Scheduler');
+const modelManager = require('./services/ModelManager');
+const toolRegistry = require('./services/ToolRegistry');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -19,7 +22,7 @@ app.use(bodyParser.json());
 app.use(express.static(path.join(__dirname, '../client')));
 
 // Initialize services
-const orchestrator = new AgentOrchestrator();
+const orchestrator = new UnifiedOrchestrator();
 const scheduler = new Scheduler();
 
 // ==================== AGENT ROUTES ====================
@@ -201,6 +204,140 @@ app.get('/api/tasks/upcoming', (req, res) => {
   res.json({ success: true, tasks });
 });
 
+// ==================== BRAIN ROUTES ====================
+
+app.get('/api/brains', async (req, res) => {
+  try {
+    const brains = await Brain.findAll();
+    res.json({ success: true, brains });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.get('/api/brains/:id', async (req, res) => {
+  try {
+    const brain = await Brain.findById(req.params.id);
+    if (!brain) {
+      return res.status(404).json({ success: false, error: 'Brain not found' });
+    }
+    res.json({ success: true, brain });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.post('/api/brains', async (req, res) => {
+  try {
+    const brain = new Brain(req.body);
+    await brain.save();
+    res.json({ success: true, brain });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.put('/api/brains/:id', async (req, res) => {
+  try {
+    const existingBrain = await Brain.findById(req.params.id);
+    if (!existingBrain) {
+      return res.status(404).json({ success: false, error: 'Brain not found' });
+    }
+    
+    const updatedBrain = new Brain({ ...existingBrain, ...req.body, id: req.params.id });
+    await updatedBrain.save();
+    res.json({ success: true, brain: updatedBrain });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.delete('/api/brains/:id', async (req, res) => {
+  try {
+    const deleted = await Brain.delete(req.params.id);
+    if (!deleted) {
+      return res.status(404).json({ success: false, error: 'Brain not found' });
+    }
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Clone a brain
+app.post('/api/brains/:id/clone', async (req, res) => {
+  try {
+    const brain = await Brain.findById(req.params.id);
+    if (!brain) {
+      return res.status(404).json({ success: false, error: 'Brain not found' });
+    }
+    
+    const clonedBrain = brain.clone(req.body);
+    await clonedBrain.save();
+    res.json({ success: true, brain: clonedBrain });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// ==================== MODEL ROUTES ====================
+
+app.get('/api/models', async (req, res) => {
+  try {
+    const models = await modelManager.listModels();
+    res.json({ success: true, models });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.post('/api/models/load', async (req, res) => {
+  try {
+    const { modelPath, options } = req.body;
+    const model = await modelManager.loadModel(modelPath, options);
+    res.json({ success: true, message: `Model loaded: ${modelPath}` });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.post('/api/models/unload', async (req, res) => {
+  try {
+    const { modelPath } = req.body;
+    const unloaded = await modelManager.unloadModel(modelPath);
+    res.json({ success: unloaded, message: unloaded ? 'Model unloaded' : 'Model not found' });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// ==================== TOOL ROUTES ====================
+
+app.get('/api/tools', (req, res) => {
+  try {
+    const category = req.query.category;
+    const tools = toolRegistry.listTools(category);
+    res.json({ success: true, tools: tools.map(t => ({
+      name: t.name,
+      description: t.description,
+      category: t.category,
+      parameters: t.parameters
+    })) });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.post('/api/tools/execute', async (req, res) => {
+  try {
+    const { toolName, parameters } = req.body;
+    const result = await toolRegistry.executeTool(toolName, parameters);
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 // ==================== SYSTEM ROUTES ====================
 
 app.get('/api/system/health', async (req, res) => {
@@ -281,10 +418,14 @@ async function start() {
   try {
     console.log('🦑 Starting SquidMind...');
     
+    // Initialize orchestrator
+    await orchestrator.init();
+    
     // Test API connection
     const apiConnected = await orchestrator.testConnection();
     if (!apiConnected) {
       console.warn('⚠️  Warning: Claude API connection failed. Check ANTHROPIC_API_KEY in .env');
+      console.log('💡 You can still use local GGUF models!');
     } else {
       console.log('✅ Claude API connected');
     }
@@ -298,12 +439,12 @@ async function start() {
       console.log('📚 API Docs:');
       console.log('  GET    /api/agents          - List all agents');
       console.log('  POST   /api/agents          - Create agent');
-      console.log('  GET    /api/agents/:id      - Get agent');
-      console.log('  PUT    /api/agents/:id      - Update agent');
-      console.log('  DELETE /api/agents/:id      - Delete agent');
-      console.log('  POST   /api/agents/:id/execute - Execute agent');
-      console.log('  GET    /api/logs            - Query logs');
-      console.log('  GET    /api/tasks/status    - Scheduler status');
+      console.log('  GET    /api/brains          - List all brains');
+      console.log('  POST   /api/brains          - Create brain');
+      console.log('  GET    /api/models          - List GGUF models');
+      console.log('  POST   /api/models/load     - Load GGUF model');
+      console.log('  GET    /api/tools           - List available tools');
+      console.log('  POST   /api/tools/execute   - Execute a tool');
       console.log('  GET    /api/system/health   - Health check');
       console.log('\n🎮 Open http://localhost:3000 in your browser!\n');
     });

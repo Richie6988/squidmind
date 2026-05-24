@@ -8,15 +8,28 @@
     "dev": "node --watch server/index.js",
     "test": "echo \"Tests coming soon\" && exit 0"
   },
-  "keywords": ["ai", "agents", "orchestration", "claude", "mcp", "aquarium", "pixel-art"],
+  "keywords": [
+    "ai",
+    "agents",
+    "orchestration",
+    "claude",
+    "mcp",
+    "aquarium",
+    "pixel-art"
+  ],
   "author": "Richard",
   "license": "MIT",
   "dependencies": {
+    "@langchain/core": "^1.1.48",
+    "axios": "^1.16.1",
     "body-parser": "^2.2.2",
+    "cheerio": "^1.2.0",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
+    "mathjs": "^15.2.0",
     "node-cron": "^4.2.1",
+    "node-llama-cpp": "^3.18.1",
     "ws": "^8.21.0"
   }
 }
