@@ -1,1 +1,54 @@
-
+{
+  "schema_version": "2.0.0",
+  "tool_id": "tool_local_001",
+  "name": "read_file",
+  "type": "local_function",
+  "category": "filesystem",
+  "status": "active",
+  
+  "purpose": "Read contents of a file from local filesystem",
+  
+  "when_to_use": [
+    "Need to inspect existing file content",
+    "Verify state before making changes",
+    "Load configuration or data"
+  ],
+  "when_NOT_to_use": [
+    "Reading secrets directly (use ref lookup)",
+    "Files outside allowed paths",
+    "Files larger than 10MB (use head/tail instead)"
+  ],
+  
+  "implementation": {
+    "module": "fs/promises",
+    "function": "readFile",
+    "language": "javascript",
+    "execution_context": "node_runtime"
+  },
+  
+  "authorization": {
+    "required_permissions": ["filesystem_read"],
+    "allowed_paths": ["data/", "client/", "server/", "docs/"],
+    "denied_paths": ["data/secrets/", "/etc/", "/root/", "node_modules/"],
+    "requires_approval": false,
+    "is_destructive": false
+  },
+  
+  "parameters": {
+    "path": {"type": "string", "required": true, "description": "Relative file path"},
+    "encoding": {"type": "string", "required": false, "default": "utf8"}
+  },
+  
+  "returns": {
+    "type": "object",
+    "structure": {"content": "string", "size_bytes": "number"}
+  },
+  
+  "error_handling": {
+    "file_not_found": "Return error with suggestion",
+    "permission_denied": "Log and return error",
+    "file_too_large": "Suggest using head/tail params"
+  },
+  
+  "performance": {"average_latency_ms": 5, "success_rate": 0.99}
+}

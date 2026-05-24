@@ -1,0 +1,15 @@
+{
+  "schema_version": "2.0.0",
+  "schema_type": "checkpoints",
+  
+  "metadata": {
+    "total_checkpoints": 0,
+    "active_checkpoints": 0,
+    "retention_policy": "Keep 5 latest per task, archive older",
+    "last_updated_at": "2025-01-20T17:00:00.000Z"
+  },
+  
+  "checkpoints": {},
+  
+  "purpose": "Resume long-running tasks from last known good state after crash or interruption"
+}

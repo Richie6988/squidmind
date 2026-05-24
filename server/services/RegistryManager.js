@@ -1,0 +1,487 @@
+/**
+ * RegistryManager - Centralized access to all neuronal architecture registries
+ * 
+ * Handles:
+ * - Reading registries efficiently (caches in memory)
+ * - Incremental ID generation
+ * - Cascade updates across registries
+ * - Audit logging
+ * 
+ * @see docs/WHY_THIS_ARCHITECTURE.md
+ */
+
+const fs = require('fs').promises;
+const path = require('path');
+
+class RegistryManager {
+  constructor(dataRoot) {
+    this.dataRoot = dataRoot || path.join(__dirname, '../../data');
+    this.cache = new Map();
+    this.dirty = new Set();
+  }
+
+  // ==================== CORE I/O ====================
+
+  async read(relativePath) {
+    if (this.cache.has(relativePath)) {
+      return this.cache.get(relativePath);
+    }
+    const fullPath = path.join(this.dataRoot, relativePath);
+    const content = await fs.readFile(fullPath, 'utf8');
+    const data = JSON.parse(content);
+    this.cache.set(relativePath, data);
+    return data;
+  }
+
+  async write(relativePath, data) {
+    const fullPath = path.join(this.dataRoot, relativePath);
+    data.last_updated_at = new Date().toISOString();
+    if (data.metadata) {
+      data.metadata.last_updated_at = data.last_updated_at;
+    }
+    await fs.writeFile(fullPath, JSON.stringify(data, null, 2), 'utf8');
+    this.cache.set(relativePath, data);
+    this.dirty.delete(relativePath);
+  }
+
+  invalidateCache(relativePath) {
+    if (relativePath) {
+      this.cache.delete(relativePath);
+    } else {
+      this.cache.clear();
+    }
+  }
+
+  // ==================== ID GENERATION ====================
+
+  /**
+   * Generate next incremental ID for a registry
+   * @param {string} registryPath - e.g. 'agents/agent_registry.json'
+   * @returns {string} - e.g. 'agent_005'
+   */
+  async generateNextId(registryPath) {
+    const registry = await this.read(registryPath);
+    const nextNum = registry.metadata.next_id;
+    const format = registry.metadata.id_format;
+    const id = format.replace('NNN', String(nextNum).padStart(3, '0'));
+    
+    // Update registry counters
+    registry.metadata.last_id_used = nextNum;
+    registry.metadata.next_id = nextNum + 1;
+    
+    return id;
+  }
+
+  // ==================== POSEIDON BRAIN ====================
+
+  async getPoseidonBrain() {
+    return await this.read('main/poseidon_brain.json');
+  }
+
+  async updatePoseidonState(updates) {
+    const brain = await this.getPoseidonBrain();
+    Object.assign(brain.current_state, updates);
+    brain.current_state.last_state_update_at = new Date().toISOString();
+    await this.write('main/poseidon_brain.json', brain);
+    return brain;
+  }
+
+  // ==================== AGENTS ====================
+
+  async getAgentRegistry() {
+    return await this.read('agents/agent_registry.json');
+  }
+
+  async getAgent(agentId) {
+    const registry = await this.getAgentRegistry();
+    const entry = registry.agents[agentId];
+    if (!entry) return null;
+    const brain = await this.read(`agents/${entry.brain_file}`);
+    return { registry_entry: entry, brain };
+  }
+
+  async createAgent(agentData) {
+    const registry = await this.getAgentRegistry();
+    const agentId = await this.generateNextId('agents/agent_registry.json');
+    const idNum = agentId.split('_')[1];
+    const brainFile = `squid_brain_${idNum}.json`;
+    const now = new Date().toISOString();
+
+    // Create registry entry
+    registry.agents[agentId] = {
+      agent_id: agentId,
+      display_name: agentData.name,
+      name_history: [{
+        name: agentData.name,
+        given_at: now,
+        given_by: agentData.created_by || 'human_richard',
+        active: true
+      }],
+      brain_file: brainFile,
+      status: 'sleeping',
+      specialization: agentData.specialization || 'general',
+      created_at: now,
+      first_active_at: null,
+      last_active_at: null,
+      last_status_change_at: now,
+      total_active_time_seconds: 0,
+      assigned_projects: [],
+      current_task_id: null,
+      task_queue: [],
+      performance_summary: {
+        tasks_completed: 0,
+        tasks_failed: 0,
+        tasks_cancelled: 0,
+        success_rate: 0,
+        average_duration_seconds: 0,
+        last_30_days_score: 0
+      },
+      resource_usage: {
+        current_model_id: null,
+        lifetime_input_tokens: 0,
+        lifetime_output_tokens: 0
+      }
+    };
+
+    // Update metadata
+    registry.metadata.total_sleeping++;
+    registry.metadata.total_ever_created++;
+
+    // Create brain file
+    const brain = {
+      schema_version: '2.0.0',
+      schema_type: 'agent_brain',
+      identity: {
+        agent_id: agentId,
+        display_name: agentData.name,
+        nickname: agentData.nickname || agentData.name,
+        role: agentData.role || 'General Agent',
+        created_at: now,
+        created_by: agentData.created_by || 'human_richard',
+        cloned_from: agentData.cloned_from || null,
+        version: '1.0.0'
+      },
+      appearance: agentData.appearance || {
+        primary_color: '#FF6B9D',
+        secondary_color: '#C44569',
+        size_scale: 1.0,
+        accessories: { hat: 'none', glasses: 'none', eyes: 'round', outfit: 'none' }
+      },
+      brain_config: agentData.brain_config || {
+        model_binding: { preferred_model_id: null, current_model_id: null },
+        inference_params: { temperature: 0.7, top_p: 0.9, top_k: 40, max_tokens_per_response: 2048 },
+        system_prompt: `You are ${agentData.name}, an AI agent in the SquidMind farm.`
+      },
+      capabilities: { skills: {}, tools_allowed: [], tools_forbidden: [] },
+      current_state: { status: 'sleeping', current_task_id: null, last_action_at: null },
+      assignments: { projects: [], active_tasks: [], task_queue: [] },
+      inbox: { messages: [], unread_count: 0 },
+      performance: { lifetime: {}, last_30_days: {}, by_skill: {} },
+      memory: { short_term: {}, long_term: {}, lessons_learned: [] },
+      history: { completed_tasks_log: [], wake_sleep_events: [] }
+    };
+
+    await this.write(`agents/${brainFile}`, brain);
+    await this.write('agents/agent_registry.json', registry);
+
+    await this.log({
+      event_type: 'agent_created',
+      actor: { type: 'system', id: agentData.created_by || 'human_richard' },
+      subject: { type: 'agent', id: agentId },
+      action: `Created agent: ${agentData.name}`,
+      changes: [
+        { file: 'agents/agent_registry.json', operation: 'added_entry', key: agentId },
+        { file: `agents/${brainFile}`, operation: 'created' }
+      ]
+    });
+
+    return { agent_id: agentId, registry_entry: registry.agents[agentId], brain };
+  }
+
+  // ==================== PROJECTS ====================
+
+  async getProjectRegistry() {
+    return await this.read('projects/project_registry.json');
+  }
+
+  async getProject(projectId) {
+    const registry = await this.getProjectRegistry();
+    const entry = registry.projects[projectId];
+    if (!entry) return null;
+    const memory = await this.read(`projects/${entry.memory_file}`);
+    return { registry_entry: entry, memory };
+  }
+
+  // ==================== TASKS ====================
+
+  async getTasksRegistry() {
+    return await this.read('tasks/tasks_registry.json');
+  }
+
+  async createTask(taskData) {
+    const registry = await this.getTasksRegistry();
+    const taskId = await this.generateNextId('tasks/tasks_registry.json');
+    const now = new Date().toISOString();
+
+    const task = {
+      task_id: taskId,
+      parent_task_id: taskData.parent_task_id || null,
+      title: taskData.title,
+      description: taskData.description || '',
+      origin: taskData.origin || {
+        type: 'human_direct',
+        source: 'human_richard',
+        via: 'chat_interface',
+        received_at: now
+      },
+      assignment: {
+        assigned_to: taskData.assigned_to || null,
+        assigned_at: taskData.assigned_to ? now : null,
+        assigned_by: 'poseidon',
+        reassignment_count: 0,
+        previous_assignees: []
+      },
+      context: {
+        project_id: taskData.project_id || null,
+        related_task_ids: [],
+        blocks_task_ids: [],
+        blocked_by_task_ids: taskData.blocked_by || [],
+        team_id: null
+      },
+      priority: this.computePriority(taskData),
+      lifecycle: {
+        status: 'planned',
+        status_history: [{ status: 'planned', at: now, by: 'poseidon' }],
+        started_at: null,
+        completed_at: null,
+        duration_seconds: 0,
+        active_time_seconds: 0,
+        paused_count: 0
+      },
+      chunks: [],
+      execution: {
+        input_tokens_used: 0,
+        output_tokens_used: 0,
+        model_used: null,
+        files_modified: [],
+        files_created: [],
+        files_deleted: []
+      },
+      logs_refs: []
+    };
+
+    registry.tasks[taskId] = task;
+    registry.metadata.total_queued++;
+
+    await this.write('tasks/tasks_registry.json', registry);
+
+    await this.log({
+      event_type: 'task_created',
+      actor: { type: 'poseidon', id: 'poseidon_main' },
+      subject: { type: 'task', id: taskId },
+      action: `Created task: ${taskData.title}`,
+      changes: [{ file: 'tasks/tasks_registry.json', operation: 'added_entry', key: taskId }]
+    });
+
+    return task;
+  }
+
+  /**
+   * Compute priority score using formula from poseidon_brain
+   */
+  computePriority(taskData) {
+    const urgency = taskData.urgency || 3;
+    const importance = taskData.importance || 3;
+    const difficulty = taskData.difficulty || 3;
+    const duration = (taskData.estimated_duration_minutes || 30) / 30;
+    const blocking = taskData.blocking_count || 0;
+    const saturation = taskData.resource_saturation_factor || 0;
+
+    const score = (urgency * 3) + (importance * 2) + (blocking * 5)
+                - (difficulty * 1) - (duration * 0.5) - (saturation * 4);
+
+    return {
+      urgency, importance, difficulty,
+      estimated_duration_minutes: taskData.estimated_duration_minutes || 30,
+      deadline: taskData.deadline || null,
+      blocking_count: blocking,
+      resource_saturation_factor: saturation,
+      computed_score: Math.round(score * 100) / 100,
+      score_history: [{
+        at: new Date().toISOString(),
+        score: Math.round(score * 100) / 100,
+        reason: 'initial_computation'
+      }],
+      justification: taskData.justification || ''
+    };
+  }
+
+  /**
+   * Close a task - replaces chunks with closure_comments
+   */
+  async closeTask(taskId, outcome, closureData) {
+    const registry = await this.getTasksRegistry();
+    const task = registry.tasks[taskId];
+    if (!task) throw new Error(`Task ${taskId} not found`);
+
+    const now = new Date().toISOString();
+    const startTime = task.lifecycle.started_at ? new Date(task.lifecycle.started_at).getTime() : Date.now();
+    const durationMin = Math.round((Date.now() - startTime) / 60000);
+
+    // Replace chunks with closure_comments
+    delete task.chunks;
+    task.closure_comments = {
+      outcome,
+      summary: closureData.summary,
+      what_went_well: closureData.what_went_well || '',
+      what_could_improve: closureData.what_could_improve || '',
+      lessons_for_future: closureData.lessons_for_future || '',
+      closed_by: closureData.closed_by || 'poseidon',
+      closed_at: now,
+      duration_total_minutes: durationMin,
+      approval_status: closureData.approval_status || 'approved',
+      approved_by: closureData.approved_by || 'poseidon',
+      rating_by_poseidon: closureData.rating_by_poseidon || null,
+      rating_by_user: closureData.rating_by_user || null
+    };
+
+    // Update lifecycle
+    task.lifecycle.status = outcome;
+    task.lifecycle.completed_at = now;
+    task.lifecycle.duration_seconds = Math.round((Date.now() - startTime) / 1000);
+    task.lifecycle.status_history.push({
+      status: outcome,
+      at: now,
+      by: closureData.closed_by || 'poseidon'
+    });
+
+    // Update registry counters
+    registry.metadata.total_queued = Math.max(0, registry.metadata.total_queued - 1);
+    if (outcome === 'completed') registry.metadata.total_completed++;
+    else if (outcome === 'failed') registry.metadata.total_failed++;
+    else if (outcome === 'cancelled') registry.metadata.total_cancelled++;
+
+    await this.write('tasks/tasks_registry.json', registry);
+
+    // Cascade updates
+    await this.cascadeTaskClosure(task);
+
+    await this.log({
+      event_type: `task_${outcome}`,
+      actor: { type: closureData.closed_by ? 'agent' : 'poseidon', id: closureData.closed_by || 'poseidon_main' },
+      subject: { type: 'task', id: taskId },
+      action: `Task ${outcome}: ${task.title}`,
+      changes: [
+        { file: 'tasks/tasks_registry.json', field: `${taskId}.status`, to: outcome },
+        { file: 'tasks/tasks_registry.json', operation: 'chunks_replaced_with_closure_comments' }
+      ]
+    });
+
+    return task;
+  }
+
+  /**
+   * Cascade updates when task closes
+   */
+  async cascadeTaskClosure(task) {
+    // Update agent performance
+    if (task.assignment.assigned_to) {
+      const agentRegistry = await this.getAgentRegistry();
+      const agent = agentRegistry.agents[task.assignment.assigned_to];
+      if (agent) {
+        const perf = agent.performance_summary;
+        if (task.lifecycle.status === 'completed') perf.tasks_completed++;
+        else if (task.lifecycle.status === 'failed') perf.tasks_failed++;
+        else if (task.lifecycle.status === 'cancelled') perf.tasks_cancelled++;
+        
+        const total = perf.tasks_completed + perf.tasks_failed + perf.tasks_cancelled;
+        perf.success_rate = total > 0 ? perf.tasks_completed / total : 0;
+        
+        await this.write('agents/agent_registry.json', agentRegistry);
+      }
+    }
+
+    // Update project metrics
+    if (task.context.project_id) {
+      const projectRegistry = await this.getProjectRegistry();
+      const project = projectRegistry.projects[task.context.project_id];
+      if (project) {
+        if (task.lifecycle.status === 'completed') project.metrics.tasks_completed++;
+        project.metrics.tasks_pending = Math.max(0, (project.metrics.tasks_pending || 0) - 1);
+        await this.write('projects/project_registry.json', projectRegistry);
+      }
+    }
+  }
+
+  // ==================== LOGS ====================
+
+  async log(event) {
+    const logs = await this.read('logs/logs.json');
+    const nextId = logs.metadata.last_entry_id + 1;
+    const entry = {
+      log_id: nextId,
+      timestamp: new Date().toISOString(),
+      severity: event.severity || 'info',
+      ...event
+    };
+    logs.entries.push(entry);
+    logs.metadata.total_entries++;
+    logs.metadata.last_entry_id = nextId;
+    await this.write('logs/logs.json', logs);
+    return entry;
+  }
+
+  // ==================== STARTUP ====================
+
+  /**
+   * Poseidon wake-up sequence
+   */
+  async wakeUp() {
+    const brain = await this.getPoseidonBrain();
+    const agents = await this.getAgentRegistry();
+    const projects = await this.getProjectRegistry();
+    const tasks = await this.getTasksRegistry();
+    const models = await this.read('models/model_registry.json');
+
+    const now = new Date().toISOString();
+
+    // Update Poseidon state
+    brain.current_state = {
+      ...brain.current_state,
+      active_agents_count: agents.metadata.total_active,
+      sleeping_agents_count: agents.metadata.total_sleeping,
+      active_projects_count: projects.metadata.total_active,
+      tasks_in_progress: tasks.metadata.total_active,
+      tasks_queued: tasks.metadata.total_queued,
+      last_state_update_at: now
+    };
+    brain.identity.last_awakening_at = now;
+    brain.identity.total_awakening_count++;
+
+    await this.write('main/poseidon_brain.json', brain);
+
+    await this.log({
+      event_type: 'system_startup',
+      actor: { type: 'system', id: 'poseidon_main' },
+      subject: { type: 'system', id: 'wake_up' },
+      action: 'Poseidon awakened',
+      context: {
+        active_agents: agents.metadata.total_active,
+        active_projects: projects.metadata.total_active,
+        pending_tasks: tasks.metadata.total_queued
+      }
+    });
+
+    return {
+      poseidon: brain,
+      summary: {
+        agents: agents.metadata,
+        projects: projects.metadata,
+        tasks: tasks.metadata,
+        models: models.metadata
+      }
+    };
+  }
+}
+
+module.exports = RegistryManager;

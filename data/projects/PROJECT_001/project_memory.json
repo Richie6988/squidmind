@@ -1,0 +1,164 @@
+{
+  "schema_version": "2.0.0",
+  "schema_type": "project_memory",
+  
+  "project_id": "project_001",
+  "name": "AQUARIUM",
+  "registered_in": "projects/project_registry.json",
+  
+  "vision": "Create an immersive underwater gamified AI agent collaboration platform where autonomous squids work together on projects in a beautiful ocean environment",
+  
+  "lifecycle": {
+    "created_at": "2025-01-20T10:00:00.000Z",
+    "first_commit_at": "2025-01-20T10:30:00.000Z",
+    "last_updated_at": "2025-01-20T17:00:00.000Z",
+    "status": "active",
+    "phase": "Bug fixes and architecture refinement"
+  },
+  
+  "repository": {
+    "type": "github",
+    "url": "https://github.com/Richie6988/squidmind.git",
+    "ssh_url": "git@github.com:Richie6988/squidmind.git",
+    "owner": "Richie6988",
+    "branch": "main",
+    "last_known_commit": "1942412",
+    "local_path": "/home/richard/Bureau/AIKIP/SquidSquad/squidmind",
+    "access": {
+      "method": "ssh_and_token",
+      "ssh_key_ref": "secrets/ssh_keys/id_rsa",
+      "fine_grained_pat_ref": "secrets/github/aquarium_fgpat",
+      "permissions_granted": [
+        "contents:read",
+        "contents:write",
+        "issues:read",
+        "issues:write",
+        "pull_requests:read",
+        "pull_requests:write"
+      ],
+      "expires_at": "2026-01-20T00:00:00.000Z",
+      "notes": "Use SSH for git operations, PAT for API calls"
+    }
+  },
+  
+  "structure": {
+    "root": "/home/richard/Bureau/AIKIP/SquidSquad/squidmind",
+    "directories": {
+      "client": {
+        "path": "client/",
+        "purpose": "Frontend application (vanilla JS)",
+        "files_of_interest": [
+          {"file": "index.html", "lines": 799, "status": "stable", "purpose": "Main HTML structure"},
+          {"file": "scripts/aquarium.js", "lines": 300, "status": "stable", "purpose": "Canvas orchestrator"},
+          {"file": "scripts/Squid.js", "lines": 250, "status": "stable", "purpose": "Squid entity physics"},
+          {"file": "scripts/SquidInteractionSystem.js", "lines": 609, "status": "stable", "purpose": "Drag/drop/click handlers"},
+          {"file": "scripts/ui.js", "lines": 1900, "status": "active", "purpose": "Panel management"},
+          {"file": "styles/pixel.css", "lines": 2800, "status": "stable", "purpose": "Ocean theme styling"}
+        ],
+        "not_finished": [
+          "SVG pixel art icon system (replace [TAGS] with icons)",
+          "Temple bubble columns visualization",
+          "Resizable right panel",
+          "Squid accessories rendering (hats, glasses, outfits)"
+        ]
+      },
+      "server": {
+        "path": "server/",
+        "purpose": "Backend API + model management",
+        "files_of_interest": [
+          {"file": "index.js", "lines": 1115, "status": "stable", "purpose": "Express API"},
+          {"file": "services/ModelManager.js", "lines": 200, "status": "stable", "purpose": "GGUF loading"},
+          {"file": "utils/idGenerator.js", "lines": 15, "status": "active", "purpose": "Unique ID generation"}
+        ],
+        "not_finished": [
+          "RegistryManager class for new neuronal architecture",
+          "Cascade update system on task completion",
+          "Resource monitoring heartbeat",
+          "Checkpoint save/restore"
+        ]
+      },
+      "data": {
+        "path": "data/",
+        "purpose": "Neuronal architecture storage",
+        "files_of_interest": [
+          {"file": "main/poseidon_brain.json", "status": "active", "purpose": "Conductor"},
+          {"file": "agents/agent_registry.json", "status": "active", "purpose": "Agent index"},
+          {"file": "projects/project_registry.json", "status": "active", "purpose": "Project index"},
+          {"file": "tasks/tasks_registry.json", "status": "active", "purpose": "Task tracking"},
+          {"file": "logs/logs.json", "status": "active", "purpose": "Audit trail"}
+        ]
+      },
+      "docs": {
+        "path": "docs/",
+        "purpose": "Architecture documentation",
+        "files_of_interest": [
+          {"file": "DATA_ARCHITECTURE.md", "status": "complete", "purpose": "Folder structure design"},
+          {"file": "WHY_THIS_ARCHITECTURE.md", "status": "active", "purpose": "Rationale for design choices"}
+        ]
+      }
+    },
+    "external_dependencies": [
+      {"name": "llama.cpp", "purpose": "Local GGUF execution", "status": "installed"},
+      {"name": "HuggingFace cache", "path": "~/.cache/huggingface/hub", "purpose": "Model storage"}
+    ]
+  },
+  
+  "stakeholders": {
+    "humans": [
+      {"user_id": "human_richard", "role": "Product Owner", "involvement": "high"}
+    ],
+    "agents": [],
+    "poseidon": {"role": "Orchestrator", "status": "active"}
+  },
+  
+  "objectives": {
+    "primary": [
+      "Beautiful underwater aquarium with Three.js",
+      "Squid entities with realistic swimming",
+      "Temple system for project organization",
+      "Drag-and-drop assignment system"
+    ],
+    "completed": [
+      "Aquarium rendering with ocean background",
+      "Squid swimming physics (1.5x speed)",
+      "Temple rendering with customizable colors",
+      "Drag and drop squid to temple assignment",
+      "Right panel system monitor",
+      "Task queue with cancel",
+      "Brain.json editor with form",
+      "Poseidon chat interface",
+      "GGUF model loading",
+      "File browser for models",
+      "Click outside to close panels",
+      "Poseidon drag with position persistence",
+      "Temple context menu for customization",
+      "Removed ALL emojis from codebase",
+      "Neuronal architecture v2.0.0 designed"
+    ]
+  },
+  
+  "progress": {
+    "completion_percent": 88,
+    "blockers": [],
+    "next_steps": [
+      {"priority": "HIGH", "title": "Implement RegistryManager backend class"},
+      {"priority": "HIGH", "title": "Update API endpoints to use new architecture"},
+      {"priority": "HIGH", "title": "Update frontend to use new IDs"},
+      {"priority": "MEDIUM", "title": "Temple bubble columns visualization"},
+      {"priority": "MEDIUM", "title": "Resizable right panel"}
+    ]
+  },
+  
+  "metrics": {
+    "code_lines": 8500,
+    "commits": 48,
+    "features_completed": 31,
+    "bugs_fixed": 18,
+    "time_invested_hours": 35
+  },
+  
+  "colors": {
+    "outside": "#457B9D",
+    "inside": "#1D3557"
+  }
+}

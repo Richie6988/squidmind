@@ -1,0 +1,59 @@
+{
+  "schema_version": "2.0.0",
+  "schema_type": "tool_registry",
+  
+  "metadata": {
+    "total_tools": 3,
+    "total_active": 3,
+    "by_type": {"local_function": 1, "api_call": 1, "mcp_server": 1},
+    "last_updated_at": "2025-01-20T17:00:00.000Z"
+  },
+  
+  "tools": {
+    "tool_local_001": {
+      "tool_id": "tool_local_001",
+      "name": "read_file",
+      "type": "local_function",
+      "category": "filesystem",
+      "spec_file": "read_file.json",
+      "status": "active",
+      "usage_count": 0
+    },
+    "tool_api_001": {
+      "tool_id": "tool_api_001",
+      "name": "web_search",
+      "type": "api_call",
+      "category": "information_retrieval",
+      "spec_file": "web_search.json",
+      "status": "active",
+      "usage_count": 0
+    },
+    "tool_mcp_001": {
+      "tool_id": "tool_mcp_001",
+      "name": "github_mcp",
+      "type": "mcp_server",
+      "category": "version_control",
+      "spec_file": "github_mcp.json",
+      "status": "active",
+      "usage_count": 0
+    }
+  },
+  
+  "type_definitions": {
+    "local_function": {
+      "description": "Direct code execution on local machine",
+      "requires": ["function_reference", "permission_scope", "sandbox_boundaries"],
+      "risks": ["filesystem_access", "code_execution"]
+    },
+    "api_call": {
+      "description": "External HTTP/HTTPS API service",
+      "requires": ["endpoint_url", "authentication", "rate_limits"],
+      "risks": ["external_dependency", "api_quotas", "data_privacy"]
+    },
+    "mcp_server": {
+      "description": "Model Context Protocol compliant server",
+      "requires": ["server_url", "protocol_version", "transport", "capabilities"],
+      "risks": ["protocol_mismatch", "server_availability"]
+    }
+  }
+}

@@ -28,3 +28,7 @@ Thumbs.db
 .idea/
 *.swp
 *.swo
+
+# SquidMind: Never commit secrets
+data/secrets/
+data_backup/

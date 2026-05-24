@@ -1,0 +1,64 @@
+{
+  "schema_version": "2.0.0",
+  "tool_id": "tool_api_001",
+  "name": "web_search",
+  "type": "api_call",
+  "category": "information_retrieval",
+  "status": "active",
+  
+  "purpose": "Search the web for current information",
+  
+  "when_to_use": [
+    "User asks about current events",
+    "Need information beyond training data",
+    "Fact verification needed"
+  ],
+  "when_NOT_to_use": [
+    "Question can be answered from existing context",
+    "User wants opinion not facts",
+    "Stable knowledge already in training data"
+  ],
+  
+  "endpoint": {
+    "url": "https://api.search.example.com/v1/search",
+    "method": "POST",
+    "transport": "https",
+    "headers": {
+      "Content-Type": "application/json",
+      "Authorization": "Bearer ${API_KEY}"
+    },
+    "timeout_seconds": 10
+  },
+  
+  "authentication": {
+    "type": "bearer_token",
+    "key_ref": "secrets/api_keys/web_search_api_key",
+    "auth_note": "Token loaded at runtime from secrets folder, never logged"
+  },
+  
+  "rate_limits": {
+    "requests_per_minute": 60,
+    "requests_per_day": 1000,
+    "requests_per_month": 25000,
+    "current_usage_today": 0,
+    "reset_at": "2025-01-21T00:00:00.000Z"
+  },
+  
+  "parameters": {
+    "query": {"type": "string", "required": true, "description": "Search query (3-6 words optimal)"},
+    "max_results": {"type": "number", "required": false, "default": 10, "max": 50}
+  },
+  
+  "returns": {
+    "type": "object",
+    "structure": {"results": "array", "total_count": "number"}
+  },
+  
+  "error_handling": {
+    "rate_limit_exceeded": "Queue for retry after reset",
+    "auth_failed": "Alert user, check key validity",
+    "timeout": "Retry with smaller query"
+  },
+  
+  "performance": {"average_latency_ms": 1500, "success_rate": 0.95}
+}

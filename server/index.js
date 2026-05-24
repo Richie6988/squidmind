@@ -21,6 +21,10 @@ app.use(cors());
 app.use(bodyParser.json());
 app.use(express.static(path.join(__dirname, '../client')));
 
+// === V2 NEURONAL ARCHITECTURE ROUTES ===
+const registryRoutes = require('./routes/registryRoutes');
+app.use('/api/v2', registryRoutes);
+
 // Initialize services
 const orchestrator = new UnifiedOrchestrator();
 const scheduler = new Scheduler();

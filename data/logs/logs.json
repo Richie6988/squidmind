@@ -1,0 +1,188 @@
+{
+  "schema_version": "2.0.0",
+  "schema_type": "logs",
+  "metadata": {
+    "total_entries": 5,
+    "last_entry_id": 5,
+    "rotation_policy": "Archive entries older than 30 days or when exceeding 10000",
+    "archive_path": "logs/archive/",
+    "last_updated_at": "2026-05-24T22:31:17.033Z"
+  },
+  "event_types": [
+    "system_startup",
+    "system_shutdown",
+    "agent_created",
+    "agent_woken",
+    "agent_slept",
+    "agent_archived",
+    "task_created",
+    "task_assigned",
+    "task_started",
+    "task_chunk_completed",
+    "task_completed",
+    "task_failed",
+    "task_cancelled",
+    "task_reassigned",
+    "project_created",
+    "project_updated",
+    "project_archived",
+    "model_loaded",
+    "model_unloaded",
+    "model_overloaded",
+    "tool_invoked",
+    "tool_failed",
+    "json_update",
+    "user_input",
+    "poseidon_decision",
+    "approval_granted",
+    "approval_denied",
+    "checkpoint_created",
+    "checkpoint_restored"
+  ],
+  "entries": [
+    {
+      "log_id": 1,
+      "timestamp": "2025-01-20T17:00:00.000Z",
+      "event_type": "system_startup",
+      "severity": "info",
+      "actor": {
+        "type": "system",
+        "id": "poseidon_main"
+      },
+      "subject": {
+        "type": "system",
+        "id": "data_architecture"
+      },
+      "action": "Neuronal architecture v2.0.0 initialized",
+      "changes": [
+        {
+          "file": "main/poseidon_brain.json",
+          "operation": "created"
+        },
+        {
+          "file": "agents/agent_registry.json",
+          "operation": "created"
+        },
+        {
+          "file": "projects/project_registry.json",
+          "operation": "created"
+        },
+        {
+          "file": "tasks/tasks_registry.json",
+          "operation": "created"
+        },
+        {
+          "file": "teams/team_registry.json",
+          "operation": "created"
+        },
+        {
+          "file": "models/model_registry.json",
+          "operation": "created"
+        },
+        {
+          "file": "tools/tool_registry.json",
+          "operation": "created"
+        }
+      ],
+      "context": {
+        "version": "2.0.0",
+        "trigger": "manual_setup"
+      }
+    },
+    {
+      "log_id": 2,
+      "timestamp": "2026-05-24T22:31:17.008Z",
+      "severity": "info",
+      "event_type": "system_startup",
+      "actor": {
+        "type": "system",
+        "id": "poseidon_main"
+      },
+      "subject": {
+        "type": "system",
+        "id": "wake_up"
+      },
+      "action": "Poseidon awakened",
+      "context": {
+        "active_agents": 0,
+        "active_projects": 4,
+        "pending_tasks": 0
+      }
+    },
+    {
+      "log_id": 3,
+      "timestamp": "2026-05-24T22:31:17.023Z",
+      "severity": "info",
+      "event_type": "agent_created",
+      "actor": {
+        "type": "system",
+        "id": "human_richard"
+      },
+      "subject": {
+        "type": "agent",
+        "id": "agent_001"
+      },
+      "action": "Created agent: Marina",
+      "changes": [
+        {
+          "file": "agents/agent_registry.json",
+          "operation": "added_entry",
+          "key": "agent_001"
+        },
+        {
+          "file": "agents/squid_brain_001.json",
+          "operation": "created"
+        }
+      ]
+    },
+    {
+      "log_id": 4,
+      "timestamp": "2026-05-24T22:31:17.027Z",
+      "severity": "info",
+      "event_type": "task_created",
+      "actor": {
+        "type": "poseidon",
+        "id": "poseidon_main"
+      },
+      "subject": {
+        "type": "task",
+        "id": "task_001"
+      },
+      "action": "Created task: Test priority formula",
+      "changes": [
+        {
+          "file": "tasks/tasks_registry.json",
+          "operation": "added_entry",
+          "key": "task_001"
+        }
+      ]
+    },
+    {
+      "log_id": 5,
+      "timestamp": "2026-05-24T22:31:17.033Z",
+      "severity": "info",
+      "event_type": "task_completed",
+      "actor": {
+        "type": "agent",
+        "id": "agent_001"
+      },
+      "subject": {
+        "type": "task",
+        "id": "task_001"
+      },
+      "action": "Task completed: Test priority formula",
+      "changes": [
+        {
+          "file": "tasks/tasks_registry.json",
+          "field": "task_001.status",
+          "to": "completed"
+        },
+        {
+          "file": "tasks/tasks_registry.json",
+          "operation": "chunks_replaced_with_closure_comments"
+        }
+      ]
+    }
+  ],
+  "last_updated_at": "2026-05-24T22:31:17.033Z"
+}

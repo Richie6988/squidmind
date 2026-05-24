@@ -1,0 +1,30 @@
+{
+  "schema_version": "2.0.0",
+  "schema_type": "project_memory",
+  
+  "project_id": "project_004",
+  "name": "NEWSROOM",
+  "registered_in": "projects/project_registry.json",
+  
+  "vision": "News aggregation, analysis, and curation",
+  
+  "lifecycle": {
+    "created_at": "2025-01-20T10:00:00.000Z",
+    "last_updated_at": "2025-01-20T17:00:00.000Z",
+    "status": "planned",
+    "phase": "Not yet started"
+  },
+  
+  "repository": {
+    "type": "github",
+    "url": null,
+    "notes": "Repository not yet created"
+  },
+  
+  "structure": {"directories": {}},
+  "stakeholders": {"humans": [{"user_id": "human_richard", "role": "Product Owner"}], "agents": []},
+  "objectives": {"primary": [], "completed": []},
+  "progress": {"completion_percent": 0, "next_steps": []},
+  "metrics": {"code_lines": 0, "commits": 0},
+  "colors": {"outside": "#457B9D", "inside": "#1D3557"}
+}
