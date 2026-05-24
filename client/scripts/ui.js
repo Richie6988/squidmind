@@ -1330,3 +1330,142 @@ ui.saveSquidDetails = async function() {
 };
 
 console.log('✅ UI module with modals loaded');
+
+// ==================== GGUF MODEL LOADING ====================
+
+ui.availableModels = [];
+ui.loadedModels = [];
+
+ui.scanForModels = async function() {
+  const statusDiv = document.getElementById('scan-status');
+  const listDiv = document.getElementById('available-models-list');
+  
+  statusDiv.textContent = '🔍 Scanning...';
+  listDiv.innerHTML = '<p class="hint">Scanning for .gguf files...</p>';
+  
+  try {
+    const response = await fetch('/api/models/scan');
+    const data = await response.json();
+    
+    if (data.success && data.models) {
+      this.availableModels = data.models;
+      statusDiv.textContent = `✅ Found ${data.models.length} models!`;
+      
+      if (data.models.length === 0) {
+        listDiv.innerHTML = '<p class="hint">No .gguf files found. Try manual path below.</p>';
+      } else {
+        listDiv.innerHTML = data.models.map(model => `
+          <div class="model-item" style="margin: 8px 0; padding: 12px; background: rgba(255,255,255,0.05); border-radius: 4px;">
+            <div style="font-size: 11px; font-weight: bold; color: var(--success);">${model.file}</div>
+            <div style="font-size: 9px; color: var(--text-secondary); margin: 4px 0;">${model.name}</div>
+            <div style="font-size: 8px; color: #888; font-family: monospace; margin: 4px 0; overflow-wrap: break-word;">${model.full_path}</div>
+            <button onclick="ui.loadModel('${model.full_path.replace(/'/g, "\\'")}')" 
+                    class="btn-primary" style="margin-top: 8px; width: 100%; font-size: 10px;">
+              🚀 Load Model
+            </button>
+          </div>
+        `).join('');
+      }
+    } else {
+      statusDiv.textContent = '❌ Scan failed';
+      listDiv.innerHTML = '<p class="hint">Scan failed. Try manual path below.</p>';
+    }
+  } catch (error) {
+    console.error('Scan error:', error);
+    statusDiv.textContent = '❌ Error: ' + error.message;
+    listDiv.innerHTML = '<p class="hint">Error scanning. Check console.</p>';
+  }
+};
+
+ui.loadModel = async function(modelPath) {
+  console.log('🔄 Loading model:', modelPath);
+  
+  const listDiv = document.getElementById('loaded-models-list');
+  listDiv.innerHTML = '<p class="hint">⏳ Loading model, please wait...</p>';
+  
+  try {
+    const response = await fetch('/api/models/load', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: modelPath })
+    });
+    
+    const data = await response.json();
+    
+    if (data.success) {
+      console.log('✅ Model loaded:', data.model);
+      alert(`✅ Model loaded successfully!\n\n${data.model.name}\n\nReady for chat with Poseidon!`);
+      await this.refreshLoadedModels();
+    } else {
+      alert('❌ Failed to load model:\n\n' + data.error);
+      listDiv.innerHTML = '<p class="hint">No models loaded yet</p>';
+    }
+  } catch (error) {
+    console.error('Load error:', error);
+    alert('❌ Error loading model:\n\n' + error.message);
+    listDiv.innerHTML = '<p class="hint">No models loaded yet</p>';
+  }
+};
+
+ui.loadModelByPath = async function() {
+  const path = document.getElementById('model-manual-path').value.trim();
+  if (!path) {
+    alert('Please enter a model path');
+    return;
+  }
+  
+  await this.loadModel(path);
+};
+
+ui.refreshLoadedModels = async function() {
+  const listDiv = document.getElementById('loaded-models-list');
+  
+  try {
+    const response = await fetch('/api/models/loaded');
+    const data = await response.json();
+    
+    if (data.success && data.models && data.models.length > 0) {
+      this.loadedModels = data.models;
+      
+      listDiv.innerHTML = data.models.map(model => `
+        <div class="model-item" style="margin: 8px 0; padding: 12px; background: rgba(6, 255, 165, 0.1); border: 2px solid var(--success); border-radius: 4px;">
+          <div style="font-size: 11px; font-weight: bold; color: var(--success);">✅ ${model.name}</div>
+          <div style="font-size: 8px; color: #888; margin-top: 4px;">Ready for chat!</div>
+          <button onclick="ui.unloadModel('${model.name.replace(/'/g, "\\'")}')" 
+                  class="btn-secondary" style="margin-top: 8px; width: 100%; font-size: 10px;">
+            🗑️ Unload
+          </button>
+        </div>
+      `).join('');
+    } else {
+      listDiv.innerHTML = '<p class="hint">No models loaded yet</p>';
+    }
+  } catch (error) {
+    console.error('Refresh error:', error);
+    listDiv.innerHTML = '<p class="hint">Error loading list</p>';
+  }
+};
+
+ui.unloadModel = async function(modelName) {
+  if (!confirm(`Unload model "${modelName}"?`)) return;
+  
+  try {
+    const response = await fetch(`/api/models/${encodeURIComponent(modelName)}`, {
+      method: 'DELETE'
+    });
+    
+    const data = await response.json();
+    
+    if (data.success) {
+      alert(`✅ Model "${modelName}" unloaded`);
+      await this.refreshLoadedModels();
+    } else {
+      alert('Failed to unload: ' + data.error);
+    }
+  } catch (error) {
+    console.error('Unload error:', error);
+    alert('Error: ' + error.message);
+  }
+};
+
+console.log('✅ GGUF Model loading system ready!');
