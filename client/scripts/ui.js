@@ -1219,8 +1219,8 @@ ui.createNewProject = async function() {
       this.closeNewProjectModal();
       
       // Refresh temples
-      if (typeof aquarium !== 'undefined' && aquarium.templeManager) {
-        await aquarium.templeManager.loadTemples();
+      if (typeof aquarium !== 'undefined' && aquarium.loadTemples) {
+        await aquarium.loadTemples();
       }
       
       // Clear form

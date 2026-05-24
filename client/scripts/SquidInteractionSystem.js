@@ -115,7 +115,6 @@ class SquidInteractionSystem {
       this.draggedSquid.targetX = pos.x - this.dragOffset.x;
       this.draggedSquid.targetY = pos.y - this.dragOffset.y;
       this.aquarium.canvas.style.cursor = 'grabbing';
-      console.log(`🎯 Dragging ${this.draggedSquid.name} to (${this.draggedSquid.targetX.toFixed(0)}, ${this.draggedSquid.targetY.toFixed(0)})`);
       return; // Skip hover detection while dragging
     }
     
@@ -221,8 +220,32 @@ class SquidInteractionSystem {
     
     if (this.draggedSquid) {
       if (wasDragging) {
-        // End drag
-        console.log('   Ending drag:', this.draggedSquid.name);
+        // Check if dropped on a temple for assignment
+        const templeAtDrop = this.findEntityAt(pos.x, pos.y);
+        if (templeAtDrop && templeAtDrop.type === 'temple') {
+          const squid = this.draggedSquid;
+          const temple = templeAtDrop.entity;
+          
+          // Assign squid to temple
+          if (!temple.assignedSquids) {
+            temple.assignedSquids = [];
+          }
+          
+          if (!temple.assignedSquids.includes(squid.id)) {
+            temple.assignedSquids.push(squid.id);
+            console.log(`✅ Assigned ${squid.name} to ${temple.name} temple`);
+            
+            // Show confirmation
+            alert(`✅ ${squid.name} assigned to ${temple.name}!`);
+            
+            // Log the assignment
+            if (window.ui && window.ui.addLog) {
+              window.ui.addLog('squid_assigned', `Assigned ${squid.name} to ${temple.name}`);
+            }
+          } else {
+            console.log(`ℹ️ ${squid.name} already assigned to ${temple.name}`);
+          }
+        }
       }
       this.draggedSquid = null;
       this.aquarium.canvas.style.cursor = 'default';

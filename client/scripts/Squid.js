@@ -5,8 +5,8 @@ class Squid {
     this.nickname = data.nickname || data.name;
     this.x = data.x || Math.random() * 700 + 50;
     this.y = data.y || Math.random() * 500 + 50;
-    this.vx = (Math.random() - 0.5) * 2;
-    this.vy = (Math.random() - 0.5) * 2;
+    this.vx = (Math.random() - 0.5) * 6; // 3x faster base velocity
+    this.vy = (Math.random() - 0.5) * 6;
     this.status = data.status || 'idle';
     this.current_thought = data.current_thought;
     
@@ -109,9 +109,9 @@ class Squid {
       this.y = this.targetY;
     }
     
-    // Movement (Pokemon-style slower, more deliberate) - only when idle
+    // Movement (faster swimming!) - only when idle
     if (!this.isDragging && this.status === 'idle' && distance < 1) {
-      const speed = this.personality.animation_style === 'energetic' ? 1.5 : 0.8;
+      const speed = this.personality.animation_style === 'energetic' ? 2.5 : 1.5; // 2x faster
       this.x += this.vx * speed;
       this.y += this.vy * speed;
       
@@ -123,10 +123,10 @@ class Squid {
       if (this.x < 50 || this.x > 750) this.vx *= -1;
       if (this.y < 50 || this.y > 550) this.vy *= -1;
       
-      // Random direction changes (Pokemon-style wandering)
-      if (Math.random() < 0.01) {
-        this.vx = (Math.random() - 0.5) * 2;
-        this.vy = (Math.random() - 0.5) * 2;
+      // Random direction changes (more frequent)
+      if (Math.random() < 0.02) { // 2x more frequent
+        this.vx = (Math.random() - 0.5) * 6; // 3x faster
+        this.vy = (Math.random() - 0.5) * 6;
       }
     }
     
