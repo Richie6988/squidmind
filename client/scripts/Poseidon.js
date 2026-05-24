@@ -192,66 +192,131 @@ Always be encouraging and make the user feel their tasks are in good hands!`;
   }
 
   /**
-   * Draw Poseidon character
+   * Draw Poseidon character - MAJESTIC GOD with beard, crown, trident!
    */
   drawPoseidon(ctx) {
     const scale = this.hovered ? 1.1 : 1;
     ctx.scale(scale, scale);
     
-    // Aura
-    const glow = ctx.createRadialGradient(0, 0, 0, 0, 0, this.size);
-    glow.addColorStop(0, 'rgba(30, 144, 255, 0.4)');
+    // Divine aura (larger!)
+    const glow = ctx.createRadialGradient(0, 0, 0, 0, 0, this.size * 1.3);
+    glow.addColorStop(0, 'rgba(30, 144, 255, 0.6)');
+    glow.addColorStop(0.5, 'rgba(255, 215, 0, 0.3)');
     glow.addColorStop(1, 'rgba(30, 144, 255, 0)');
     ctx.fillStyle = glow;
-    ctx.fillRect(-this.size, -this.size, this.size * 2, this.size * 2);
+    ctx.fillRect(-this.size * 1.3, -this.size * 1.3, this.size * 2.6, this.size * 2.6);
     
-    // Body (divine ocean blue)
+    // Body (divine robes - ocean blue with gold trim)
     ctx.fillStyle = '#1E90FF';
-    ctx.strokeStyle = '#FFD700';
-    ctx.lineWidth = 3;
-    ctx.beginPath();
-    ctx.arc(0, 0, this.size * 0.6, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.stroke();
-    
-    // Crown rays
-    ctx.strokeStyle = '#FFD700';
-    ctx.lineWidth = 3;
-    for (let i = 0; i < 8; i++) {
-      const angle = (Math.PI * 2 / 8) * i + this.floatOffset;
-      const x = Math.cos(angle) * this.size * 0.7;
-      const y = Math.sin(angle) * this.size * 0.7;
-      ctx.beginPath();
-      ctx.moveTo(Math.cos(angle) * this.size * 0.6, Math.sin(angle) * this.size * 0.6);
-      ctx.lineTo(x, y);
-      ctx.stroke();
-    }
-    
-    // Eyes (powerful)
-    ctx.fillStyle = '#FFD700';
-    ctx.beginPath();
-    ctx.arc(-this.size * 0.25, -this.size * 0.15, this.size * 0.12, 0, Math.PI * 2);
-    ctx.arc(this.size * 0.25, -this.size * 0.15, this.size * 0.12, 0, Math.PI * 2);
-    ctx.fill();
-    
-    ctx.fillStyle = '#1E90FF';
-    ctx.beginPath();
-    ctx.arc(-this.size * 0.25, -this.size * 0.15, this.size * 0.06, 0, Math.PI * 2);
-    ctx.arc(this.size * 0.25, -this.size * 0.15, this.size * 0.06, 0, Math.PI * 2);
-    ctx.fill();
-    
-    // Trident
     ctx.strokeStyle = '#FFD700';
     ctx.lineWidth = 4;
     ctx.beginPath();
-    // Handle
-    ctx.moveTo(this.size * 0.5, this.size * 0.2);
-    ctx.lineTo(this.size * 0.5, this.size * 0.9);
-    // Prongs
-    ctx.moveTo(this.size * 0.3, this.size * 0.3);
-    ctx.lineTo(this.size * 0.5, this.size * 0.2);
-    ctx.lineTo(this.size * 0.7, this.size * 0.3);
+    ctx.arc(0, 0, this.size * 0.5, 0, Math.PI * 2);
+    ctx.fill();
     ctx.stroke();
+    
+    // CROWN (three points - classic god crown)
+    ctx.fillStyle = '#FFD700';
+    ctx.strokeStyle = '#FFA500';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    // Base of crown
+    ctx.moveTo(-this.size * 0.4, -this.size * 0.45);
+    ctx.lineTo(this.size * 0.4, -this.size * 0.45);
+    // Left point
+    ctx.lineTo(this.size * 0.3, -this.size * 0.65);
+    // Middle point (tallest)
+    ctx.lineTo(0, -this.size * 0.75);
+    // Right point
+    ctx.lineTo(-this.size * 0.3, -this.size * 0.65);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    
+    // Crown gems
+    ctx.fillStyle = '#FF1493'; // Pink gem
+    ctx.beginPath();
+    ctx.arc(0, -this.size * 0.68, this.size * 0.08, 0, Math.PI * 2);
+    ctx.fill();
+    
+    // Eyes (wise and powerful)
+    ctx.fillStyle = '#FFD700';
+    ctx.beginPath();
+    ctx.arc(-this.size * 0.2, -this.size * 0.1, this.size * 0.12, 0, Math.PI * 2);
+    ctx.arc(this.size * 0.2, -this.size * 0.1, this.size * 0.12, 0, Math.PI * 2);
+    ctx.fill();
+    
+    // Pupils (deep blue)
+    ctx.fillStyle = '#000080';
+    ctx.beginPath();
+    ctx.arc(-this.size * 0.2, -this.size * 0.1, this.size * 0.05, 0, Math.PI * 2);
+    ctx.arc(this.size * 0.2, -this.size * 0.1, this.size * 0.05, 0, Math.PI * 2);
+    ctx.fill();
+    
+    // BEARD (flowing, majestic!)
+    ctx.fillStyle = '#E0E0E0'; // White/silver beard
+    ctx.strokeStyle = '#C0C0C0';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    // Beard shape (three flowing sections)
+    ctx.moveTo(-this.size * 0.3, this.size * 0.15);
+    ctx.quadraticCurveTo(-this.size * 0.4, this.size * 0.4, -this.size * 0.25, this.size * 0.55);
+    ctx.quadraticCurveTo(0, this.size * 0.65, this.size * 0.25, this.size * 0.55);
+    ctx.quadraticCurveTo(this.size * 0.4, this.size * 0.4, this.size * 0.3, this.size * 0.15);
+    ctx.lineTo(this.size * 0.2, this.size * 0.1);
+    ctx.lineTo(-this.size * 0.2, this.size * 0.1);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    
+    // Beard details (flowing lines)
+    ctx.strokeStyle = '#A0A0A0';
+    ctx.lineWidth = 1;
+    for (let i = -2; i <= 2; i++) {
+      ctx.beginPath();
+      ctx.moveTo(i * this.size * 0.08, this.size * 0.15);
+      ctx.quadraticCurveTo(i * this.size * 0.12, this.size * 0.4, i * this.size * 0.1, this.size * 0.6);
+      ctx.stroke();
+    }
+    
+    // TRIDENT (ICONIC!)
+    ctx.save();
+    ctx.translate(this.size * 0.6, 0);
+    
+    // Trident shaft (golden)
+    ctx.strokeStyle = '#FFD700';
+    ctx.lineWidth = 5;
+    ctx.beginPath();
+    ctx.moveTo(0, -this.size * 0.3);
+    ctx.lineTo(0, this.size * 0.9);
+    ctx.stroke();
+    
+    // Trident prongs (three sharp points)
+    ctx.strokeStyle = '#FFD700';
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    // Middle prong (longest)
+    ctx.moveTo(0, -this.size * 0.6);
+    ctx.lineTo(0, -this.size * 0.3);
+    // Left prong
+    ctx.moveTo(-this.size * 0.15, -this.size * 0.5);
+    ctx.lineTo(-this.size * 0.15, -this.size * 0.25);
+    ctx.lineTo(0, -this.size * 0.3);
+    // Right prong
+    ctx.moveTo(this.size * 0.15, -this.size * 0.5);
+    ctx.lineTo(this.size * 0.15, -this.size * 0.25);
+    ctx.lineTo(0, -this.size * 0.3);
+    ctx.stroke();
+    
+    // Prong tips (sharp!)
+    ctx.fillStyle = '#FFD700';
+    ctx.beginPath();
+    ctx.arc(0, -this.size * 0.6, this.size * 0.05, 0, Math.PI * 2);
+    ctx.arc(-this.size * 0.15, -this.size * 0.5, this.size * 0.05, 0, Math.PI * 2);
+    ctx.arc(this.size * 0.15, -this.size * 0.5, this.size * 0.05, 0, Math.PI * 2);
+    ctx.fill();
+    
+    ctx.restore();
   }
 
   /**
