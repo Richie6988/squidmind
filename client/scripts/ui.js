@@ -996,48 +996,6 @@ ui.enterTemple = function(temple) {
   // REMOVED - TempleInterior.open() handles temple display now
   console.log('enterTemple deprecated - using TempleInterior.open() instead');
 };
-  
-  // Agents
-  if (state.activeAgents.length > 0) {
-    document.getElementById('temple-agents').innerHTML = state.activeAgents.map(agent => `
-      <div class="agent-item">
-        <span class="agent-emoji">🦑</span>
-        <span class="agent-name">${agent.name}</span>
-        <span class="agent-status">${agent.status}</span>
-      </div>
-    `).join('');
-  } else {
-    document.getElementById('temple-agents').innerHTML = '<p class="empty-message">No agents currently working in this temple</p>';
-  }
-  
-  // Files
-  if (state.files && state.files.length > 0) {
-    document.getElementById('temple-files').innerHTML = state.files.map(file => `
-      <div class="file-item">
-        <span class="file-icon">📄</span>
-        <span class="file-name">${file.name}</span>
-        <span class="file-size">${file.size || 'N/A'}</span>
-      </div>
-    `).join('');
-  } else {
-    document.getElementById('temple-files').innerHTML = '<p class="empty-message">No files in this project yet</p>';
-  }
-  
-  // Tasks
-  if (state.tasks && state.tasks.length > 0) {
-    document.getElementById('temple-tasks').innerHTML = state.tasks.map(task => `
-      <div class="task-item">
-        <span class="task-status">${task.status === 'complete' ? '✅' : '⏳'}</span>
-        <span class="task-desc">${task.description}</span>
-      </div>
-    `).join('');
-  } else {
-    document.getElementById('temple-tasks').innerHTML = '<p class="empty-message">No active tasks</p>';
-  }
-  
-  // Show panel
-  ui.showPanel('temple');
-};
 
 console.log('🏛️ Temple UI functions loaded');
 
