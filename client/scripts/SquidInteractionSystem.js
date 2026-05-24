@@ -327,10 +327,22 @@ class SquidInteractionSystem {
     console.log('🦑 CLICKED SQUID:', squid.name);
     console.log('   Opening detail panel...');
     
+    // Visual feedback - bounce animation
+    const originalY = squid.targetY;
+    const bounceHeight = 30;
+    const bounceSpeed = 0.3;
+    
+    // Bounce up
+    squid.targetY = originalY - bounceHeight;
+    setTimeout(() => {
+      // Bounce down
+      squid.targetY = originalY;
+    }, bounceSpeed * 1000);
+    
     // Show details panel
     if (typeof ui !== 'undefined') {
       ui.currentSquid = squid;
-      ui.showPanel('detail');
+      ui.showSquidDetails(squid); // Direct call instead of showPanel
       console.log('   ✅ Detail panel opened!');
     } else {
       console.error('   ❌ UI not defined!');

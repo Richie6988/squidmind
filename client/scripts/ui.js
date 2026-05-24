@@ -829,14 +829,38 @@ ui.showSquidDetails = function(squid) {
   this.showPanel('detail');
 };
 
-// Handle detail panel population when it opens
-const originalShowPanelWithDetail = ui.showPanel;
+// Removed detail panel wrapper to fix infinite recursion
+// showSquidDetails now handles panel opening directly
+
 ui.showPanel = function(panelName) {
-  originalShowPanelWithDetail.call(this, panelName);
-  
-  if (panelName === 'detail' && this.currentSquid) {
-    // Fill in the details
-    this.showSquidDetails(this.currentSquid);
+  const panel = document.getElementById(`${panelName}-panel`);
+  if (panel) {
+    // NEWEST AT TOP: Move panel to top of DOM (but after Clear All)
+    const container = panel.parentElement;
+    if (container) {
+      panel.remove();
+      
+      // Find Clear All panel
+      const clearAllPanel = document.getElementById('clear-all-panel');
+      
+      // Insert after Clear All panel (so Clear All stays on top)
+      if (clearAllPanel && clearAllPanel.nextSibling) {
+        container.insertBefore(panel, clearAllPanel.nextSibling);
+      } else {
+        container.insertBefore(panel, container.firstChild);
+      }
+    }
+    
+    panel.classList.remove('hidden');
+    
+    // Z-index for overlapping
+    const allPanels = document.querySelectorAll('.panel:not(.hidden)');
+    allPanels.forEach(p => {
+      p.style.zIndex = '100';
+    });
+    panel.style.zIndex = '200';
+    
+    console.log(`📌 Panel "${panelName}" at TOP of list (below Clear All)`);
   }
   
   if (panelName === 'poseidon') {
@@ -848,6 +872,8 @@ ui.showPanel = function(panelName) {
       this.addPoseidonMessage(greeting, 'poseidon');
       this.updatePoseidonSuggestions(['Show my squids', 'Create a task', 'Help me']);
     }
+  }
+};
     
     // Populate model dropdown
     if (typeof poseidon !== 'undefined' && poseidon.populateModelDropdown) {
@@ -965,22 +991,9 @@ console.log('🛠️ Tool selection system loaded');
 
 // Temple Data Room
 ui.enterTemple = function(temple) {
-  const state = temple.getState();
-  
-  // Update panel title
-  document.getElementById('temple-title').textContent = `🏛️ ${state.name}`;
-  
-  // Status
-  document.getElementById('temple-status').innerHTML = `
-    <div class="stat-item">
-      <span class="stat-label">Status:</span>
-      <span class="stat-value ${state.status}">${state.status}</span>
-    </div>
-    <div class="stat-item">
-      <span class="stat-label">Agents:</span>
-      <span class="stat-value">${state.agentCount}</span>
-    </div>
-  `;
+  // REMOVED - TempleInterior.open() handles temple display now
+  console.log('enterTemple deprecated - using TempleInterior.open() instead');
+};
   
   // Agents
   if (state.activeAgents.length > 0) {
