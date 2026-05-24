@@ -22,7 +22,6 @@
         <button class="btn-nav" onclick="ui.showPanel('scheduler')">🎯 Scheduler</button>
         <button class="btn-nav" onclick="ui.showPanel('logs')">📜 Logs</button>
         <button class="btn-nav" onclick="ui.showPanel('monitor')">📊 System Monitor</button>
-        <button class="btn-nav btn-clear-all" onclick="ui.clearAllPanels()">🧹 Clear All</button>
       </div>
       <div class="header-stats">
         <span id="agent-count">0 Squids</span>
@@ -42,6 +41,13 @@
 
     <!-- Control Panels -->
     <div class="panels-container">
+      
+      <!-- Clear All Panel (Always First) -->
+      <div id="clear-all-panel" class="panel panel-clear-all">
+        <button class="btn-clear-all-panel" onclick="ui.clearAllPanels()">
+          🧹 Clear All Panels
+        </button>
+      </div>
       
       <!-- Squid Creator Panel -->
       <div id="creator-panel" class="panel hidden">

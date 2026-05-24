@@ -293,11 +293,6 @@ class Temple {
               </div>
             `).join('')}
           </div>
-          
-          <h2>➕ Create Project</h2>
-          <button class="btn-create-project" onclick="templeIDE.createNewProject()">
-            ✨ New Project
-          </button>
         </div>
         
         <div class="interior-center">

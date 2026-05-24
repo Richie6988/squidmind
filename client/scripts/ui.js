@@ -892,7 +892,15 @@ console.log('🔱 Poseidon AI module loaded');
 ui.loadAvailableTools = async function() {
   try {
     const response = await fetch('/api/tools');
-    const tools = await response.json();
+    const data = await response.json();
+    
+    // Handle different response formats
+    const tools = Array.isArray(data) ? data : (data.tools || []);
+    
+    if (!Array.isArray(tools)) {
+      console.error('Tools is not an array:', tools);
+      return;
+    }
     
     // Populate tools checklist in both forms
     const checklistCreate = document.querySelector('#creator-panel #tools-checklist');
@@ -902,7 +910,7 @@ ui.loadAvailableTools = async function() {
       <label class="tool-item">
         <input type="checkbox" name="tool_${tool.name}" value="${tool.name}" checked>
         <span class="tool-name">${tool.name}</span>
-        <span class="tool-desc">${tool.description}</span>
+        <span class="tool-desc">${tool.description || ''}</span>
       </label>
     `).join('');
     
