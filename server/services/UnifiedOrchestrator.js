@@ -3,6 +3,7 @@ const Brain = require('../models/Brain');
 const Log = require('../models/Log');
 const modelManager = require('./ModelManager');
 const toolRegistry = require('./ToolRegistry');
+const gpuScheduler = require('./GPUScheduler');
 
 class UnifiedOrchestrator {
   constructor() {
@@ -12,14 +13,14 @@ class UnifiedOrchestrator {
 
   async init() {
     await modelManager.init();
+    await gpuScheduler.initialize();
     console.log('🧠 UnifiedOrchestrator initialized');
   }
 
   /**
-   * Execute an agent with its brain
+   * Execute an agent with GPU scheduling
    */
   async executeAgent(agentId, input = '', options = {}) {
-    const startTime = Date.now();
     const agent = await Agent.findById(agentId);
     
     if (!agent) {
@@ -34,6 +35,87 @@ class UnifiedOrchestrator {
         console.warn(`Brain ${agent.brain_id} not found, using agent's own config`);
       }
     }
+
+    // Determine priority based on agent stats/marketplace
+    const priority = this.determinePriority(agent);
+
+    // Estimate VRAM needed
+    const estimatedVRAM = this.estimateVRAM(brain);
+
+    // Schedule with GPU scheduler
+    const taskId = await gpuScheduler.scheduleTask({
+      agent_id: agent.id,
+      brain_id: brain?.id,
+      input,
+      priority,
+      estimated_vram: estimatedVRAM,
+      estimated_time: options.estimated_time || 60,
+      wake_at: options.wake_at,
+      callback: async () => {
+        // This callback executes when GPU is available
+        return await this.executeAgentNow(agent, brain, input, options);
+      }
+    });
+
+    return {
+      task_id: taskId,
+      status: 'scheduled',
+      message: 'Task scheduled. Agent will execute when GPU is available.'
+    };
+  }
+
+  /**
+   * Determine priority based on agent/user tier
+   */
+  determinePriority(agent) {
+    // VIP: Marketplace premium agents or paid users
+    if (agent.marketplace?.is_for_sale && agent.marketplace.price > 500) {
+      return 'vip';
+    }
+
+    // High: High-performing agents
+    if (agent.stats?.average_quality > 9) {
+      return 'high';
+    }
+
+    // Normal: Standard agents
+    if (agent.stats?.level > 10) {
+      return 'normal';
+    }
+
+    // Low: New/untested agents
+    return 'low';
+  }
+
+  /**
+   * Estimate VRAM needed for brain
+   */
+  estimateVRAM(brain) {
+    if (!brain) return 0;
+
+    if (brain.model.provider === 'local_gguf') {
+      // Estimate based on model size
+      // Q4 models: ~4GB for 7B params
+      // Q8 models: ~8GB for 7B params
+      const modelPath = brain.model.model_path;
+      
+      if (modelPath.includes('7b') || modelPath.includes('7B')) {
+        return modelPath.includes('Q4') ? 4 : 8;
+      } else if (modelPath.includes('13b') || modelPath.includes('13B')) {
+        return modelPath.includes('Q4') ? 8 : 13;
+      }
+      
+      return 4; // Default estimate
+    }
+
+    return 0; // Claude API doesn't use GPU
+  }
+
+  /**
+   * Execute an agent with its brain
+   */
+  async executeAgentNow(agent, brain, input = '', options = {}) {
+    const startTime = Date.now();
 
     // Update agent status
     agent.status = 'thinking';
