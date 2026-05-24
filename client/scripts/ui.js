@@ -492,3 +492,141 @@ async function loadLogs() {
     console.error('Failed to load logs:', error);
   }
 }
+
+// Zeus Chat Functions
+ui.sendToZeus = async function() {
+  const input = document.getElementById('zeus-chat-input');
+  const message = input.value.trim();
+  
+  if (!message) return;
+  
+  // Clear input
+  input.value = '';
+  
+  // Add user message to chat
+  this.addZeusMessage(message, 'user');
+  
+  // Get context
+  const agents = await api.getAgents();
+  const context = {
+    agents: agents.agents || [],
+    systemStatus: {}
+  };
+  
+  // Get Zeus response
+  const response = await zeus.respond(message, context);
+  
+  // Add Zeus response
+  this.addZeusMessage(response.message, 'zeus');
+  
+  // Update suggestions
+  this.updateZeusSuggestions(response.suggestions);
+};
+
+ui.addZeusMessage = function(message, sender) {
+  const messagesDiv = document.getElementById('zeus-chat-messages');
+  
+  const messageEl = document.createElement('div');
+  messageEl.className = `chat-message ${sender}`;
+  
+  const header = document.createElement('div');
+  header.className = 'chat-message-header';
+  header.textContent = sender === 'zeus' ? '🔱 Zeus' : '👤 You';
+  
+  const content = document.createElement('div');
+  content.className = 'chat-message-content';
+  content.innerHTML = message.replace(/\n/g, '<br>');
+  
+  messageEl.appendChild(header);
+  messageEl.appendChild(content);
+  messagesDiv.appendChild(messageEl);
+  
+  // Scroll to bottom
+  messagesDiv.scrollTop = messagesDiv.scrollHeight;
+};
+
+ui.updateZeusSuggestions = function(suggestions) {
+  const suggestionsDiv = document.getElementById('zeus-suggestions');
+  
+  suggestionsDiv.innerHTML = suggestions.map(s => 
+    `<div class="zeus-suggestion" onclick="ui.useZeusSuggestion('${s}')">${s}</div>`
+  ).join('');
+};
+
+ui.useZeusSuggestion = function(suggestion) {
+  document.getElementById('zeus-chat-input').value = suggestion;
+  ui.sendToZeus();
+};
+
+// Squid Interaction Functions
+ui.selectedSquid = null;
+
+ui.interactWithSquid = function(action) {
+  if (!this.selectedSquid) return;
+  
+  const squid = this.selectedSquid;
+  
+  switch (action) {
+    case 'feed':
+      squid.feed();
+      this.showNotification('🍕 Fed the squid!', 'success');
+      break;
+    case 'play':
+      squid.play();
+      this.showNotification('🎮 Playing with squid!', 'success');
+      break;
+    case 'sleep':
+      squid.sleep();
+      this.showNotification('💤 Squid is resting!', 'success');
+      break;
+    case 'celebrate':
+      squid.celebrate();
+      this.showNotification('🎉 Celebration time!', 'success');
+      break;
+    case 'details':
+      this.showSquidDetails(squid);
+      break;
+  }
+  
+  // Hide menu
+  document.getElementById('squid-menu').classList.add('hidden');
+};
+
+ui.showSquidContextMenu = function(squid, x, y) {
+  this.selectedSquid = squid;
+  
+  const menu = document.getElementById('squid-menu');
+  menu.classList.remove('hidden');
+  menu.style.left = x + 'px';
+  menu.style.top = y + 'px';
+};
+
+ui.showSquidDetails = function(squid) {
+  this.currentSquid = squid;
+  this.showPanel('detail');
+  // ... rest of detail logic
+};
+
+// Initialize Zeus chat when panel opens
+const originalShowPanel = ui.showPanel;
+ui.showPanel = function(panelName) {
+  originalShowPanel.call(this, panelName);
+  
+  if (panelName === 'zeus') {
+    // Initialize Zeus chat if empty
+    const messagesDiv = document.getElementById('zeus-chat-messages');
+    if (!messagesDiv.hasChildNodes()) {
+      this.addZeusMessage(zeus.getRandomWisdom('greetings'), 'zeus');
+      this.updateZeusSuggestions(['Show my squids', 'Create a task', 'Help me']);
+    }
+  }
+};
+
+// Close context menu on click outside
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('.context-menu') && !e.target.closest('canvas')) {
+    document.getElementById('squid-menu').classList.add('hidden');
+  }
+});
+
+console.log('✅ Zeus & Interaction UI loaded');
