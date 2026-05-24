@@ -804,3 +804,99 @@ const TempleInterior = {
 // Make available globally
 window.TempleInterior = TempleInterior;
 console.log('🏛️ TempleInterior module loaded');
+
+/**
+ * Load REAL project_memory.json from backend
+ */
+TempleInterior.openProjectMemory = async function() {
+  if (!this.currentTemple) return;
+  
+  try {
+    const response = await fetch(`/api/projects/${this.currentTemple.name}/memory`);
+    const data = await response.json();
+    
+    if (data.success) {
+      // Show in IDE editor
+      const editor = document.getElementById('temple-editor');
+      const filename = document.getElementById('editor-filename');
+      
+      editor.value = JSON.stringify(data.memory, null, 2);
+      filename.textContent = 'project_memory.json';
+      
+      this.currentFile = {
+        name: 'project_memory.json',
+        path: `/projects/${this.currentTemple.name}/project_memory.json`,
+        type: 'json'
+      };
+      
+      console.log('✅ Loaded real project_memory.json');
+    } else {
+      alert('Failed to load memory: ' + data.error);
+    }
+  } catch (error) {
+    console.error('Error loading memory:', error);
+    alert('Error loading memory: ' + error.message);
+  }
+};
+
+/**
+ * Show squid assigner with REAL squids from aquarium
+ */
+TempleInterior.showSquidAssigner = function() {
+  if (!this.currentTemple) return;
+  
+  const modal = document.getElementById('squid-assigner-modal');
+  if (!modal) return;
+  
+  // Get all squids from aquarium
+  const allSquids = window.aquarium?.squids || [];
+  
+  if (allSquids.length === 0) {
+    alert('No squids in aquarium! Create some squids first.');
+    return;
+  }
+  
+  // Populate squid list
+  const listDiv = modal.querySelector('.squid-assigner-list');
+  listDiv.innerHTML = allSquids.map(squid => `
+    <div class="squid-assign-item">
+      <input type="checkbox" 
+             id="assign-${squid.id}" 
+             value="${squid.id}"
+             ${this.currentTemple.assignedSquids?.includes(squid.id) ? 'checked' : ''}>
+      <label for="assign-${squid.id}">
+        <span style="color: ${squid.appearance?.body_color || '#FF6B9D'}">🦑</span>
+        ${squid.name} - ${squid.specialty || 'General'}
+      </label>
+    </div>
+  `).join('');
+  
+  modal.classList.remove('hidden');
+};
+
+/**
+ * Save squid assignments to temple
+ */
+TempleInterior.saveSquidAssignments = function() {
+  if (!this.currentTemple) return;
+  
+  const modal = document.getElementById('squid-assigner-modal');
+  const checkboxes = modal.querySelectorAll('input[type="checkbox"]:checked');
+  
+  const assignedSquids = Array.from(checkboxes).map(cb => cb.value);
+  
+  this.currentTemple.assignedSquids = assignedSquids;
+  
+  console.log('✅ Assigned squids to temple:', assignedSquids);
+  
+  // Refresh working agents display
+  this.populateWorkingAgents(this.currentTemple);
+  
+  // Close modal
+  modal.classList.add('hidden');
+  
+  // TODO: Save to backend
+  window.ui.addLog('squid_assigned', `Assigned ${assignedSquids.length} squids to ${this.currentTemple.name}`);
+};
+
+console.log('✅ Temple improvements loaded - Real memory + Squid assignment');

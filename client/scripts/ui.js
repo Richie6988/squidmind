@@ -1469,3 +1469,87 @@ ui.unloadModel = async function(modelName) {
 };
 
 console.log('✅ GGUF Model loading system ready!');
+
+// ==================== POSEIDON PROCESS CREATION ====================
+
+ui.createProcess = function() {
+  const name = document.getElementById('process-name').value.trim();
+  const description = document.getElementById('process-description').value.trim();
+  const trigger = document.getElementById('process-trigger').value;
+  
+  if (!name) {
+    alert('Process name required!');
+    return;
+  }
+  
+  const process = {
+    id: 'proc_' + Date.now(),
+    name,
+    description,
+    trigger,
+    created: new Date().toISOString(),
+    status: 'active'
+  };
+  
+  console.log('✅ Process created:', process);
+  alert(`✅ Process "${name}" created!\n\nTrigger: ${trigger}`);
+  
+  // Add to logs
+  this.addLog('process_created', `Created process: ${name}`, process);
+  
+  // Clear form
+  document.getElementById('process-name').value = '';
+  document.getElementById('process-description').value = '';
+};
+
+// ==================== POSEIDON LOGS ====================
+
+ui.logs = [];
+
+ui.addLog = function(action, message, details = {}) {
+  const log = {
+    time: new Date().toISOString(),
+    action,
+    message,
+    details
+  };
+  
+  this.logs.unshift(log); // Newest first
+  this.refreshLogs();
+};
+
+ui.filterLogs = function(filter) {
+  this.refreshLogs(filter);
+};
+
+ui.refreshLogs = function(filter = 'all') {
+  const container = document.getElementById('poseidon-logs');
+  if (!container) return;
+  
+  let filteredLogs = this.logs;
+  
+  if (filter !== 'all') {
+    filteredLogs = this.logs.filter(log => log.action.includes(filter));
+  }
+  
+  if (filteredLogs.length === 0) {
+    container.innerHTML = '<p class="hint">No logs for this filter</p>';
+    return;
+  }
+  
+  container.innerHTML = filteredLogs.slice(0, 20).map(log => `
+    <div class="log-entry">
+      <div class="log-entry-time">${new Date(log.time).toLocaleString()}</div>
+      <div class="log-entry-action">${log.action.toUpperCase()}</div>
+      <div class="log-entry-details">${log.message}</div>
+    </div>
+  `).join('');
+};
+
+ui.switchPoseidonModel = function(modelName) {
+  if (!modelName) return;
+  console.log('Switching to model:', modelName);
+  this.addLog('model_switch', `Switched to model: ${modelName}`);
+};
+
+console.log('✅ Poseidon process & logs system loaded');

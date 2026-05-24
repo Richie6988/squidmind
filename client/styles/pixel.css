@@ -2481,3 +2481,129 @@ input[type="color"]::-webkit-color-swatch {
   transform: translateY(-2px);
   box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
 }
+
+/* ========== POSEIDON PANEL - TOP MIDDLE ========== */
+
+.poseidon-panel-top {
+  position: fixed !important;
+  top: 80px !important;
+  left: 50% !important;
+  transform: translateX(-50%) !important;
+  width: 90vw !important;
+  max-width: 1400px !important;
+  height: 70vh !important;
+  max-height: 600px !important;
+}
+
+.poseidon-model-dropdown {
+  background: var(--ocean-deep);
+  border: 2px solid var(--border);
+  color: var(--text-primary);
+  padding: 6px 12px;
+  font-family: 'Press Start 2P';
+  font-size: 9px;
+  border-radius: 4px;
+  margin: 0 12px;
+}
+
+.poseidon-sections {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 16px;
+  height: 100%;
+  overflow: hidden;
+}
+
+.poseidon-section {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.poseidon-section h3 {
+  font-size: 11px;
+  color: var(--success);
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 2px solid var(--border);
+}
+
+.poseidon-section .chat-messages {
+  flex: 1;
+  overflow-y: auto;
+  margin-bottom: 12px;
+}
+
+.process-form {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.process-form label {
+  display: block;
+  font-size: 9px;
+  color: var(--text-secondary);
+  margin: 8px 0 4px 0;
+}
+
+.process-form input,
+.process-form textarea,
+.process-form select {
+  width: 100%;
+  background: var(--ocean-deep);
+  border: 2px solid var(--border);
+  color: var(--text-primary);
+  padding: 6px;
+  font-family: 'Press Start 2P';
+  font-size: 9px;
+  border-radius: 4px;
+  margin-bottom: 8px;
+}
+
+.process-form textarea {
+  min-height: 60px;
+  resize: vertical;
+}
+
+.logs-container {
+  flex: 1;
+  overflow-y: auto;
+  font-size: 9px;
+}
+
+.log-entry {
+  padding: 8px;
+  margin: 4px 0;
+  background: rgba(255, 255, 255, 0.05);
+  border-left: 3px solid var(--success);
+  border-radius: 2px;
+}
+
+.log-entry-time {
+  color: var(--text-secondary);
+  font-size: 8px;
+}
+
+.log-entry-action {
+  color: var(--warning);
+  font-weight: bold;
+}
+
+.log-entry-details {
+  color: var(--text-primary);
+  margin-top: 4px;
+  font-family: monospace;
+}
+
+.logs-filter select {
+  width: 100%;
+  background: var(--ocean-deep);
+  border: 2px solid var(--border);
+  color: var(--text-primary);
+  padding: 6px;
+  font-family: 'Press Start 2P';
+  font-size: 9px;
+  margin-bottom: 12px;
+  border-radius: 4px;
+}

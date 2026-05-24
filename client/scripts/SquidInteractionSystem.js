@@ -354,12 +354,109 @@ class SquidInteractionSystem {
    * Handle double click on squid
    */
   handleSquidDoubleClick(squid) {
-    console.log('Double clicked squid:', squid.name);
+    console.log('🎉 Double clicked squid:', squid.name);
     
-    // Quick action - celebrate!
-    if (squid.celebrate) {
-      squid.celebrate();
+    // Cycle through fun animations
+    const animations = ['celebrate', 'loop', 'figure8', 'spin', 'jump'];
+    const randomAnim = animations[Math.floor(Math.random() * animations.length)];
+    
+    console.log(`   → Playing animation: ${randomAnim}`);
+    
+    switch(randomAnim) {
+      case 'celebrate':
+        if (squid.celebrate) squid.celebrate();
+        break;
+        
+      case 'loop':
+        // Move in a looping circle
+        this.animateLoop(squid);
+        break;
+        
+      case 'figure8':
+        // Move in figure-8 pattern
+        this.animateFigure8(squid);
+        break;
+        
+      case 'spin':
+        // Spin in place
+        this.animateSpin(squid);
+        break;
+        
+      case 'jump':
+        // Multiple jumps
+        this.animateMultiJump(squid);
+        break;
     }
+  }
+  
+  animateLoop(squid) {
+    const startX = squid.x;
+    const startY = squid.y;
+    const radius = 80;
+    let angle = 0;
+    
+    const loopInterval = setInterval(() => {
+      angle += 0.1;
+      squid.targetX = startX + Math.cos(angle) * radius;
+      squid.targetY = startY + Math.sin(angle) * radius;
+      
+      if (angle >= Math.PI * 2) {
+        clearInterval(loopInterval);
+        squid.targetX = startX;
+        squid.targetY = startY;
+      }
+    }, 30);
+  }
+  
+  animateFigure8(squid) {
+    const startX = squid.x;
+    const startY = squid.y;
+    const width = 100;
+    const height = 60;
+    let t = 0;
+    
+    const fig8Interval = setInterval(() => {
+      t += 0.05;
+      squid.targetX = startX + Math.sin(t) * width;
+      squid.targetY = startY + Math.sin(t * 2) * height;
+      
+      if (t >= Math.PI * 2) {
+        clearInterval(fig8Interval);
+        squid.targetX = startX;
+        squid.targetY = startY;
+      }
+    }, 30);
+  }
+  
+  animateSpin(squid) {
+    let spins = 0;
+    const spinInterval = setInterval(() => {
+      squid.direction = (squid.direction + 15) % 360;
+      spins++;
+      
+      if (spins >= 24) { // 360 degrees
+        clearInterval(spinInterval);
+      }
+    }, 30);
+  }
+  
+  animateMultiJump(squid) {
+    let jumps = 0;
+    const originalY = squid.targetY;
+    
+    const jumpInterval = setInterval(() => {
+      if (jumps % 2 === 0) {
+        squid.targetY = originalY - 50;
+      } else {
+        squid.targetY = originalY;
+        jumps++;
+      }
+      
+      if (jumps >= 6) { // 3 jumps
+        clearInterval(jumpInterval);
+        squid.targetY = originalY;
+      }
+    }, 200);
   }
 }
 
