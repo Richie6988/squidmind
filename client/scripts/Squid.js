@@ -711,14 +711,7 @@ class Squid {
     const hitRadius = size * 1.2;
     const isOver = distance < hitRadius;
     
-    // DEBUG: Log all checks
-    if (Math.abs(dx) < 100 && Math.abs(dy) < 100) { // Only log when close
-      console.log(`   🔍 Checking ${this.name}:`);
-      console.log(`      Position: (${this.x}, ${this.y})`);
-      console.log(`      Click: (${x}, ${y})`);
-      console.log(`      Distance: ${distance.toFixed(2)} vs ${hitRadius.toFixed(2)}`);
-      console.log(`      Result: ${isOver ? '✅ HIT!' : '❌ MISS'}`);
-    }
+    // Removed verbose logging - was flooding console
     
     return isOver;
   }

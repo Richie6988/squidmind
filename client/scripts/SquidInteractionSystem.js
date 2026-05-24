@@ -79,17 +79,12 @@ class SquidInteractionSystem {
       }
     }
     
-    // Check squids
-    console.log(`   Checking ${this.aquarium.squids.length} squids at (${x}, ${y})`);
+    // Check squids (removed verbose logging)
     for (const squid of this.aquarium.squids) {
-      if (!squid.isPointOver) {
-        console.log(`   ⚠️ Squid ${squid.name} missing isPointOver method!`);
-        continue;
-      }
+      if (!squid.isPointOver) continue;
       
       const isOver = squid.isPointOver(x, y);
       if (isOver) {
-        console.log(`   ✅ Found squid: ${squid.name} at (${squid.x}, ${squid.y})`);
         return { type: 'squid', entity: squid };
       }
     }

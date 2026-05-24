@@ -183,6 +183,10 @@ const ui = {
   }
 };
 
+// CRITICAL: Export to window IMMEDIATELY so onclick handlers work
+window.ui = ui;
+console.log('✅ UI exported to window');
+
 // Global functions called from HTML
 async function executeSquid() {
   if (!ui.currentSquid) return;
@@ -1225,7 +1229,3 @@ ui.scanForModels = async function() {
 };
 
 console.log('📦 Model management functions loaded');
-
-// Export ui to window for HTML onclick handlers
-window.ui = ui;
-console.log('✅ UI module exported to window');
