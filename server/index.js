@@ -408,7 +408,11 @@ app.get('/api/system/monitor', async (req, res) => {
 
 // ==================== SERVE FRONTEND ====================
 
-app.get('/(.*)', (req, res) => {
+// Serve static files
+app.use(express.static(path.join(__dirname, '../client')));
+
+// Catch-all route for SPA (must be last)
+app.use((req, res) => {
   res.sendFile(path.join(__dirname, '../client/index.html'));
 });
 

@@ -4,6 +4,7 @@ const Log = require('../models/Log');
 const modelManager = require('./ModelManager');
 const toolRegistry = require('./ToolRegistry');
 const gpuScheduler = require('./GPUScheduler');
+const taskChunker = require('./TaskChunker');
 
 class UnifiedOrchestrator {
   constructor() {
@@ -15,10 +16,11 @@ class UnifiedOrchestrator {
     await modelManager.init();
     await gpuScheduler.initialize();
     console.log('🧠 UnifiedOrchestrator initialized');
+    console.log('✂️  Task chunking enabled (auto-split big tasks)');
   }
 
   /**
-   * Execute an agent with GPU scheduling
+   * Execute an agent with automatic task chunking
    */
   async executeAgent(agentId, input = '', options = {}) {
     const agent = await Agent.findById(agentId);
@@ -27,7 +29,7 @@ class UnifiedOrchestrator {
       throw new Error(`Agent ${agentId} not found`);
     }
 
-    // Load brain if specified
+    // Load brain
     let brain = null;
     if (agent.brain_id) {
       brain = await Brain.findById(agent.brain_id);
@@ -35,6 +37,96 @@ class UnifiedOrchestrator {
         console.warn(`Brain ${agent.brain_id} not found, using agent's own config`);
       }
     }
+
+    // Analyze task for chunking
+    const taskType = this.detectTaskType(input, brain);
+    const analysis = await taskChunker.analyzeTask(input, taskType);
+
+    console.log(`📊 Task analysis: ${analysis.estimated_tokens} tokens, ${analysis.recommended_chunks} chunks`);
+
+    // If task is small enough, execute directly
+    if (!analysis.needs_chunking || options.force_single) {
+      return await this.executeSingleTask(agent, brain, input, options);
+    }
+
+    // Split task into chunks
+    const chunks = await taskChunker.splitTask(input, taskType);
+    console.log(`✂️  Task split into ${chunks.length} optimized chunks`);
+
+    // Execute chunks
+    const chunkResults = await taskChunker.executeChunkedTask(
+      chunks,
+      async (chunk) => {
+        return await this.executeSingleTask(agent, brain, chunk.input, {
+          ...options,
+          chunk_context: chunk.context
+        });
+      },
+      {
+        parallel: options.parallel || false,
+        max_parallel: 3
+      }
+    );
+
+    // Optimize final output
+    const optimized = taskChunker.optimizeOutput(chunkResults, {
+      max_tokens: brain?.model.parameters?.max_tokens || 500
+    });
+
+    console.log(`💎 Output optimized: ${optimized.tokens_saved} tokens saved (${optimized.compression_ratio})`);
+
+    return {
+      success: true,
+      output: optimized.optimized,
+      chunks_used: chunks.length,
+      tokens_saved: optimized.tokens_saved,
+      compression_ratio: optimized.compression_ratio,
+      metadata: {
+        original_tokens: optimized.original_tokens,
+        optimized_tokens: optimized.optimized_tokens,
+        task_type: taskType
+      }
+    };
+  }
+
+  /**
+   * Detect task type for optimal chunking strategy
+   */
+  detectTaskType(input, brain) {
+    const lowerInput = input.toLowerCase();
+
+    // Check brain specialty
+    if (brain?.identity?.expertise) {
+      const expertise = brain.identity.expertise.join(' ').toLowerCase();
+      if (expertise.includes('code') || expertise.includes('review')) {
+        return 'code_review';
+      }
+      if (expertise.includes('data') || expertise.includes('analysis')) {
+        return 'data_analysis';
+      }
+    }
+
+    // Check input content
+    if (lowerInput.includes('review') && lowerInput.includes('code')) {
+      return 'code_review';
+    }
+    if (lowerInput.includes('analyze') && lowerInput.includes('data')) {
+      return 'data_analysis';
+    }
+    if (lowerInput.includes('write') && (lowerInput.includes('document') || lowerInput.includes('article'))) {
+      return 'document_writing';
+    }
+    if (lowerInput.includes('research') || lowerInput.includes('find information')) {
+      return 'research';
+    }
+
+    return 'default';
+  }
+
+  /**
+   * Execute single task (chunk or full)
+   */
+  async executeSingleTask(agent, brain, input, options = {}) {
 
     // Determine priority based on agent stats/marketplace
     const priority = this.determinePriority(agent);
