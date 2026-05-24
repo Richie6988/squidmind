@@ -4,6 +4,7 @@ const aquarium = {
   squids: [],
   lastTime: 0,
   selectedSquid: null,
+  interactionSystem: null,
 
   async init() {
     this.canvas = document.getElementById('aquarium');
@@ -13,9 +14,17 @@ const aquarium = {
     this.resizeCanvas();
     window.addEventListener('resize', () => this.resizeCanvas());
     
-    // Mouse interactions
-    this.canvas.addEventListener('mousemove', (e) => this.onMouseMove(e));
-    this.canvas.addEventListener('click', (e) => this.onClick(e));
+    // Initialize Poseidon's position (top-left area)
+    if (typeof poseidon !== 'undefined') {
+      poseidon.setPosition(150, 120);
+      console.log('🔱 Poseidon positioned in aquarium');
+    }
+    
+    // Initialize interaction system
+    if (typeof SquidInteractionSystem !== 'undefined') {
+      this.interactionSystem = new SquidInteractionSystem(this);
+      console.log('🎮 Interaction system initialized');
+    }
     
     // Load agents and create squids
     await this.loadSquids();
@@ -108,6 +117,12 @@ const aquarium = {
     for (const squid of this.squids) {
       squid.update(deltaTime);
       squid.draw(this.ctx);
+    }
+    
+    // Update and draw Poseidon (the mighty god!)
+    if (typeof poseidon !== 'undefined' && poseidon.visible) {
+      poseidon.update(deltaTime);
+      poseidon.draw(this.ctx, this.canvas);
     }
     
     // Continue loop
