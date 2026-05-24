@@ -115,6 +115,7 @@ class SquidInteractionSystem {
       this.draggedSquid.targetX = pos.x - this.dragOffset.x;
       this.draggedSquid.targetY = pos.y - this.dragOffset.y;
       this.aquarium.canvas.style.cursor = 'grabbing';
+      console.log(`🎯 Dragging ${this.draggedSquid.name} to (${this.draggedSquid.targetX.toFixed(0)}, ${this.draggedSquid.targetY.toFixed(0)})`);
       return; // Skip hover detection while dragging
     }
     
@@ -190,12 +191,18 @@ class SquidInteractionSystem {
     if (result && result.type === 'squid') {
       const squid = result.entity;
       
+      console.log(`🖱️ Mouse DOWN on squid: ${squid.name} at (${squid.x.toFixed(0)}, ${squid.y.toFixed(0)})`);
+      
       // Prepare for potential drag (but don't commit yet)
       this.draggedSquid = squid;
       this.dragOffset.x = pos.x - squid.x;
       this.dragOffset.y = pos.y - squid.y;
       
+      console.log(`   Ready to drag! Offset: (${this.dragOffset.x.toFixed(0)}, ${this.dragOffset.y.toFixed(0)})`);
+      
       e.preventDefault();
+    } else {
+      console.log(`🖱️ Mouse DOWN on empty space`);
     }
   }
 

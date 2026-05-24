@@ -839,22 +839,7 @@ ui.showSquidDetails = function(squid) {
 ui.showPanel = function(panelName) {
   const panel = document.getElementById(`${panelName}-panel`);
   if (panel) {
-    // NEWEST AT TOP: Move panel to top of DOM (but after Clear All)
-    const container = panel.parentElement;
-    if (container) {
-      panel.remove();
-      
-      // Find Clear All panel
-      const clearAllPanel = document.getElementById('clear-all-panel');
-      
-      // Insert after Clear All panel (so Clear All stays on top)
-      if (clearAllPanel && clearAllPanel.nextSibling) {
-        container.insertBefore(panel, clearAllPanel.nextSibling);
-      } else {
-        container.insertBefore(panel, container.firstChild);
-      }
-    }
-    
+    // Just show the panel - no complex DOM manipulation
     panel.classList.remove('hidden');
     
     // Z-index for overlapping
@@ -864,7 +849,7 @@ ui.showPanel = function(panelName) {
     });
     panel.style.zIndex = '200';
     
-    console.log(`📌 Panel "${panelName}" at TOP of list (below Clear All)`);
+    console.log(`📌 Panel "${panelName}" opened`);
   }
   
   if (panelName === 'poseidon') {

@@ -252,9 +252,16 @@ squidmind/
     },
     "backend": {
       "framework": "Node.js + Express",
-      "ai": "Anthropic Claude API",
+      "ai": "MCP (Model Context Protocol) - NOT Claude API directly",
+      "mcp_servers": [
+        "Filesystem MCP (file operations)",
+        "Git MCP (version control)", 
+        "Web MCP (browsing, search)",
+        "Code Execution MCP (run code)",
+        "Database MCP (if needed)"
+      ],
       "storage": "JSON files (simple, git-friendly)",
-      "tools": "Code execution, file ops, git, web search"
+      "agent_communication": "MCP protocol for tool use"
     }
   },
   
