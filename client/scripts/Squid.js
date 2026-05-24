@@ -226,27 +226,56 @@ class Squid {
   }
 
   drawBody(ctx, size) {
-    // Main body with gradient
-    const gradient = ctx.createRadialGradient(0, -size * 0.2, 0, 0, 0, size);
-    gradient.addColorStop(0, this.appearance.body_color);
-    gradient.addColorStop(1, this.darkenColor(this.appearance.body_color, 0.7));
+    // PIXEL ART CARTOONISH STYLE (Farming Game Inspired)
+    
+    // Outline stroke (black border - pixel art style)
+    ctx.strokeStyle = '#1a1a1a';
+    ctx.lineWidth = 3;
+    
+    // Main body with brighter gradient (more cartoonish)
+    const gradient = ctx.createRadialGradient(0, -size * 0.3, 0, 0, 0, size);
+    
+    // Brighter, more saturated colors for cartoon style
+    const brightColor = this.brightenColor(this.appearance.body_color, 1.2);
+    gradient.addColorStop(0, brightColor);
+    gradient.addColorStop(0.5, this.appearance.body_color);
+    gradient.addColorStop(1, this.darkenColor(this.appearance.body_color, 0.8));
     
     ctx.fillStyle = gradient;
-    ctx.beginPath();
     
-    // Pokemon-style round body
-    const bobAmount = this.personality.animation_style === 'bouncy' ? 8 : 4;
+    // Round body with pixel-art bounce
+    const bobAmount = this.personality.animation_style === 'bouncy' ? 10 : 5;
     const bob = Math.sin(this.animFrame * 2 + this.bobOffset) * bobAmount;
     
+    // Draw body with outline
+    ctx.beginPath();
     ctx.arc(0, bob, size, 0, Math.PI * 2);
     ctx.fill();
+    ctx.stroke();
     
-    // Accent spots (Pokemon-style patterns)
+    // Belly highlight (cartoonish shine)
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+    ctx.beginPath();
+    ctx.ellipse(-size * 0.1, bob, size * 0.5, size * 0.6, 0, 0, Math.PI * 2);
+    ctx.fill();
+    
+    // Cute accent spots (Pokemon/farming game style)
     ctx.fillStyle = this.appearance.accent_color;
+    ctx.strokeStyle = '#1a1a1a';
+    ctx.lineWidth = 2;
+    
     const spots = [
-      { x: -size * 0.3, y: bob - size * 0.2, r: size * 0.2 },
-      { x: size * 0.3, y: bob + size * 0.1, r: size * 0.15 },
+      { x: -size * 0.35, y: bob - size * 0.2, r: size * 0.18 },
+      { x: size * 0.35, y: bob + size * 0.15, r: size * 0.15 },
+      { x: 0, y: bob + size * 0.4, r: size * 0.12 },
     ];
+    
+    spots.forEach(spot => {
+      ctx.beginPath();
+      ctx.arc(spot.x, spot.y, spot.r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    });
     
     spots.forEach(spot => {
       ctx.beginPath();
@@ -293,38 +322,71 @@ class Squid {
   drawEyes(ctx, size) {
     const eyeY = this.currentIdleAnim === 'blink' && this.idleTimer < 200 ? 5 : 0;
     
-    ctx.fillStyle = '#FFFFFF';
+    // PIXEL ART CARTOON EYES (Farming Game Style)
     
     // Eye style variations
     if (this.appearance.eye_style === 'round') {
-      // Classic round eyes
-      ctx.beginPath();
-      ctx.arc(-size * 0.25, eyeY, size * 0.15, 0, Math.PI * 2);
-      ctx.arc(size * 0.25, eyeY, size * 0.15, 0, Math.PI * 2);
-      ctx.fill();
+      // White of eyes with BLACK OUTLINE (pixel art style)
+      ctx.fillStyle = '#FFFFFF';
+      ctx.strokeStyle = '#1a1a1a';
+      ctx.lineWidth = 2.5;
       
-      // Pupils
+      // Left eye
+      ctx.beginPath();
+      ctx.arc(-size * 0.25, eyeY, size * 0.18, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      
+      // Right eye
+      ctx.beginPath();
+      ctx.arc(size * 0.25, eyeY, size * 0.18, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      
+      // Pupils (LARGER for cartoon style)
       ctx.fillStyle = '#000000';
-      const pupilX = this.isDragging ? 2 : 0;
+      const pupilX = this.isDragging ? 3 : 0;
+      const pupilSize = size * 0.1; // Bigger pupils = cuter!
+      
       ctx.beginPath();
-      ctx.arc(-size * 0.25 + pupilX, eyeY, size * 0.08, 0, Math.PI * 2);
-      ctx.arc(size * 0.25 + pupilX, eyeY, size * 0.08, 0, Math.PI * 2);
+      ctx.arc(-size * 0.25 + pupilX, eyeY + 2, pupilSize, 0, Math.PI * 2);
       ctx.fill();
       
-      // Sparkle
+      ctx.beginPath();
+      ctx.arc(size * 0.25 + pupilX, eyeY + 2, pupilSize, 0, Math.PI * 2);
+      ctx.fill();
+      
+      // BIG SPARKLE (anime/cartoon style)
       ctx.fillStyle = '#FFFFFF';
       ctx.beginPath();
-      ctx.arc(-size * 0.25 + 3, eyeY - 3, 2, 0, Math.PI * 2);
-      ctx.arc(size * 0.25 + 3, eyeY - 3, 2, 0, Math.PI * 2);
+      ctx.arc(-size * 0.25 + pupilX - 4, eyeY - 2, 3, 0, Math.PI * 2);
+      ctx.fill();
+      
+      ctx.beginPath();
+      ctx.arc(size * 0.25 + pupilX - 4, eyeY - 2, 3, 0, Math.PI * 2);
+      ctx.fill();
+      
+      // Small sparkle
+      ctx.beginPath();
+      ctx.arc(-size * 0.25 + pupilX + 3, eyeY + 4, 1.5, 0, Math.PI * 2);
+      ctx.fill();
+      
+      ctx.beginPath();
+      ctx.arc(size * 0.25 + pupilX + 3, eyeY + 4, 1.5, 0, Math.PI * 2);
       ctx.fill();
       
     } else if (this.appearance.eye_style === 'cute') {
-      // Cute ^ ^ eyes
-      ctx.strokeStyle = '#000000';
-      ctx.lineWidth = 3;
+      // Cute ^ ^ eyes (thicker for pixel art)
+      ctx.strokeStyle = '#1a1a1a';
+      ctx.lineWidth = 3.5;
+      ctx.lineCap = 'round';
+      
       ctx.beginPath();
-      ctx.arc(-size * 0.25, eyeY, size * 0.1, 0.2, Math.PI - 0.2);
-      ctx.arc(size * 0.25, eyeY, size * 0.1, 0.2, Math.PI - 0.2);
+      ctx.arc(-size * 0.25, eyeY, size * 0.12, 0.3, Math.PI - 0.3);
+      ctx.stroke();
+      
+      ctx.beginPath();
+      ctx.arc(size * 0.25, eyeY, size * 0.12, 0.3, Math.PI - 0.3);
       ctx.stroke();
     }
   }
@@ -626,6 +688,14 @@ class Squid {
     const b = parseInt(hex.slice(5, 7), 16);
     
     return `rgb(${Math.floor(r * factor)}, ${Math.floor(g * factor)}, ${Math.floor(b * factor)})`;
+  }
+
+  brightenColor(hex, factor) {
+    const r = Math.min(255, parseInt(hex.slice(1, 3), 16) * factor);
+    const g = Math.min(255, parseInt(hex.slice(3, 5), 16) * factor);
+    const b = Math.min(255, parseInt(hex.slice(5, 7), 16) * factor);
+    
+    return `rgb(${Math.floor(r)}, ${Math.floor(g)}, ${Math.floor(b)})`;
   }
 
   // Interaction methods

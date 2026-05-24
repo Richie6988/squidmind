@@ -753,15 +753,56 @@ ui.showSquidContextMenu = function(squid, x, y) {
 };
 
 ui.showSquidDetails = function(squid) {
+  console.log('📋 Showing squid details:', squid.name);
   this.currentSquid = squid;
+  
+  // Populate detail panel
+  document.getElementById('squid-name-display').textContent = squid.name;
+  document.getElementById('squid-specialty-display').textContent = squid.specialty || 'General Agent';
+  document.getElementById('squid-status-display').textContent = squid.status || 'idle';
+  document.getElementById('squid-thought-display').textContent = squid.current_thought || 'Resting...';
+  
+  // Stats
+  const stats = squid.stats || {};
+  document.getElementById('squid-level').textContent = stats.level || 1;
+  document.getElementById('squid-xp').textContent = `${stats.xp || 0} / ${stats.xpToNext || 100}`;
+  document.getElementById('squid-tasks').textContent = stats.tasksCompleted || 0;
+  
+  // Energy bar
+  const energy = squid.energy || 100;
+  const energyBar = document.querySelector('#detail-panel .stat-bar-fill');
+  if (energyBar) {
+    energyBar.style.width = `${energy}%`;
+  }
+  
+  // Brain info
+  const brainInfo = document.getElementById('squid-brain-info');
+  if (brainInfo && squid.brain) {
+    brainInfo.innerHTML = `
+      <div class="brain-detail">
+        <strong>Model:</strong> ${squid.brain.model || 'claude-sonnet-4'}
+      </div>
+      <div class="brain-detail">
+        <strong>Prompt:</strong> ${squid.brain.system_prompt || 'N/A'}
+      </div>
+      <div class="brain-detail">
+        <strong>Tools:</strong> ${squid.brain.available_tools ? squid.brain.available_tools.length : 0}
+      </div>
+    `;
+  }
+  
   this.showPanel('detail');
-  // ... rest of detail logic
 };
 
-// Initialize Poseidon chat when panel opens
-const originalShowPanel = ui.showPanel;
+// Handle detail panel population when it opens
+const originalShowPanelWithDetail = ui.showPanel;
 ui.showPanel = function(panelName) {
-  originalShowPanel.call(this, panelName);
+  originalShowPanelWithDetail.call(this, panelName);
+  
+  if (panelName === 'detail' && this.currentSquid) {
+    // Fill in the details
+    this.showSquidDetails(this.currentSquid);
+  }
   
   if (panelName === 'poseidon') {
     // Initialize Poseidon chat if empty
