@@ -36,9 +36,6 @@
     <!-- Aquarium Canvas -->
     <div class="aquarium-wrapper">
       <canvas id="aquarium"></canvas>
-      <div class="aquarium-overlay">
-        <button class="btn-primary" onclick="ui.showPanel('creator')">+ New Squid</button>
-      </div>
     </div>
 
     <!-- Control Panels -->
@@ -90,6 +87,18 @@
               </label>
             </div>
             
+            <!-- Tools Selection -->
+            <div class="form-section">
+              <h3>🛠️ Available Tools</h3>
+              <div class="form-group">
+                <label>
+                  <input type="checkbox" name="enable_all_tools" onchange="ui.toggleAllTools(this.checked)" checked>
+                  Enable All Tools
+                </label>
+              </div>
+              <div id="tools-checklist" class="tools-grid"></div>
+            </div>
+
             <div class="form-actions">
               <button type="submit" class="btn-primary">🦑 Hatch Squid</button>
               <button type="button" class="btn-secondary" onclick="ui.hidePanel('creator')">Cancel</button>
@@ -128,6 +137,18 @@
         </div>
         <div class="panel-content">
           <div id="detail-content"></div>
+            <!-- Tools Selection -->
+            <div class="form-section">
+              <h3>🛠️ Available Tools</h3>
+              <div class="form-group">
+                <label>
+                  <input type="checkbox" name="enable_all_tools" onchange="ui.toggleAllTools(this.checked)" checked>
+                  Enable All Tools
+                </label>
+              </div>
+              <div id="tools-checklist" class="tools-grid"></div>
+            </div>
+
           <div class="form-actions">
             <button class="btn-primary" onclick="executeSquid()">▶ Execute Now</button>
             <button class="btn-secondary" onclick="editSquid()">✎ Edit</button>
@@ -265,6 +286,18 @@
               <input type="hidden" name="cron" id="cron-value">
             </div>
             
+            <!-- Tools Selection -->
+            <div class="form-section">
+              <h3>🛠️ Available Tools</h3>
+              <div class="form-group">
+                <label>
+                  <input type="checkbox" name="enable_all_tools" onchange="ui.toggleAllTools(this.checked)" checked>
+                  Enable All Tools
+                </label>
+              </div>
+              <div id="tools-checklist" class="tools-grid"></div>
+            </div>
+
             <div class="form-actions">
               <button type="submit" class="btn-primary">💾 Save Changes</button>
               <button type="button" class="btn-secondary" onclick="ui.hidePanel('edit')">Cancel</button>

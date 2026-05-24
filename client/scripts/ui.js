@@ -814,3 +814,51 @@ if (document.readyState === 'loading') {
 }
 
 console.log('🔱 Poseidon AI module loaded');
+
+// Tool Selection for Squids
+ui.loadAvailableTools = async function() {
+  try {
+    const response = await fetch('/api/tools');
+    const tools = await response.json();
+    
+    // Populate tools checklist in both forms
+    const checklistCreate = document.querySelector('#creator-panel #tools-checklist');
+    const checklistEdit = document.querySelector('#edit-panel #tools-checklist');
+    
+    const toolsHTML = tools.map(tool => `
+      <label class="tool-item">
+        <input type="checkbox" name="tool_${tool.name}" value="${tool.name}" checked>
+        <span class="tool-name">${tool.name}</span>
+        <span class="tool-desc">${tool.description}</span>
+      </label>
+    `).join('');
+    
+    if (checklistCreate) checklistCreate.innerHTML = toolsHTML;
+    if (checklistEdit) checklistEdit.innerHTML = toolsHTML;
+    
+  } catch (error) {
+    console.error('Failed to load tools:', error);
+  }
+};
+
+ui.toggleAllTools = function(enabled) {
+  const checkboxes = document.querySelectorAll('#tools-checklist input[type="checkbox"]');
+  checkboxes.forEach(cb => cb.checked = enabled);
+};
+
+ui.getSelectedTools = function(formElement) {
+  const checkboxes = formElement.querySelectorAll('#tools-checklist input[type="checkbox"]:checked');
+  return Array.from(checkboxes).map(cb => cb.value);
+};
+
+// Initialize tools when panels open
+const originalShowPanelForTools = ui.showPanel;
+ui.showPanel = function(panelName) {
+  originalShowPanelForTools.call(this, panelName);
+  
+  if (panelName === 'creator' || panelName === 'edit') {
+    ui.loadAvailableTools();
+  }
+};
+
+console.log('🛠️ Tool selection system loaded');

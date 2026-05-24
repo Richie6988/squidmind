@@ -878,3 +878,47 @@ input[type="color"]::-webkit-color-swatch-wrapper {
 input[type="color"]::-webkit-color-swatch {
   border: 2px solid var(--border);
 }
+
+/* Tool Selection Grid */
+.tools-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 8px;
+  max-height: 300px;
+  overflow-y: auto;
+  padding: 8px;
+  background: var(--ocean-deep);
+  border: 2px solid var(--border);
+}
+
+.tool-item {
+  display: flex;
+  flex-direction: column;
+  padding: 8px;
+  background: var(--ocean-mid);
+  border: 1px solid var(--border);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.tool-item:hover {
+  background: var(--ocean-light);
+  transform: translateX(2px);
+}
+
+.tool-item input[type="checkbox"] {
+  margin-bottom: 4px;
+}
+
+.tool-name {
+  font-size: 9px;
+  color: var(--accent);
+  font-weight: bold;
+  margin-bottom: 4px;
+}
+
+.tool-desc {
+  font-size: 7px;
+  color: var(--text-secondary);
+  line-height: 1.3;
+}
