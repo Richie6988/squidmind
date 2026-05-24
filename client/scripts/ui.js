@@ -829,6 +829,11 @@ ui.showPanel = function(panelName) {
       this.addPoseidonMessage(greeting, 'poseidon');
       this.updatePoseidonSuggestions(['Show my squids', 'Create a task', 'Help me']);
     }
+    
+    // Populate model dropdown
+    if (typeof poseidon !== 'undefined' && poseidon.populateModelDropdown) {
+      poseidon.populateModelDropdown();
+    }
   }
   
   if (panelName === 'monitor') {
@@ -1085,3 +1090,98 @@ setInterval(() => {
 }, 2000);
 
 console.log('🧹 Clear All & Monitor system loaded');
+
+// Model Management Functions
+
+/**
+ * Add model from file browser
+ */
+ui.addModelFromFile = async function(input) {
+  const file = input.files[0];
+  if (!file) return;
+  
+  const path = file.path || file.name;
+  console.log('📁 Adding model from file:', path);
+  
+  if (file.path) {
+    // Electron - has full path
+    await this.addModelByPath(file.path);
+  } else {
+    // Web browser - show path instruction
+    alert('File selected: ' + file.name + '\n\nPlease copy the full path and use "Add Model by Path" instead.\n\nExample:\n/home/user/.cache/huggingface/hub/models--TheBloke--Llama-2-7B/snapshots/abc123/' + file.name);
+  }
+};
+
+/**
+ * Add model by manual path
+ */
+ui.addModelByPath = async function(pathOverride) {
+  let path = pathOverride;
+  
+  if (!path) {
+    const input = document.getElementById('model-manual-path');
+    path = input ? input.value.trim() : '';
+  }
+  
+  if (!path) {
+    alert('Please enter a model path');
+    return;
+  }
+  
+  console.log('➕ Adding model:', path);
+  
+  try {
+    const response = await fetch('/api/models/add', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path })
+    });
+    
+    const data = await response.json();
+    
+    if (data.success) {
+      alert('Model added successfully!');
+      this.loadModels(); // Refresh list
+      
+      // Update Poseidon dropdown if panel is open
+      if (typeof poseidon !== 'undefined' && poseidon.populateModelDropdown) {
+        poseidon.populateModelDropdown();
+      }
+    } else {
+      alert('Failed to add model: ' + data.error);
+    }
+  } catch (error) {
+    console.error('❌ Add model error:', error);
+    alert('Error adding model: ' + error.message);
+  }
+};
+
+/**
+ * Scan for models in common locations
+ */
+ui.scanForModels = async function() {
+  console.log('🔍 Scanning for models...');
+  
+  try {
+    const response = await fetch('/api/models/scan');
+    const data = await response.json();
+    
+    if (data.success) {
+      const count = data.models ? data.models.length : 0;
+      alert(`Found ${count} models!\n\nRefreshing model list...`);
+      this.loadModels(); // Refresh list
+      
+      // Update Poseidon dropdown
+      if (typeof poseidon !== 'undefined' && poseidon.populateModelDropdown) {
+        poseidon.populateModelDropdown();
+      }
+    } else {
+      alert('Scan failed: ' + data.error);
+    }
+  } catch (error) {
+    console.error('❌ Scan error:', error);
+    alert('Error scanning: ' + error.message);
+  }
+};
+
+console.log('📦 Model management functions loaded');

@@ -418,6 +418,78 @@ AVAILABLE SQUIDS:
       mode: this.currentModel ? 'AI-Powered' : 'Fallback Mode'
     };
   }
+
+  /**
+   * Load model selected from dropdown
+   */
+  async loadSelectedModel(modelPath) {
+    if (!modelPath) {
+      this.currentModel = null;
+      console.log('🔱 Poseidon: Model unloaded');
+      return;
+    }
+    
+    console.log('🔱 Poseidon loading model:', modelPath);
+    
+    try {
+      const response = await fetch('/api/models/load', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ modelPath })
+      });
+      
+      const data = await response.json();
+      
+      if (data.success) {
+        this.currentModel = modelPath;
+        console.log('✅ Poseidon model loaded:', modelPath);
+        alert('Model loaded successfully for Poseidon!');
+      } else {
+        console.error('❌ Failed to load model:', data.error);
+        alert('Failed to load model: ' + data.error);
+      }
+    } catch (error) {
+      console.error('❌ Model load error:', error);
+      alert('Error loading model: ' + error.message);
+    }
+  }
+
+  /**
+   * Populate model dropdown from Models panel
+   */
+  async populateModelDropdown() {
+    const select = document.getElementById('poseidon-model-select');
+    if (!select) return;
+    
+    try {
+      // Fetch available models from server
+      const response = await fetch('/api/models/list');
+      const data = await response.json();
+      
+      // Clear current options
+      select.innerHTML = '<option value="">-- No model loaded --</option>';
+      
+      // Add models
+      if (data.success && data.models && data.models.length > 0) {
+        data.models.forEach(model => {
+          const option = document.createElement('option');
+          option.value = model.path;
+          option.textContent = model.name;
+          
+          // Mark if currently loaded
+          if (model.path === this.currentModel) {
+            option.selected = true;
+          }
+          
+          select.appendChild(option);
+        });
+        
+        console.log(`🔱 Populated dropdown with ${data.models.length} models`);
+      }
+    } catch (error) {
+      console.error('❌ Failed to populate model dropdown:', error);
+    }
+  }
 }
 
 // Export singleton
