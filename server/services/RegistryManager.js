@@ -412,6 +412,144 @@ class RegistryManager {
     return { agent_id: agentId, registry_entry: registry.agents[agentId], brain };
   }
 
+  /**
+   * Wake an agent: sleeping -> active
+   * Loads agent's context (projects, pending tasks) and updates state.
+   */
+  async wakeAgent(agentId, options = {}) {
+    const registry = await this.getAgentRegistry();
+    const entry = registry.agents[agentId];
+    if (!entry) throw new Error(`Agent ${agentId} not found`);
+    if (entry.status === 'active') {
+      return { agent_id: agentId, already_active: true };
+    }
+    if (entry.status === 'archived') {
+      throw new Error(`Cannot wake archived agent ${agentId}`);
+    }
+
+    const now = new Date().toISOString();
+    const previousStatus = entry.status;
+
+    // Update registry entry
+    entry.status = 'active';
+    entry.last_active_at = now;
+    entry.last_status_change_at = now;
+    if (!entry.first_active_at) entry.first_active_at = now;
+
+    // Update metadata counters
+    if (previousStatus === 'sleeping') registry.metadata.total_sleeping--;
+    registry.metadata.total_active++;
+
+    await this.write('agents/agent_registry.json', registry);
+
+    // Update brain file: status + log wake event
+    const brain = await this.read(`agents/${entry.brain_file}`);
+    brain.current_state.status = 'active';
+    brain.current_state.last_action_at = now;
+    if (!brain.history.wake_sleep_events) brain.history.wake_sleep_events = [];
+    brain.history.wake_sleep_events.push({
+      event: 'wake',
+      at: now,
+      by: options.woken_by || 'poseidon',
+      reason: options.reason || 'manual_wake',
+      from_status: previousStatus
+    });
+    await this.write(`agents/${entry.brain_file}`, brain);
+
+    // Update poseidon's count
+    const pb = await this.getPoseidonBrain();
+    pb.current_state.active_agents_count = registry.metadata.total_active;
+    pb.current_state.sleeping_agents_count = registry.metadata.total_sleeping;
+    await this.write('main/poseidon_brain.json', pb);
+
+    await this.log({
+      event_type: 'agent_woken',
+      actor: { type: options.woken_by ? 'human' : 'poseidon', id: options.woken_by || 'poseidon_main' },
+      subject: { type: 'agent', id: agentId },
+      action: `Woke agent ${entry.display_name} (${previousStatus} -> active)`,
+      changes: [
+        { file: 'agents/agent_registry.json', field: `agents.${agentId}.status`, from: previousStatus, to: 'active' }
+      ],
+      context: { agent_id: agentId, reason: options.reason }
+    });
+
+    return { agent_id: agentId, status: 'active', context: this._buildAgentContext(brain, entry) };
+  }
+
+  /**
+   * Put agent to sleep: active -> sleeping
+   * Preserves state for later resumption.
+   */
+  async sleepAgent(agentId, options = {}) {
+    const registry = await this.getAgentRegistry();
+    const entry = registry.agents[agentId];
+    if (!entry) throw new Error(`Agent ${agentId} not found`);
+    if (entry.status === 'sleeping') {
+      return { agent_id: agentId, already_sleeping: true };
+    }
+    if (entry.status === 'archived') {
+      throw new Error(`Cannot put archived agent ${agentId} to sleep`);
+    }
+
+    const now = new Date().toISOString();
+    const previousStatus = entry.status;
+
+    // Update registry
+    entry.status = 'sleeping';
+    entry.last_status_change_at = now;
+    if (previousStatus === 'active') {
+      registry.metadata.total_active--;
+      registry.metadata.total_sleeping++;
+    }
+    await this.write('agents/agent_registry.json', registry);
+
+    // Update brain
+    const brain = await this.read(`agents/${entry.brain_file}`);
+    brain.current_state.status = 'sleeping';
+    if (!brain.history.wake_sleep_events) brain.history.wake_sleep_events = [];
+    brain.history.wake_sleep_events.push({
+      event: 'sleep',
+      at: now,
+      by: options.put_to_sleep_by || 'poseidon',
+      reason: options.reason || 'idle',
+      from_status: previousStatus
+    });
+    await this.write(`agents/${entry.brain_file}`, brain);
+
+    // Update poseidon counts
+    const pb = await this.getPoseidonBrain();
+    pb.current_state.active_agents_count = registry.metadata.total_active;
+    pb.current_state.sleeping_agents_count = registry.metadata.total_sleeping;
+    await this.write('main/poseidon_brain.json', pb);
+
+    await this.log({
+      event_type: 'agent_slept',
+      actor: { type: options.put_to_sleep_by ? 'human' : 'poseidon', id: options.put_to_sleep_by || 'poseidon_main' },
+      subject: { type: 'agent', id: agentId },
+      action: `Agent ${entry.display_name} went to sleep`,
+      changes: [
+        { file: 'agents/agent_registry.json', field: `agents.${agentId}.status`, from: previousStatus, to: 'sleeping' }
+      ]
+    });
+
+    return { agent_id: agentId, status: 'sleeping' };
+  }
+
+  /**
+   * Build agent context for wake-up (what the agent needs to know)
+   */
+  _buildAgentContext(brain, entry) {
+    return {
+      agent_id: entry.agent_id,
+      display_name: entry.display_name,
+      assigned_projects: entry.assigned_projects,
+      current_task_id: entry.current_task_id,
+      task_queue_count: (entry.task_queue || []).length,
+      unread_messages: brain.inbox ? brain.inbox.unread_count : 0,
+      preferred_model: brain.brain_config?.model_binding?.preferred_model_id || null
+    };
+  }
+
   // ==================== PROJECTS ====================
 
   async getProjectRegistry() {
@@ -625,6 +763,218 @@ class RegistryManager {
         await this.write('projects/project_registry.json', projectRegistry);
       }
     }
+  }
+
+  // ==================== CHUNKED TASK EXECUTION ====================
+
+  /**
+   * Agent starts working on a task chunk.
+   * Creates a chunk entry, sets task status to in_progress.
+   * 
+   * @param {string} taskId
+   * @param {object} chunkData - { title, description, agent_id }
+   * @returns {object} - { chunk_id, awaiting_approval: false }
+   */
+  async startTaskChunk(taskId, chunkData) {
+    const registry = await this.getTasksRegistry();
+    const task = registry.tasks[taskId];
+    if (!task) throw new Error(`Task ${taskId} not found`);
+    if (['completed', 'failed', 'cancelled'].includes(task.lifecycle.status)) {
+      throw new Error(`Task ${taskId} is already ${task.lifecycle.status}`);
+    }
+
+    const now = new Date().toISOString();
+    if (!task.chunks) task.chunks = [];
+    const chunkId = `${taskId}_chunk_${String(task.chunks.length + 1).padStart(3, '0')}`;
+
+    const chunk = {
+      chunk_id: chunkId,
+      title: chunkData.title,
+      description: chunkData.description || '',
+      status: 'in_progress',
+      started_at: now,
+      started_by: chunkData.agent_id || task.assignment.assigned_to,
+      reported_at: null,
+      report: null,
+      approval_status: 'pending',
+      approved_by: null,
+      approved_at: null,
+      decision_reason: null
+    };
+    task.chunks.push(chunk);
+
+    // First chunk start -> mark task as in_progress
+    if (task.lifecycle.status !== 'in_progress') {
+      const previousStatus = task.lifecycle.status;
+      task.lifecycle.status = 'in_progress';
+      if (!task.lifecycle.started_at) task.lifecycle.started_at = now;
+      task.lifecycle.status_history.push({
+        status: 'in_progress',
+        at: now,
+        by: chunkData.agent_id || task.assignment.assigned_to
+      });
+
+      registry.metadata.total_queued = Math.max(0, registry.metadata.total_queued - 1);
+      registry.metadata.total_active++;
+    }
+
+    await this.write('tasks/tasks_registry.json', registry);
+
+    await this.log({
+      event_type: 'task_started',
+      actor: { type: 'agent', id: chunkData.agent_id || task.assignment.assigned_to },
+      subject: { type: 'chunk', id: chunkId },
+      action: `Started chunk: ${chunkData.title}`,
+      context: { task_id: taskId, chunk_id: chunkId }
+    });
+
+    return { chunk_id: chunkId, status: 'in_progress', awaiting_approval: false };
+  }
+
+  /**
+   * Agent reports completion of a chunk, requests Poseidon approval to continue.
+   * 
+   * @param {string} taskId
+   * @param {string} chunkId
+   * @param {object} report - { summary, files_modified, output_tokens, notes }
+   */
+  async reportChunkComplete(taskId, chunkId, report) {
+    const registry = await this.getTasksRegistry();
+    const task = registry.tasks[taskId];
+    if (!task) throw new Error(`Task ${taskId} not found`);
+
+    const chunk = (task.chunks || []).find(c => c.chunk_id === chunkId);
+    if (!chunk) throw new Error(`Chunk ${chunkId} not found in task ${taskId}`);
+    if (chunk.status !== 'in_progress') {
+      throw new Error(`Chunk ${chunkId} is not in progress (status: ${chunk.status})`);
+    }
+
+    const now = new Date().toISOString();
+    chunk.status = 'awaiting_approval';
+    chunk.reported_at = now;
+    chunk.report = {
+      summary: report.summary,
+      files_modified: report.files_modified || [],
+      files_created: report.files_created || [],
+      output_tokens: report.output_tokens || 0,
+      notes: report.notes || ''
+    };
+
+    // Update execution stats on task
+    if (!task.execution.files_modified) task.execution.files_modified = [];
+    for (const f of (report.files_modified || [])) {
+      if (!task.execution.files_modified.includes(f)) task.execution.files_modified.push(f);
+    }
+    task.execution.output_tokens_used = (task.execution.output_tokens_used || 0) + (report.output_tokens || 0);
+
+    await this.write('tasks/tasks_registry.json', registry);
+
+    await this.log({
+      event_type: 'task_chunk_completed',
+      actor: { type: 'agent', id: chunk.started_by },
+      subject: { type: 'chunk', id: chunkId },
+      action: `Reported chunk complete: ${chunk.title}`,
+      context: { task_id: taskId, chunk_id: chunkId, summary: report.summary }
+    });
+
+    return { chunk_id: chunkId, status: 'awaiting_approval', message: 'Awaiting Poseidon approval' };
+  }
+
+  /**
+   * Poseidon decides on a reported chunk.
+   * 
+   * @param {string} taskId
+   * @param {string} chunkId
+   * @param {string} decision - 'approve_continue' | 'approve_complete' | 'queue' | 'reject_retry' | 'stop_task'
+   * @param {string} reason
+   */
+  async approveChunk(taskId, chunkId, decision, reason = '') {
+    const registry = await this.getTasksRegistry();
+    const task = registry.tasks[taskId];
+    if (!task) throw new Error(`Task ${taskId} not found`);
+
+    const chunk = (task.chunks || []).find(c => c.chunk_id === chunkId);
+    if (!chunk) throw new Error(`Chunk ${chunkId} not found`);
+    if (chunk.status !== 'awaiting_approval') {
+      throw new Error(`Chunk ${chunkId} is not awaiting approval (status: ${chunk.status})`);
+    }
+
+    const now = new Date().toISOString();
+    chunk.approved_at = now;
+    chunk.approved_by = 'poseidon';
+    chunk.decision_reason = reason;
+
+    let logEventType = 'approval_granted';
+
+    switch (decision) {
+      case 'approve_continue':
+        chunk.status = 'approved';
+        chunk.approval_status = 'approved_continue';
+        break;
+      case 'approve_complete':
+        chunk.status = 'approved';
+        chunk.approval_status = 'approved_complete';
+        // Auto-close the whole task
+        await this.write('tasks/tasks_registry.json', registry);
+        await this.closeTask(taskId, 'completed', {
+          summary: reason || 'Task completed successfully after final chunk approval',
+          what_went_well: 'Chunks executed and approved sequentially',
+          what_could_improve: '',
+          lessons_for_future: '',
+          closed_by: chunk.started_by,
+          approved_by: 'poseidon',
+          rating_by_poseidon: 5
+        });
+        return { chunk_id: chunkId, decision, task_closed: true };
+      case 'queue':
+        chunk.status = 'approved';
+        chunk.approval_status = 'approved_queue';
+        // Task goes back to queued state - agent should stop and wait
+        task.lifecycle.status = 'queued';
+        task.lifecycle.status_history.push({
+          status: 'queued',
+          at: now,
+          by: 'poseidon',
+          reason: 'queued by poseidon'
+        });
+        registry.metadata.total_active = Math.max(0, registry.metadata.total_active - 1);
+        registry.metadata.total_queued++;
+        break;
+      case 'reject_retry':
+        chunk.status = 'rejected';
+        chunk.approval_status = 'rejected_retry';
+        logEventType = 'approval_denied';
+        break;
+      case 'stop_task':
+        chunk.status = 'approved';
+        chunk.approval_status = 'task_stopped';
+        logEventType = 'approval_denied';
+        await this.write('tasks/tasks_registry.json', registry);
+        await this.closeTask(taskId, 'cancelled', {
+          summary: reason || 'Task stopped by Poseidon',
+          what_went_well: '',
+          what_could_improve: reason,
+          lessons_for_future: '',
+          closed_by: 'poseidon',
+          approved_by: 'poseidon',
+          rating_by_poseidon: null
+        });
+        return { chunk_id: chunkId, decision, task_closed: true, outcome: 'cancelled' };
+      default:
+        throw new Error(`Unknown decision: ${decision}`);
+    }
+
+    await this.write('tasks/tasks_registry.json', registry);
+
+    await this.log({
+      event_type: logEventType,
+      actor: { type: 'poseidon', id: 'poseidon_main' },
+      subject: { type: 'chunk', id: chunkId },
+      action: `Poseidon decision on chunk: ${decision}`,
+      context: { task_id: taskId, chunk_id: chunkId, decision, reason }
+    });
+
+    return { chunk_id: chunkId, decision, task_closed: false };
   }
 
   // ==================== LOGS ====================

@@ -44,9 +44,31 @@ const EditorBrowser = {
     ]
   },
 
-  open() {
+  open(targetFilePath) {
     this._buildModal();
     this._showFileList();
+    if (targetFilePath) {
+      // Find the button matching this path and click it
+      const buttons = this.modal.querySelectorAll('.editor-browser-sidebar button');
+      for (const btn of buttons) {
+        if (btn.title === targetFilePath) {
+          btn.click();
+          break;
+        }
+      }
+    }
+  },
+
+  // Convenience: open editor for a specific agent
+  openAgent(agentId) {
+    // Open registry which contains all agents
+    this.open('agents/agent_registry.json');
+  },
+
+  // Convenience: open editor for a specific project by number (1-4)
+  openProject(projectNumber) {
+    const num = String(projectNumber).padStart(3, '0');
+    this.open(`projects/PROJECT_${num}/project_memory.json`);
   },
 
   _buildModal() {

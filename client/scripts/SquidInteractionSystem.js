@@ -542,10 +542,13 @@ class SquidInteractionSystem {
     
     menu.innerHTML = `
       <div style="font-size: 10px; color: var(--accent); margin-bottom: 8px;">${temple.name}</div>
-      <button onclick="SquidInteractionSystem.customizeTempleColors('${temple.name}')" style="width: 100%; padding: 6px; margin: 2px 0; font-size: 9px; background: var(--accent); color: black; border: none; cursor: pointer;">
-        🎨 Customize Colors
+      <button onclick="SquidInteractionSystem.openProjectEditor('${temple.name}')" style="width: 100%; padding: 6px; margin: 2px 0; font-size: 9px; background: var(--success); color: black; border: none; cursor: pointer;">
+        Edit Project (V2 JSON)
       </button>
-      <button onclick="TempleInterior.open('${temple.name}')" style="width: 100%; padding: 6px; margin: 2px 0; font-size: 9px; background: var(--success); color: black; border: none; cursor: pointer;">
+      <button onclick="SquidInteractionSystem.customizeTempleColors('${temple.name}')" style="width: 100%; padding: 6px; margin: 2px 0; font-size: 9px; background: var(--accent); color: black; border: none; cursor: pointer;">
+        Quick: Colors only
+      </button>
+      <button onclick="TempleInterior.open('${temple.name}')" style="width: 100%; padding: 6px; margin: 2px 0; font-size: 9px; background: var(--ocean-mid); color: white; border: 1px solid var(--border); cursor: pointer;">
         [TEMPLE] Enter Temple
       </button>
     `;
@@ -564,6 +567,28 @@ class SquidInteractionSystem {
   /**
    * Customize temple colors
    */
+  /**
+   * Open V2 JSON editor for the project this temple represents
+   */
+  static openProjectEditor(templeName) {
+    const PROJECT_MAP = {
+      'AQUARIUM': 1,
+      'TRADING': 2,
+      'BRAIN': 3,
+      'NEWSROOM': 4
+    };
+    const projectNum = PROJECT_MAP[templeName.toUpperCase()];
+    if (!projectNum) {
+      alert(`No V2 project mapping for temple: ${templeName}`);
+      return;
+    }
+    if (typeof EditorBrowser !== 'undefined') {
+      EditorBrowser.openProject(projectNum);
+    } else {
+      alert('EditorBrowser not loaded yet');
+    }
+  }
+
   static customizeTempleColors(templeName) {
     const outsideColor = prompt('Temple outside color (hex):', '#457B9D');
     if (!outsideColor) return;

@@ -25,6 +25,13 @@ app.use(express.static(path.join(__dirname, '../client')));
 const registryRoutes = require('./routes/registryRoutes');
 app.use('/api/v2', registryRoutes);
 
+// === V2 RESOURCE HEARTBEAT ===
+const RegistryManager = require('./services/RegistryManager');
+const HeartbeatService = require('./services/HeartbeatService');
+const heartbeatRm = new RegistryManager(path.join(__dirname, '../data'));
+const heartbeat = new HeartbeatService(heartbeatRm, 5000);
+heartbeat.start();
+
 // Initialize services
 const orchestrator = new UnifiedOrchestrator();
 const scheduler = new Scheduler();

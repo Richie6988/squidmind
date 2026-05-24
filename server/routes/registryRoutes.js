@@ -50,6 +50,49 @@ router.post('/agents', async (req, res) => {
   } catch (err) { res.status(500).json({ success: false, error: err.message }); }
 });
 
+// AGENT LIFECYCLE
+router.post('/agents/:id/wake', async (req, res) => {
+  try {
+    rm.invalidateCache();
+    const result = await rm.wakeAgent(req.params.id, req.body || {});
+    res.json({ success: true, ...result });
+  } catch (err) { res.status(400).json({ success: false, error: err.message }); }
+});
+
+router.post('/agents/:id/sleep', async (req, res) => {
+  try {
+    rm.invalidateCache();
+    const result = await rm.sleepAgent(req.params.id, req.body || {});
+    res.json({ success: true, ...result });
+  } catch (err) { res.status(400).json({ success: false, error: err.message }); }
+});
+
+// CHUNK EXECUTION
+router.post('/tasks/:id/chunks/start', async (req, res) => {
+  try {
+    rm.invalidateCache();
+    const result = await rm.startTaskChunk(req.params.id, req.body);
+    res.json({ success: true, ...result });
+  } catch (err) { res.status(400).json({ success: false, error: err.message }); }
+});
+
+router.post('/tasks/:id/chunks/:chunkId/report', async (req, res) => {
+  try {
+    rm.invalidateCache();
+    const result = await rm.reportChunkComplete(req.params.id, req.params.chunkId, req.body);
+    res.json({ success: true, ...result });
+  } catch (err) { res.status(400).json({ success: false, error: err.message }); }
+});
+
+router.post('/tasks/:id/chunks/:chunkId/decide', async (req, res) => {
+  try {
+    rm.invalidateCache();
+    const { decision, reason } = req.body;
+    const result = await rm.approveChunk(req.params.id, req.params.chunkId, decision, reason);
+    res.json({ success: true, ...result });
+  } catch (err) { res.status(400).json({ success: false, error: err.message }); }
+});
+
 // PROJECTS
 router.get('/projects', async (req, res) => {
   try {
