@@ -699,6 +699,20 @@ class Squid {
   }
 
   // Interaction methods
+  
+  /**
+   * Check if a point is over this squid
+   */
+  isPointOver(x, y) {
+    const dx = x - this.x;
+    const dy = y - (this.y - this.jumpHeight);
+    const distance = Math.sqrt(dx * dx + dy * dy);
+    const size = 40 * this.baseSize;
+    
+    // Hit detection radius (slightly larger for easier clicking)
+    return distance < size * 1.2;
+  }
+  
   onClick() {
     this.clickedTime = Date.now();
     this.isJumping = true;

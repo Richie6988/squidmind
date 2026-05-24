@@ -185,12 +185,15 @@ class SquidInteractionSystem {
     if (e.button !== 0) return; // Only left click
     
     const pos = this.getMousePos(e);
+    console.log('🖱️ Mouse UP at:', pos.x, pos.y);
     
     // Check for click (not drag)
     const wasDragging = this.draggedSquid !== null;
+    console.log('   Was dragging:', wasDragging);
     
     if (this.draggedSquid) {
       // End drag
+      console.log('   Ending drag:', this.draggedSquid.name);
       this.draggedSquid = null;
       this.aquarium.canvas.style.cursor = 'grab';
     }
@@ -198,34 +201,44 @@ class SquidInteractionSystem {
     // Handle click (if not dragging)
     if (!wasDragging) {
       const result = this.findEntityAt(pos.x, pos.y);
+      console.log('   Entity at click:', result ? result.type : 'none');
       
       if (result) {
         const now = Date.now();
         const isDoubleClick = (now - this.lastClickTime) < this.doubleClickDelay;
         this.lastClickTime = now;
         
+        console.log('   Double click:', isDoubleClick);
+        
         if (result.type === 'poseidon') {
           // Click on Poseidon
+          console.log('   → Clicked Poseidon');
           if (poseidon.handleClick) {
             poseidon.handleClick();
           }
         } else if (result.type === 'temple') {
           // Click on Temple
           const temple = result.entity;
+          console.log('   → Clicked Temple:', temple.name);
           if (temple.handleClick) {
             temple.handleClick();
           }
         } else if (result.type === 'squid') {
           const squid = result.entity;
+          console.log('   → Clicked Squid:', squid.name);
           
           if (isDoubleClick) {
             // Double click - quick action
+            console.log('   → DOUBLE CLICK - Celebrate!');
             this.handleSquidDoubleClick(squid);
           } else {
             // Single click - show details
+            console.log('   → SINGLE CLICK - Show details');
             this.handleSquidClick(squid);
           }
         }
+      } else {
+        console.log('   → Clicked empty space');
       }
     }
   }

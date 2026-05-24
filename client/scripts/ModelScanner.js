@@ -103,15 +103,29 @@ class ModelScanner {
     const html = `
       <div class="model-selector">
         <h3>🔍 Select Model for Poseidon</h3>
+        
+        <!-- Manual Path Input -->
+        <div class="manual-path-section">
+          <h4>📂 Manual Path</h4>
+          <input type="text" id="manual-model-path" placeholder="/path/to/your/model.gguf" 
+                 style="width: 100%; padding: 8px; margin: 8px 0; font-family: monospace; font-size: 11px;">
+          <button onclick="modelScanner.loadModelByPath()" class="btn-load-manual">
+            📥 Load from Path
+          </button>
+        </div>
+        
+        <hr style="margin: 20px 0; border-color: var(--border);">
+        
         ${models.length === 0 ? `
-          <p class="no-models">No models found. Make sure you have GGUF models installed.</p>
-          <p class="hint">Expected locations:</p>
+          <p class="no-models">No models found in scan. Use manual path above.</p>
+          <p class="hint">Common locations:</p>
           <ul>
-            <li>~/.cache/huggingface/</li>
-            <li>~/models/</li>
-            <li>/usr/local/share/models/</li>
+            <li>~/.cache/huggingface/hub/models--*/snapshots/*/*.gguf</li>
+            <li>~/models/*.gguf</li>
+            <li>/usr/local/share/models/*.gguf</li>
           </ul>
         ` : `
+          <h4>📦 Found Models (${models.length})</h4>
           <div class="model-list">
             ${models.map(model => `
               <div class="model-item" onclick="modelScanner.loadModel('${model.path}')">
@@ -125,21 +139,45 @@ class ModelScanner {
         <button onclick="modelScanner.scanLocalModels().then(m => modelScanner.showModelSelector())" class="btn-scan">
           🔄 Rescan
         </button>
+        <button onclick="document.getElementById('model-selector-panel').classList.add('hidden')" class="btn-close-scanner">
+          ✕ Close
+        </button>
       </div>
     `;
     
     // Show in modal or panel
-    const panel = document.getElementById('model-selector-panel');
+    let panel = document.getElementById('model-selector-panel');
     if (panel) {
       panel.innerHTML = html;
       panel.classList.remove('hidden');
     } else {
       // Create panel
-      const div = document.createElement('div');
-      div.id = 'model-selector-panel';
-      div.className = 'panel';
-      div.innerHTML = html;
-      document.body.appendChild(div);
+      panel = document.createElement('div');
+      panel.id = 'model-selector-panel';
+      panel.className = 'panel model-scanner-panel';
+      panel.innerHTML = html;
+      document.body.appendChild(panel);
+    }
+  }
+
+  /**
+   * Load model from manual path input
+   */
+  async loadModelByPath() {
+    const input = document.getElementById('manual-model-path');
+    const path = input.value.trim();
+    
+    if (!path) {
+      alert('Please enter a model path');
+      return;
+    }
+    
+    console.log('📥 Loading model from manual path:', path);
+    const success = await this.loadModel(path);
+    
+    if (success) {
+      alert('Model loaded successfully!');
+      document.getElementById('model-selector-panel').classList.add('hidden');
     }
   }
 

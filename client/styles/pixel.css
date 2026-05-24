@@ -1016,3 +1016,282 @@ input[type="color"]::-webkit-color-swatch {
   text-align: center;
   padding: 20px;
 }
+
+/* Resizable Right Panel */
+.panel {
+  resize: horizontal;
+  overflow: auto;
+  min-width: 300px;
+  max-width: 800px;
+}
+
+.panel-header {
+  cursor: move; /* Draggable header */
+}
+
+/* Model Scanner Panel Styles */
+.model-scanner-panel {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 10000;
+  background: var(--ocean-deep);
+  border: 3px solid var(--border);
+  padding: 20px;
+  min-width: 600px;
+  max-height: 80vh;
+  overflow-y: auto;
+}
+
+.manual-path-section {
+  background: var(--ocean-mid);
+  padding: 16px;
+  border: 2px solid var(--border);
+  margin-bottom: 16px;
+}
+
+.manual-path-section h4 {
+  margin: 0 0 8px 0;
+  color: var(--accent);
+}
+
+.btn-load-manual {
+  background: var(--accent);
+  color: var(--bg);
+  border: 2px solid var(--border);
+  padding: 8px 16px;
+  cursor: pointer;
+  font-family: 'Press Start 2P';
+  font-size: 10px;
+  margin-top: 8px;
+}
+
+.btn-load-manual:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+}
+
+.btn-close-scanner {
+  background: #e74c3c;
+  color: white;
+  border: 2px solid var(--border);
+  padding: 8px 16px;
+  cursor: pointer;
+  font-family: 'Press Start 2P';
+  font-size: 10px;
+  margin-left: 8px;
+}
+
+.model-list {
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.model-item {
+  padding: 12px;
+  background: var(--ocean-mid);
+  border: 2px solid var(--border);
+  margin-bottom: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.model-item:hover {
+  background: var(--ocean-light);
+  transform: translateX(4px);
+}
+
+.model-name {
+  display: block;
+  font-size: 11px;
+  font-weight: bold;
+  color: var(--accent);
+  margin-bottom: 4px;
+}
+
+.model-size {
+  display: block;
+  font-size: 9px;
+  color: var(--text-secondary);
+  margin-bottom: 4px;
+}
+
+.model-path {
+  display: block;
+  font-size: 8px;
+  color: var(--text-secondary);
+  font-family: monospace;
+}
+
+/* Temple Interior (Full Screen) */
+.temple-interior {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 9999;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  animation: fadeIn 0.5s ease-in;
+}
+
+.temple-interior.hidden {
+  display: none;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.interior-header {
+  padding: 20px;
+  background: rgba(0, 0, 0, 0.3);
+  border-bottom: 3px solid rgba(255, 255, 255, 0.2);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.interior-header h1 {
+  font-family: 'Press Start 2P';
+  font-size: 20px;
+  color: white;
+  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+}
+
+.interior-header button {
+  background: rgba(231, 76, 60, 0.9);
+  color: white;
+  border: 2px solid white;
+  padding: 10px 20px;
+  font-family: 'Press Start 2P';
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.interior-header button:hover {
+  background: rgba(231, 76, 60, 1);
+  transform: scale(1.05);
+}
+
+.interior-content {
+  display: grid;
+  grid-template-columns: 1fr 2fr 1fr;
+  gap: 20px;
+  padding: 20px;
+  height: calc(100vh - 100px);
+}
+
+.interior-left, .interior-center, .interior-right {
+  background: rgba(255, 255, 255, 0.1);
+  border: 3px solid rgba(255, 255, 255, 0.3);
+  border-radius: 12px;
+  padding: 20px;
+  overflow-y: auto;
+  backdrop-filter: blur(10px);
+}
+
+.interior-left h2, .interior-center h2, .interior-right h2 {
+  font-family: 'Press Start 2P';
+  font-size: 14px;
+  color: white;
+  margin-bottom: 16px;
+  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+}
+
+.resource-list, .agents-workspace, .task-board {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.resource-item {
+  background: rgba(0, 0, 0, 0.3);
+  padding: 12px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border: 2px solid rgba(255, 255, 255, 0.2);
+}
+
+.resource-icon {
+  font-size: 24px;
+}
+
+.resource-name {
+  flex: 1;
+  color: white;
+  font-size: 12px;
+}
+
+.resource-size {
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 10px;
+}
+
+.agent-avatar {
+  background: rgba(0, 0, 0, 0.3);
+  padding: 16px;
+  border-radius: 12px;
+  text-align: center;
+  border: 2px solid rgba(255, 255, 255, 0.2);
+}
+
+.avatar-squid {
+  font-size: 48px;
+  margin-bottom: 8px;
+}
+
+.avatar-name {
+  color: white;
+  font-size: 12px;
+  font-weight: bold;
+  margin-bottom: 4px;
+}
+
+.avatar-status {
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 10px;
+  padding: 4px 8px;
+  background: rgba(6, 255, 165, 0.2);
+  border-radius: 4px;
+  display: inline-block;
+}
+
+.task-card {
+  background: rgba(0, 0, 0, 0.3);
+  padding: 12px;
+  border-radius: 8px;
+  border-left: 4px solid rgba(255, 255, 255, 0.5);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.task-card.complete {
+  border-left-color: #06FFA5;
+  background: rgba(6, 255, 165, 0.1);
+}
+
+.task-card.working {
+  border-left-color: #FFD60A;
+  background: rgba(255, 214, 10, 0.1);
+}
+
+.task-card.pending {
+  border-left-color: rgba(255, 255, 255, 0.3);
+}
+
+.task-status {
+  font-size: 20px;
+}
+
+.task-desc {
+  flex: 1;
+  color: white;
+  font-size: 11px;
+}

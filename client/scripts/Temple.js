@@ -244,7 +244,86 @@ class Temple {
     
     if (typeof ui !== 'undefined') {
       ui.enterTemple(this);
+      
+      // ALSO show temple interior background
+      this.showTempleInterior();
     }
+  }
+
+  /**
+   * Show temple interior (new background/scene)
+   */
+  showTempleInterior() {
+    console.log('🚪 Opening temple interior:', this.name);
+    
+    // Create interior overlay
+    let interior = document.getElementById('temple-interior');
+    
+    if (!interior) {
+      interior = document.createElement('div');
+      interior.id = 'temple-interior';
+      interior.className = 'temple-interior';
+      document.body.appendChild(interior);
+    }
+    
+    // Set temple-specific background
+    const backgrounds = {
+      'BRAIN': 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+      'AQUARIUM': 'linear-gradient(135deg, #13547a 0%, #80d0c7 100%)',
+      'TRADING': 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
+      'NEWSROOM': 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)'
+    };
+    
+    interior.innerHTML = `
+      <div class="interior-header">
+        <h1>🏛️ ${this.name} TEMPLE</h1>
+        <button onclick="document.getElementById('temple-interior').classList.add('hidden')">
+          ✕ Exit Temple
+        </button>
+      </div>
+      <div class="interior-content">
+        <div class="interior-left">
+          <h2>📦 Project Resources</h2>
+          <div class="resource-list">
+            ${(this.project.files || []).map(file => `
+              <div class="resource-item">
+                <span class="resource-icon">📄</span>
+                <span class="resource-name">${file.name}</span>
+                <span class="resource-size">${file.size}</span>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+        
+        <div class="interior-center">
+          <h2>🦑 Agents Working</h2>
+          <div class="agents-workspace">
+            ${this.activeAgents.map(agent => `
+              <div class="agent-avatar">
+                <div class="avatar-squid">🦑</div>
+                <div class="avatar-name">${agent.name}</div>
+                <div class="avatar-status">${agent.status}</div>
+              </div>
+            `).join('') || '<p>No agents currently working</p>'}
+          </div>
+        </div>
+        
+        <div class="interior-right">
+          <h2>📋 Active Tasks</h2>
+          <div class="task-board">
+            ${(this.project.tasks || []).map(task => `
+              <div class="task-card ${task.status}">
+                <span class="task-status">${task.status === 'complete' ? '✅' : task.status === 'working' ? '⚡' : '⏳'}</span>
+                <span class="task-desc">${task.description}</span>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      </div>
+    `;
+    
+    interior.style.background = backgrounds[this.name] || backgrounds['BRAIN'];
+    interior.classList.remove('hidden');
   }
 
   /**
