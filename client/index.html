@@ -549,7 +549,7 @@
           <select id="poseidon-model-select" class="poseidon-model-dropdown" onchange="ui.switchPoseidonModel(this.value)">
             <option value="">No model loaded</option>
           </select>
-          <button class="btn-secondary" onclick="ui.editBrainJson()" style="margin: 0 8px; font-size: 9px;">
+          <button class="btn-secondary" onclick="BrainEditor.open()" style="margin: 0 8px; font-size: 9px;">
             🧠 Edit brain.json
           </button>
           <button class="btn-close" onclick="ui.hidePanel('poseidon')">✕</button>
@@ -793,6 +793,7 @@
 
   <!-- Scripts - ui.js MUST load FIRST! -->
   <script src="scripts/ui.js"></script>
+  <script src="scripts/brain-editor.js"></script>
   <script src="scripts/api.js"></script>
   <script src="scripts/PanelManager.js"></script>
   <script src="scripts/ModelScanner.js"></script>
