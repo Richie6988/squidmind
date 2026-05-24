@@ -242,11 +242,11 @@ class Temple {
   handleClick() {
     console.log('🏛️ Entering temple:', this.name);
     
-    if (typeof ui !== 'undefined') {
-      ui.enterTemple(this);
-      
-      // ALSO show temple interior background
-      this.showTempleInterior();
+    // Use new TempleInterior module
+    if (window.TempleInterior) {
+      TempleInterior.open(this);
+    } else {
+      console.error('TempleInterior module not loaded!');
     }
   }
 

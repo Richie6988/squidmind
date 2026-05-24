@@ -21,20 +21,31 @@ const templeIDE = {
     
     // Load file content
     fetch(`/api/files/read?path=${encodeURIComponent(filepath)}`)
-      .then(res => res.json())
+      .then(res => {
+        // Check if response is JSON or plain text
+        const contentType = res.headers.get('content-type');
+        if (contentType && contentType.includes('application/json')) {
+          return res.json();
+        } else {
+          // Plain text response
+          return res.text().then(text => ({ success: true, content: text }));
+        }
+      })
       .then(data => {
-        if (data.success) {
-          document.getElementById('temple-editor').value = data.content;
+        if (data.success || data.content) {
+          document.getElementById('temple-editor').value = data.content || data;
           
           // Auto-preview if HTML
           if (filename.endsWith('.html')) {
             this.refreshPreview();
           }
+        } else {
+          document.getElementById('temple-editor').value = '// File not found';
         }
       })
       .catch(err => {
         console.error('Failed to load file:', err);
-        document.getElementById('temple-editor').value = '// Failed to load file';
+        document.getElementById('temple-editor').value = `// Failed to load file: ${err.message}\n// This is a placeholder - file API might not be implemented yet`;
       });
   },
 
