@@ -1,0 +1,30 @@
+# Dependencies
+node_modules/
+package-lock.json
+
+# Environment
+.env
+.env.local
+
+# Data (optional: comment out if you want to commit agent configs)
+data/agents/*.json
+data/logs/*.jsonl
+data/tasks/*.json
+data/groups/*.json
+
+# Keep directory structure
+!data/agents/.gitkeep
+!data/logs/.gitkeep
+!data/tasks/.gitkeep
+!data/groups/.gitkeep
+
+# System
+.DS_Store
+Thumbs.db
+*.log
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo

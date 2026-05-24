@@ -1,0 +1,22 @@
+{
+  "name": "squidmind",
+  "version": "1.0.0",
+  "description": "🦑 Multi-Agent Aquarium Orchestration System - Manage AI agents through a playful pixel art interface",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "node --watch server/index.js",
+    "test": "echo \"Tests coming soon\" && exit 0"
+  },
+  "keywords": ["ai", "agents", "orchestration", "claude", "mcp", "aquarium", "pixel-art"],
+  "author": "Richard",
+  "license": "MIT",
+  "dependencies": {
+    "body-parser": "^2.2.2",
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "node-cron": "^4.2.1",
+    "ws": "^8.21.0"
+  }
+}
