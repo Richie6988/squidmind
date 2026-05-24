@@ -201,8 +201,28 @@ async function editSquid() {
   form.elements['system_prompt'].value = squid.system_prompt || '';
   form.elements['model'].value = squid.model || 'claude-sonnet-4-20250514';
   form.elements['temperature'].value = squid.temperature || 0.7;
-  form.elements['cron'].value = squid.schedule?.cron || '';
+  
+  // Appearance
+  if (squid.appearance) {
+    form.elements['body_color'].value = squid.appearance.body_color || '#E63946';
+    form.elements['accent_color'].value = squid.appearance.accent_color || '#06FFA5';
+    form.elements['eye_style'].value = squid.appearance.eye_style || 'normal';
+    form.elements['size'].value = squid.appearance.size || 'medium';
+  }
+  
+  // Outfit
+  if (squid.outfit) {
+    form.elements['hat'].value = squid.outfit.hat || '';
+    form.elements['accessory'].value = squid.outfit.accessory || '';
+    form.elements['tool'].value = squid.outfit.tool || '';
+  }
+  
+  // Schedule
   form.elements['schedule_enabled'].checked = squid.schedule?.enabled || false;
+  if (squid.schedule?.cron) {
+    document.getElementById('cron-value').value = squid.schedule.cron;
+    ui.updateSchedulePreview(squid.schedule.cron);
+  }
   
   // Update range display
   const rangeValue = form.querySelector('.range-value');
@@ -212,6 +232,64 @@ async function editSquid() {
   ui.hidePanel('detail');
   ui.showPanel('edit');
 }
+
+// Set schedule with intuitive presets
+ui.setSchedule = function(preset) {
+  let cron = '';
+  let description = '';
+  
+  switch (preset) {
+    case 'hourly':
+      cron = '0 * * * *';
+      description = 'Every hour on the hour';
+      break;
+    case 'daily':
+      cron = '0 9 * * *';
+      description = 'Every day at 9:00 AM';
+      break;
+    case 'weekly':
+      cron = '0 9 * * 1';
+      description = 'Every Monday at 9:00 AM';
+      break;
+    case 'custom':
+      const time = prompt('Enter time (HH:MM in 24h format):', '09:00');
+      if (!time) return;
+      const [hour, minute] = time.split(':');
+      cron = `${minute} ${hour} * * *`;
+      description = `Every day at ${time}`;
+      break;
+  }
+  
+  document.getElementById('cron-value').value = cron;
+  document.querySelector('[name="schedule_enabled"]').checked = true;
+  ui.updateSchedulePreview(cron);
+};
+
+// Update schedule preview
+ui.updateSchedulePreview = function(cron) {
+  const preview = document.getElementById('schedule-preview');
+  if (!preview) return;
+  
+  const description = ui.describeCron(cron);
+  preview.innerHTML = `📅 <strong>Schedule:</strong> ${description}`;
+  preview.style.display = 'block';
+};
+
+// Describe cron in human terms
+ui.describeCron = function(cron) {
+  if (!cron) return 'Not scheduled';
+  
+  const patterns = {
+    '0 * * * *': 'Every hour',
+    '0 9 * * *': 'Daily at 9:00 AM',
+    '0 9 * * 1': 'Every Monday at 9:00 AM',
+    '0 9 * * 5': 'Every Friday at 9:00 AM',
+    '0 0 * * *': 'Daily at midnight',
+    '0 12 * * *': 'Daily at noon'
+  };
+  
+  return patterns[cron] || `Custom: ${cron}`;
+};
 
 // Handle edit form submission
 document.addEventListener('DOMContentLoaded', () => {
@@ -228,9 +306,20 @@ document.addEventListener('DOMContentLoaded', () => {
         system_prompt: formData.get('system_prompt'),
         model: formData.get('model'),
         temperature: parseFloat(formData.get('temperature')),
+        appearance: {
+          body_color: formData.get('body_color'),
+          accent_color: formData.get('accent_color'),
+          eye_style: formData.get('eye_style'),
+          size: formData.get('size')
+        },
+        outfit: {
+          hat: formData.get('hat'),
+          accessory: formData.get('accessory'),
+          tool: formData.get('tool')
+        },
         schedule: {
           enabled: formData.get('schedule_enabled') === 'on',
-          cron: formData.get('cron') || null
+          cron: document.getElementById('cron-value').value || null
         }
       };
       
@@ -278,6 +367,39 @@ ui.loadTeams = async function() {
     `).join('');
   } catch (error) {
     console.error('Failed to load teams:', error);
+  }
+};
+
+// Show create team modal (simple version for now)
+ui.showCreateTeam = async function() {
+  const teamName = prompt('Enter team name:');
+  if (!teamName) return;
+  
+  const agents = await api.getAgents();
+  if (!agents.agents || agents.agents.length === 0) {
+    alert('Create some squids first!');
+    return;
+  }
+  
+  // Simple team creation
+  try {
+    const response = await fetch('/api/teams', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: teamName,
+        leader_id: agents.agents[0].id,
+        members: agents.agents.slice(0, 3).map(a => a.id),
+        auto_assign_roles: true
+      })
+    });
+    
+    if (response.ok) {
+      ui.showNotification('Team created!', 'success');
+      await ui.loadTeams();
+    }
+  } catch (error) {
+    ui.showNotification('Failed to create team', 'error');
   }
 };
 
@@ -401,6 +523,8 @@ ui.loadSchedulerStatus = async function() {
 // Load model
 ui.loadModel = async function(modelPath) {
   try {
+    console.log('Loading model:', modelPath);
+    
     const response = await fetch('/api/models/load', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -408,11 +532,16 @@ ui.loadModel = async function(modelPath) {
     });
     
     const data = await response.json();
+    console.log('Load model response:', data);
+    
     if (data.success) {
       ui.showNotification('Model loaded successfully!', 'success');
       await ui.loadModels();
+    } else {
+      throw new Error(data.error || 'Failed to load model');
     }
   } catch (error) {
+    console.error('Load model error:', error);
     ui.showNotification('Failed to load model: ' + error.message, 'error');
   }
 };
@@ -420,6 +549,8 @@ ui.loadModel = async function(modelPath) {
 // Unload model
 ui.unloadModel = async function(modelPath) {
   try {
+    console.log('Unloading model:', modelPath);
+    
     const response = await fetch('/api/models/unload', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -427,13 +558,33 @@ ui.unloadModel = async function(modelPath) {
     });
     
     const data = await response.json();
+    console.log('Unload model response:', data);
+    
     if (data.success) {
       ui.showNotification('Model unloaded successfully!', 'success');
       await ui.loadModels();
+    } else {
+      throw new Error(data.error || 'Failed to unload model');
     }
   } catch (error) {
+    console.error('Unload model error:', error);
     ui.showNotification('Failed to unload model: ' + error.message, 'error');
   }
+};
+
+// Show model details
+ui.showModelDetails = function(model) {
+  const details = `
+Model: ${model.name || model.file}
+Path: ${model.full_path || model.path}
+Size: ${model.size_mb} MB
+Format: ${model.format}
+Source: ${model.source}
+${model.quantization ? 'Quantization: ' + model.quantization : ''}
+${model.parameters ? 'Parameters: ' + model.parameters : ''}
+  `.trim();
+  
+  alert(details);
 };
 
 async function deleteSquid() {

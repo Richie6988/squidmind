@@ -171,16 +171,98 @@
               <span class="range-value">0.7</span>
             </div>
             
-            <div class="form-group">
-              <label>Schedule (Cron)</label>
-              <input type="text" name="cron" placeholder="e.g., 0 9 * * * (9 AM daily)">
+            <!-- Appearance Section -->
+            <div class="form-section">
+              <h3>🎨 Appearance</h3>
+              
+              <div class="form-group">
+                <label>Body Color</label>
+                <input type="color" name="body_color" value="#E63946">
+              </div>
+              
+              <div class="form-group">
+                <label>Accent Color</label>
+                <input type="color" name="accent_color" value="#06FFA5">
+              </div>
+              
+              <div class="form-group">
+                <label>Eye Style</label>
+                <select name="eye_style">
+                  <option value="normal">Normal</option>
+                  <option value="cute">Cute</option>
+                  <option value="angry">Angry</option>
+                  <option value="sleepy">Sleepy</option>
+                  <option value="heart">Heart</option>
+                </select>
+              </div>
+              
+              <div class="form-group">
+                <label>Size</label>
+                <select name="size">
+                  <option value="small">Small</option>
+                  <option value="medium" selected>Medium</option>
+                  <option value="large">Large</option>
+                </select>
+              </div>
             </div>
             
-            <div class="form-group">
-              <label>
-                <input type="checkbox" name="schedule_enabled">
-                Enable Scheduling
-              </label>
+            <!-- Outfit Section -->
+            <div class="form-section">
+              <h3>👕 Outfit</h3>
+              
+              <div class="form-group">
+                <label>Hat</label>
+                <select name="hat">
+                  <option value="">None</option>
+                  <option value="crown">👑 Crown</option>
+                  <option value="wizard_hat">🎩 Wizard Hat</option>
+                  <option value="headphones">🎧 Headphones</option>
+                  <option value="halo">😇 Halo</option>
+                </select>
+              </div>
+              
+              <div class="form-group">
+                <label>Accessory</label>
+                <select name="accessory">
+                  <option value="">None</option>
+                  <option value="glasses">👓 Glasses</option>
+                  <option value="bowtie">🎀 Bowtie</option>
+                  <option value="cape">🦸 Cape</option>
+                </select>
+              </div>
+              
+              <div class="form-group">
+                <label>Tool</label>
+                <select name="tool">
+                  <option value="">None</option>
+                  <option value="wand">🪄 Wand</option>
+                  <option value="laptop">💻 Laptop</option>
+                  <option value="sword">⚔️ Sword</option>
+                </select>
+              </div>
+            </div>
+            
+            <!-- Schedule Section -->
+            <div class="form-section">
+              <h3>⏰ Schedule</h3>
+              
+              <div class="form-group">
+                <label>
+                  <input type="checkbox" name="schedule_enabled">
+                  Enable Auto-Execution
+                </label>
+              </div>
+              
+              <div class="schedule-quick-options">
+                <button type="button" class="btn-schedule" onclick="ui.setSchedule('hourly')">🕐 Every Hour</button>
+                <button type="button" class="btn-schedule" onclick="ui.setSchedule('daily')">📅 Daily 9am</button>
+                <button type="button" class="btn-schedule" onclick="ui.setSchedule('weekly')">📆 Weekly Mon</button>
+                <button type="button" class="btn-schedule" onclick="ui.setSchedule('custom')">⚙️ Custom</button>
+              </div>
+              
+              <div id="schedule-preview" class="schedule-preview"></div>
+              
+              <input type="hidden" name="cron" id="cron-value">
             </div>
             
             <div class="form-actions">

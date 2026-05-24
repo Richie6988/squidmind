@@ -622,6 +622,9 @@ async function start() {
       console.log('✅ Claude API connected');
     }
     
+    // Initialize tool registry (filesystem tools, etc.)
+    await toolRegistry.init();
+    
     // Initialize scheduler
     await scheduler.initialize();
     
