@@ -5,6 +5,7 @@ const aquarium = {
   lastTime: 0,
   selectedSquid: null,
   interactionSystem: null,
+  templeManager: null,
 
   async init() {
     this.canvas = document.getElementById('aquarium');
@@ -18,6 +19,13 @@ const aquarium = {
     if (typeof poseidon !== 'undefined') {
       poseidon.setPosition(150, 120);
       console.log('🔱 Poseidon positioned in aquarium');
+    }
+    
+    // Initialize Temple Manager
+    if (typeof TempleManager !== 'undefined') {
+      this.templeManager = new TempleManager();
+      await this.loadTemples();
+      console.log('🏛️ Temples initialized');
     }
     
     // Initialize interaction system
@@ -36,6 +44,23 @@ const aquarium = {
     setInterval(() => this.updateSquidsStatus(), 2000);
     
     console.log('🌊 Aquarium initialized');
+  },
+
+  async loadTemples() {
+    // For now, create example temples
+    // TODO: Load from actual projects
+    const exampleProjects = [
+      { id: 1, name: 'WebApp', status: 'active', files: [], tasks: [] },
+      { id: 2, name: 'API', status: 'active', files: [], tasks: [] },
+      { id: 3, name: 'Docs', status: 'active', files: [], tasks: [] }
+    ];
+    
+    exampleProjects.forEach(project => {
+      this.templeManager.createTemple(project);
+    });
+    
+    // Arrange temples in aquarium
+    this.templeManager.arrangeTemples(this.canvas.width, this.canvas.height);
   },
 
   async updateSquidsStatus() {
@@ -112,6 +137,12 @@ const aquarium = {
     
     // Draw ocean gradient background
     this.drawBackground();
+    
+    // Update and draw temples (background layer)
+    if (this.templeManager) {
+      this.templeManager.update(deltaTime, this.squids);
+      this.templeManager.draw(this.ctx);
+    }
     
     // Update and draw squids
     for (const squid of this.squids) {

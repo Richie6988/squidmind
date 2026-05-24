@@ -388,12 +388,44 @@
         <div class="menu-item" onclick="ui.interactWithSquid('details')">ℹ️ Details</div>
       </div>
 
+      <!-- Temple Data Room Panel -->
+      <div id="temple-panel" class="panel hidden">
+        <div class="panel-header">
+          <h2 id="temple-title">🏛️ Temple Data Room</h2>
+          <button class="btn-close" onclick="ui.hidePanel('temple')">✕</button>
+        </div>
+        <div class="panel-content">
+          <div class="temple-info">
+            <div class="info-section">
+              <h3>📊 Project Status</h3>
+              <div id="temple-status"></div>
+            </div>
+            
+            <div class="info-section">
+              <h3>🦑 Agents Inside</h3>
+              <div id="temple-agents"></div>
+            </div>
+            
+            <div class="info-section">
+              <h3>📁 Project Files</h3>
+              <div id="temple-files"></div>
+            </div>
+            
+            <div class="info-section">
+              <h3>📋 Active Tasks</h3>
+              <div id="temple-tasks"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
     </div>
   </div>
 
   <!-- Scripts -->
   <script src="scripts/api.js"></script>
   <script src="scripts/Poseidon.js"></script>
+  <script src="scripts/Temple.js"></script>
   <script src="scripts/SquidInteractions.js"></script>
   <script src="scripts/SquidInteractionSystem.js"></script>
   <script src="scripts/Squid.js"></script>

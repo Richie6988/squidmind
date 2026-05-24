@@ -58,12 +58,20 @@ class SquidInteractionSystem {
   }
 
   /**
-   * Find entity at position (Poseidon or Squid)
+   * Find entity at position (Poseidon, Temple, or Squid)
    */
   findEntityAt(x, y) {
     // Check Poseidon first (he's special)
     if (poseidon && poseidon.visible && poseidon.isPointOver(x, y)) {
       return { type: 'poseidon', entity: poseidon };
+    }
+    
+    // Check temples
+    if (this.aquarium.templeManager) {
+      const temple = this.aquarium.templeManager.findTempleAt(x, y);
+      if (temple) {
+        return { type: 'temple', entity: temple };
+      }
     }
     
     // Check squids
@@ -98,6 +106,10 @@ class SquidInteractionSystem {
       if (result.type === 'poseidon') {
         poseidon.hovered = true;
         this.aquarium.canvas.style.cursor = 'pointer';
+      } else if (result.type === 'temple') {
+        const temple = result.entity;
+        temple.hovered = true;
+        this.aquarium.canvas.style.cursor = 'pointer';
       } else if (result.type === 'squid') {
         const squid = result.entity;
         
@@ -124,6 +136,11 @@ class SquidInteractionSystem {
       // Not hovering over anything
       if (poseidon) {
         poseidon.hovered = false;
+      }
+      
+      // Clear temple hovers
+      if (this.aquarium.templeManager) {
+        this.aquarium.templeManager.temples.forEach(t => t.hovered = false);
       }
       
       if (this.hoveredSquid) {
@@ -191,6 +208,12 @@ class SquidInteractionSystem {
           // Click on Poseidon
           if (poseidon.handleClick) {
             poseidon.handleClick();
+          }
+        } else if (result.type === 'temple') {
+          // Click on Temple
+          const temple = result.entity;
+          if (temple.handleClick) {
+            temple.handleClick();
           }
         } else if (result.type === 'squid') {
           const squid = result.entity;

@@ -862,3 +862,66 @@ ui.showPanel = function(panelName) {
 };
 
 console.log('🛠️ Tool selection system loaded');
+
+// Temple Data Room
+ui.enterTemple = function(temple) {
+  const state = temple.getState();
+  
+  // Update panel title
+  document.getElementById('temple-title').textContent = `🏛️ ${state.name}`;
+  
+  // Status
+  document.getElementById('temple-status').innerHTML = `
+    <div class="stat-item">
+      <span class="stat-label">Status:</span>
+      <span class="stat-value ${state.status}">${state.status}</span>
+    </div>
+    <div class="stat-item">
+      <span class="stat-label">Agents:</span>
+      <span class="stat-value">${state.agentCount}</span>
+    </div>
+  `;
+  
+  // Agents
+  if (state.activeAgents.length > 0) {
+    document.getElementById('temple-agents').innerHTML = state.activeAgents.map(agent => `
+      <div class="agent-item">
+        <span class="agent-emoji">🦑</span>
+        <span class="agent-name">${agent.name}</span>
+        <span class="agent-status">${agent.status}</span>
+      </div>
+    `).join('');
+  } else {
+    document.getElementById('temple-agents').innerHTML = '<p class="empty-message">No agents currently working in this temple</p>';
+  }
+  
+  // Files
+  if (state.files && state.files.length > 0) {
+    document.getElementById('temple-files').innerHTML = state.files.map(file => `
+      <div class="file-item">
+        <span class="file-icon">📄</span>
+        <span class="file-name">${file.name}</span>
+        <span class="file-size">${file.size || 'N/A'}</span>
+      </div>
+    `).join('');
+  } else {
+    document.getElementById('temple-files').innerHTML = '<p class="empty-message">No files in this project yet</p>';
+  }
+  
+  // Tasks
+  if (state.tasks && state.tasks.length > 0) {
+    document.getElementById('temple-tasks').innerHTML = state.tasks.map(task => `
+      <div class="task-item">
+        <span class="task-status">${task.status === 'complete' ? '✅' : '⏳'}</span>
+        <span class="task-desc">${task.description}</span>
+      </div>
+    `).join('');
+  } else {
+    document.getElementById('temple-tasks').innerHTML = '<p class="empty-message">No active tasks</p>';
+  }
+  
+  // Show panel
+  ui.showPanel('temple');
+};
+
+console.log('🏛️ Temple UI functions loaded');
