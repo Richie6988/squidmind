@@ -311,6 +311,172 @@ app.post('/api/models/unload', async (req, res) => {
   }
 });
 
+// ==================== ZEUS AI ROUTES ====================
+
+// Initialize Zeus with model
+app.post('/api/zeus/init', async (req, res) => {
+  try {
+    const { modelName } = req.body;
+    
+    // Get available models
+    const loadedModels = modelManager.getLoadedModels();
+    
+    let zeusModel = null;
+    
+    if (modelName) {
+      // Try to load specific model
+      zeusModel = loadedModels.find(m => m.name === modelName);
+    } else {
+      // Use first available model
+      zeusModel = loadedModels[0];
+    }
+    
+    if (!zeusModel) {
+      // Try to load a default model if available
+      const availableModels = await modelManager.listLocalModels();
+      if (availableModels.length > 0) {
+        const firstModel = availableModels[0];
+        await modelManager.loadModel(firstModel.path);
+        zeusModel = { name: firstModel.name };
+      }
+    }
+    
+    res.json({
+      success: zeusModel !== null,
+      model: zeusModel?.name || null,
+      message: zeusModel ? `Zeus connected to ${zeusModel.name}` : 'No model available'
+    });
+  } catch (error) {
+    console.error('Zeus init error:', error);
+    res.json({
+      success: false,
+      error: error.message,
+      model: null
+    });
+  }
+});
+
+// Zeus chat endpoint
+app.post('/api/zeus/chat', async (req, res) => {
+  try {
+    const { message, context, history } = req.body;
+    
+    // Zeus system prompt
+    const zeusPrompt = `You are Zeus, the mighty King of the Ocean and Supreme Dispatcher of the SquidMind system.
+
+PERSONALITY:
+- Ancient and wise ocean deity
+- Powerful but friendly and helpful
+- Speaks with authority and occasional dramatic flair
+- Uses ocean/water metaphors ("the currents", "the tides", "my depths")
+- Manages a workforce of AI squids (agents)
+- Genuinely cares about helping the user succeed
+
+YOUR ROLE:
+- Orchestrate and dispatch squids (AI agents) to complete tasks
+- Provide guidance and wisdom
+- Monitor squad performance
+- Motivate and encourage
+- Explain system capabilities
+
+COMMUNICATION STYLE:
+- Start responses with ocean emojis (🌊⚡🔱)
+- Keep responses concise (2-4 sentences max)
+- Use "mortal" when addressing user
+- Reference your divine powers playfully
+- Be helpful and direct, not cryptic
+
+CURRENT SYSTEM STATE:
+${context}
+
+When users ask you to do something, analyze if it needs:
+1. A single squid → Tell them which agent would be best
+2. Multiple squids → Suggest creating a team
+3. Just information → Answer directly
+
+Always be encouraging and make tasks seem manageable!`;
+
+    // Check if we have a local model loaded
+    const loadedModels = modelManager.getLoadedModels();
+    
+    if (loadedModels.length > 0) {
+      // Use local model
+      const response = await modelManager.generateWithModel(loadedModels[0].name, {
+        system: zeusPrompt,
+        messages: [
+          ...(history || []).map(h => ({
+            role: h.role === 'zeus' ? 'assistant' : 'user',
+            content: h.content
+          })),
+          {
+            role: 'user',
+            content: message
+          }
+        ],
+        temperature: 0.8,
+        max_tokens: 200
+      });
+      
+      res.json({
+        success: true,
+        response: response.text,
+        model: loadedModels[0].name,
+        intent: analyzeIntent(message)
+      });
+    } else {
+      // Fallback to Claude API
+      const anthropic = require('@anthropic-ai/sdk');
+      const client = new anthropic.Anthropic({
+        apiKey: process.env.ANTHROPIC_API_KEY
+      });
+      
+      const response = await client.messages.create({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 200,
+        system: zeusPrompt,
+        messages: [
+          ...(history || []).slice(-4).map(h => ({
+            role: h.role === 'zeus' ? 'assistant' : 'user',
+            content: h.content
+          })),
+          {
+            role: 'user',
+            content: message
+          }
+        ]
+      });
+      
+      const text = response.content[0].text;
+      
+      res.json({
+        success: true,
+        response: text,
+        model: 'claude-sonnet-4 (API)',
+        intent: analyzeIntent(message)
+      });
+    }
+  } catch (error) {
+    console.error('Zeus chat error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      response: "🌩️ A disturbance in the currents prevents my full power! " + error.message
+    });
+  }
+});
+
+// Helper: Analyze intent
+function analyzeIntent(message) {
+  const lower = message.toLowerCase();
+  
+  if (lower.match(/^(hi|hello|hey|greetings)/)) return 'greeting';
+  if (lower.match(/(create|build|make|generate|write|code)/)) return 'task_request';
+  if (lower.match(/(status|how|what|show|list)/)) return 'status_check';
+  if (lower.match(/(help|guide|how to|what can)/)) return 'help';
+  
+  return 'general';
+}
+
 // ==================== TOOL ROUTES ====================
 
 app.get('/api/tools', (req, res) => {

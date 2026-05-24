@@ -781,3 +781,36 @@ document.addEventListener('click', (e) => {
 });
 
 console.log('✅ Zeus & Interaction UI loaded');
+
+// Initialize Zeus AI on startup
+async function initializeZeusAI() {
+  try {
+    console.log('🔱 Initializing Zeus AI...');
+    const zeusReady = await zeus.initialize();
+    
+    if (zeusReady) {
+      const info = zeus.getModelInfo();
+      ui.showNotification(`⚡ Zeus AI ready! (${info.model})`, 'success');
+      
+      // Update Zeus panel with model info
+      const zeusPanel = document.querySelector('.zeus-subtitle');
+      if (zeusPanel) {
+        zeusPanel.textContent = `Supreme Dispatcher • ${info.mode}`;
+      }
+    } else {
+      console.warn('⚠️ Zeus running in fallback mode');
+      ui.showNotification('Zeus: Load a model for full AI power', 'warning');
+    }
+  } catch (error) {
+    console.error('Zeus init error:', error);
+  }
+}
+
+// Call Zeus init after DOM loaded
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initializeZeusAI);
+} else {
+  initializeZeusAI();
+}
+
+console.log('🔱 Zeus AI module loaded');

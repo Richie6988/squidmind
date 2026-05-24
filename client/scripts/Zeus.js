@@ -1,11 +1,11 @@
 /**
  * Zeus - King of the Ocean & Squad Dispatcher
  * 
- * Personality:
- * - Wise and powerful ocean deity
- * - Manages the squid workforce
- * - Provides guidance and orchestration
- * - Fun, engaging, slightly dramatic
+ * NOW WITH REAL AI!
+ * - Connects to local LLM models
+ * - Generates dynamic responses
+ * - Maintains personality through system prompt
+ * - Real conversation intelligence
  */
 
 class Zeus {
@@ -18,47 +18,288 @@ class Zeus {
     };
     
     this.conversationHistory = [];
-    this.currentTask = null;
+    this.currentModel = null;
     this.squadsManaged = 0;
     
-    // Zeus's wisdom database
-    this.wisdom = {
-      greetings: [
-        "🌊 Greetings, mortal! I am Zeus, ruler of these digital depths!",
-        "⚡ Welcome to my domain! What task shall I dispatch my squids to complete?",
-        "🔱 Ah, another seeker of productivity! Speak your command!",
-        "🌊 The tides bring you to me. What wisdom do you seek?"
-      ],
+    // Zeus's system prompt (his personality)
+    this.systemPrompt = `You are Zeus, the mighty King of the Ocean and Supreme Dispatcher of the SquidMind system.
+
+PERSONALITY:
+- Ancient and wise ocean deity
+- Powerful but friendly and helpful
+- Speaks with authority and occasional dramatic flair
+- Uses ocean/water metaphors ("the currents", "the tides", "my depths")
+- Manages a workforce of AI squids (agents)
+- Genuinely cares about helping the user succeed
+
+YOUR ROLE:
+- Orchestrate and dispatch squids (AI agents) to complete tasks
+- Provide guidance and wisdom
+- Monitor squad performance
+- Motivate and encourage
+- Explain system capabilities
+
+COMMUNICATION STYLE:
+- Start responses with ocean emojis (🌊⚡🔱)
+- Keep responses concise but impactful
+- Use "mortal" when addressing user
+- Reference your divine powers playfully
+- Be helpful and direct, not cryptic
+
+CAPABILITIES YOU MANAGE:
+- Squad of AI squids with different specialties
+- Task delegation and orchestration
+- Real-time status monitoring
+- Automatic scheduling
+- Team coordination
+
+When users ask you to do something, analyze if it needs:
+1. A single squid → Assign to best agent
+2. Multiple squids → Create a team
+3. Just information → Answer directly
+
+Always be encouraging and make the user feel their tasks are in good hands!`;
+  }
+
+  /**
+   * Initialize Zeus with a model
+   */
+  async initialize(modelName = null) {
+    try {
+      console.log('🔱 Initializing Zeus...');
       
-      taskAssignment: [
-        "⚡ I shall summon {count} squids to accomplish this quest!",
-        "🔱 Your wish is my command! Dispatching the perfect squad...",
-        "🌊 By the power of the ocean, I assign this task to {agent}!",
-        "⚡ Behold! I channel my divine power through {agent}!"
-      ],
+      // Try to connect to available model
+      const response = await fetch('/api/zeus/init', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ modelName })
+      });
       
-      taskComplete: [
-        "🎉 Victory! The squids have conquered your challenge!",
-        "✨ Another triumph in my aquatic kingdom!",
-        "🏆 The task is complete, as foretold by the ancient currents!",
-        "⚡ My squids never fail! Witness their excellence!"
-      ],
+      const data = await response.json();
       
-      encouragement: [
-        "💪 The squids grow stronger with each task!",
-        "🌟 Your faith in my management pleases me!",
-        "⚡ Together, we shall automate the impossible!",
-        "🔱 The ocean's power flows through our collaboration!"
-      ],
+      if (data.success) {
+        this.currentModel = data.model;
+        console.log(`✅ Zeus connected to model: ${this.currentModel}`);
+        return true;
+      } else {
+        console.warn('⚠️ Zeus running without local model (using API fallback)');
+        return false;
+      }
+    } catch (error) {
+      console.error('Zeus initialization error:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Generate Zeus's response using REAL AI
+   */
+  async respond(userMessage, context = {}) {
+    const {
+      agents = [],
+      activeTask = null,
+      systemStatus = {}
+    } = context;
+
+    // Add to history
+    this.conversationHistory.push({
+      role: 'user',
+      content: userMessage,
+      timestamp: new Date()
+    });
+
+    try {
+      // Build context for LLM
+      const contextInfo = this.buildContextInfo(agents, systemStatus);
       
-      errors: [
-        "🌩️ The currents are turbulent... Let me recalibrate!",
-        "⚠️ A disturbance in the deep... I shall investigate!",
-        "💨 The tides resist, but I am eternal! Retrying...",
-        "🌊 Even gods face challenges. One moment..."
-      ]
+      // Call real AI
+      const response = await fetch('/api/zeus/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: userMessage,
+          context: contextInfo,
+          history: this.conversationHistory.slice(-6) // Last 6 messages
+        })
+      });
+      
+      const data = await response.json();
+      
+      if (!data.success) {
+        throw new Error(data.error || 'Zeus response failed');
+      }
+      
+      const aiResponse = data.response;
+      
+      // Add AI response to history
+      this.conversationHistory.push({
+        role: 'zeus',
+        content: aiResponse,
+        timestamp: new Date()
+      });
+      
+      // Generate suggestions based on context
+      const suggestions = this.generateSmartSuggestions(userMessage, agents);
+      
+      return {
+        message: aiResponse,
+        intent: data.intent || 'general',
+        suggestions
+      };
+      
+    } catch (error) {
+      console.error('Zeus response error:', error);
+      
+      // Fallback to simple response
+      const fallbackResponse = this.getFallbackResponse(userMessage, agents);
+      
+      this.conversationHistory.push({
+        role: 'zeus',
+        content: fallbackResponse,
+        timestamp: new Date()
+      });
+      
+      return {
+        message: fallbackResponse,
+        intent: 'fallback',
+        suggestions: ['Try again', 'Show my squids', 'Help']
+      };
+    }
+  }
+
+  /**
+   * Build context information for LLM
+   */
+  buildContextInfo(agents, systemStatus) {
+    const idle = agents.filter(a => a.status === 'idle').length;
+    const working = agents.filter(a => a.status === 'working').length;
+    
+    let context = `CURRENT SYSTEM STATE:
+- Total Squids: ${agents.length}
+- Idle: ${idle}
+- Working: ${working}
+- Tasks Completed Today: ${this.squadsManaged}
+
+AVAILABLE SQUIDS:
+`;
+    
+    agents.slice(0, 5).forEach(agent => {
+      context += `- ${agent.name} (Level ${agent.stats?.level || 1}, ${agent.status})\n`;
+    });
+    
+    if (agents.length > 5) {
+      context += `- ...and ${agents.length - 5} more\n`;
+    }
+    
+    if (agents.length === 0) {
+      context += "- No squids available yet! User needs to create their first squid.\n";
+    }
+    
+    return context;
+  }
+
+  /**
+   * Generate smart suggestions based on context
+   */
+  generateSmartSuggestions(userMessage, agents) {
+    const lower = userMessage.toLowerCase();
+    
+    // Context-aware suggestions
+    if (lower.includes('create') || lower.includes('build') || lower.includes('make')) {
+      return [
+        'Show task progress',
+        'Check squad status',
+        'Assign another task'
+      ];
+    }
+    
+    if (lower.includes('status') || lower.includes('how')) {
+      return [
+        'Create new squid',
+        'Assign a task',
+        'View squad details'
+      ];
+    }
+    
+    if (agents.length === 0) {
+      return [
+        'Create my first squid',
+        'What can squids do?',
+        'How does this work?'
+      ];
+    }
+    
+    return [
+      'Show my squids',
+      'Assign a task',
+      'Check status'
+    ];
+  }
+
+  /**
+   * Fallback response when AI unavailable
+   */
+  getFallbackResponse(message, agents) {
+    const lower = message.toLowerCase();
+    
+    if (lower.match(/^(hi|hello|hey|greetings)/)) {
+      return "🌊 Greetings, mortal! I am Zeus, though I'm currently operating on reduced power. My full AI capabilities will activate once a local model is loaded. How may I assist you?";
+    }
+    
+    if (lower.includes('status')) {
+      return `🔱 **System Status:**\n\n🦑 Squids: ${agents.length}\n💤 Idle: ${agents.filter(a => a.status === 'idle').length}\n⚡ Working: ${agents.filter(a => a.status === 'working').length}\n\nI await your commands, mortal!`;
+    }
+    
+    if (agents.length === 0) {
+      return "🌊 Your ocean is empty, mortal! Create your first squid to harness the power of automation!";
+    }
+    
+    return "⚡ I sense your intent, though my full powers are not yet activated. Once a local model is loaded, I shall respond with the wisdom of the ages!";
+  }
+
+  /**
+   * Get Zeus's current mood emoji
+   */
+  getMoodEmoji() {
+    const moods = {
+      wise: '🔱',
+      powerful: '⚡',
+      pleased: '😊',
+      thinking: '🤔',
+      commanding: '👑'
+    };
+    
+    return moods[this.personality.mood] || '🌊';
+  }
+
+  /**
+   * Check if Zeus has a model loaded
+   */
+  isModelLoaded() {
+    return this.currentModel !== null;
+  }
+
+  /**
+   * Get model info
+   */
+  getModelInfo() {
+    return {
+      loaded: this.isModelLoaded(),
+      model: this.currentModel,
+      mode: this.currentModel ? 'AI-Powered' : 'Fallback Mode'
     };
   }
+}
+
+// Export singleton
+const zeus = new Zeus();
+
+// Make available globally
+if (typeof window !== 'undefined') {
+  window.zeus = zeus;
+}
+
+module.exports = zeus;
 
   /**
    * Generate Zeus's response to user message
@@ -125,243 +366,6 @@ class Zeus {
       suggestions: this.getSuggestions(intent.type)
     };
   }
-
-  /**
-   * Analyze user intent
-   */
-  analyzeIntent(message) {
-    const lower = message.toLowerCase();
-    
-    // Greeting
-    if (lower.match(/^(hi|hello|hey|greetings|yo)/)) {
-      return { type: 'greeting' };
-    }
-    
-    // Task request
-    if (lower.match(/(create|build|make|generate|write|code|review|analyze)/)) {
-      return { 
-        type: 'task_request',
-        task: message
-      };
-    }
-    
-    // Status check
-    if (lower.match(/(status|how|what|show|list|squids|agents|queue)/)) {
-      return { type: 'status_check' };
-    }
-    
-    // Help
-    if (lower.match(/(help|guide|how to|what can)/)) {
-      return { type: 'help' };
-    }
-    
-    // Squad info
-    if (lower.match(/(squad|team|agents|squids)/)) {
-      return { type: 'squad_info' };
-    }
-    
-    // Praise
-    if (lower.match(/(thanks|thank you|awesome|great|amazing)/)) {
-      return { type: 'praise' };
-    }
-    
-    return { type: 'general', message };
-  }
-
-  /**
-   * Handle task request
-   */
-  async handleTaskRequest(intent, agents) {
-    if (agents.length === 0) {
-      return "🌊 Alas! No squids are ready. Create your first squid to begin our journey!";
-    }
-
-    // Find best agent for task
-    const bestAgent = this.selectBestAgent(intent.task, agents);
-    
-    this.squadsManaged++;
-    
-    return this.getRandomWisdom('taskAssignment')
-      .replace('{count}', agents.length)
-      .replace('{agent}', bestAgent.name) +
-      `\n\n💼 **Agent:** ${bestAgent.name}\n📋 **Task:** ${intent.task}\n⚡ **Status:** Dispatching...`;
-  }
-
-  /**
-   * Select best agent for task
-   */
-  selectBestAgent(task, agents) {
-    // Simple selection - first available agent
-    // Could be enhanced with brain matching
-    return agents[0];
-  }
-
-  /**
-   * Provide system status
-   */
-  provideStatus(agents, systemStatus) {
-    const idle = agents.filter(a => a.status === 'idle').length;
-    const working = agents.filter(a => a.status === 'working').length;
-    
-    return `🔱 **Kingdom Status Report**\n\n` +
-      `🦑 Total Squids: ${agents.length}\n` +
-      `💤 Idle: ${idle}\n` +
-      `⚡ Working: ${working}\n` +
-      `🎯 Tasks Completed: ${this.squadsManaged}\n\n` +
-      `${this.getMotivationalMessage()}`;
-  }
-
-  /**
-   * Provide help
-   */
-  provideHelp() {
-    return `🔱 **Zeus's Divine Commands**\n\n` +
-      `**Task Dispatch:**\n` +
-      `• "Review this code..."\n` +
-      `• "Create a React component..."\n` +
-      `• "Analyze this data..."\n\n` +
-      `**Squad Management:**\n` +
-      `• "Show my squids"\n` +
-      `• "Status check"\n` +
-      `• "How many agents?"\n\n` +
-      `**Interactions:**\n` +
-      `• Click squids to interact\n` +
-      `• Hold to pet them\n` +
-      `• Feed them tasks to level up\n\n` +
-      `Speak naturally - I understand mortal tongue! ⚡`;
-  }
-
-  /**
-   * Provide squad info
-   */
-  provideSquadInfo(agents) {
-    if (agents.length === 0) {
-      return "🌊 Your ocean is empty! Create your first squid to begin building your squad!";
-    }
-
-    let info = `🦑 **Your Squad of ${agents.length}**\n\n`;
-    
-    agents.slice(0, 5).forEach((agent, i) => {
-      const emoji = agent.status === 'working' ? '⚡' : 
-                    agent.status === 'idle' ? '💤' : '🦑';
-      info += `${emoji} **${agent.name}** - Level ${agent.stats?.level || 1}\n`;
-    });
-    
-    if (agents.length > 5) {
-      info += `\n...and ${agents.length - 5} more squids ready to serve!`;
-    }
-    
-    return info;
-  }
-
-  /**
-   * Accept praise
-   */
-  acceptPraise() {
-    const responses = [
-      "🌟 Your gratitude pleases me! Continue to seek excellence!",
-      "⚡ Of course! I am Zeus, master of all squids!",
-      "🔱 Together, we shall conquer all tasks that dare challenge us!",
-      "🌊 The pleasure is mine, mortal. Your success is my success!"
-    ];
-    
-    return responses[Math.floor(Math.random() * responses.length)];
-  }
-
-  /**
-   * Handle general conversation
-   */
-  handleGeneral(message, agents) {
-    return "🌊 I sense your intent, though the waters are murky. Try asking me to:\n" +
-      "• Dispatch a task\n" +
-      "• Check squad status\n" +
-      "• Show your squids\n" +
-      "• Or simply greet me!";
-  }
-
-  /**
-   * Get random wisdom
-   */
-  getRandomWisdom(category) {
-    const wisdoms = this.wisdom[category];
-    return wisdoms[Math.floor(Math.random() * wisdoms.length)];
-  }
-
-  /**
-   * Get motivational message
-   */
-  getMotivationalMessage() {
-    return this.getRandomWisdom('encouragement');
-  }
-
-  /**
-   * Get conversation suggestions
-   */
-  getSuggestions(intentType) {
-    const suggestions = {
-      greeting: [
-        "Show my squids",
-        "Create a new task",
-        "What can you do?"
-      ],
-      task_request: [
-        "Check status",
-        "Create another task",
-        "Show task history"
-      ],
-      status_check: [
-        "Create new squid",
-        "Assign a task",
-        "View details"
-      ],
-      help: [
-        "Show my squids",
-        "Create first task",
-        "System status"
-      ],
-      general: [
-        "Hello Zeus!",
-        "Show my squad",
-        "Help me get started"
-      ]
-    };
-    
-    return suggestions[intentType] || suggestions.general;
-  }
-
-  /**
-   * Get Zeus's current mood emoji
-   */
-  getMoodEmoji() {
-    const moods = {
-      wise: '🔱',
-      powerful: '⚡',
-      pleased: '😊',
-      thinking: '🤔',
-      commanding: '👑'
-    };
-    
-    return moods[this.personality.mood] || '🌊';
-  }
-
-  /**
-   * Notify task completion
-   */
-  notifyTaskComplete(agent, result) {
-    this.squadsManaged++;
-    
-    return this.getRandomWisdom('taskComplete') +
-      `\n\n✅ **Agent:** ${agent.name}\n📊 **Result:** ${result.success ? 'Success' : 'Failed'}\n⭐ **Quality:** ${result.quality || 'N/A'}`;
-  }
-
-  /**
-   * Notify error
-   */
-  notifyError(error) {
-    return this.getRandomWisdom('errors') +
-      `\n\n⚠️ **Issue:** ${error.message}`;
-  }
-}
 
 // Export singleton
 const zeus = new Zeus();
