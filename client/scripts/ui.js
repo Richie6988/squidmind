@@ -876,8 +876,6 @@ ui.showPanel = function(panelName) {
       this.addPoseidonMessage(greeting, 'poseidon');
       this.updatePoseidonSuggestions(['Show my squids', 'Create a task', 'Help me']);
     }
-  }
-};
     
     // Populate model dropdown
     if (typeof poseidon !== 'undefined' && poseidon.populateModelDropdown) {
