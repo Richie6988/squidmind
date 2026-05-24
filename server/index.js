@@ -548,35 +548,10 @@ Always be encouraging and make tasks seem manageable!`;
         intent: analyzeIntent(message)
       });
     } else {
-      // Fallback to Claude API
-      const anthropic = require('@anthropic-ai/sdk');
-      const client = new anthropic.Anthropic({
-        apiKey: process.env.ANTHROPIC_API_KEY
-      });
-      
-      const response = await client.messages.create({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 200,
-        system: poseidonPrompt,
-        messages: [
-          ...(history || []).slice(-4).map(h => ({
-            role: h.role === 'poseidon' ? 'assistant' : 'user',
-            content: h.content
-          })),
-          {
-            role: 'user',
-            content: message
-          }
-        ]
-      });
-      
-      const text = response.content[0].text;
-      
+      // No local model loaded - inform user
       res.json({
-        success: true,
-        response: text,
-        model: 'claude-sonnet-4 (API)',
-        intent: analyzeIntent(message)
+        success: false,
+        error: 'No GGUF model loaded. Please load a model first from the Models panel.'
       });
     }
   } catch (error) {
