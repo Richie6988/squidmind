@@ -311,43 +311,43 @@ app.post('/api/models/unload', async (req, res) => {
   }
 });
 
-// ==================== ZEUS AI ROUTES ====================
+// ==================== POSEIDON AI ROUTES ====================
 
-// Initialize Zeus with model
-app.post('/api/zeus/init', async (req, res) => {
+// Initialize Poseidon with model
+app.post('/api/poseidon/init', async (req, res) => {
   try {
     const { modelName } = req.body;
     
     // Get available models
     const loadedModels = modelManager.getLoadedModels();
     
-    let zeusModel = null;
+    let poseidonModel = null;
     
     if (modelName) {
       // Try to load specific model
-      zeusModel = loadedModels.find(m => m.name === modelName);
+      poseidonModel = loadedModels.find(m => m.name === modelName);
     } else {
       // Use first available model
-      zeusModel = loadedModels[0];
+      poseidonModel = loadedModels[0];
     }
     
-    if (!zeusModel) {
+    if (!poseidonModel) {
       // Try to load a default model if available
       const availableModels = await modelManager.listLocalModels();
       if (availableModels.length > 0) {
         const firstModel = availableModels[0];
         await modelManager.loadModel(firstModel.path);
-        zeusModel = { name: firstModel.name };
+        poseidonModel = { name: firstModel.name };
       }
     }
     
     res.json({
-      success: zeusModel !== null,
-      model: zeusModel?.name || null,
-      message: zeusModel ? `Zeus connected to ${zeusModel.name}` : 'No model available'
+      success: poseidonModel !== null,
+      model: poseidonModel?.name || null,
+      message: poseidonModel ? `Poseidon connected to ${poseidonModel.name}` : 'No model available'
     });
   } catch (error) {
-    console.error('Zeus init error:', error);
+    console.error('Poseidon init error:', error);
     res.json({
       success: false,
       error: error.message,
@@ -356,19 +356,19 @@ app.post('/api/zeus/init', async (req, res) => {
   }
 });
 
-// Zeus chat endpoint
-app.post('/api/zeus/chat', async (req, res) => {
+// Poseidon chat endpoint
+app.post('/api/poseidon/chat', async (req, res) => {
   try {
     const { message, context, history } = req.body;
     
-    // Zeus system prompt
-    const zeusPrompt = `You are Zeus, the mighty King of the Ocean and Supreme Dispatcher of the SquidMind system.
+    // Poseidon system prompt
+    const poseidonPrompt = `You are Poseidon, the mighty God of the Ocean and Supreme Dispatcher of the SquidMind system.
 
 PERSONALITY:
-- Ancient and wise ocean deity
+- Ancient and wise ocean deity (POSEIDON - god of the sea, not Zeus!)
 - Powerful but friendly and helpful
 - Speaks with authority and occasional dramatic flair
-- Uses ocean/water metaphors ("the currents", "the tides", "my depths")
+- Uses ocean/water metaphors ("the currents", "the tides", "my depths", "the waves")
 - Manages a workforce of AI squids (agents)
 - Genuinely cares about helping the user succeed
 
@@ -402,10 +402,10 @@ Always be encouraging and make tasks seem manageable!`;
     if (loadedModels.length > 0) {
       // Use local model
       const response = await modelManager.generateWithModel(loadedModels[0].name, {
-        system: zeusPrompt,
+        system: poseidonPrompt,
         messages: [
           ...(history || []).map(h => ({
-            role: h.role === 'zeus' ? 'assistant' : 'user',
+            role: h.role === 'poseidon' ? 'assistant' : 'user',
             content: h.content
           })),
           {
@@ -433,10 +433,10 @@ Always be encouraging and make tasks seem manageable!`;
       const response = await client.messages.create({
         model: 'claude-sonnet-4-20250514',
         max_tokens: 200,
-        system: zeusPrompt,
+        system: poseidonPrompt,
         messages: [
           ...(history || []).slice(-4).map(h => ({
-            role: h.role === 'zeus' ? 'assistant' : 'user',
+            role: h.role === 'poseidon' ? 'assistant' : 'user',
             content: h.content
           })),
           {
@@ -456,7 +456,7 @@ Always be encouraging and make tasks seem manageable!`;
       });
     }
   } catch (error) {
-    console.error('Zeus chat error:', error);
+    console.error('Poseidon chat error:', error);
     res.status(500).json({
       success: false,
       error: error.message,

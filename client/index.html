@@ -15,7 +15,7 @@
     <div class="header-content">
       <h1>🦑 SquidMind</h1>
       <div class="header-nav">
-        <button class="btn-nav btn-nav-special" onclick="ui.showPanel('zeus')">🔱 Zeus</button>
+        <button class="btn-nav btn-nav-special" onclick="ui.showPanel('poseidon')">🔱 Poseidon</button>
         <button class="btn-nav" onclick="ui.showPanel('creator')">+ New Squid</button>
         <button class="btn-nav" onclick="ui.showPanel('teams')">👥 Teams</button>
         <button class="btn-nav" onclick="ui.showPanel('models')">📦 Models</button>
@@ -316,31 +316,31 @@
         </div>
       </div>
 
-      <!-- Zeus Chat Panel -->
-      <div id="zeus-panel" class="panel hidden">
+      <!-- Poseidon Chat Panel -->
+      <div id="poseidon-panel" class="panel hidden">
         <div class="panel-header">
-          <h2>🔱 Zeus - Ocean King</h2>
-          <button class="btn-close" onclick="ui.hidePanel('zeus')">✕</button>
+          <h2>🔱 Poseidon - Ocean King</h2>
+          <button class="btn-close" onclick="ui.hidePanel('poseidon')">✕</button>
         </div>
         <div class="panel-content">
-          <div class="zeus-avatar">
-            <div class="zeus-image">👑</div>
-            <div class="zeus-title">Zeus, King of the Ocean</div>
-            <div class="zeus-subtitle">Supreme Dispatcher & Oracle</div>
+          <div class="poseidon-avatar">
+            <div class="poseidon-image">👑</div>
+            <div class="poseidon-title">Poseidon, King of the Ocean</div>
+            <div class="poseidon-subtitle">Supreme Dispatcher & Oracle</div>
           </div>
           
-          <div id="zeus-chat-messages" class="chat-messages"></div>
+          <div id="poseidon-chat-messages" class="chat-messages"></div>
           
-          <div class="zeus-suggestions" id="zeus-suggestions"></div>
+          <div class="poseidon-suggestions" id="poseidon-suggestions"></div>
           
           <div class="chat-input-container">
             <input 
               type="text" 
-              id="zeus-chat-input" 
-              placeholder="Speak to Zeus... (e.g., 'Hello Zeus!' or 'Show my squids')"
-              onkeypress="if(event.key==='Enter') ui.sendToZeus()"
+              id="poseidon-chat-input" 
+              placeholder="Speak to Poseidon... (e.g., 'Hello Poseidon!' or 'Show my squids')"
+              onkeypress="if(event.key==='Enter') ui.sendToPoseidon()"
             >
-            <button class="btn-primary" onclick="ui.sendToZeus()">⚡ Send</button>
+            <button class="btn-primary" onclick="ui.sendToPoseidon()">⚡ Send</button>
           </div>
         </div>
       </div>
@@ -360,8 +360,9 @@
 
   <!-- Scripts -->
   <script src="scripts/api.js"></script>
-  <script src="scripts/Zeus.js"></script>
+  <script src="scripts/Poseidon.js"></script>
   <script src="scripts/SquidInteractions.js"></script>
+  <script src="scripts/SquidInteractionSystem.js"></script>
   <script src="scripts/Squid.js"></script>
   <script src="scripts/dashboard.js"></script>
   <script src="scripts/aquarium.js"></script>

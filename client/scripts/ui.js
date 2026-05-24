@@ -644,9 +644,9 @@ async function loadLogs() {
   }
 }
 
-// Zeus Chat Functions
-ui.sendToZeus = async function() {
-  const input = document.getElementById('zeus-chat-input');
+// Poseidon Chat Functions
+ui.sendToPoseidon = async function() {
+  const input = document.getElementById('poseidon-chat-input');
   const message = input.value.trim();
   
   if (!message) return;
@@ -655,7 +655,7 @@ ui.sendToZeus = async function() {
   input.value = '';
   
   // Add user message to chat
-  this.addZeusMessage(message, 'user');
+  this.addPoseidonMessage(message, 'user');
   
   // Get context
   const agents = await api.getAgents();
@@ -664,25 +664,25 @@ ui.sendToZeus = async function() {
     systemStatus: {}
   };
   
-  // Get Zeus response
-  const response = await zeus.respond(message, context);
+  // Get Poseidon response
+  const response = await poseidon.respond(message, context);
   
-  // Add Zeus response
-  this.addZeusMessage(response.message, 'zeus');
+  // Add Poseidon response
+  this.addPoseidonMessage(response.message, 'poseidon');
   
   // Update suggestions
-  this.updateZeusSuggestions(response.suggestions);
+  this.updatePoseidonSuggestions(response.suggestions);
 };
 
-ui.addZeusMessage = function(message, sender) {
-  const messagesDiv = document.getElementById('zeus-chat-messages');
+ui.addPoseidonMessage = function(message, sender) {
+  const messagesDiv = document.getElementById('poseidon-chat-messages');
   
   const messageEl = document.createElement('div');
   messageEl.className = `chat-message ${sender}`;
   
   const header = document.createElement('div');
   header.className = 'chat-message-header';
-  header.textContent = sender === 'zeus' ? '🔱 Zeus' : '👤 You';
+  header.textContent = sender === 'poseidon' ? '🔱 Poseidon' : '👤 You';
   
   const content = document.createElement('div');
   content.className = 'chat-message-content';
@@ -696,17 +696,17 @@ ui.addZeusMessage = function(message, sender) {
   messagesDiv.scrollTop = messagesDiv.scrollHeight;
 };
 
-ui.updateZeusSuggestions = function(suggestions) {
-  const suggestionsDiv = document.getElementById('zeus-suggestions');
+ui.updatePoseidonSuggestions = function(suggestions) {
+  const suggestionsDiv = document.getElementById('poseidon-suggestions');
   
   suggestionsDiv.innerHTML = suggestions.map(s => 
-    `<div class="zeus-suggestion" onclick="ui.useZeusSuggestion('${s}')">${s}</div>`
+    `<div class="poseidon-suggestion" onclick="ui.usePoseidonSuggestion('${s}')">${s}</div>`
   ).join('');
 };
 
-ui.useZeusSuggestion = function(suggestion) {
-  document.getElementById('zeus-chat-input').value = suggestion;
-  ui.sendToZeus();
+ui.usePoseidonSuggestion = function(suggestion) {
+  document.getElementById('poseidon-chat-input').value = suggestion;
+  ui.sendToPoseidon();
 };
 
 // Squid Interaction Functions
@@ -758,17 +758,17 @@ ui.showSquidDetails = function(squid) {
   // ... rest of detail logic
 };
 
-// Initialize Zeus chat when panel opens
+// Initialize Poseidon chat when panel opens
 const originalShowPanel = ui.showPanel;
 ui.showPanel = function(panelName) {
   originalShowPanel.call(this, panelName);
   
-  if (panelName === 'zeus') {
-    // Initialize Zeus chat if empty
-    const messagesDiv = document.getElementById('zeus-chat-messages');
+  if (panelName === 'poseidon') {
+    // Initialize Poseidon chat if empty
+    const messagesDiv = document.getElementById('poseidon-chat-messages');
     if (!messagesDiv.hasChildNodes()) {
-      this.addZeusMessage(zeus.getRandomWisdom('greetings'), 'zeus');
-      this.updateZeusSuggestions(['Show my squids', 'Create a task', 'Help me']);
+      this.addPoseidonMessage(poseidon.getRandomWisdom('greetings'), 'poseidon');
+      this.updatePoseidonSuggestions(['Show my squids', 'Create a task', 'Help me']);
     }
   }
 };
@@ -780,37 +780,37 @@ document.addEventListener('click', (e) => {
   }
 });
 
-console.log('✅ Zeus & Interaction UI loaded');
+console.log('✅ Poseidon & Interaction UI loaded');
 
-// Initialize Zeus AI on startup
-async function initializeZeusAI() {
+// Initialize Poseidon AI on startup
+async function initializePoseidonAI() {
   try {
-    console.log('🔱 Initializing Zeus AI...');
-    const zeusReady = await zeus.initialize();
+    console.log('🔱 Initializing Poseidon AI...');
+    const poseidonReady = await poseidon.initialize();
     
-    if (zeusReady) {
-      const info = zeus.getModelInfo();
-      ui.showNotification(`⚡ Zeus AI ready! (${info.model})`, 'success');
+    if (poseidonReady) {
+      const info = poseidon.getModelInfo();
+      ui.showNotification(`⚡ Poseidon AI ready! (${info.model})`, 'success');
       
-      // Update Zeus panel with model info
-      const zeusPanel = document.querySelector('.zeus-subtitle');
-      if (zeusPanel) {
-        zeusPanel.textContent = `Supreme Dispatcher • ${info.mode}`;
+      // Update Poseidon panel with model info
+      const poseidonPanel = document.querySelector('.poseidon-subtitle');
+      if (poseidonPanel) {
+        poseidonPanel.textContent = `Supreme Dispatcher • ${info.mode}`;
       }
     } else {
-      console.warn('⚠️ Zeus running in fallback mode');
-      ui.showNotification('Zeus: Load a model for full AI power', 'warning');
+      console.warn('⚠️ Poseidon running in fallback mode');
+      ui.showNotification('Poseidon: Load a model for full AI power', 'warning');
     }
   } catch (error) {
-    console.error('Zeus init error:', error);
+    console.error('Poseidon init error:', error);
   }
 }
 
-// Call Zeus init after DOM loaded
+// Call Poseidon init after DOM loaded
 if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', initializeZeusAI);
+  document.addEventListener('DOMContentLoaded', initializePoseidonAI);
 } else {
-  initializeZeusAI();
+  initializePoseidonAI();
 }
 
-console.log('🔱 Zeus AI module loaded');
+console.log('🔱 Poseidon AI module loaded');
