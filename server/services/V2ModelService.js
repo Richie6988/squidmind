@@ -426,9 +426,11 @@ class V2ModelService {
       console.log(`[V2ModelService] ✓ ${fileName} ready`);
       return { success: true, model_id: modelId, config };
     } catch (err) {
-      // Cleanup on partial load
+      // PROPER CLEANUP: dispose context AND model, wait for VRAM to actually release
       try { if (context) await context.dispose(); } catch {}
       try { if (model) await model.dispose(); } catch {}
+      // VRAM cleanup is async at the CUDA driver level - give it time to release
+      await new Promise(r => setTimeout(r, 500));
 
       await this._registryUpsert(modelId, {
         status: 'available',
@@ -444,21 +446,40 @@ class V2ModelService {
         action: `FAILED to load ${fileName}: ${err.message}`
       });
       
-      // Single retry ONLY for explicit user-set values, falling back to 'auto'.
-      // 'auto' is right almost always; we don't need progressive shrinking.
       const isMemoryError = /context size.*too large|out of memory|VRAM|allocation|insufficient|cannot allocate/i.test(err.message);
-      if (isMemoryError && !cfg._retryAttempt && config.gpuLayers !== 'auto') {
-        console.warn(`[V2ModelService] OOM with explicit gpuLayers=${config.gpuLayers}. Retrying ONCE with gpuLayers='auto' to let llama-cpp pick optimal split.`);
-        try {
-          await this.updateModelParams(modelId, { gpuLayers: 'auto', contextLength: 'auto' });
-        } catch {}
-        return await this.loadModel(fileName, { ...cfg, gpuLayers: 'auto', contextLength: 'auto', _retryAttempt: 1 });
+      const attempt = cfg._retryAttempt || 0;
+      
+      // Fallback ladder for memory errors. Each attempt:
+      //   - Uses smaller, KNOWN-GOOD numeric values (not 'auto')
+      //   - Optionally disables flash attention (last resort)
+      //   - DOES NOT persist these to registry (preserves user's preferred config)
+      const fallbacks = [
+        // attempt 0 (initial) -> attempt 1
+        { contextLength: 8192, gpuLayers: 28, flashAttention: true,  reason: 'try ctx=8192 gpu=28 with flash' },
+        // attempt 1 -> attempt 2
+        { contextLength: 4096, gpuLayers: 24, flashAttention: true,  reason: 'try ctx=4096 gpu=24 with flash' },
+        // attempt 2 -> attempt 3 (flash off - this model arch may not support it well)
+        { contextLength: 4096, gpuLayers: 20, flashAttention: false, reason: 'try ctx=4096 gpu=20 WITHOUT flash attention' },
+        // attempt 3 -> attempt 4 (small + low gpu)
+        { contextLength: 2048, gpuLayers: 16, flashAttention: false, reason: 'try ctx=2048 gpu=16 WITHOUT flash attention' }
+      ];
+      
+      if (isMemoryError && attempt < fallbacks.length) {
+        const next = fallbacks[attempt];
+        console.warn(`[V2ModelService] OOM at attempt ${attempt}. ${next.reason} (NOT persisted - your saved config is kept)`);
+        return await this.loadModel(fileName, {
+          ...cfg,
+          contextLength: next.contextLength,
+          gpuLayers: next.gpuLayers,
+          flashAttention: next.flashAttention,
+          _retryAttempt: attempt + 1
+        });
       }
 
-      // Surface friendly error
+      // Surface friendly error after all attempts
       let msg = err.message;
       if (isMemoryError) {
-        msg = `Your GPU/RAM can't fit this model. Try: (1) Lower context length, (2) Disable flash attention if your GPU doesn't support it, (3) Use a smaller model. Or click "Edit Params" and set Context Length to 'auto' (just type 'auto').`;
+        msg = `Your GPU can't fit this model even with conservative settings (tried ${attempt} fallbacks). Free VRAM: check your GPU. Options: (1) Close other GPU programs (browsers, games), (2) Use a smaller model like Llama-3.2-3B-Q4 (~2GB), (3) Try Edit Params with Context=2048 and GPU layers=10.`;
       }
       throw new Error(`Load failed: ${msg}`);
     }

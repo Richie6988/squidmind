@@ -773,9 +773,27 @@ const AgentForm = {
       status.textContent = `Created ${result.agent?.agent_id || 'agent'}`;
       status.className = 'agent-form-status success';
       
-      // Reload squids on canvas
+      // Add to canvas IMMEDIATELY so user sees it (don't wait for full reload)
+      if (window.aquarium?.addSquid && result.agent?.registry_entry) {
+        const reg = result.agent.registry_entry;
+        const brain = result.agent.brain || {};
+        window.aquarium.addSquid({
+          id: reg.agent_id,
+          name: reg.display_name,
+          nickname: brain.identity?.nickname || reg.display_name,
+          status: reg.status || 'sleeping',
+          specialty: reg.specialization,
+          appearance: brain.appearance || {},
+          accessories: brain.appearance?.accessories || {},
+          performance_summary: reg.performance_summary || {},
+          x: 60 + Math.random() * 600,
+          y: 60 + Math.random() * 400
+        });
+      }
+      
+      // Then also do a full reload for consistency
       if (window.aquarium?.loadSquids) {
-        await window.aquarium.loadSquids();
+        setTimeout(() => window.aquarium.loadSquids(), 200);
       }
       
       this.dirty.clear();

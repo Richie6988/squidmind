@@ -480,29 +480,27 @@ class SquidInteractionSystem {
    * Handle single click on squid
    */
   handleSquidClick(squid) {
-    console.log('[SQUID] CLICKED SQUID:', squid.name);
+    console.log('[SQUID] CLICKED SQUID:', squid.name, 'id=', squid.id);
     
     // Bounce visual feedback
     const originalY = squid.targetY;
     squid.targetY = originalY - 30;
     setTimeout(() => { squid.targetY = originalY; }, 300);
     
-    // Prefer V2 AgentForm if the squid has a registered agent_id
-    const agentId = squid.agent_id || squid.agentId;
-    if (agentId && typeof AgentForm !== 'undefined') {
+    // V2 AgentForm is the canonical edit UI. squid.id is the agent_id from registry.
+    const agentId = squid.id || squid.agent_id || squid.agentId;
+    if (agentId && typeof AgentForm !== 'undefined' && agentId.startsWith?.('agent_')) {
       AgentForm.open(agentId).catch(err => {
-        console.warn('[SQUID] AgentForm failed, falling back:', err.message);
-        if (window.ui?.openSquidDetailModal) window.ui.openSquidDetailModal(squid);
+        console.warn('[SQUID] AgentForm failed:', err.message);
+        // Don't fall back to legacy - that's the old broken UI
+        alert('Could not open agent: ' + err.message);
       });
       return;
     }
     
-    // Fall back to legacy detail modal
-    if (typeof window.ui !== 'undefined' && window.ui.openSquidDetailModal) {
-      window.ui.openSquidDetailModal(squid);
-    } else {
-      console.error('   [ERROR] UI not loaded yet - check script order in index.html');
-    }
+    // Squid has a legacy ID (squid_TIMESTAMP) - it's an old V1 agent
+    console.warn('[SQUID] Legacy agent id, cannot edit:', agentId);
+    alert('This squid uses the old format and cannot be edited. Delete it and create a new one via "+ New Squid".');
   }
 
   /**

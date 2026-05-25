@@ -1277,21 +1277,15 @@ ui.createNewProject = async function() {
 ui.currentSquidForEdit = null;
 
 ui.openSquidDetailModal = function(squid) {
-  this.currentSquidForEdit = squid;
-  
-  const modal = document.getElementById('squid-detail-modal');
-  if (!modal) return;
-  
-  // Populate fields
-  document.getElementById('squid-detail-title').textContent = `Edit ${squid.name}`;
-  document.getElementById('squid-name').value = squid.name || '';
-  document.getElementById('squid-specialty').value = squid.specialty || '';
-  document.getElementById('squid-mission').value = squid.mission || '';
-  document.getElementById('squid-model').value = squid.brain?.model || '';
-  document.getElementById('squid-temperature').value = squid.brain?.temperature || 0.7;
-  document.getElementById('squid-body-color').value = squid.appearance?.body_color || '#FF6B9D';
-  
-  modal.classList.remove('hidden');
+  // V2: always redirect to AgentForm (the proper modal). Old #squid-detail-modal is deprecated.
+  if (typeof AgentForm !== 'undefined' && squid?.id) {
+    AgentForm.open(squid.id).catch(err => {
+      console.error('AgentForm.open failed:', err);
+      alert('Could not open agent: ' + err.message);
+    });
+    return;
+  }
+  console.warn('AgentForm not loaded, cannot open squid editor');
 };
 
 ui.closeSquidDetailModal = function() {
