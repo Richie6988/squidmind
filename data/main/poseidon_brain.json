@@ -167,7 +167,7 @@
     }
   },
   "current_state": {
-    "loaded_model_id": "kwen3-5-9b",
+    "loaded_model_id": null,
     "active_agents_count": 0,
     "sleeping_agents_count": 0,
     "active_projects_count": 4,

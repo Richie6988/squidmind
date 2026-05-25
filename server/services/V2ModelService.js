@@ -66,12 +66,27 @@ class V2ModelService {
         if (!file.toLowerCase().endsWith('.gguf')) continue;
         const fullPath = path.join(this.modelsDir, file);
         const stat = await fs.stat(fullPath);
+        
+        // Quick validity check (without parsing whole file)
+        let isValid = false;
+        if (stat.size >= 4) {
+          try {
+            const fd = await fs.open(fullPath, 'r');
+            const buf = Buffer.alloc(4);
+            await fd.read(buf, 0, 4, 0);
+            await fd.close();
+            isValid = buf.toString('utf8') === 'GGUF';
+          } catch {}
+        }
+        
         result.push({
           model_id: this._fileNameToId(file),
           file_name: file,
           file_path: fullPath,
           file_size_gb: Math.round((stat.size / (1024 ** 3)) * 100) / 100,
-          format: 'gguf'
+          format: 'gguf',
+          is_valid_gguf: isValid,
+          size_bytes: stat.size
         });
       }
     } catch (err) {
@@ -107,7 +122,9 @@ class V2ModelService {
         status: regEntry?.status || 'not_imported',
         is_loaded: this.loaded.has(file.model_id),
         is_poseidon: this.poseidonModelId === file.model_id,
-        runtime: regEntry?.runtime || null
+        runtime: regEntry?.runtime || null,
+        is_valid_gguf: file.is_valid_gguf,
+        size_bytes: file.size_bytes
       });
     }
     
@@ -147,6 +164,21 @@ class V2ModelService {
       throw new Error(`File not found: ${fullPath}`);
     }
     const stat = await fs.stat(fullPath);
+    
+    // Validate GGUF magic bytes - reject placeholder/corrupt files at import time
+    // (much better than failing at chat time after assigning to Poseidon)
+    if (stat.size < 4) {
+      throw new Error(`File is only ${stat.size} bytes - not a real .gguf model. Looks like a placeholder. Use Browse Files or Download HF to get a real one.`);
+    }
+    const fd = await fs.open(fullPath, 'r');
+    const buf = Buffer.alloc(4);
+    await fd.read(buf, 0, 4, 0);
+    await fd.close();
+    const magic = buf.toString('utf8');
+    if (magic !== 'GGUF') {
+      throw new Error(`Not a valid GGUF file: magic bytes are "${magic.replace(/[^\x20-\x7e]/g, '?')}" instead of "GGUF". The file is likely corrupted or a placeholder.`);
+    }
+    
     const modelId = this._fileNameToId(path.basename(fileName));
     const finalConfig = { ...V2ModelService.DEFAULT_CONFIG, ...config };
     

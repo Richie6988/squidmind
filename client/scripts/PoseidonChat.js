@@ -172,8 +172,17 @@ const PoseidonChat = {
       
       this.history[assistantIdx].content = fullText || '(no response)';
     } catch (err) {
-      this.history[assistantIdx].content = `Error: ${err.message}`;
-      textEl.textContent = this.history[assistantIdx].content;
+      // Friendly message for common errors
+      let friendly = err.message;
+      if (/Invalid GGUF magic/i.test(err.message)) {
+        friendly = 'The model file is not a valid GGUF (it may be a placeholder or corrupted). Open the Models panel and use Browse Files or Download HF to get a real .gguf file.';
+      } else if (/No model assigned/i.test(err.message)) {
+        friendly = 'No model is assigned to Poseidon. Open the Models panel and click "Use as Poseidon" on an imported model.';
+      } else if (/Model file is missing/i.test(err.message)) {
+        friendly = 'The model file no longer exists on disk. Re-import from the Models panel.';
+      }
+      this.history[assistantIdx].content = friendly;
+      textEl.textContent = friendly;
       textEl.style.color = 'var(--danger)';
     } finally {
       this.currentRequest = null;

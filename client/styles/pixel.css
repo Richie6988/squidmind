@@ -3774,3 +3774,163 @@ button .pixel-icon {
 .btn-primary:hover { background: #06CC83; }
 .btn-primary:disabled { background: var(--border); color: var(--text-secondary); cursor: not-allowed; }
 
+
+/* ========== ModelLoader TABS + BROWSER + DOWNLOADS ========== */
+
+.ml-tabs {
+  display: flex;
+  gap: 4px;
+  flex: 1;
+  margin-left: 12px;
+}
+
+.ml-tab {
+  background: var(--ocean-mid);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  padding: 6px 12px;
+  font-size: 9px;
+  font-family: 'Press Start 2P';
+  cursor: pointer;
+}
+
+.ml-tab.active {
+  background: var(--accent);
+  color: black;
+  border-color: var(--accent);
+}
+
+.ml-tab:hover:not(.active) {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+.ml-browse-toolbar {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 10px;
+  align-items: center;
+}
+
+.ml-browse-toolbar input {
+  flex: 1;
+  font-family: 'Courier New', monospace;
+  font-size: 10px;
+  padding: 4px 8px;
+  background: var(--ocean-mid);
+  border: 1px solid var(--border);
+  color: var(--text);
+}
+
+.ml-browse-toolbar button {
+  font-size: 9px;
+  padding: 4px 10px;
+  white-space: nowrap;
+}
+
+.ml-browse-list {
+  background: var(--ocean-mid);
+  border: 1px solid var(--border);
+  max-height: 50vh;
+  overflow-y: auto;
+}
+
+.ml-browse-entry {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+  font-size: 10px;
+}
+
+.ml-browse-entry.ml-dir {
+  cursor: pointer;
+}
+
+.ml-browse-entry.ml-dir:hover {
+  background: rgba(6,255,165,0.1);
+}
+
+.ml-browse-entry.ml-file {
+  background: rgba(0,0,0,0.2);
+}
+
+.ml-entry-icon {
+  font-family: 'Press Start 2P';
+  font-size: 8px;
+  padding: 2px 6px;
+  background: var(--ocean-deep);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  min-width: 36px;
+  text-align: center;
+}
+
+.ml-browse-entry.ml-dir .ml-entry-icon { color: var(--accent); }
+.ml-browse-entry.ml-file .ml-entry-icon { color: var(--success); border-color: var(--success); }
+
+.ml-entry-name {
+  flex: 1;
+  font-family: 'Courier New', monospace;
+  color: var(--text);
+}
+
+.ml-entry-size {
+  font-size: 9px;
+  color: var(--text-secondary);
+  font-family: 'Courier New', monospace;
+}
+
+.ml-download-row {
+  background: rgba(0,0,0,0.2);
+  padding: 8px 10px;
+  margin: 6px 0;
+  border-left: 3px solid var(--accent);
+}
+
+.ml-download-row1 {
+  font-size: 10px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 4px;
+}
+
+.ml-download-row1 strong { color: var(--text); font-family: 'Courier New', monospace; }
+
+.ml-download-row2 {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.ml-download-bar {
+  flex: 1;
+  height: 6px;
+  background: var(--ocean-deep);
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+
+.ml-download-bar-fill {
+  height: 100%;
+  background: var(--success);
+  transition: width 0.4s;
+}
+
+
+.model-library-card.is-invalid {
+  border-left-color: var(--danger);
+  background: rgba(239, 68, 68, 0.06);
+}
+
+.model-warning {
+  background: rgba(239, 68, 68, 0.15);
+  border-left: 3px solid var(--danger);
+  padding: 6px 10px;
+  margin: 6px 0;
+  font-size: 9px;
+  color: var(--text);
+}
+

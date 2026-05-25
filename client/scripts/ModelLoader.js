@@ -26,22 +26,82 @@ const ModelLoader = {
     this.modal = document.createElement('div');
     this.modal.className = 'modal model-loader-modal';
     this.modal.innerHTML = `
-      <div class="modal-content" style="width:90vw; max-width:820px; max-height:85vh; display:flex; flex-direction:column;">
+      <div class="modal-content" style="width:90vw; max-width:900px; max-height:88vh; display:flex; flex-direction:column;">
         <div class="modal-header">
           <h2>Model Library</h2>
-          <button class="btn-secondary" onclick="ModelLoader._refresh()" style="font-size:9px;">Refresh</button>
+          <div class="ml-tabs">
+            <button class="ml-tab active" data-tab="library" onclick="ModelLoader._switchTab('library')">Library</button>
+            <button class="ml-tab" data-tab="browse" onclick="ModelLoader._switchTab('browse')">Browse Files</button>
+            <button class="ml-tab" data-tab="download" onclick="ModelLoader._switchTab('download')">Download HF</button>
+          </div>
           <button class="btn-close" onclick="ModelLoader.close()">x</button>
         </div>
         <div class="modal-body" style="flex:1; overflow-y:auto; padding:16px;">
-          <p class="hint" style="font-size:9px; color:var(--text-secondary); margin-bottom:12px;">
-            Models in <code>data/models/*.gguf</code>. Import a model to register loading parameters;
-            loading into memory happens automatically when Poseidon or an agent needs to chat.
-          </p>
-          <div id="ml-library"></div>
+          
+          <!-- TAB: Library -->
+          <div id="ml-tab-library" class="ml-tab-content active">
+            <p class="hint" style="font-size:9px; color:var(--text-secondary); margin-bottom:12px;">
+              Models registered in your library. Loading happens automatically when Poseidon needs them.
+            </p>
+            <div id="ml-library"></div>
+          </div>
+          
+          <!-- TAB: Browse computer -->
+          <div id="ml-tab-browse" class="ml-tab-content" style="display:none;">
+            <p class="hint" style="font-size:9px; color:var(--text-secondary); margin-bottom:12px;">
+              Navigate your filesystem to pick a .gguf file from anywhere. The file will be symlinked into the library (no disk duplication).
+            </p>
+            <div class="ml-browse-toolbar">
+              <button class="btn-secondary" onclick="ModelLoader._browseHome()">~ Home</button>
+              <button class="btn-secondary" id="ml-browse-up">.. Up</button>
+              <input id="ml-browse-path" type="text" placeholder="Enter absolute path...">
+              <button class="btn-secondary" onclick="ModelLoader._browseEnter()">Go</button>
+            </div>
+            <div id="ml-browse-list" class="ml-browse-list"></div>
+          </div>
+          
+          <!-- TAB: HuggingFace download -->
+          <div id="ml-tab-download" class="ml-tab-content" style="display:none;">
+            <p class="hint" style="font-size:9px; color:var(--text-secondary); margin-bottom:12px;">
+              Download a .gguf model from HuggingFace or any direct URL.
+            </p>
+            <div class="agent-form-row">
+              <label>URL or repo/file</label>
+              <input id="ml-dl-url" type="text" placeholder="e.g. TheBloke/Llama-2-7B-GGUF/llama-2-7b.Q4_K_M.gguf or full https URL">
+            </div>
+            <div class="agent-form-row">
+              <label>Save as (optional)</label>
+              <input id="ml-dl-name" type="text" placeholder="Leave blank to auto-detect">
+            </div>
+            <p class="hint" style="font-size:8px; color:var(--text-secondary);">
+              Shorthand: <code>org/repo/filename.gguf</code> resolves to HuggingFace's resolve/main URL.
+            </p>
+            <button class="btn-primary" onclick="ModelLoader._startDownload()">Start Download</button>
+            <div id="ml-downloads-list" style="margin-top:16px;"></div>
+          </div>
+          
         </div>
       </div>
     `;
     document.body.appendChild(this.modal);
+    
+    // Wire keyboard for path input
+    const pathInput = this.modal.querySelector('#ml-browse-path');
+    pathInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') this._browseEnter();
+    });
+    this.modal.querySelector('#ml-browse-up').addEventListener('click', () => this._browseUp());
+  },
+  
+  _switchTab(name) {
+    // Update active tab styling
+    this.modal.querySelectorAll('.ml-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
+    this.modal.querySelectorAll('.ml-tab-content').forEach(c => c.style.display = 'none');
+    this.modal.querySelector(`#ml-tab-${name}`).style.display = 'block';
+    
+    // Auto-load tab content
+    if (name === 'browse' && !this._browseCurrentPath) this._browseHome();
+    if (name === 'download') this._refreshDownloads();
   },
   
   async _refresh() {
@@ -71,17 +131,21 @@ const ModelLoader = {
   },
   
   _renderModelCard(m) {
-    const sizeStr = m.file_size_gb > 0 ? `${m.file_size_gb} GB` : '(empty file)';
+    const sizeStr = m.file_size_gb > 0 ? `${m.file_size_gb} GB` : `${m.size_bytes || 0} bytes`;
     const isMissing = m.status === 'missing';
+    const isInvalid = m.is_valid_gguf === false && !isMissing;
     
     let statusBadge = '';
     if (m.is_poseidon) statusBadge += '<span class="model-poseidon-pill">POSEIDON</span>';
     if (m.is_loaded) statusBadge += '<span class="model-loaded-pill">IN MEMORY</span>';
     if (isMissing) statusBadge += '<span class="model-missing-pill">FILE MISSING</span>';
-    if (!m.imported && !isMissing) statusBadge += '<span class="model-notimport-pill">NOT IMPORTED</span>';
+    if (isInvalid) statusBadge += '<span class="model-missing-pill">INVALID GGUF</span>';
+    if (!m.imported && !isMissing && !isInvalid) statusBadge += '<span class="model-notimport-pill">NOT IMPORTED</span>';
     
     let actions = '';
-    if (!m.imported) {
+    if (isInvalid) {
+      actions = `<button class="btn-secondary danger-action" onclick="ModelLoader.removeFile('${this._escape(m.file_name)}')">Delete Bad File</button>`;
+    } else if (!m.imported) {
       actions = `<button class="btn-primary" onclick="ModelLoader.showImportDialog('${this._escape(m.file_name)}')">Import to Library</button>`;
     } else {
       actions = `
@@ -110,14 +174,20 @@ const ModelLoader = {
         </div>`;
     }
     
+    let warningSection = '';
+    if (isInvalid) {
+      warningSection = `<div class="model-warning">File is not a valid .gguf (wrong magic bytes). It's likely a placeholder or corrupted. Delete it and use Browse Files or Download HF.</div>`;
+    }
+    
     return `
-      <div class="model-library-card ${m.is_poseidon ? 'is-poseidon' : ''}">
+      <div class="model-library-card ${m.is_poseidon ? 'is-poseidon' : ''} ${isInvalid ? 'is-invalid' : ''}">
         <div class="model-card-header">
           <strong>${this._escape(m.file_name)}</strong>
           <span class="model-id-pill">${m.model_id}</span>
           <span class="model-size-pill">${sizeStr}</span>
           ${statusBadge}
         </div>
+        ${warningSection}
         ${paramsSection}
         ${runtimeSection}
         <div class="model-card-actions">${actions}</div>
@@ -244,8 +314,206 @@ const ModelLoader = {
     }
   },
   
+  async removeFile(fileName) {
+    if (!confirm(`DELETE the file ${fileName} from disk? This cannot be undone.`)) return;
+    try {
+      await window.ApiV2._fetch('/models/delete-file', {
+        method: 'POST',
+        body: JSON.stringify({ fileName })
+      });
+      await this._refresh();
+    } catch (err) {
+      alert('Delete failed: ' + err.message);
+    }
+  },
+  
+  // === FILESYSTEM BROWSER ===
+  
+  _browseCurrentPath: null,
+  _browseData: null,
+  
+  async _browseHome() { await this._browseGo(null); },
+  
+  async _browseUp() {
+    if (this._browseData?.parent_path) {
+      await this._browseGo(this._browseData.parent_path);
+    }
+  },
+  
+  async _browseEnter() {
+    const p = this.modal.querySelector('#ml-browse-path').value.trim();
+    if (p) await this._browseGo(p);
+  },
+  
+  async _browseGo(targetPath) {
+    const list = this.modal.querySelector('#ml-browse-list');
+    list.innerHTML = '<p class="hint" style="font-size:9px; padding:8px;">Loading...</p>';
+    
+    try {
+      const url = targetPath
+        ? `/models/browse?path=${encodeURIComponent(targetPath)}`
+        : '/models/browse';
+      const data = await window.ApiV2._fetch(url);
+      this._browseCurrentPath = data.current_path;
+      this._browseData = data;
+      
+      this.modal.querySelector('#ml-browse-path').value = data.current_path;
+      this.modal.querySelector('#ml-browse-up').disabled = !data.parent_path;
+      
+      let html = `<p style="font-size:8px; color:var(--text-secondary); margin-bottom:6px;">
+        ${data.current_path} <span style="color:var(--accent);">(${data.dir_count} dirs, ${data.gguf_count} .gguf)</span>
+      </p>`;
+      
+      if (data.entries.length === 0) {
+        html += '<p class="hint" style="font-size:9px; padding:8px;">No subdirectories or .gguf files here. Use the path bar to navigate.</p>';
+      } else {
+        html += data.entries.map(e => {
+          if (e.type === 'directory') {
+            return `<div class="ml-browse-entry ml-dir" onclick="ModelLoader._browseGo('${this._escapePath(e.path)}')">
+              <span class="ml-entry-icon">DIR</span>
+              <span class="ml-entry-name">${this._escape(e.name)}</span>
+            </div>`;
+          } else {
+            return `<div class="ml-browse-entry ml-file">
+              <span class="ml-entry-icon">GGUF</span>
+              <span class="ml-entry-name">${this._escape(e.name)}</span>
+              <span class="ml-entry-size">${e.size_gb} GB</span>
+              <button class="btn-primary" style="font-size:8px; padding:3px 8px;"
+                      onclick="ModelLoader._importFromPath('${this._escapePath(e.path)}')">Add to Library</button>
+            </div>`;
+          }
+        }).join('');
+      }
+      
+      list.innerHTML = html;
+    } catch (err) {
+      list.innerHTML = `<p style="color:var(--danger); font-size:10px; padding:8px;">Failed: ${this._escape(err.message)}</p>`;
+    }
+  },
+  
+  async _importFromPath(sourcePath) {
+    try {
+      await window.ApiV2._fetch('/models/import-from-path', {
+        method: 'POST',
+        body: JSON.stringify({
+          sourcePath,
+          contextLength: 25000, gpuLayers: 32, cpuThreads: 4, batchSize: 512,
+          offloadKqvToGpu: false, randomSeed: true, autoUnloadIdleMinutes: 15
+        })
+      });
+      alert(`Added "${sourcePath.split('/').pop()}" to library. Switch to Library tab.`);
+      await this._refresh();
+      this._switchTab('library');
+    } catch (err) {
+      alert('Import failed: ' + err.message);
+    }
+  },
+  
+  // === HUGGINGFACE DOWNLOAD ===
+  
+  _downloadPollInterval: null,
+  
+  async _startDownload() {
+    const url = this.modal.querySelector('#ml-dl-url').value.trim();
+    const fileName = this.modal.querySelector('#ml-dl-name').value.trim() || null;
+    if (!url) { alert('URL required'); return; }
+    
+    try {
+      const res = await window.ApiV2._fetch('/models/download', {
+        method: 'POST',
+        body: JSON.stringify({ url, fileName })
+      });
+      this.modal.querySelector('#ml-dl-url').value = '';
+      this.modal.querySelector('#ml-dl-name').value = '';
+      
+      // Start polling
+      this._refreshDownloads();
+      if (!this._downloadPollInterval) {
+        this._downloadPollInterval = setInterval(() => this._refreshDownloads(), 1500);
+      }
+    } catch (err) {
+      alert('Download failed: ' + err.message);
+    }
+  },
+  
+  async _refreshDownloads() {
+    const list = this.modal.querySelector('#ml-downloads-list');
+    if (!list) return;
+    try {
+      const res = await window.ApiV2._fetch('/models/downloads');
+      if (res.downloads.length === 0) {
+        list.innerHTML = '';
+        if (this._downloadPollInterval) {
+          clearInterval(this._downloadPollInterval);
+          this._downloadPollInterval = null;
+        }
+        return;
+      }
+      
+      list.innerHTML = '<h3 style="font-size:10px; color:var(--accent); margin-top:12px;">Downloads</h3>' +
+        res.downloads.map(d => this._renderDownload(d)).join('');
+      
+      // If all complete or failed, stop polling and refresh library
+      const inProgress = res.downloads.some(d => d.status === 'downloading' || d.status === 'starting');
+      if (!inProgress) {
+        if (this._downloadPollInterval) {
+          clearInterval(this._downloadPollInterval);
+          this._downloadPollInterval = null;
+        }
+        // Auto-refresh library so newly downloaded files appear
+        await this._refresh();
+      }
+    } catch (err) {
+      // silent
+    }
+  },
+  
+  _renderDownload(d) {
+    let badge = '', actions = '';
+    if (d.status === 'downloading') badge = '<span style="color:#3B82F6;">downloading</span>';
+    else if (d.status === 'completed') badge = '<span style="color:var(--success);">complete</span>';
+    else if (d.status === 'failed') badge = `<span style="color:var(--danger);">failed: ${this._escape(d.error || '')}</span>`;
+    else if (d.status === 'cancelled') badge = '<span style="color:var(--text-secondary);">cancelled</span>';
+    else badge = `<span>${d.status}</span>`;
+    
+    if (d.status === 'downloading' || d.status === 'starting') {
+      actions = `<button class="btn-secondary" style="font-size:8px; padding:3px 8px;" onclick="ModelLoader._cancelDownload('${d.downloadId}')">Cancel</button>`;
+    }
+    
+    const sizeStr = d.totalBytes
+      ? `${(d.bytesDownloaded / (1024**3)).toFixed(2)} / ${(d.totalBytes / (1024**3)).toFixed(2)} GB`
+      : `${(d.bytesDownloaded / (1024**2)).toFixed(1)} MB`;
+    
+    return `
+      <div class="ml-download-row">
+        <div class="ml-download-row1">
+          <strong>${this._escape(d.fileName)}</strong> ${badge} ${actions}
+        </div>
+        <div class="ml-download-row2">
+          <div class="ml-download-bar"><div class="ml-download-bar-fill" style="width:${d.percentage}%"></div></div>
+          <span style="font-size:8px;">${d.percentage.toFixed(1)}% &middot; ${sizeStr}</span>
+        </div>
+      </div>
+    `;
+  },
+  
+  async _cancelDownload(downloadId) {
+    try {
+      await window.ApiV2._fetch(`/models/downloads/${downloadId}/cancel`, { method: 'POST' });
+      await this._refreshDownloads();
+    } catch {}
+  },
+  
+  _escapePath(p) {
+    return p.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+  },
+  
   close() {
     if (this.modal) this.modal.classList.add('hidden');
+    if (this._downloadPollInterval) {
+      clearInterval(this._downloadPollInterval);
+      this._downloadPollInterval = null;
+    }
   },
   
   _escape(s) {
