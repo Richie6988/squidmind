@@ -21,25 +21,26 @@ app.use(cors());
 app.use(bodyParser.json());
 app.use(express.static(path.join(__dirname, '../client')));
 
-// === V2 NEURONAL ARCHITECTURE ROUTES ===
-const registryRoutes = require('./routes/registryRoutes');
-app.use('/api/v2', registryRoutes);
-
-// === V2 RESOURCE HEARTBEAT ===
+// === V2 NEURONAL ARCHITECTURE (single shared RegistryManager instance) ===
 const RegistryManager = require('./services/RegistryManager');
+const sharedRm = new RegistryManager(path.join(__dirname, '../data'));
+
+const buildRegistryRoutes = require('./routes/registryRoutes');
+app.use('/api/v2', buildRegistryRoutes(sharedRm));
+
+// === V2 RESOURCE HEARTBEAT (uses shared RM so writes serialize correctly) ===
 const HeartbeatService = require('./services/HeartbeatService');
-const heartbeatRm = new RegistryManager(path.join(__dirname, '../data'));
-const heartbeat = new HeartbeatService(heartbeatRm, 15000);
+const heartbeat = new HeartbeatService(sharedRm, 15000);
 heartbeat.start();
 
 // === V2 MODEL SERVICE (GGUF loading + Poseidon chat) ===
 const V2ModelService = require('./services/V2ModelService');
 const { buildRouter: buildModelRouter, buildPoseidonChatRoute } = require('./routes/modelRoutes');
-const v2ModelService = new V2ModelService(heartbeatRm, path.join(__dirname, '../data/models'));
+const v2ModelService = new V2ModelService(sharedRm, path.join(__dirname, '../data/models'));
 app.use('/api/v2/models', buildModelRouter(v2ModelService));
 app.post('/api/v2/poseidon/chat', buildPoseidonChatRoute(v2ModelService));
 
-// Hook V2ModelService TTL check into heartbeat (runs every 5s)
+// Hook V2ModelService TTL check into heartbeat
 const _originalTick = heartbeat.tick.bind(heartbeat);
 heartbeat.tick = async function() {
   await _originalTick();

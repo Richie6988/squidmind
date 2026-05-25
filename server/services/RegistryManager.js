@@ -18,6 +18,7 @@ class RegistryManager {
     this.dataRoot = dataRoot || path.join(__dirname, '../../data');
     this.cache = new Map();
     this.dirty = new Set();
+    this.writeLocks = new Map(); // path -> Promise chain (serializes writes per file)
   }
 
   // ==================== CORE I/O ====================
@@ -28,14 +29,19 @@ class RegistryManager {
     }
     const fullPath = path.join(this.dataRoot, relativePath);
     
-    // Retry on transient read errors (file mid-write from another tick)
+    // Wait for any pending write on this file to settle before reading
+    if (this.writeLocks.has(relativePath)) {
+      try { await this.writeLocks.get(relativePath); } catch {}
+    }
+    
+    // Retry on transient errors (ENOENT during rename, empty file, parse fail)
     let lastErr;
-    for (let attempt = 0; attempt < 3; attempt++) {
+    for (let attempt = 0; attempt < 5; attempt++) {
       try {
         const content = await fs.readFile(fullPath, 'utf8');
         if (!content || content.trim() === '') {
-          lastErr = new Error(`Empty file (mid-write?): ${relativePath}`);
-          await new Promise(r => setTimeout(r, 50 * (attempt + 1)));
+          lastErr = new Error(`Empty file: ${relativePath}`);
+          await new Promise(r => setTimeout(r, 40 * (attempt + 1)));
           continue;
         }
         const data = JSON.parse(content);
@@ -43,27 +49,39 @@ class RegistryManager {
         return data;
       } catch (err) {
         lastErr = err;
-        if (attempt < 2) {
-          await new Promise(r => setTimeout(r, 50 * (attempt + 1)));
+        if (attempt < 4) {
+          await new Promise(r => setTimeout(r, 40 * (attempt + 1)));
         }
       }
     }
-    throw new Error(`Failed to read ${relativePath} after 3 attempts: ${lastErr.message}`);
+    throw new Error(`Failed to read ${relativePath} after 5 attempts: ${lastErr.message}`);
   }
 
   async write(relativePath, data) {
-    const fullPath = path.join(this.dataRoot, relativePath);
-    data.last_updated_at = new Date().toISOString();
-    if (data.metadata) {
-      data.metadata.last_updated_at = data.last_updated_at;
+    // Chain writes to same file - never interleave them
+    const previousWrite = this.writeLocks.get(relativePath) || Promise.resolve();
+    const writeOp = previousWrite.catch(() => {}).then(async () => {
+      const fullPath = path.join(this.dataRoot, relativePath);
+      data.last_updated_at = new Date().toISOString();
+      if (data.metadata) {
+        data.metadata.last_updated_at = data.last_updated_at;
+      }
+      const tmpPath = fullPath + '.tmp.' + process.pid + '.' + Date.now() + '.' + Math.random().toString(36).slice(2, 8);
+      const json = JSON.stringify(data, null, 2);
+      await fs.writeFile(tmpPath, json, 'utf8');
+      await fs.rename(tmpPath, fullPath);
+      this.cache.set(relativePath, data);
+      this.dirty.delete(relativePath);
+    });
+    
+    this.writeLocks.set(relativePath, writeOp);
+    try {
+      await writeOp;
+    } finally {
+      if (this.writeLocks.get(relativePath) === writeOp) {
+        this.writeLocks.delete(relativePath);
+      }
     }
-    // Atomic write: write to tmp file then rename (atomic on POSIX)
-    const tmpPath = fullPath + '.tmp.' + process.pid + '.' + Date.now();
-    const json = JSON.stringify(data, null, 2);
-    await fs.writeFile(tmpPath, json, 'utf8');
-    await fs.rename(tmpPath, fullPath);
-    this.cache.set(relativePath, data);
-    this.dirty.delete(relativePath);
   }
 
   invalidateCache(relativePath) {

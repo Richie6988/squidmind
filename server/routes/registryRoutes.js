@@ -1,13 +1,16 @@
 /**
  * Registry API Routes - Express routes for the new neuronal architecture
+ * 
+ * Exports a factory that accepts the shared RegistryManager instance.
  */
 
 const express = require('express');
 const path = require('path');
 const RegistryManager = require('../services/RegistryManager');
 
-const router = express.Router();
-const rm = new RegistryManager(path.join(__dirname, '../../data'));
+function buildRouter(sharedRm) {
+  const router = express.Router();
+  const rm = sharedRm || new RegistryManager(path.join(__dirname, '../../data'));
 
 // POSEIDON
 router.get('/poseidon', async (req, res) => {
@@ -230,4 +233,7 @@ router.get('/file/{*filePath}', async (req, res) => {
   }
 });
 
-module.exports = router;
+  return router;
+}
+
+module.exports = buildRouter;
