@@ -236,10 +236,11 @@ const aquarium = {
     // Draw ocean gradient background
     this.drawBackground();
     
-    // Update and draw temples (background layer)
+    // Temples are rendered as HTML cards in .projects-container (not on canvas).
+    // We keep templeManager.update() for stats tracking but skip draw().
     if (this.templeManager) {
       this.templeManager.update(deltaTime, this.squids);
-      this.templeManager.draw(this.ctx);
+      // this.templeManager.draw(this.ctx);  // moved to HTML projects panel
     }
     
     // Update and draw squids

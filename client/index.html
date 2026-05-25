@@ -37,14 +37,19 @@
     <!-- Aquarium Canvas -->
     <div class="aquarium-wrapper">
       <canvas id="aquarium"></canvas>
-      
-      <!-- New Project Button -->
-      <button class="btn-new-project" onclick="window.ui.openNewProjectModal()">
-        + New Project
-      </button>
     </div>
     
-    <!-- Control Panels -->
+    <!-- Projects Container (temples + new project button) -->
+    <div class="projects-container" id="projects-container">
+      <button class="btn-new-project-card" onclick="window.ui.openNewProjectModal()">
+        + New Project
+      </button>
+      <div id="temple-cards-list" class="temple-cards-list">
+        <!-- Temple cards populated by ProjectsPanel.render() -->
+      </div>
+    </div>
+    
+    <!-- Control Panels (legacy modals - hidden by default, shown as floating) -->
     <div class="panels-container">
       
       <!-- Squid Creator Panel -->
@@ -721,6 +726,7 @@
   <script src="scripts/PoseidonChat.js"></script>
   <script src="scripts/ControlTowerLive.js"></script>
   <script src="scripts/Scheduler.js"></script>
+  <script src="scripts/ProjectsPanel.js"></script>
   <script src="scripts/PanelManager.js"></script>
   <script src="scripts/ModelScanner.js"></script>
   <script src="scripts/Poseidon.js"></script>

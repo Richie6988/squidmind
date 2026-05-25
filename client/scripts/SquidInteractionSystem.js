@@ -32,14 +32,22 @@ class SquidInteractionSystem {
   setupEventListeners() {
     const canvas = this.aquarium.canvas;
     
-    // Mouse move (hover)
+    // Mouse move (hover) - canvas only normally
     canvas.addEventListener('mousemove', (e) => this.handleMouseMove(e));
     
     // Mouse down (start drag)
     canvas.addEventListener('mousedown', (e) => this.handleMouseDown(e));
     
-    // Mouse up (end drag, click)
+    // Mouse up (end drag, click) - on canvas
     canvas.addEventListener('mouseup', (e) => this.handleMouseUp(e));
+    
+    // Also listen on document so dragged squid drops on HTML temple cards work
+    document.addEventListener('mousemove', (e) => {
+      if (this.draggedSquid) this.handleMouseMove(e);
+    });
+    document.addEventListener('mouseup', (e) => {
+      if (this.draggedSquid) this.handleMouseUp(e);
+    });
     
     // Context menu (right click)
     canvas.addEventListener('contextmenu', (e) => this.handleContextMenu(e));
@@ -114,6 +122,15 @@ class SquidInteractionSystem {
       this.draggedSquid.targetX = pos.x - this.dragOffset.x;
       this.draggedSquid.targetY = pos.y - this.dragOffset.y;
       this.aquarium.canvas.style.cursor = 'grabbing';
+      
+      // Live highlight HTML temple card we're hovering over
+      if (typeof ProjectsPanel !== 'undefined') {
+        document.querySelectorAll('.temple-card.squid-drop-target').forEach(c => c.classList.remove('squid-drop-target'));
+        const card = ProjectsPanel.findCardAtPoint(e.pageX, e.pageY);
+        if (card) {
+          ProjectsPanel.highlightDropTarget(card.projectName, true);
+        }
+      }
       return;
     }
     
@@ -249,6 +266,36 @@ class SquidInteractionSystem {
   }
   
   /**
+   * Persist a squid-to-project assignment via V2 API.
+   * Updates project_registry.metadata.assigned_agents.
+   */
+  async _persistSquidAssignment(squid, projectId, projectName) {
+    if (!projectId || !window.ApiV2) return;
+    try {
+      // Get current assigned_agents
+      const r = await window.ApiV2._fetch('/projects');
+      const project = r.registry.projects[projectId];
+      if (!project) return;
+      const assigned = project.assigned_agents || [];
+      const agentRef = squid.agent_id || squid.id;
+      if (assigned.includes(agentRef)) return; // already there
+      assigned.push(agentRef);
+      
+      await window.ApiV2._fetch('/field', {
+        method: 'PATCH',
+        body: JSON.stringify({
+          filePath: 'projects/project_registry.json',
+          fieldPath: `projects.${projectId}.assigned_agents`,
+          newValue: assigned,
+          reason: 'squid dragged onto temple card'
+        })
+      });
+    } catch (err) {
+      console.warn('[Drop] persist assignment failed:', err.message);
+    }
+  }
+  
+  /**
    * Handle mouse up
    */
   handleMouseUp(e) {
@@ -263,37 +310,53 @@ class SquidInteractionSystem {
     
     if (this.draggedSquid) {
       if (wasDragging) {
-        // Check if dropped on a temple for assignment
-        const templeAtDrop = this.findEntityAt(pos.x, pos.y);
-        if (templeAtDrop && templeAtDrop.type === 'temple') {
-          const squid = this.draggedSquid;
-          const temple = templeAtDrop.entity;
-          
-          // Assign squid to temple
-          if (!temple.assignedSquids) {
-            temple.assignedSquids = [];
+        const squid = this.draggedSquid;
+        let assigned = false;
+        
+        // NEW: check if dropped on an HTML temple card in projects-container
+        if (typeof ProjectsPanel !== 'undefined') {
+          const card = ProjectsPanel.findCardAtPoint(e.pageX, e.pageY);
+          if (card) {
+            squid.currentProject = card.projectName;
+            console.log(`[OK] Assigned ${squid.name} to ${card.projectName} (HTML card)`);
+            
+            // Create a virtual temple object pointing at the card position
+            // so the entry animation glides toward the card center
+            const fakeTemple = {
+              name: card.projectName,
+              x: card.rect.left + card.rect.width / 2 - this.aquarium.canvas.getBoundingClientRect().left,
+              y: card.rect.top + card.rect.height / 2 - this.aquarium.canvas.getBoundingClientRect().top
+            };
+            this._animateSquidEnterTemple(squid, fakeTemple);
+            
+            // Persist assignment in V2 registries via API (best-effort)
+            this._persistSquidAssignment(squid, card.projectId, card.projectName);
+            
+            if (window.ui?.addLog) window.ui.addLog('squid_assigned', `Assigned ${squid.name} to ${card.projectName}`);
+            assigned = true;
+            
+            // Refresh projects panel to show new agent count
+            setTimeout(() => ProjectsPanel.refresh(), 800);
           }
-          
-          if (!temple.assignedSquids.includes(squid.id)) {
-            temple.assignedSquids.push(squid.id);
-            // V2: also set currentProject so TempleInterior finds the squid
-            squid.currentProject = temple.name;
-            console.log(`[OK] Assigned ${squid.name} to ${temple.name} temple`);
-            
-            // Disappearance animation: shrink + fly into temple + hide
-            this._animateSquidEnterTemple(squid, temple);
-            
-            // Log the assignment
-            if (window.ui && window.ui.addLog) {
-              window.ui.addLog('squid_assigned', `Assigned ${squid.name} to ${temple.name}`);
+        }
+        
+        // LEGACY: also check canvas temple (in case temples-on-canvas is re-enabled)
+        if (!assigned) {
+          const templeAtDrop = this.findEntityAt(pos.x, pos.y);
+          if (templeAtDrop && templeAtDrop.type === 'temple') {
+            const temple = templeAtDrop.entity;
+            if (!temple.assignedSquids) temple.assignedSquids = [];
+            if (!temple.assignedSquids.includes(squid.id)) {
+              temple.assignedSquids.push(squid.id);
+              squid.currentProject = temple.name;
+              this._animateSquidEnterTemple(squid, temple);
+              if (window.ui?.addLog) window.ui.addLog('squid_assigned', `Assigned ${squid.name} to ${temple.name}`);
             }
-          } else {
-            console.log(`[INFO] ${squid.name} already assigned to ${temple.name}`);
           }
         }
       }
       
-      // Reset squid drag state completely
+      // Reset squid drag state
       this.draggedSquid.isDragging = false;
       this.draggedSquid = null;
       this.aquarium.canvas.style.cursor = 'default';
@@ -629,12 +692,32 @@ class SquidInteractionSystem {
     }
   }
 
-  static customizeTempleAppearance(templeName) {
-    // Find current temple to get current values
-    const temple = (window.aquarium?.temples || []).find(t => t.name === templeName);
-    const currentOutside = temple?.colors?.outside || '#457B9D';
-    const currentInside = temple?.colors?.inside || '#1D3557';
-    const currentShape = temple?.shape || 'classic';
+  static async customizeTempleAppearance(templeName) {
+    // First, try to get current values from V2 project registry (source of truth)
+    let currentOutside = '#457B9D';
+    let currentInside = '#1D3557';
+    let currentShape = 'classic';
+    let temple = null;
+    
+    try {
+      const r = await window.ApiV2._fetch('/projects');
+      const project = Object.values(r.registry.projects).find(p => p.name === templeName);
+      if (project) {
+        if (project.colors) {
+          currentOutside = project.colors.outside || currentOutside;
+          currentInside = project.colors.inside || currentInside;
+        }
+        if (project.temple_shape) currentShape = project.temple_shape;
+      }
+    } catch {}
+    
+    // Also check canvas temple for legacy fallback
+    temple = (window.aquarium?.temples || []).find(t => t.name === templeName);
+    if (temple && !currentOutside) {
+      currentOutside = temple.colors?.outside || currentOutside;
+      currentInside = temple.colors?.inside || currentInside;
+      currentShape = temple.shape || currentShape;
+    }
     
     const modal = document.createElement('div');
     modal.className = 'modal temple-appearance-modal';
@@ -693,37 +776,53 @@ class SquidInteractionSystem {
       const shape = modal.querySelector('#t-shape').value;
       try {
         status.textContent = 'Saving...';
-        // Colors via legacy endpoint (still works)
-        const r = await fetch(`/api/projects/${templeName}/colors`, {
+        
+        // 1. Save to project_memory.json (legacy compat)
+        await fetch(`/api/projects/${templeName}/colors`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ outside, inside })
+        }).catch(() => {/* memory file might not exist for new projects */});
+        
+        // 2. Find project_id in registry from name
+        const regRes = await window.ApiV2._fetch('/projects');
+        const project = Object.values(regRes.registry.projects).find(p => p.name === templeName);
+        if (!project) throw new Error(`Project not found in registry: ${templeName}`);
+        
+        // 3. Save BOTH colors and temple_shape to PROJECT_REGISTRY entry
+        //    (this is where ProjectsPanel reads from)
+        await window.ApiV2._fetch('/field', {
+          method: 'PATCH',
+          body: JSON.stringify({
+            filePath: 'projects/project_registry.json',
+            fieldPath: `projects.${project.project_id}.colors`,
+            newValue: { outside, inside },
+            reason: 'temple appearance edit'
+          })
         });
-        const data = await r.json();
-        if (!data.success) throw new Error(data.error || 'failed');
-        // Shape via V2 PATCH on project_memory.json
-        const projectMap = { AQUARIUM: '001', TRADING: '002', BRAIN: '003', NEWSROOM: '004' };
-        const projNum = projectMap[templeName.toUpperCase()];
-        if (projNum) {
-          await window.ApiV2._fetch('/field', {
-            method: 'PATCH',
-            body: JSON.stringify({
-              filePath: `projects/PROJECT_${projNum}/project_memory.json`,
-              fieldPath: 'temple_shape',
-              newValue: shape,
-              reason: 'temple right-click appearance edit'
-            })
-          }).catch(() => {});
+        await window.ApiV2._fetch('/field', {
+          method: 'PATCH',
+          body: JSON.stringify({
+            filePath: 'projects/project_registry.json',
+            fieldPath: `projects.${project.project_id}.temple_shape`,
+            newValue: shape,
+            reason: 'temple appearance edit'
+          })
+        });
+        
+        // 4. Refresh the HTML projects panel so cards re-render with new look
+        if (typeof ProjectsPanel !== 'undefined') {
+          await ProjectsPanel.refresh();
         }
-        // Apply to live temple in canvas
+        // 5. Update canvas temple too (if still used elsewhere)
         if (temple) {
           temple.colors = { outside, inside };
           temple.shape = shape;
         }
-        if (window.aquarium?.loadTemples) window.aquarium.loadTemples();
+        
         status.textContent = 'Applied';
         status.className = 'agent-form-status success';
-        setTimeout(() => modal.remove(), 600);
+        setTimeout(() => modal.remove(), 700);
       } catch (err) {
         status.textContent = 'Failed: ' + err.message;
         status.className = 'agent-form-status error';
