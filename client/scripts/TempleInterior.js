@@ -213,9 +213,10 @@ const TempleInterior = {
         <div class="avatar-name">${this._escape(squid.name)}</div>
         <div class="avatar-specialty">${this._escape(squid.specialty || squid.role || 'general')}</div>
         <div class="avatar-status">${this._escape(squid.status || 'idle')}</div>
-        <button class="btn-config-squid" onclick="TempleInterior.configureSquid('${this._escape(squid.id)}')">
-          Configure
-        </button>
+        <div class="avatar-btn-row">
+          <button class="btn-config-squid" onclick="TempleInterior.configureSquid('${this._escape(squid.id)}')" title="Open agent edit form">Edit</button>
+          <button class="btn-config-squid" onclick="TempleInterior.unassignSquid('${this._escape(squid.id)}')" title="Send back to aquarium - removes from this temple" style="background:rgba(230,57,70,0.15); border-color:var(--danger); color:var(--danger);">Aquarium</button>
+        </div>
       </div>
     `).join('');
     
@@ -791,6 +792,84 @@ const TempleInterior = {
   /**
    * Assign squid to project (REAL IMPLEMENTATION)
    */
+  /**
+   * Send a squid back to the aquarium - remove temple assignment.
+   * Clears currentProject in canvas + clears assigned_projects in V2 registry.
+   */
+  async unassignSquid(squidId) {
+    console.log('[SQUID] Sending', squidId, 'back to aquarium from', this.currentTemple?.name);
+    
+    if (!confirm('Send this squid back to the aquarium? They will leave this temple.')) return;
+    
+    // Update canvas squid (if present)
+    const squid = window.aquarium?.squids.find(s => s.id === squidId);
+    if (squid) {
+      squid.currentProject = null;
+      squid.insideTemple = null;
+      // Position them randomly back in aquarium
+      const canvas = window.aquarium.canvas;
+      if (canvas) {
+        squid.x = 80 + Math.random() * (canvas.width - 160);
+        squid.y = 80 + Math.random() * (canvas.height - 160);
+        squid.targetX = squid.x;
+        squid.targetY = squid.y;
+        squid.opacity = 1.0;  // restore if faded into temple
+      }
+    }
+    
+    // Persist in V2 registry: clear current_project + assigned_projects
+    try {
+      const projectName = this.currentTemple.name;
+      // Clear current_project
+      await window.ApiV2._fetch('/field', {
+        method: 'PATCH',
+        body: JSON.stringify({
+          filePath: 'agents/agent_registry.json',
+          fieldPath: `agents.${squidId}.current_project`,
+          newValue: null,
+          reason: 'unassigned from temple'
+        })
+      }).catch(() => {});
+      // Remove from assigned_projects array
+      const r = await window.ApiV2._fetch('/agents');
+      const entry = r.registry.agents[squidId];
+      if (entry?.assigned_projects?.includes?.(projectName)) {
+        const newList = entry.assigned_projects.filter(p => p !== projectName);
+        await window.ApiV2._fetch('/field', {
+          method: 'PATCH',
+          body: JSON.stringify({
+            filePath: 'agents/agent_registry.json',
+            fieldPath: `agents.${squidId}.assigned_projects`,
+            newValue: newList,
+            reason: 'unassigned from temple'
+          })
+        }).catch(() => {});
+      }
+      // Remove squid from project_registry.assigned_agents
+      const pr = await window.ApiV2._fetch('/projects');
+      for (const [pid, p] of Object.entries(pr.registry.projects)) {
+        if (p.name === projectName && Array.isArray(p.assigned_agents) && p.assigned_agents.includes(squidId)) {
+          await window.ApiV2._fetch('/field', {
+            method: 'PATCH',
+            body: JSON.stringify({
+              filePath: 'projects/project_registry.json',
+              fieldPath: `projects.${pid}.assigned_agents`,
+              newValue: p.assigned_agents.filter(a => a !== squidId),
+              reason: 'unassigned from temple'
+            })
+          }).catch(() => {});
+          break;
+        }
+      }
+    } catch (err) {
+      console.warn('[SQUID unassign] persistence failed:', err.message);
+    }
+    
+    // Refresh UI
+    this.populateWorkingAgents(this.currentTemple);
+    if (typeof ProjectsPanel !== 'undefined') ProjectsPanel.refresh();
+  },
+  
   assignSquid(squidId) {
     console.log('➕ REALLY assigning squid:', squidId, 'to', this.currentTemple.name);
     

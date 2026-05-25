@@ -49,6 +49,9 @@ class Agent {
       badges: [] // Earned achievements
     };
     
+    // V2 performance summary from agent_registry - drives level calculation
+    this.performance_summary = data.performance_summary || null;
+    
     // Personality & Behavior (Pokemon-style traits)
     this.personality = data.personality || {
       mood: 'happy', // happy, focused, tired, excited, grumpy
@@ -159,16 +162,37 @@ class Agent {
     try {
       await fs.mkdir(AGENTS_DIR, { recursive: true });
       const files = await fs.readdir(AGENTS_DIR);
+      
+      // Load V2 agent_registry once - it holds performance_summary per agent
+      let registry = { agents: {} };
+      try {
+        const regRaw = await fs.readFile(path.join(AGENTS_DIR, 'agent_registry.json'), 'utf8');
+        registry = JSON.parse(regRaw);
+      } catch {}
+      
       const agents = await Promise.all(
         files
-          .filter(f => f.endsWith('.json'))
+          .filter(f => f.endsWith('.json') && f !== 'agent_registry.json')
           .map(async (file) => {
             const data = await fs.readFile(path.join(AGENTS_DIR, file), 'utf8');
-            return new Agent(JSON.parse(data));
+            const brain = JSON.parse(data);
+            // Merge performance_summary from registry by agent_id
+            const agentId = brain.id || brain.identity?.agent_id;
+            if (agentId && registry.agents?.[agentId]?.performance_summary) {
+              brain.performance_summary = registry.agents[agentId].performance_summary;
+            }
+            // Also pull display_name + status from registry (registry is authoritative)
+            if (agentId && registry.agents?.[agentId]) {
+              brain.name = registry.agents[agentId].display_name || brain.name || brain.identity?.display_name;
+              brain.id = brain.id || agentId;
+              brain.status = registry.agents[agentId].status || brain.status;
+            }
+            return new Agent(brain);
           })
       );
       return agents;
     } catch (error) {
+      console.warn('[Agent.findAll]', error.message);
       return [];
     }
   }
@@ -200,6 +224,7 @@ class Agent {
       accessories: this.accessories || (this.appearance && this.appearance.accessories) || null,
       stats: this.stats,
       personality: this.personality,
+      performance_summary: this.performance_summary || null,  // V2 task counters -> drives level
       // Legacy V1 fields
       llm: this.llm,
       prompt: this.prompt,

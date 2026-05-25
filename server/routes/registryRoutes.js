@@ -57,6 +57,17 @@ router.post('/agents', async (req, res) => {
   }
 });
 
+router.delete('/agents/:id', async (req, res) => {
+  try {
+    rm.invalidateCache();
+    const result = await rm.deleteAgent(req.params.id);
+    res.json({ success: true, ...result });
+  } catch (err) {
+    console.error('[DELETE /agents] error:', err);
+    res.status(err.message?.includes('not found') ? 404 : 500).json({ success: false, error: err.message });
+  }
+});
+
 // AGENT LIFECYCLE
 router.post('/agents/:id/wake', async (req, res) => {
   try {

@@ -152,6 +152,8 @@ const AgentForm = {
         </div>
         <div class="modal-body agent-form-body"></div>
         <div class="agent-form-footer">
+          <button class="btn-secondary agent-form-delete" onclick="AgentForm.deleteAgent()" style="display:none; background:rgba(230,57,70,0.15); border-color:var(--danger); color:var(--danger);">Delete</button>
+          <button class="btn-secondary agent-form-duplicate" onclick="AgentForm.duplicateAgent()" style="display:none;">Duplicate</button>
           <span class="agent-form-status"></span>
           <button class="btn-secondary" onclick="AgentForm.close()">Cancel</button>
           <button class="btn-primary agent-form-save" onclick="AgentForm.save()" disabled>Save (0)</button>
@@ -172,6 +174,12 @@ const AgentForm = {
     if (saveBtn) {
       saveBtn.dataset.mode = this.isCreating ? 'create' : 'edit';
     }
+    
+    // Show/hide delete + duplicate based on mode
+    const deleteBtn = this.modal.querySelector('.agent-form-delete');
+    const duplicateBtn = this.modal.querySelector('.agent-form-duplicate');
+    if (deleteBtn) deleteBtn.style.display = this.isCreating ? 'none' : 'inline-block';
+    if (duplicateBtn) duplicateBtn.style.display = this.isCreating ? 'none' : 'inline-block';
 
     const body = this.modal.querySelector('.agent-form-body');
     body.innerHTML = '';
@@ -811,6 +819,65 @@ const AgentForm = {
     }
   },
 
+  async deleteAgent() {
+    if (!this.agentId || this.isCreating) return;
+    if (!confirm(`Delete ${this.registry.display_name || this.agentId}?\nThis removes the registry entry AND the brain file. Cannot be undone.`)) return;
+    
+    const status = this.modal.querySelector('.agent-form-status');
+    status.textContent = 'Deleting...';
+    try {
+      await window.ApiV2._fetch(`/agents/${this.agentId}`, { method: 'DELETE' });
+      status.textContent = 'Deleted';
+      status.className = 'agent-form-status success';
+      
+      // Refresh canvas
+      if (window.aquarium?.loadSquids) await window.aquarium.loadSquids();
+      
+      setTimeout(() => this.close(), 500);
+    } catch (err) {
+      status.textContent = 'Delete failed: ' + err.message;
+      status.className = 'agent-form-status error';
+    }
+  },
+  
+  async duplicateAgent() {
+    if (!this.agentId || this.isCreating) return;
+    
+    const status = this.modal.querySelector('.agent-form-status');
+    status.textContent = 'Duplicating...';
+    try {
+      // Build a clone of the current brain (server will assign new IDs)
+      const clone = JSON.parse(JSON.stringify(this.brain));
+      // Reset stateful fields
+      if (clone.current_state) clone.current_state = { status: 'sleeping', current_task_id: null, last_action_at: null };
+      if (clone.assignments) clone.assignments = { projects: [], active_tasks: [], task_queue: [] };
+      if (clone.inbox) clone.inbox = { messages: [], unread_count: 0 };
+      if (clone.history) clone.history = { completed_tasks_log: [], wake_sleep_events: [] };
+      if (clone.performance) clone.performance = { lifetime: {}, last_30_days: {}, by_skill: {} };
+      
+      const result = await window.ApiV2._fetch('/agents', {
+        method: 'POST',
+        body: JSON.stringify({
+          display_name: (this.registry.display_name || 'Squid') + ' (copy)',
+          specialization: this.registry.specialization || 'general',
+          status: 'sleeping',
+          brain: clone,
+          cloned_from: this.agentId
+        })
+      });
+      
+      status.textContent = `Cloned as ${result.agent?.agent_id || 'new agent'}`;
+      status.className = 'agent-form-status success';
+      
+      if (window.aquarium?.loadSquids) await window.aquarium.loadSquids();
+      
+      setTimeout(() => this.close(), 600);
+    } catch (err) {
+      status.textContent = 'Duplicate failed: ' + err.message;
+      status.className = 'agent-form-status error';
+    }
+  },
+  
   close() {
     if (this.modal) this.modal.classList.add('hidden');
   },

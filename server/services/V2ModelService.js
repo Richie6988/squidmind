@@ -625,25 +625,37 @@ class V2ModelService {
       // Stream chunks via async iterator
       const chunks = [];
       const completion = session.prompt(userMessage, {
-        onTextChunk: (chunk) => { chunks.push(chunk); }
+        onTextChunk: (chunk) => { chunks.push(chunk); },
+        maxTokens: 512   // bounded - prevents runaway generation on slow hardware
       });
 
-      // Yield chunks as they come in
+      // Yield chunks as they come in.
+      // Timeout strategy: ABORT only if no new tokens for IDLE_TIMEOUT_MS (model
+      // is stuck). A slow model that keeps producing tokens is fine - just slow.
       let lastIdx = 0;
+      let lastChunkAt = Date.now();
+      const IDLE_TIMEOUT_MS = 90000;       // 90s with no new tokens -> abort
+      const ABSOLUTE_MAX_MS = 30 * 60_000; // hard cap: 30 minutes
       const start = Date.now();
       while (true) {
         const isDone = await Promise.race([
           completion.then(() => true),
-          new Promise(r => setTimeout(() => r(false), 50))
+          new Promise(r => setTimeout(() => r(false), 100))
         ]);
         while (lastIdx < chunks.length) {
           const c = chunks[lastIdx++];
           entry.totalTokensGenerated += Math.ceil(c.length / 4);
+          lastChunkAt = Date.now();
           yield c;
         }
         if (isDone) break;
-        if (Date.now() - start > 120000) {
-          console.warn('[V2ModelService] generation timeout');
+        const idleMs = Date.now() - lastChunkAt;
+        if (idleMs > IDLE_TIMEOUT_MS) {
+          console.warn(`[V2ModelService] generation idle timeout (${Math.round(idleMs/1000)}s with no new tokens)`);
+          break;
+        }
+        if (Date.now() - start > ABSOLUTE_MAX_MS) {
+          console.warn('[V2ModelService] absolute generation cap (30min) hit');
           break;
         }
       }

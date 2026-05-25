@@ -2,11 +2,11 @@
   "schema_version": "2.0.0",
   "schema_type": "logs",
   "metadata": {
-    "total_entries": 11,
-    "last_entry_id": 11,
+    "total_entries": 19,
+    "last_entry_id": 19,
     "rotation_policy": "Archive entries older than 30 days or when exceeding 10000",
     "archive_path": "logs/archive/",
-    "last_updated_at": "2026-05-25T17:16:07.408Z"
+    "last_updated_at": "2026-05-25T17:22:31.349Z"
   },
   "event_types": [
     "system_startup",
@@ -276,7 +276,215 @@
           "operation": "created"
         }
       ]
+    },
+    {
+      "log_id": 12,
+      "timestamp": "2026-05-25T17:21:51.156Z",
+      "severity": "info",
+      "event_type": "agent_created",
+      "actor": {
+        "type": "system",
+        "id": "human_richard"
+      },
+      "subject": {
+        "type": "agent",
+        "id": "agent_002"
+      },
+      "action": "Created agent: DelTest",
+      "changes": [
+        {
+          "file": "agents/agent_registry.json",
+          "operation": "added_entry",
+          "key": "agent_002"
+        },
+        {
+          "file": "agents/squid_brain_002.json",
+          "operation": "created"
+        }
+      ]
+    },
+    {
+      "log_id": 13,
+      "timestamp": "2026-05-25T17:21:51.290Z",
+      "severity": "warning",
+      "event_type": "agent_archived",
+      "actor": {
+        "type": "human",
+        "id": "human_richard"
+      },
+      "subject": {
+        "type": "agent",
+        "id": "agent_002"
+      },
+      "action": "Deleted agent DelTest (agent_002)",
+      "changes": [
+        {
+          "file": "agents/agent_registry.json",
+          "operation": "removed_entry",
+          "key": "agent_002"
+        },
+        {
+          "file": "agents/squid_brain_002.json",
+          "operation": "deleted"
+        }
+      ]
+    },
+    {
+      "log_id": 14,
+      "timestamp": "2026-05-25T17:22:31.085Z",
+      "severity": "info",
+      "event_type": "agent_created",
+      "actor": {
+        "type": "system",
+        "id": "human_richard"
+      },
+      "subject": {
+        "type": "agent",
+        "id": "agent_003"
+      },
+      "action": "Created agent: DelTest2",
+      "changes": [
+        {
+          "file": "agents/agent_registry.json",
+          "operation": "added_entry",
+          "key": "agent_003"
+        },
+        {
+          "file": "agents/squid_brain_003.json",
+          "operation": "created"
+        }
+      ]
+    },
+    {
+      "log_id": 15,
+      "timestamp": "2026-05-25T17:22:31.134Z",
+      "severity": "warning",
+      "event_type": "agent_archived",
+      "actor": {
+        "type": "human",
+        "id": "human_richard"
+      },
+      "subject": {
+        "type": "agent",
+        "id": "agent_003"
+      },
+      "action": "Deleted agent DelTest2 (agent_003)",
+      "changes": [
+        {
+          "file": "agents/agent_registry.json",
+          "operation": "removed_entry",
+          "key": "agent_003"
+        },
+        {
+          "file": "agents/squid_brain_003.json",
+          "operation": "deleted"
+        }
+      ]
+    },
+    {
+      "log_id": 16,
+      "timestamp": "2026-05-25T17:22:31.146Z",
+      "severity": "info",
+      "event_type": "agent_created",
+      "actor": {
+        "type": "system",
+        "id": "human_richard"
+      },
+      "subject": {
+        "type": "agent",
+        "id": "agent_004"
+      },
+      "action": "Created agent: Original",
+      "changes": [
+        {
+          "file": "agents/agent_registry.json",
+          "operation": "added_entry",
+          "key": "agent_004"
+        },
+        {
+          "file": "agents/squid_brain_004.json",
+          "operation": "created"
+        }
+      ]
+    },
+    {
+      "log_id": 17,
+      "timestamp": "2026-05-25T17:22:31.225Z",
+      "severity": "info",
+      "event_type": "agent_created",
+      "actor": {
+        "type": "system",
+        "id": "human_richard"
+      },
+      "subject": {
+        "type": "agent",
+        "id": "agent_005"
+      },
+      "action": "Created agent: Original (copy)",
+      "changes": [
+        {
+          "file": "agents/agent_registry.json",
+          "operation": "added_entry",
+          "key": "agent_005"
+        },
+        {
+          "file": "agents/squid_brain_005.json",
+          "operation": "created"
+        }
+      ]
+    },
+    {
+      "log_id": 18,
+      "timestamp": "2026-05-25T17:22:31.338Z",
+      "severity": "warning",
+      "event_type": "agent_archived",
+      "actor": {
+        "type": "human",
+        "id": "human_richard"
+      },
+      "subject": {
+        "type": "agent",
+        "id": "agent_004"
+      },
+      "action": "Deleted agent Original (agent_004)",
+      "changes": [
+        {
+          "file": "agents/agent_registry.json",
+          "operation": "removed_entry",
+          "key": "agent_004"
+        },
+        {
+          "file": "agents/squid_brain_004.json",
+          "operation": "deleted"
+        }
+      ]
+    },
+    {
+      "log_id": 19,
+      "timestamp": "2026-05-25T17:22:31.349Z",
+      "severity": "warning",
+      "event_type": "agent_archived",
+      "actor": {
+        "type": "human",
+        "id": "human_richard"
+      },
+      "subject": {
+        "type": "agent",
+        "id": "agent_005"
+      },
+      "action": "Deleted agent Original (copy) (agent_005)",
+      "changes": [
+        {
+          "file": "agents/agent_registry.json",
+          "operation": "removed_entry",
+          "key": "agent_005"
+        },
+        {
+          "file": "agents/squid_brain_005.json",
+          "operation": "deleted"
+        }
+      ]
     }
   ],
-  "last_updated_at": "2026-05-25T17:16:07.408Z"
+  "last_updated_at": "2026-05-25T17:22:31.349Z"
 }

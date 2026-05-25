@@ -52,6 +52,21 @@ class Squid {
       experience: 0
     };
     
+    // V2: tasks_completed lives in registry_entry.performance_summary
+    // Level formula: 1 task = lv 1, 4 tasks = lv 2, 9 = lv 3 (perfect squares).
+    // This makes early gains feel fast and rewards experienced squids.
+    const tasksCompleted = data.performance_summary?.tasks_completed
+                        ?? data.tasks_completed
+                        ?? 0;
+    if (tasksCompleted > 0) {
+      this.stats.level = Math.max(1, Math.floor(Math.sqrt(tasksCompleted)) + 1);
+      this.stats.experience = tasksCompleted;
+    }
+    this.stats.tasks_completed = tasksCompleted;
+    // Tasks needed to reach next level: next_level^2 - current
+    const nextLevel = this.stats.level + 1;
+    this.stats.tasks_to_next = Math.max(0, ((nextLevel - 1) * (nextLevel - 1)) - tasksCompleted);
+    
     // Animation state
     this.baseSize = this.getSizeMultiplier();
     this.animFrame = 0;
@@ -753,10 +768,10 @@ class Squid {
     ctx.textAlign = 'center';
     ctx.fillText(this.nickname, 0, -2);
     
-    // Level indicator
+    // Level indicator (computed from tasks_completed)
     ctx.fillStyle = '#FFD700';
     ctx.font = '10px "Press Start 2P"';
-    ctx.fillText(`Lv.${this.stats.level}`, 0, 8);
+    ctx.fillText(`Lv.${this.stats.level} (${this.stats.tasks_completed || 0} tasks)`, 0, 8);
     
     // Thinking text if available
     if (this.current_thought && this.status === 'thinking') {

@@ -354,6 +354,60 @@ class RegistryManager {
     return { registry_entry: entry, brain };
   }
 
+  async deleteAgent(agentId) {
+    const registry = await this.getAgentRegistry();
+    const entry = registry.agents[agentId];
+    if (!entry) throw new Error(`Agent ${agentId} not found`);
+    
+    const brainFile = entry.brain_file;
+    const displayName = entry.display_name;
+    
+    // Remove from registry
+    delete registry.agents[agentId];
+    // Update metadata counters
+    if (entry.status === 'active') {
+      registry.metadata.total_active = Math.max(0, (registry.metadata.total_active || 1) - 1);
+    } else if (entry.status === 'sleeping') {
+      registry.metadata.total_sleeping = Math.max(0, (registry.metadata.total_sleeping || 1) - 1);
+    }
+    await this.write('agents/agent_registry.json', registry);
+    
+    // Remove brain file from disk
+    try {
+      const brainPath = path.join(this.dataRoot, 'agents', brainFile);
+      await fs.unlink(brainPath);
+    } catch (err) {
+      console.warn(`[deleteAgent] could not delete brain file ${brainFile}:`, err.message);
+    }
+    
+    // Remove from any project's assigned_agents list
+    try {
+      const pr = await this.read('projects/project_registry.json');
+      let modified = false;
+      for (const p of Object.values(pr.projects || {})) {
+        if (Array.isArray(p.assigned_agents) && p.assigned_agents.includes(agentId)) {
+          p.assigned_agents = p.assigned_agents.filter(a => a !== agentId);
+          modified = true;
+        }
+      }
+      if (modified) await this.write('projects/project_registry.json', pr);
+    } catch {}
+    
+    await this.log({
+      event_type: 'agent_archived',
+      severity: 'warning',
+      actor: { type: 'human', id: 'human_richard' },
+      subject: { type: 'agent', id: agentId },
+      action: `Deleted agent ${displayName} (${agentId})`,
+      changes: [
+        { file: 'agents/agent_registry.json', operation: 'removed_entry', key: agentId },
+        { file: `agents/${brainFile}`, operation: 'deleted' }
+      ]
+    });
+    
+    return { agent_id: agentId, display_name: displayName, deleted_brain_file: brainFile };
+  }
+
   async createAgent(agentData) {
     const registry = await this.getAgentRegistry();
     const agentId = await this.generateNextId('agents/agent_registry.json');
