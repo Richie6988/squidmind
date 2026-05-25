@@ -22,6 +22,15 @@ class V2ModelService {
     this.poseidonModelId = null;             // currently assigned to Poseidon
     this._libPromise = null;
     this.contextWipeThreshold = 5;           // wipe Poseidon session after N exchanges
+    this.orchestrator = null;                // wired in by index.js after construction
+  }
+  
+  /**
+   * Set the orchestrator (called once at startup). Provides Poseidon's
+   * system prompt + function-calling tools.
+   */
+  setOrchestrator(orchestrator) {
+    this.orchestrator = orchestrator;
   }
 
   // === LIB INITIALIZATION ===
@@ -654,27 +663,54 @@ class V2ModelService {
       const llamaCpp = await import('node-llama-cpp');
 
       // Reuse the same session across chats so we don't burn through sequences.
-      // The session holds ONE sequence and reuses it. If the session was nulled
-      // (e.g. after an error or auto-wipe), we recreate cleanly.
       if (!entry.session) {
-        const systemPrompt = await this.buildPoseidonSystemPrompt();
+        // Build system prompt + tool definitions from the orchestrator.
+        const orchestrator = this.orchestrator;
+        let systemPrompt, functions;
+        if (orchestrator) {
+          systemPrompt = await orchestrator.buildSystemPrompt();
+          try {
+            functions = await orchestrator.buildFunctions();
+          } catch (err) {
+            console.warn('[V2ModelService] Function-calling setup failed:', err.message, '- continuing without functions');
+            functions = undefined;
+          }
+        } else {
+          systemPrompt = await this.buildPoseidonSystemPrompt();
+        }
+        
+        // Pick the right chat wrapper. Qwen models need QwenChatWrapper for
+        // proper function-calling support. Detect by file name.
+        let chatWrapper;
+        const fname = (entry.file_name || '').toLowerCase();
+        if (fname.includes('qwen')) {
+          chatWrapper = new llamaCpp.QwenChatWrapper();
+          console.log('[V2ModelService] Using QwenChatWrapper (detected Qwen model)');
+        }
+        // For other architectures, node-llama-cpp auto-detects from GGUF metadata.
+        
         const sequence = entry.context.getSequence();
-        entry.session = new llamaCpp.LlamaChatSession({
-          contextSequence: sequence,
-          systemPrompt
-        });
+        const sessionOpts = { contextSequence: sequence, systemPrompt };
+        if (chatWrapper) sessionOpts.chatWrapper = chatWrapper;
+        entry.session = new llamaCpp.LlamaChatSession(sessionOpts);
+        entry._functions = functions;
         entry._currentSequence = sequence;
         entry.sessionTurns = 0;
-        console.log(`[V2ModelService] Created fresh chat session for ${this.poseidonModelId} (system prompt reloaded from brain.json)`);
+        console.log(`[V2ModelService] Created fresh chat session for ${this.poseidonModelId} (system prompt reloaded from brain.json${functions ? `, ${Object.keys(functions).length} functions exposed` : ''})`);
       }
       const session = entry.session;
 
       // Stream chunks via async iterator
       const chunks = [];
-      const completion = session.prompt(userMessage, {
+      const promptOpts = {
         onTextChunk: (chunk) => { chunks.push(chunk); },
-        maxTokens: 512   // bounded - prevents runaway generation on slow hardware
-      });
+        maxTokens: 512
+      };
+      // Expose functions to this turn if available
+      if (entry._functions) {
+        promptOpts.functions = entry._functions;
+      }
+      const completion = session.prompt(userMessage, promptOpts);
 
       // Yield chunks as they come in.
       // Timeout strategy: ABORT only if no new tokens for IDLE_TIMEOUT_MS (model

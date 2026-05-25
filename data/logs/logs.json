@@ -2,11 +2,11 @@
   "schema_version": "2.0.0",
   "schema_type": "logs",
   "metadata": {
-    "total_entries": 23,
-    "last_entry_id": 23,
+    "total_entries": 28,
+    "last_entry_id": 28,
     "rotation_policy": "Archive entries older than 30 days or when exceeding 10000",
     "archive_path": "logs/archive/",
-    "last_updated_at": "2026-05-25T17:50:52.148Z"
+    "last_updated_at": "2026-05-25T21:25:42.186Z"
   },
   "event_types": [
     "system_startup",
@@ -588,7 +588,114 @@
           "operation": "deleted"
         }
       ]
+    },
+    {
+      "log_id": 24,
+      "timestamp": "2026-05-25T21:25:20.020Z",
+      "severity": "info",
+      "event_type": "agent_created",
+      "actor": {
+        "type": "system",
+        "id": "human_richard"
+      },
+      "subject": {
+        "type": "agent",
+        "id": "agent_001"
+      },
+      "action": "Created agent: OrchTest",
+      "changes": [
+        {
+          "file": "agents/agent_registry.json",
+          "operation": "added_entry",
+          "key": "agent_001"
+        },
+        {
+          "file": "agents/squid_brain_001.json",
+          "operation": "created"
+        }
+      ]
+    },
+    {
+      "log_id": 25,
+      "timestamp": "2026-05-25T21:25:20.074Z",
+      "severity": "warning",
+      "event_type": "agent_archived",
+      "actor": {
+        "type": "human",
+        "id": "human_richard"
+      },
+      "subject": {
+        "type": "agent",
+        "id": "agent_001"
+      },
+      "action": "Deleted agent OrchTest (agent_001)",
+      "changes": [
+        {
+          "file": "agents/agent_registry.json",
+          "operation": "removed_entry",
+          "key": "agent_001"
+        },
+        {
+          "file": "agents/squid_brain_001.json",
+          "operation": "deleted"
+        }
+      ]
+    },
+    {
+      "log_id": 26,
+      "timestamp": "2026-05-25T21:25:34.959Z",
+      "severity": "info",
+      "event_type": "task_created",
+      "actor": {
+        "type": "system",
+        "id": "poseidon_main"
+      },
+      "subject": {
+        "type": "task",
+        "id": "task_0001"
+      },
+      "action": "Poseidon created task: Test task from orchestrator",
+      "context": {}
+    },
+    {
+      "log_id": 27,
+      "timestamp": "2026-05-25T21:25:42.185Z",
+      "severity": "info",
+      "event_type": "task_created",
+      "actor": {
+        "type": "system",
+        "id": "poseidon_main"
+      },
+      "subject": {
+        "type": "task",
+        "id": "task_0002"
+      },
+      "action": "Poseidon created task: Test from orchestrator",
+      "context": {
+        "priority": "high"
+      }
+    },
+    {
+      "log_id": 28,
+      "timestamp": "2026-05-25T21:25:42.186Z",
+      "severity": "info",
+      "event_type": "poseidon_decision",
+      "actor": {
+        "type": "system",
+        "id": "poseidon_main"
+      },
+      "subject": {
+        "type": "system",
+        "id": "poseidon_main"
+      },
+      "action": "Test decision",
+      "context": {
+        "reasoning": "verifying log works",
+        "affected_entities": [
+          "agent_001"
+        ]
+      }
     }
   ],
-  "last_updated_at": "2026-05-25T17:50:52.148Z"
+  "last_updated_at": "2026-05-25T21:25:42.186Z"
 }

@@ -119,8 +119,19 @@ heartbeat.start();
 
 // === V2 MODEL SERVICE (GGUF loading + Poseidon chat) ===
 const V2ModelService = require('./services/V2ModelService');
+const PoseidonOrchestrator = require('./services/PoseidonOrchestrator');
 const { buildRouter: buildModelRouter, buildPoseidonChatRoute } = require('./routes/modelRoutes');
 const v2ModelService = new V2ModelService(sharedRm, path.join(__dirname, '../data/models'));
+
+// Orchestrator: gives Poseidon its identity prompt + function-calling tools.
+// Set BEFORE first chat so the model sees its full toolset.
+const poseidonOrchestrator = new PoseidonOrchestrator({
+  registryManager: sharedRm,
+  modelService: v2ModelService,
+  scheduler: null  // attached later if needed
+});
+v2ModelService.setOrchestrator(poseidonOrchestrator);
+
 app.use('/api/v2/models', buildModelRouter(v2ModelService));
 app.post('/api/v2/poseidon/chat', buildPoseidonChatRoute(v2ModelService));
 
