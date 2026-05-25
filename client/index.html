@@ -16,7 +16,7 @@
   <!-- Header -->
   <header>
     <div class="header-content">
-      <h1>[SQUID] SquidMind</h1>
+      <h1>SquidMind</h1>
       <div class="header-nav">
         <button class="btn-nav" onclick="ui.showPanel('creator')">+ New Squid</button>
         <button class="btn-nav" onclick="ui.showPanel('teams')">[TEAM] Teams</button>
@@ -480,50 +480,53 @@
         </div>
         <div class="right-panel-content">
           
-          <!-- System Resources -->
+          <!-- System Resources (live from heartbeat) -->
           <div class="monitor-section">
-            <h3>[CPU] Resources</h3>
+            <h3>Resources</h3>
             <div id="monitor-system-stats">
               <div class="stat-item">
                 <span class="stat-label">CPU</span>
                 <div class="stat-bar">
                   <div id="monitor-cpu-bar" class="stat-fill"></div>
                 </div>
-                <span id="monitor-cpu-value" class="stat-value">0%</span>
+                <span id="monitor-cpu-value" class="stat-value">--</span>
               </div>
               <div class="stat-item">
                 <span class="stat-label">RAM</span>
                 <div class="stat-bar">
                   <div id="monitor-mem-bar" class="stat-fill"></div>
                 </div>
-                <span id="monitor-mem-value" class="stat-value">0%</span>
+                <span id="monitor-mem-value" class="stat-value">--</span>
+              </div>
+              <div class="stat-item">
+                <span class="stat-label">VRAM</span>
+                <div class="stat-bar">
+                  <div id="monitor-vram-bar" class="stat-fill"></div>
+                </div>
+                <span id="monitor-vram-value" class="stat-value">--</span>
+              </div>
+              <div class="stat-row" style="margin-top:4px;">
+                <span>Model:</span>
+                <span id="monitor-model-pill" style="font-size:8px; color:var(--text-secondary);">none</span>
               </div>
             </div>
           </div>
           
-          <!-- Squad Status -->
+          <!-- Squad (live from agent_registry) -->
           <div class="monitor-section">
-            <h3>[SQUID] Squad</h3>
+            <h3>Squad</h3>
             <div id="monitor-squad-stats">
-              <div class="stat-row">
-                <span>Total:</span>
-                <span id="monitor-total-squids">0</span>
-              </div>
-              <div class="stat-row">
-                <span>Active:</span>
-                <span id="monitor-active-squids">0</span>
-              </div>
-              <div class="stat-row">
-                <span>Working:</span>
-                <span id="monitor-working-squids">0</span>
-              </div>
+              <div class="stat-row"><span>Total:</span><span id="monitor-total-squids">0</span></div>
+              <div class="stat-row"><span>Active:</span><span id="monitor-active-squids">0</span></div>
+              <div class="stat-row"><span>Sleeping:</span><span id="monitor-sleeping-squids">0</span></div>
+              <div class="stat-row"><span>Working:</span><span id="monitor-working-squids">0</span></div>
             </div>
           </div>
           
-          <!-- Task Queue -->
+          <!-- Task Queue (interactive) -->
           <div class="monitor-section">
-            <h3>[TASKS] Task Queue</h3>
-            <div id="task-queue" style="max-height: 240px; overflow-y: auto;">
+            <h3>Task Queue</h3>
+            <div id="task-queue" style="max-height: 280px; overflow-y: auto;">
               <p class="hint" style="font-size: 9px; color: var(--text-secondary);">Loading...</p>
             </div>
             <button class="btn-secondary" onclick="TaskQueueUI.addTask()" style="width: 100%; margin-top: 8px; font-size: 9px;">
@@ -531,57 +534,14 @@
             </button>
           </div>
           
-          <!-- Performance -->
+          <!-- Scheduler (create recurring tasks without Poseidon) -->
           <div class="monitor-section">
-            <h3>[STATS] Stats</h3>
-            <div id="monitor-performance">
-              <div class="stat-row">
-                <span>Today:</span>
-                <span id="monitor-tasks-today">0</span>
-              </div>
-              <div class="stat-row">
-                <span>Success:</span>
-                <span id="monitor-success-rate">0%</span>
-              </div>
+            <h3>Scheduler</h3>
+            <div id="scheduler-stats" style="font-size:9px; color:var(--text-secondary); margin-bottom:6px;">
+              <span id="scheduler-count">0</span> scheduled
             </div>
-          </div>
-          
-          <!-- Scheduler (Absorbed) -->
-          <div class="monitor-section">
-            <h3>[TARGET] Scheduler</h3>
-            <div id="monitor-scheduler">
-              <div class="stat-row">
-                <span>Next Run:</span>
-                <span id="scheduler-next-run" style="font-size: 8px;">--:--</span>
-              </div>
-              <button class="btn-secondary" onclick="ui.showPanel('scheduler')" style="width: 100%; margin-top: 8px; font-size: 9px;">
-                [CONFIG] Configure
-              </button>
-            </div>
-          </div>
-          
-          <!-- Model Loader -->
-          <div class="monitor-section">
-            <h3>[MODELS] Models</h3>
-            <div id="monitor-model-status" style="font-size: 8px; color: var(--text-secondary); margin-bottom: 6px;">
-              Checking...
-            </div>
-            <button class="btn-secondary" onclick="ModelLoader.open()" style="width: 100%; font-size: 9px; margin-bottom: 4px;">
-              Load / Manage Models
-            </button>
-            <button class="btn-secondary" onclick="PoseidonChat.open()" style="width: 100%; font-size: 9px;">
-              Chat with Poseidon
-            </button>
-          </div>
-          
-          <!-- JSON Registry Editor -->
-          <div class="monitor-section">
-            <h3>[DATA] Edit Registries</h3>
-            <div style="font-size: 8px; color: var(--text-secondary); margin-bottom: 6px;">
-              Direct edit access to all JSON files. All changes are logged.
-            </div>
-            <button class="btn-secondary" onclick="EditorBrowser.open()" style="width: 100%; font-size: 9px;">
-              Open JSON Editor
+            <button class="btn-secondary" onclick="Scheduler.open()" style="width: 100%; font-size: 9px;">
+              + Schedule Task
             </button>
           </div>
         </div>
@@ -759,6 +719,8 @@
   <script src="scripts/TaskQueueUI.js"></script>
   <script src="scripts/ModelLoader.js"></script>
   <script src="scripts/PoseidonChat.js"></script>
+  <script src="scripts/ControlTowerLive.js"></script>
+  <script src="scripts/Scheduler.js"></script>
   <script src="scripts/PanelManager.js"></script>
   <script src="scripts/ModelScanner.js"></script>
   <script src="scripts/Poseidon.js"></script>

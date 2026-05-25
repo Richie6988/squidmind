@@ -37,7 +37,8 @@
     "approval_granted",
     "approval_denied",
     "checkpoint_created",
-    "checkpoint_restored"
+    "checkpoint_restored",
+    "registry_repaired"
   ],
   "entries": [
     {

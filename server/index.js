@@ -23,10 +23,55 @@ app.use(express.static(path.join(__dirname, '../client')));
 
 // === V2 NEURONAL ARCHITECTURE (single shared RegistryManager instance) ===
 const RegistryManager = require('./services/RegistryManager');
-const sharedRm = new RegistryManager(path.join(__dirname, '../data'));
+const { repairAllRegistries } = require('./services/RegistryHealthCheck');
+
+// CRITICAL: validate/repair registries BEFORE any service touches them
+const dataRoot = path.join(__dirname, '../data');
+const healthReport = repairAllRegistries(dataRoot);
+if (healthReport.repaired.length > 0) {
+  console.log(`[STARTUP] Repaired ${healthReport.repaired.length} registry file(s):`);
+  healthReport.repaired.forEach(r => console.log(`  - ${r.file}: ${r.reason}`));
+}
+if (healthReport.errors.length > 0) {
+  console.error(`[STARTUP] ${healthReport.errors.length} repair errors:`);
+  healthReport.errors.forEach(e => console.error(`  - ${e.file}: ${e.error}`));
+}
+
+const sharedRm = new RegistryManager(dataRoot);
 
 const buildRegistryRoutes = require('./routes/registryRoutes');
 app.use('/api/v2', buildRegistryRoutes(sharedRm));
+
+// === V2 EMERGENCY REPAIR ENDPOINT ===
+app.post('/api/v2/repair', (req, res) => {
+  try {
+    sharedRm.invalidateCache();
+    const report = repairAllRegistries(dataRoot);
+    res.json({ success: true, ...report });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// === V2 HEALTH ENDPOINT ===
+app.get('/api/v2/health', async (req, res) => {
+  try {
+    sharedRm.invalidateCache();
+    const checks = {};
+    for (const reg of ['main/poseidon_brain.json','agents/agent_registry.json','tasks/tasks_registry.json','projects/project_registry.json','models/model_registry.json','teams/team_registry.json','tools/tool_registry.json','logs/logs.json']) {
+      try {
+        await sharedRm.read(reg);
+        checks[reg] = 'ok';
+      } catch (err) {
+        checks[reg] = 'error: ' + err.message.slice(0, 100);
+      }
+    }
+    const allOk = Object.values(checks).every(v => v === 'ok');
+    res.json({ success: allOk, checks });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
 
 // === V2 RESOURCE HEARTBEAT (uses shared RM so writes serialize correctly) ===
 const HeartbeatService = require('./services/HeartbeatService');

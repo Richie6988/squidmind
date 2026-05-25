@@ -3502,3 +3502,32 @@ button .pixel-icon {
 }
 .model-card-actions button { font-size: 9px; padding: 4px 10px; }
 .model-card-actions .danger-action { background: var(--danger); color: white; }
+
+/* ========== PANEL POSITIONING - Center as floating modals ========== */
+/* All .panel elements now float as centered modals (not in sidebar anymore) */
+
+.panel:not(.right-panel-permanent) {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 1000;
+  max-width: 90vw;
+  max-height: 85vh;
+  width: 720px;
+  overflow-y: auto;
+  margin: 0 !important;
+}
+
+.panel:not(.right-panel-permanent).hidden {
+  display: none;
+}
+
+/* Backdrop behind panels */
+.panel:not(.right-panel-permanent):not(.hidden)::before {
+  content: '';
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: -1;
+}

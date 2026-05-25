@@ -1562,3 +1562,42 @@ ui.openFileBrowser = function() {
   else alert('ModelLoader not loaded yet');
 };
 console.log('[OK] ui.openFileBrowser redirects to ModelLoader');
+
+// ==================== CLICK OUTSIDE TO CLOSE PANELS ====================
+document.addEventListener('mousedown', function(e) {
+  // Skip if clicking on something that OPENS panels
+  if (e.target.closest('.header-nav') || 
+      e.target.closest('.btn-new-project') ||
+      e.target.closest('#right-panel') ||  // right panel is permanent
+      e.target.closest('canvas')) {        // clicking aquarium itself
+    return;
+  }
+  
+  // Skip if click is INSIDE any panel/modal
+  if (e.target.closest('.panel') ||
+      e.target.closest('.modal') ||
+      e.target.closest('.squid-detail-modal') ||
+      e.target.closest('.squid-assigner-modal') ||
+      e.target.closest('.temple-appearance-modal')) {
+    return;
+  }
+  
+  // Click was outside - close everything visible
+  document.querySelectorAll('.panel:not(.hidden):not(.right-panel-permanent)').forEach(p => p.classList.add('hidden'));
+  document.querySelectorAll('.modal:not(.hidden)').forEach(m => {
+    // Some modals are inline-created (no .hidden support), so remove them
+    if (m.parentNode && (m.classList.contains('task-add-modal') ||
+                          m.classList.contains('squid-assigner-modal') ||
+                          m.classList.contains('temple-appearance-modal') ||
+                          m.classList.contains('model-load-config-modal') ||
+                          m.classList.contains('scheduler-modal') ||
+                          m.classList.contains('model-loader-modal') ||
+                          m.classList.contains('poseidon-chat-modal') ||
+                          m.classList.contains('agent-form-modal') ||
+                          m.classList.contains('editor-browser-modal'))) {
+      m.classList.add('hidden');
+    }
+  });
+});
+
+console.log('[OK] Click outside to close panels enabled');
