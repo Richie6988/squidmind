@@ -48,9 +48,13 @@ router.get('/agents/:id', async (req, res) => {
 router.post('/agents', async (req, res) => {
   try {
     rm.invalidateCache();
-    const agent = await rm.createAgent(req.body);
-    res.json({ success: true, agent });
-  } catch (err) { res.status(500).json({ success: false, error: err.message }); }
+    const result = await rm.createAgent(req.body);
+    // Return { success, agent: { agent_id, ... } } for AgentForm
+    res.json({ success: true, agent: result });
+  } catch (err) {
+    console.error('[POST /agents] error:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
 });
 
 // AGENT LIFECYCLE

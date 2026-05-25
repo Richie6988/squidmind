@@ -18,7 +18,7 @@
     <div class="header-content">
       <h1>SquidMind</h1>
       <div class="header-nav">
-        <button class="btn-nav" onclick="ui.showPanel('creator')">+ New Squid</button>
+        <button class="btn-nav" onclick="AgentForm.openNew()">+ New Squid</button>
         <button class="btn-nav" onclick="ui.showPanel('teams')">[TEAM] Teams</button>
         <button class="btn-nav" onclick="ModelLoader.open()">[MODELS] Models</button>
         <button class="btn-nav" onclick="ui.showPanel('logs')">[LOGS] Logs</button>
@@ -55,69 +55,7 @@
     <div class="panels-container">
       
       <!-- Squid Creator Panel -->
-      <div id="creator-panel" class="panel hidden">
-        <div class="panel-header">
-          <h2>Create New Squid</h2>
-          <button class="btn-close" onclick="ui.hidePanel('creator')">x</button>
-        </div>
-        <div class="panel-content">
-          <form id="squid-form">
-            <div class="form-group">
-              <label>Squid Name</label>
-              <input type="text" name="name" placeholder="e.g., Code Reviewer" required>
-            </div>
-            
-            <div class="form-group">
-              <label>System Prompt</label>
-              <textarea name="system_prompt" rows="4" placeholder="What does this squid do?" required></textarea>
-            </div>
-            
-            <div class="form-group">
-              <label>Model</label>
-              <select name="model" id="creator-model-select">
-                <option value="">(use Poseidon default)</option>
-              </select>
-              <small>Models are loaded from your Library. Manage them in the Models panel.</small>
-            </div>
-            
-            <div class="form-group">
-              <label>Temperature</label>
-              <input type="range" name="temperature" min="0" max="1" step="0.1" value="0.7">
-              <span class="range-value">0.7</span>
-            </div>
-            
-            <div class="form-group">
-              <label>Schedule (Cron)</label>
-              <input type="text" name="cron" placeholder="e.g., 0 9 * * * (9 AM daily)">
-              <small>Leave empty to disable scheduling</small>
-            </div>
-            
-            <div class="form-group">
-              <label>
-                <input type="checkbox" name="schedule_enabled" checked>
-                Enable Scheduling
-              </label>
-            </div>
-            
-            <!-- Tools Selection (grid) -->
-            <div class="form-section">
-              <h3>Available Tools</h3>
-              <div class="form-group">
-                <label>
-                  <input type="checkbox" name="enable_all_tools" onchange="ui.toggleAllTools(this.checked)" checked>
-                  Enable All Tools
-                </label>
-              </div>
-              <div id="tools-checklist" class="tools-grid"></div>
-            </div>
-
-            <div class="form-actions">
-              <button type="submit" class="btn-primary">Hatch Squid</button>
-              <button type="button" class="btn-secondary" onclick="ui.hidePanel('creator')">Cancel</button>
-            </div>
-          </form>
-        </div>
-      </div>
+      <!-- OLD creator-panel removed - + New Squid now uses AgentForm.openNew() -->
 
       <!-- Logs Panel -->
       <div id="logs-panel" class="panel hidden">

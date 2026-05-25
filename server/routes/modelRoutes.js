@@ -201,7 +201,11 @@ function buildPoseidonChatRoute(v2ModelService) {
         chunkCount++;
         res.write(`data: ${JSON.stringify({ text: chunk })}\n\n`);
       }
-      res.write(`event: end\ndata: ${JSON.stringify({ chunks: chunkCount })}\n\n`);
+      res.write(`event: end\ndata: ${JSON.stringify({
+        chunks: chunkCount,
+        turn: v2ModelService.loaded.get(v2ModelService.poseidonModelId)?.sessionTurns ?? 0,
+        wipe_threshold: v2ModelService.contextWipeThreshold
+      })}\n\n`);
     } catch (err) {
       res.write(`event: error\ndata: ${JSON.stringify({ error: err.message })}\n\n`);
     } finally {

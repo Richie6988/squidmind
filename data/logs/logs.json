@@ -2,11 +2,11 @@
   "schema_version": "2.0.0",
   "schema_type": "logs",
   "metadata": {
-    "total_entries": 10,
-    "last_entry_id": 10,
+    "total_entries": 11,
+    "last_entry_id": 11,
     "rotation_policy": "Archive entries older than 30 days or when exceeding 10000",
     "archive_path": "logs/archive/",
-    "last_updated_at": "2026-05-25T16:28:46.319Z"
+    "last_updated_at": "2026-05-25T17:16:07.408Z"
   },
   "event_types": [
     "system_startup",
@@ -250,7 +250,33 @@
         "folder": "PROJECT_005",
         "vision": "test creation"
       }
+    },
+    {
+      "log_id": 11,
+      "timestamp": "2026-05-25T17:16:07.408Z",
+      "severity": "info",
+      "event_type": "agent_created",
+      "actor": {
+        "type": "system",
+        "id": "human_richard"
+      },
+      "subject": {
+        "type": "agent",
+        "id": "agent_001"
+      },
+      "action": "Created agent: Test Sq",
+      "changes": [
+        {
+          "file": "agents/agent_registry.json",
+          "operation": "added_entry",
+          "key": "agent_001"
+        },
+        {
+          "file": "agents/squid_brain_001.json",
+          "operation": "created"
+        }
+      ]
     }
   ],
-  "last_updated_at": "2026-05-25T16:28:46.319Z"
+  "last_updated_at": "2026-05-25T17:16:07.408Z"
 }

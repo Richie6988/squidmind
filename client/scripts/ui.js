@@ -1652,3 +1652,24 @@ document.addEventListener('keydown', (e) => {
 console.log('[OK] Click outside + ESC to close panels enabled');
 
 console.log('[OK] Click outside to close panels enabled');
+
+// ==================== HEARTBEAT (keeps server alive while webapp open) ====================
+// Server auto-shuts-down 60s after last heartbeat. Client pings every 10s.
+(function setupHeartbeat() {
+  let consecutiveFailures = 0;
+  const ping = async () => {
+    try {
+      await fetch('/api/v2/heartbeat', { method: 'POST' });
+      consecutiveFailures = 0;
+    } catch {
+      consecutiveFailures++;
+      if (consecutiveFailures > 6) {
+        console.warn('[heartbeat] Server unreachable - it may have shut down.');
+      }
+    }
+  };
+  // First ping immediately, then every 10s
+  ping();
+  setInterval(ping, 10000);
+})();
+console.log('[OK] Server heartbeat active (every 10s)');

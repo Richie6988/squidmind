@@ -21,6 +21,7 @@ class V2ModelService {
     this.loaded = new Map();                 // model_id -> { model, context, session, config, lastUsedAt, generating }
     this.poseidonModelId = null;             // currently assigned to Poseidon
     this._libPromise = null;
+    this.contextWipeThreshold = 5;           // wipe Poseidon session after N exchanges
   }
 
   // === LIB INITIALIZATION ===
@@ -598,23 +599,26 @@ class V2ModelService {
     entry.generating = true;
     entry.lastUsedAt = Date.now();
     entry.totalRequests++;
+    
+    // Per-session turn counter (resets when session is wiped)
+    entry.sessionTurns = (entry.sessionTurns || 0);
 
     try {
       const llamaCpp = await import('node-llama-cpp');
 
       // Reuse the same session across chats so we don't burn through sequences.
       // The session holds ONE sequence and reuses it. If the session was nulled
-      // (e.g. after an error), we recreate cleanly.
+      // (e.g. after an error or auto-wipe), we recreate cleanly.
       if (!entry.session) {
         const systemPrompt = await this.buildPoseidonSystemPrompt();
-        // Get a fresh sequence (the context allows up to `sequences: 4`)
         const sequence = entry.context.getSequence();
         entry.session = new llamaCpp.LlamaChatSession({
           contextSequence: sequence,
           systemPrompt
         });
         entry._currentSequence = sequence;
-        console.log(`[V2ModelService] Created persistent chat session for ${this.poseidonModelId}`);
+        entry.sessionTurns = 0;
+        console.log(`[V2ModelService] Created fresh chat session for ${this.poseidonModelId} (system prompt reloaded from brain.json)`);
       }
       const session = entry.session;
 
@@ -628,21 +632,60 @@ class V2ModelService {
       let lastIdx = 0;
       const start = Date.now();
       while (true) {
-        // Wait for new chunk or completion
         const isDone = await Promise.race([
           completion.then(() => true),
           new Promise(r => setTimeout(() => r(false), 50))
         ]);
         while (lastIdx < chunks.length) {
           const c = chunks[lastIdx++];
-          entry.totalTokensGenerated += Math.ceil(c.length / 4); // rough estimate
+          entry.totalTokensGenerated += Math.ceil(c.length / 4);
           yield c;
         }
         if (isDone) break;
-        if (Date.now() - start > 120000) {  // 2 min cap
+        if (Date.now() - start > 120000) {
           console.warn('[V2ModelService] generation timeout');
           break;
         }
+      }
+      
+      // Successfully completed a turn
+      entry.sessionTurns++;
+      
+      // Log this exchange to the V2 log file
+      const fullResponse = chunks.join('');
+      await this.rm.log({
+        event_type: 'user_input',
+        severity: 'info',
+        actor: { type: 'human', id: 'human_richard' },
+        subject: { type: 'system', id: 'poseidon_main' },
+        action: 'Chat exchange',
+        context: {
+          model_id: this.poseidonModelId,
+          turn: entry.sessionTurns,
+          user_message_preview: userMessage.slice(0, 200),
+          response_preview: fullResponse.slice(0, 200),
+          tokens_in_response: Math.ceil(fullResponse.length / 4)
+        }
+      }).catch(() => {});
+      
+      // AUTO-WIPE: after N exchanges, dispose session but keep model in memory.
+      // The next chat will rebuild the session fresh, re-reading the system
+      // prompt from poseidon_brain.json (so any brain updates take effect).
+      const wipeAfter = entry.config?.wipeContextAfterTurns ?? this.contextWipeThreshold;
+      if (entry.sessionTurns >= wipeAfter) {
+        console.log(`[V2ModelService] Auto-wiping context after ${entry.sessionTurns} turns (model stays loaded)`);
+        try { if (entry.session?.dispose) await entry.session.dispose(); } catch {}
+        try { if (entry._currentSequence?.dispose) entry._currentSequence.dispose(); } catch {}
+        entry.session = null;
+        entry._currentSequence = null;
+        entry.sessionTurns = 0;
+        await this.rm.log({
+          event_type: 'poseidon_decision',
+          severity: 'info',
+          actor: { type: 'system', id: 'v2_model_service' },
+          subject: { type: 'model', id: this.poseidonModelId },
+          action: `Context wiped after ${wipeAfter} turns. Next chat will reload brain.json.`
+        }).catch(() => {});
       }
     } catch (err) {
       // If we get a sequence-related error, FULLY clean up session AND sequence
@@ -652,7 +695,7 @@ class V2ModelService {
         try { if (entry._currentSequence?.dispose) entry._currentSequence.dispose(); } catch {}
         entry.session = null;
         entry._currentSequence = null;
-        // Retry recommended on next call
+        entry.sessionTurns = 0;
       }
       throw err;
     } finally {

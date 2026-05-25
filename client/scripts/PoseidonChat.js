@@ -28,7 +28,8 @@ const PoseidonChat = {
         <div class="modal-header poseidon-chat-header">
           <h2>Poseidon</h2>
           <span id="poseidon-chat-status" class="poseidon-chat-status">checking...</span>
-          <button class="btn-secondary" onclick="PoseidonChat.resetConversation()" style="font-size:9px;" title="Clear conversation history">Reset</button>
+          <span id="poseidon-turn-counter" class="poseidon-turn-counter" title="Context auto-wipes when turn count reaches limit">turn 0/-</span>
+          <button class="btn-secondary" onclick="PoseidonChat.resetConversation()" style="font-size:9px;" title="Wipe context now">Wipe</button>
           <button class="btn-secondary" onclick="ModelLoader.open()" style="font-size:9px;">Manage Models</button>
           <button class="btn-close" onclick="PoseidonChat.close()">x</button>
         </div>
@@ -186,9 +187,11 @@ const PoseidonChat = {
             if (eventType === 'error') {
               throw new Error(payload.error || 'streaming error');
             } else if (eventType === 'end') {
-              // done
+              // Show context counter in chat header
+              if (payload.turn !== undefined && payload.wipe_threshold) {
+                this._updateTurnCounter(payload.turn, payload.wipe_threshold);
+              }
             } else if (eventType === 'start') {
-              // server says generation has started (model is loaded)
               setStatus('Generating response...');
             } else {
               // chunk - clear loading indicator on first token
@@ -251,6 +254,24 @@ const PoseidonChat = {
   
   close() {
     if (this.modal) this.modal.classList.add('hidden');
+  },
+  
+  _updateTurnCounter(turn, threshold) {
+    const el = this.modal?.querySelector('#poseidon-turn-counter');
+    if (!el) return;
+    el.textContent = `turn ${turn}/${threshold}`;
+    // Color shift as we approach wipe
+    if (turn === 0) {
+      el.className = 'poseidon-turn-counter wipe';
+      el.title = 'Context just wiped - brain.json freshly reloaded';
+      setTimeout(() => { el.className = 'poseidon-turn-counter'; }, 2000);
+    } else if (turn >= threshold - 1) {
+      el.className = 'poseidon-turn-counter near-limit';
+      el.title = 'Context will wipe next exchange';
+    } else {
+      el.className = 'poseidon-turn-counter';
+      el.title = `Context auto-wipes at turn ${threshold} (model stays loaded)`;
+    }
   },
   
   _escape(s) {

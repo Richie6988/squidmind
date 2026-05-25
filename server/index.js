@@ -73,6 +73,45 @@ app.get('/api/v2/health', async (req, res) => {
   }
 });
 
+// === SERVER LIFECYCLE (auto-shutdown when webapp closes) ===
+// Client sends POST /api/v2/heartbeat every 10s while the page is open.
+// If no heartbeat for `SHUTDOWN_AFTER_MS`, server exits.
+// Brief reload gaps (<30s) won't trigger shutdown.
+const SHUTDOWN_AFTER_MS = 60000;  // 60s of silence -> exit
+let lastHeartbeatAt = Date.now();
+let shutdownTimer = null;
+let serverHasReceivedFirstHeartbeat = false;
+
+app.post('/api/v2/heartbeat', (req, res) => {
+  lastHeartbeatAt = Date.now();
+  if (!serverHasReceivedFirstHeartbeat) {
+    serverHasReceivedFirstHeartbeat = true;
+    console.log('[lifecycle] First client heartbeat received - auto-shutdown armed.');
+  }
+  res.json({ success: true, server_uptime_seconds: Math.floor(process.uptime()) });
+});
+
+// Check every 20s if we should shut down
+setInterval(() => {
+  if (!serverHasReceivedFirstHeartbeat) return; // never armed
+  const silenceMs = Date.now() - lastHeartbeatAt;
+  if (silenceMs > SHUTDOWN_AFTER_MS) {
+    if (!shutdownTimer) {
+      console.log(`[lifecycle] No heartbeat for ${Math.floor(silenceMs/1000)}s. Webapp appears closed. Shutting down in 5s.`);
+      shutdownTimer = setTimeout(() => {
+        console.log('[lifecycle] Goodbye.');
+        process.exit(0);
+      }, 5000);
+    }
+  } else if (shutdownTimer) {
+    // Heartbeat came back during grace - cancel
+    console.log('[lifecycle] Heartbeat resumed - cancelling shutdown.');
+    clearTimeout(shutdownTimer);
+    shutdownTimer = null;
+  }
+}, 20000);
+
+
 // === V2 RESOURCE HEARTBEAT (uses shared RM so writes serialize correctly) ===
 const HeartbeatService = require('./services/HeartbeatService');
 const heartbeat = new HeartbeatService(sharedRm, 15000);

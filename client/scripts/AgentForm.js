@@ -18,9 +18,13 @@ const AgentForm = {
   toolRegistry: null,
   modelRegistry: null,
   dirty: new Map(),
+  isCreating: false,        // true = creating a new squid, false = editing existing
+  newSquidDraft: null,      // staged values for creation
 
   async open(agentId) {
     this.agentId = agentId;
+    this.isCreating = false;
+    this.newSquidDraft = null;
     this.dirty = new Map();
     try {
       const [agentRes, toolsRes, modelsRes] = await Promise.all([
@@ -38,6 +42,96 @@ const AgentForm = {
     }
     this._buildModal();
     this._render();
+  },
+  
+  /**
+   * Open the same form to CREATE a new squid (instead of editing existing).
+   * Same UI - just starts with default values and on save POSTs to create.
+   */
+  async openNew() {
+    this.agentId = null;
+    this.isCreating = true;
+    this.dirty = new Map();
+    
+    // Default brain template + registry entry for a new squid
+    this.newSquidDraft = {
+      display_name: 'New Squid',
+      specialization: 'general',
+      status: 'sleeping'
+    };
+    this.brain = this._defaultBrainTemplate();
+    this.registry = {
+      display_name: 'New Squid',
+      specialization: 'general',
+      status: 'sleeping',
+      brain_file: '__pending__',  // server assigns real file name
+      reports_to: null
+    };
+    
+    try {
+      const [toolsRes, modelsRes] = await Promise.all([
+        window.ApiV2.tools.list(),
+        window.ApiV2.models.list()
+      ]);
+      this.toolRegistry = toolsRes.registry || {};
+      this.modelRegistry = modelsRes.registry || {};
+    } catch (err) {
+      this.toolRegistry = { tools: {} };
+      this.modelRegistry = { models: {} };
+    }
+    
+    this._buildModal();
+    this._render();
+  },
+  
+  _defaultBrainTemplate() {
+    return {
+      identity: {
+        agent_id: '__pending__',
+        nickname: '',
+        role: 'Versatile helper',
+        story: '',
+        created_at: new Date().toISOString()
+      },
+      brain_config: {
+        model_binding: { preferred_model_id: null },
+        system_prompt: 'You are a helpful squid agent. Be concise and direct.',
+        inference_params: {
+          temperature: 0.7,
+          top_p: 0.9,
+          top_k: 40,
+          repeat_penalty: 1.1,
+          max_tokens_per_response: 2048
+        }
+      },
+      personality: {
+        traits: {
+          curiosity: 0.7, thoroughness: 0.7, creativity: 0.5,
+          assertiveness: 0.5, empathy: 0.6
+        },
+        communication_style: 'professional',
+        default_mood: 'neutral'
+      },
+      capabilities: {
+        skills: {},
+        tools_allowed: []
+      },
+      memory: {
+        context_retention: 0.7,
+        long_term_capacity: 100,
+        persist_across_sessions: true
+      },
+      appearance: {
+        primary_color: '#FF6B9D',
+        secondary_color: '#C44569',
+        size_scale: 1.0,
+        accessories: {}
+      },
+      lifecycle: {
+        max_concurrent_tasks: 1,
+        auto_sleep: 'after_30min'
+      }
+    };
   },
 
   _buildModal() {
@@ -69,7 +163,15 @@ const AgentForm = {
 
   _render() {
     const title = this.modal.querySelector('.agent-form-title');
-    title.textContent = `Edit Agent: ${this.registry.display_name || this.agentId}`;
+    title.textContent = this.isCreating
+      ? 'Create New Squid'
+      : `Edit Agent: ${this.registry.display_name || this.agentId}`;
+    
+    // Update save button text too
+    const saveBtn = this.modal.querySelector('.agent-form-save');
+    if (saveBtn) {
+      saveBtn.dataset.mode = this.isCreating ? 'create' : 'edit';
+    }
 
     const body = this.modal.querySelector('.agent-form-body');
     body.innerHTML = '';
@@ -584,20 +686,100 @@ const AgentForm = {
   // ===== DIRTY TRACKING + SAVE =====
 
   _markDirty(filePath, fieldPath, newValue) {
+    if (this.isCreating) {
+      // In create mode: don't send PATCHes (agent doesn't exist yet).
+      // Just stage values on our in-memory brain/registry so save() can POST them.
+      this._stageValue(filePath, fieldPath, newValue);
+    }
     const key = `${filePath}::${fieldPath}`;
     this.dirty.set(key, { filePath, fieldPath, newValue });
     this._updateSaveButton();
+  },
+  
+  _stageValue(filePath, fieldPath, newValue) {
+    // Walk the path on the appropriate object
+    let target;
+    if (filePath === 'agents/agent_registry.json') {
+      target = this.registry;
+      // Path like "agents.null.display_name" - strip the agents.X prefix
+      const parts = fieldPath.split('.');
+      if (parts[0] === 'agents') {
+        // skip 'agents.<id>'
+        return this._setNested(this.registry, parts.slice(2), newValue);
+      }
+      return this._setNested(this.registry, parts, newValue);
+    } else {
+      // Brain file
+      return this._setNested(this.brain, fieldPath.split('.'), newValue);
+    }
+  },
+  
+  _setNested(obj, path, value) {
+    if (path.length === 0) return;
+    let cur = obj;
+    for (let i = 0; i < path.length - 1; i++) {
+      if (!cur[path[i]] || typeof cur[path[i]] !== 'object') cur[path[i]] = {};
+      cur = cur[path[i]];
+    }
+    cur[path[path.length - 1]] = value;
   },
 
   _updateSaveButton() {
     const btn = this.modal?.querySelector('.agent-form-save');
     if (!btn) return;
     const count = this.dirty.size;
-    btn.disabled = count === 0;
-    btn.textContent = count === 0 ? 'Save (0)' : `Save (${count})`;
+    if (this.isCreating) {
+      btn.disabled = false;  // always allow create (use defaults if nothing changed)
+      btn.textContent = `Hatch Squid${count > 0 ? ` (${count} customized)` : ''}`;
+    } else {
+      btn.disabled = count === 0;
+      btn.textContent = count === 0 ? 'Save (0)' : `Save (${count})`;
+    }
   },
 
   async save() {
+    if (this.isCreating) {
+      return await this._createAgent();
+    }
+    return await this._updateAgent();
+  },
+  
+  async _createAgent() {
+    const status = this.modal.querySelector('.agent-form-status');
+    const btn = this.modal.querySelector('.agent-form-save');
+    btn.disabled = true;
+    status.textContent = 'Creating...';
+    
+    try {
+      // POST to V2 agents endpoint - registers in agent_registry + writes squid_brain_NNN.json
+      const result = await window.ApiV2._fetch('/agents', {
+        method: 'POST',
+        body: JSON.stringify({
+          display_name: this.registry.display_name || 'New Squid',
+          specialization: this.registry.specialization || 'general',
+          status: this.registry.status || 'sleeping',
+          brain: this.brain
+        })
+      });
+      
+      status.textContent = `Created ${result.agent?.agent_id || 'agent'}`;
+      status.className = 'agent-form-status success';
+      
+      // Reload squids on canvas
+      if (window.aquarium?.loadSquids) {
+        await window.aquarium.loadSquids();
+      }
+      
+      this.dirty.clear();
+      setTimeout(() => this.close(), 800);
+    } catch (err) {
+      status.textContent = 'Create failed: ' + err.message;
+      status.className = 'agent-form-status error';
+      btn.disabled = false;
+    }
+  },
+  
+  async _updateAgent() {
     const status = this.modal.querySelector('.agent-form-status');
     const btn = this.modal.querySelector('.agent-form-save');
     btn.disabled = true;

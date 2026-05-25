@@ -4425,3 +4425,27 @@ button .pixel-icon {
   margin-top: 4px;
 }
 .btn-config-squid:hover { border-color: var(--accent); color: var(--accent); }
+
+/* ========== Poseidon turn counter ========== */
+.poseidon-turn-counter {
+  font-family: 'Press Start 2P';
+  font-size: 8px;
+  padding: 3px 7px;
+  background: var(--ocean-deep);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+}
+.poseidon-turn-counter.near-limit {
+  border-color: #FBBF24;
+  color: #FBBF24;
+  animation: tcBlink 1s infinite alternate;
+}
+.poseidon-turn-counter.wipe {
+  border-color: var(--success);
+  color: var(--success);
+  background: rgba(6,255,165,0.15);
+}
+@keyframes tcBlink {
+  from { opacity: 0.6; }
+  to { opacity: 1; }
+}

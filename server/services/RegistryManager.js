@@ -361,19 +361,27 @@ class RegistryManager {
     const brainFile = `squid_brain_${idNum}.json`;
     const now = new Date().toISOString();
 
+    // Support two payload shapes:
+    //   1. Legacy: { name, role, appearance, brain_config, ... }
+    //   2. New (from AgentForm.openNew): { display_name, specialization, status, brain: {...} }
+    const isNewFormat = agentData.brain && typeof agentData.brain === 'object';
+    const displayName = agentData.display_name || agentData.name || 'New Squid';
+    const specialization = agentData.specialization || 'general';
+    const initialStatus = agentData.status || 'sleeping';
+
     // Create registry entry
     registry.agents[agentId] = {
       agent_id: agentId,
-      display_name: agentData.name,
+      display_name: displayName,
       name_history: [{
-        name: agentData.name,
+        name: displayName,
         given_at: now,
         given_by: agentData.created_by || 'human_richard',
         active: true
       }],
       brain_file: brainFile,
-      status: 'sleeping',
-      specialization: agentData.specialization || 'general',
+      status: initialStatus,
+      specialization,
       created_at: now,
       first_active_at: null,
       last_active_at: null,
@@ -398,42 +406,71 @@ class RegistryManager {
     };
 
     // Update metadata
-    registry.metadata.total_sleeping++;
-    registry.metadata.total_ever_created++;
+    if (initialStatus === 'sleeping') {
+      registry.metadata.total_sleeping = (registry.metadata.total_sleeping || 0) + 1;
+    } else if (initialStatus === 'active') {
+      registry.metadata.total_active = (registry.metadata.total_active || 0) + 1;
+    }
+    registry.metadata.total_ever_created = (registry.metadata.total_ever_created || 0) + 1;
 
-    // Create brain file
-    const brain = {
-      schema_version: '2.0.0',
-      schema_type: 'agent_brain',
-      identity: {
-        agent_id: agentId,
-        display_name: agentData.name,
-        nickname: agentData.nickname || agentData.name,
-        role: agentData.role || 'General Agent',
-        created_at: now,
-        created_by: agentData.created_by || 'human_richard',
-        cloned_from: agentData.cloned_from || null,
-        version: '1.0.0'
-      },
-      appearance: agentData.appearance || {
-        primary_color: '#FF6B9D',
-        secondary_color: '#C44569',
-        size_scale: 1.0,
-        accessories: { hat: 'none', glasses: 'none', eyes: 'round', outfit: 'none' }
-      },
-      brain_config: agentData.brain_config || {
-        model_binding: { preferred_model_id: null, current_model_id: null },
-        inference_params: { temperature: 0.7, top_p: 0.9, top_k: 40, max_tokens_per_response: 2048 },
-        system_prompt: `You are ${agentData.name}, an AI agent in the SquidMind farm.`
-      },
-      capabilities: { skills: {}, tools_allowed: [], tools_forbidden: [] },
-      current_state: { status: 'sleeping', current_task_id: null, last_action_at: null },
-      assignments: { projects: [], active_tasks: [], task_queue: [] },
-      inbox: { messages: [], unread_count: 0 },
-      performance: { lifetime: {}, last_30_days: {}, by_skill: {} },
-      memory: { short_term: {}, long_term: {}, lessons_learned: [] },
-      history: { completed_tasks_log: [], wake_sleep_events: [] }
-    };
+    let brain;
+    if (isNewFormat) {
+      // Use the brain object provided by AgentForm, but inject correct IDs
+      brain = {
+        schema_version: '2.0.0',
+        schema_type: 'agent_brain',
+        ...agentData.brain,
+        identity: {
+          ...(agentData.brain.identity || {}),
+          agent_id: agentId,
+          display_name: displayName,
+          created_at: agentData.brain.identity?.created_at || now,
+          created_by: agentData.created_by || 'human_richard',
+          version: '1.0.0'
+        },
+        current_state: agentData.brain.current_state || {
+          status: initialStatus, current_task_id: null, last_action_at: null
+        },
+        assignments: agentData.brain.assignments || { projects: [], active_tasks: [], task_queue: [] },
+        inbox: agentData.brain.inbox || { messages: [], unread_count: 0 },
+        performance: agentData.brain.performance || { lifetime: {}, last_30_days: {}, by_skill: {} },
+        history: agentData.brain.history || { completed_tasks_log: [], wake_sleep_events: [] }
+      };
+    } else {
+      // Legacy format - build brain from scattered fields
+      brain = {
+        schema_version: '2.0.0',
+        schema_type: 'agent_brain',
+        identity: {
+          agent_id: agentId,
+          display_name: displayName,
+          nickname: agentData.nickname || displayName,
+          role: agentData.role || 'General Agent',
+          created_at: now,
+          created_by: agentData.created_by || 'human_richard',
+          cloned_from: agentData.cloned_from || null,
+          version: '1.0.0'
+        },
+        appearance: agentData.appearance || {
+          primary_color: '#FF6B9D',
+          secondary_color: '#C44569',
+          size_scale: 1.0,
+          accessories: { hat: 'none', glasses: 'none', eyes: 'round', outfit: 'none' }
+        },
+        brain_config: agentData.brain_config || {
+          model_binding: { preferred_model_id: null, current_model_id: null },
+          inference_params: { temperature: 0.7, top_p: 0.9, top_k: 40, max_tokens_per_response: 2048 },
+          system_prompt: `You are ${displayName}, an AI agent in the SquidMind farm.`
+        },
+        capabilities: { skills: {}, tools_allowed: [], tools_forbidden: [] },
+        current_state: { status: 'sleeping', current_task_id: null, last_action_at: null },
+        assignments: { projects: [], active_tasks: [], task_queue: [] },
+        inbox: { messages: [], unread_count: 0 },
+        performance: { lifetime: {}, last_30_days: {}, by_skill: {} },
+        memory: { short_term: {}, long_term: {}, lessons_learned: [] },
+        history: { completed_tasks_log: [], wake_sleep_events: [] }
+      };
+    }
 
     await this.write(`agents/${brainFile}`, brain);
     await this.write('agents/agent_registry.json', registry);
@@ -442,7 +479,7 @@ class RegistryManager {
       event_type: 'agent_created',
       actor: { type: 'system', id: agentData.created_by || 'human_richard' },
       subject: { type: 'agent', id: agentId },
-      action: `Created agent: ${agentData.name}`,
+      action: `Created agent: ${displayName}`,
       changes: [
         { file: 'agents/agent_registry.json', operation: 'added_entry', key: agentId },
         { file: `agents/${brainFile}`, operation: 'created' }
