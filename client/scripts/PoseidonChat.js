@@ -30,7 +30,7 @@ const PoseidonChat = {
           <span id="poseidon-chat-status" class="poseidon-chat-status">checking...</span>
           <span id="poseidon-turn-counter" class="poseidon-turn-counter" title="Context auto-wipes when turn count reaches limit">turn 0/-</span>
           <button class="btn-secondary" onclick="PoseidonChat.resetConversation()" style="font-size:9px;" title="Wipe context now">Wipe</button>
-          <button class="btn-secondary" onclick="ModelLoader.open()" style="font-size:9px;">Manage Models</button>
+          <button class="btn-secondary" onclick="PoseidonChat.close(); ModelLoader.open();" style="font-size:9px;">Manage Models</button>
           <button class="btn-close" onclick="PoseidonChat.close()">x</button>
         </div>
         <div class="poseidon-chat-messages" id="poseidon-chat-messages"></div>
@@ -65,10 +65,10 @@ const PoseidonChat = {
         statusEl.textContent = `using ${status.poseidon_model_id}`;
         statusEl.className = 'poseidon-chat-status ready';
       } else if (status.loaded_count > 0) {
-        statusEl.innerHTML = `no model assigned - <a href="#" onclick="ModelLoader.open(); return false;">assign one</a>`;
+        statusEl.innerHTML = `no model assigned - <a href="#" onclick="PoseidonChat.close(); ModelLoader.open(); return false;">assign one</a>`;
         statusEl.className = 'poseidon-chat-status warn';
       } else {
-        statusEl.innerHTML = `no models loaded - <a href="#" onclick="ModelLoader.open(); return false;">load one</a>`;
+        statusEl.innerHTML = `no models loaded - <a href="#" onclick="PoseidonChat.close(); ModelLoader.open(); return false;">load one</a>`;
         statusEl.className = 'poseidon-chat-status warn';
       }
     } catch (err) {
@@ -187,23 +187,41 @@ const PoseidonChat = {
             if (eventType === 'error') {
               throw new Error(payload.error || 'streaming error');
             } else if (eventType === 'end') {
-              // Show context counter in chat header
               if (payload.turn !== undefined && payload.wipe_threshold) {
                 this._updateTurnCounter(payload.turn, payload.wipe_threshold);
               }
             } else if (eventType === 'start') {
               setStatus('Generating response...');
+            } else if (eventType === 'tool_call') {
+              // Model invoked a function. Show it as an inline "thinking" bubble.
+              if (!firstTokenReceived) {
+                firstTokenReceived = true;
+                clearStatusTimers();
+                textEl.innerHTML = '';
+              }
+              this._appendToolCall(textEl, payload.name, payload.args);
+              this.modal.querySelector('#poseidon-chat-messages').scrollTop = 999999;
+            } else if (eventType === 'tool_result') {
+              // Function returned. Show outcome inline.
+              this._appendToolResult(textEl, payload.name, payload.ok, payload.summary, payload.duration_ms);
+              this.modal.querySelector('#poseidon-chat-messages').scrollTop = 999999;
             } else {
-              // chunk - clear loading indicator on first token
+              // text chunk - clear loading indicator on first token
               if (payload.text) {
                 if (!firstTokenReceived) {
                   firstTokenReceived = true;
                   clearStatusTimers();
-                  textEl.textContent = '';
-                  textEl.innerHTML = '';
+                  // Don't wipe existing tool-call bubbles - just append text after them
                 }
                 fullText += payload.text;
-                textEl.textContent = fullText;
+                // Find or create a text node at the end (after any tool bubbles)
+                let textNode = textEl.querySelector('.chat-text-final');
+                if (!textNode) {
+                  textNode = document.createElement('div');
+                  textNode.className = 'chat-text-final';
+                  textEl.appendChild(textNode);
+                }
+                textNode.textContent = fullText;
                 this.modal.querySelector('#poseidon-chat-messages').scrollTop = 999999;
               }
             }
@@ -256,6 +274,64 @@ const PoseidonChat = {
     if (this.modal) this.modal.classList.add('hidden');
   },
   
+  /**
+   * Append a "tool call" bubble showing what function was invoked.
+   * Looks like: ▸ create_agent({display_name: "Bob", ...})
+   */
+  _appendToolCall(textEl, name, args) {
+    const div = document.createElement('div');
+    div.className = 'chat-tool-bubble chat-tool-pending';
+    const argsStr = this._formatArgs(args);
+    div.innerHTML = `
+      <span class="chat-tool-icon">▸</span>
+      <span class="chat-tool-name">${this._escape(name)}</span>
+      <span class="chat-tool-args">${this._escape(argsStr)}</span>
+      <span class="chat-tool-spinner">…</span>
+    `;
+    div.dataset.toolName = name;
+    div.dataset.callTime = Date.now();
+    textEl.appendChild(div);
+  },
+  
+  /**
+   * Update the most recent matching tool bubble with the result.
+   */
+  _appendToolResult(textEl, name, ok, summary, duration_ms) {
+    // Find last pending bubble with this name
+    const bubbles = textEl.querySelectorAll(`.chat-tool-bubble.chat-tool-pending[data-tool-name="${this._escape(name)}"]`);
+    const bubble = bubbles[bubbles.length - 1];
+    if (bubble) {
+      bubble.classList.remove('chat-tool-pending');
+      bubble.classList.add(ok ? 'chat-tool-ok' : 'chat-tool-fail');
+      const spinner = bubble.querySelector('.chat-tool-spinner');
+      if (spinner) {
+        spinner.innerHTML = `<span class="chat-tool-status">${ok ? '✓' : '✗'}</span><span class="chat-tool-result">${this._escape(summary || (ok ? 'done' : 'failed'))}</span>${duration_ms ? `<span class="chat-tool-duration">${duration_ms}ms</span>` : ''}`;
+      }
+    } else {
+      // No matching pending bubble - just append a finished one
+      const div = document.createElement('div');
+      div.className = `chat-tool-bubble ${ok ? 'chat-tool-ok' : 'chat-tool-fail'}`;
+      div.innerHTML = `
+        <span class="chat-tool-icon">${ok ? '✓' : '✗'}</span>
+        <span class="chat-tool-name">${this._escape(name)}</span>
+        <span class="chat-tool-result">${this._escape(summary || '')}</span>
+      `;
+      textEl.appendChild(div);
+    }
+  },
+  
+  _formatArgs(args) {
+    if (!args || typeof args !== 'object') return '';
+    const keys = Object.keys(args);
+    if (keys.length === 0) return '()';
+    return '(' + keys.map(k => {
+      let v = args[k];
+      if (typeof v === 'string') v = `"${v.slice(0, 40)}${v.length > 40 ? '…' : ''}"`;
+      else if (typeof v === 'object') v = JSON.stringify(v).slice(0, 40);
+      return `${k}: ${v}`;
+    }).join(', ') + ')';
+  },
+
   _updateTurnCounter(turn, threshold) {
     const el = this.modal?.querySelector('#poseidon-turn-counter');
     if (!el) return;

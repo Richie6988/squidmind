@@ -196,13 +196,31 @@ function buildPoseidonChatRoute(v2ModelService) {
     res.write(`event: start\ndata: ${JSON.stringify({ model_id: v2ModelService.poseidonModelId })}\n\n`);
 
     let chunkCount = 0;
+    let toolCallCount = 0;
     try {
-      for await (const chunk of v2ModelService.chatWithPoseidon(message, history || [])) {
-        chunkCount++;
-        res.write(`data: ${JSON.stringify({ text: chunk })}\n\n`);
+      for await (const ev of v2ModelService.chatWithPoseidon(message, history || [])) {
+        // chatWithPoseidon now yields { type: 'text'|'tool_call'|'tool_result', ... }
+        if (ev.type === 'text') {
+          chunkCount++;
+          res.write(`data: ${JSON.stringify({ text: ev.chunk })}\n\n`);
+        } else if (ev.type === 'tool_call') {
+          toolCallCount++;
+          res.write(`event: tool_call\ndata: ${JSON.stringify({ name: ev.name, args: ev.args })}\n\n`);
+        } else if (ev.type === 'tool_result') {
+          // Truncate result for SSE (model gets the full thing internally)
+          const summary = ev.result?.message
+            || (ev.result?.ok ? (Object.keys(ev.result).length > 2 ? 'success' : ev.result.ok) : (ev.result?.error || 'failed'));
+          res.write(`event: tool_result\ndata: ${JSON.stringify({
+            name: ev.name,
+            ok: ev.result?.ok !== false,
+            summary: typeof summary === 'string' ? summary.slice(0, 300) : String(summary).slice(0, 300),
+            duration_ms: ev.duration_ms
+          })}\n\n`);
+        }
       }
       res.write(`event: end\ndata: ${JSON.stringify({
         chunks: chunkCount,
+        tool_calls: toolCallCount,
         turn: v2ModelService.loaded.get(v2ModelService.poseidonModelId)?.sessionTurns ?? 0,
         wipe_threshold: v2ModelService.contextWipeThreshold
       })}\n\n`);

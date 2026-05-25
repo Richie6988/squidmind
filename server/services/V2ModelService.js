@@ -533,7 +533,6 @@ class V2ModelService {
   // === POSEIDON ASSIGNMENT ===
 
   async setPoseidonModel(modelId) {
-    // Check library (not just loaded)
     this.rm.invalidateCache();
     const reg = await this.rm.read('models/model_registry.json');
     if (!reg.models[modelId]) {
@@ -541,7 +540,6 @@ class V2ModelService {
     }
     this.poseidonModelId = modelId;
 
-    // Update poseidon_brain.json
     const brain = await this.rm.getPoseidonBrain();
     brain.current_state.loaded_model_id = modelId;
     await this.rm.write('main/poseidon_brain.json', brain);
@@ -552,8 +550,22 @@ class V2ModelService {
       subject: { type: 'model', id: modelId },
       action: `Assigned ${modelId} as Poseidon's model`
     });
+    
+    // Fire-and-forget preload so the model is ready when the user opens chat.
+    // We don't await - the API returns immediately. Failures are logged but
+    // not surfaced to the assign call (user will see them when they actually chat).
+    if (!this.loaded.has(modelId)) {
+      const entry = reg.models[modelId];
+      console.log(`[V2ModelService] Pre-loading ${modelId} after assignment to Poseidon...`);
+      // Important: don't return this promise - let it run in background
+      this.ensureLoaded(modelId).then(() => {
+        console.log(`[V2ModelService] ✓ Pre-load complete for ${modelId}, ready for chat`);
+      }).catch(err => {
+        console.warn(`[V2ModelService] Pre-load failed for ${modelId}:`, err.message);
+      });
+    }
 
-    return { success: true, model_id: modelId, loaded: this.loaded.has(modelId) };
+    return { success: true, model_id: modelId, loaded: this.loaded.has(modelId), preloading: !this.loaded.has(modelId) };
   }
 
   getStatus() {
@@ -699,36 +711,71 @@ class V2ModelService {
       }
       const session = entry.session;
 
-      // Stream chunks via async iterator
-      const chunks = [];
+      // Buffer for text chunks AND for tool-call / tool-result events.
+      // The model emits text via onTextChunk; we wrap each function so we also
+      // capture call + result events for SSE streaming to the client.
+      const events = [];
+      
+      // Wrap each function so we can stream tool-call + tool-result events.
+      // The wrapped versions still call the originals but also emit to `events`.
+      let wrappedFunctions;
+      if (entry._functions) {
+        wrappedFunctions = {};
+        for (const [fnName, fnDef] of Object.entries(entry._functions)) {
+          // fnDef from defineChatSessionFunction has shape { description, params, handler }
+          // We reconstruct via defineChatSessionFunction again so the wrapped one
+          // is still a valid ChatSessionModelFunction.
+          const originalHandler = fnDef.handler;
+          wrappedFunctions[fnName] = {
+            ...fnDef,
+            handler: async (args) => {
+              const callTime = Date.now();
+              events.push({ type: 'tool_call', name: fnName, args, at: callTime });
+              try {
+                const result = await originalHandler(args);
+                events.push({ type: 'tool_result', name: fnName, result, duration_ms: Date.now() - callTime });
+                return result;
+              } catch (err) {
+                const errResult = { ok: false, error: err.message };
+                events.push({ type: 'tool_result', name: fnName, result: errResult, duration_ms: Date.now() - callTime });
+                return errResult;
+              }
+            }
+          };
+        }
+      }
+      
       const promptOpts = {
-        onTextChunk: (chunk) => { chunks.push(chunk); },
+        onTextChunk: (chunk) => { events.push({ type: 'text', chunk }); },
         maxTokens: 512
       };
-      // Expose functions to this turn if available
-      if (entry._functions) {
-        promptOpts.functions = entry._functions;
-      }
+      if (wrappedFunctions) promptOpts.functions = wrappedFunctions;
       const completion = session.prompt(userMessage, promptOpts);
 
-      // Yield chunks as they come in.
-      // Timeout strategy: ABORT only if no new tokens for IDLE_TIMEOUT_MS (model
-      // is stuck). A slow model that keeps producing tokens is fine - just slow.
+      // Yield events as they accumulate. Two kinds:
+      //   - 'text' events: emit just the chunk (consumer joins them)
+      //   - 'tool_call' / 'tool_result' events: surface for UI thinking display
       let lastIdx = 0;
       let lastChunkAt = Date.now();
-      const IDLE_TIMEOUT_MS = 90000;       // 90s with no new tokens -> abort
-      const ABSOLUTE_MAX_MS = 30 * 60_000; // hard cap: 30 minutes
+      const IDLE_TIMEOUT_MS = 90000;
+      const ABSOLUTE_MAX_MS = 30 * 60_000;
       const start = Date.now();
       while (true) {
         const isDone = await Promise.race([
           completion.then(() => true),
           new Promise(r => setTimeout(() => r(false), 100))
         ]);
-        while (lastIdx < chunks.length) {
-          const c = chunks[lastIdx++];
-          entry.totalTokensGenerated += Math.ceil(c.length / 4);
-          lastChunkAt = Date.now();
-          yield c;
+        while (lastIdx < events.length) {
+          const ev = events[lastIdx++];
+          if (ev.type === 'text') {
+            entry.totalTokensGenerated += Math.ceil(ev.chunk.length / 4);
+            lastChunkAt = Date.now();
+            yield ev;
+          } else {
+            // Tool-related events count as activity (model is doing work)
+            lastChunkAt = Date.now();
+            yield ev;
+          }
         }
         if (isDone) break;
         const idleMs = Date.now() - lastChunkAt;
@@ -746,7 +793,8 @@ class V2ModelService {
       entry.sessionTurns++;
       
       // Log this exchange to the V2 log file
-      const fullResponse = chunks.join('');
+      const fullResponse = events.filter(e => e.type === 'text').map(e => e.chunk).join('');
+      const toolCallCount = events.filter(e => e.type === 'tool_call').length;
       await this.rm.log({
         event_type: 'user_input',
         severity: 'info',
@@ -758,7 +806,8 @@ class V2ModelService {
           turn: entry.sessionTurns,
           user_message_preview: userMessage.slice(0, 200),
           response_preview: fullResponse.slice(0, 200),
-          tokens_in_response: Math.ceil(fullResponse.length / 4)
+          tokens_in_response: Math.ceil(fullResponse.length / 4),
+          tool_calls_made: toolCallCount
         }
       }).catch(() => {});
       

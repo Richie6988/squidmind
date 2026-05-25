@@ -4461,3 +4461,57 @@ button .pixel-icon {
   padding: 3px 4px;
   font-size: 6px;
 }
+
+/* ========== Chat tool-call bubbles (Poseidon shows thinking) ========== */
+.chat-tool-bubble {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  margin: 4px 0;
+  font-family: 'Courier New', monospace;
+  font-size: 10px;
+  border-left: 3px solid var(--text-secondary);
+  background: rgba(255,255,255,0.04);
+  flex-wrap: wrap;
+}
+.chat-tool-bubble.chat-tool-pending {
+  border-left-color: var(--accent);
+  animation: chatToolPulse 1.4s ease-in-out infinite;
+}
+.chat-tool-bubble.chat-tool-ok { border-left-color: var(--success); }
+.chat-tool-bubble.chat-tool-fail { border-left-color: var(--danger); }
+
+@keyframes chatToolPulse {
+  0%, 100% { background: rgba(255,255,255,0.04); }
+  50% { background: rgba(6,255,165,0.10); }
+}
+
+.chat-tool-icon { color: var(--accent); font-weight: bold; }
+.chat-tool-name { color: var(--text); font-weight: bold; }
+.chat-tool-args {
+  color: var(--text-secondary);
+  font-size: 9px;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.chat-tool-spinner { color: var(--accent); }
+.chat-tool-bubble.chat-tool-ok .chat-tool-icon,
+.chat-tool-bubble.chat-tool-ok .chat-tool-status { color: var(--success); }
+.chat-tool-bubble.chat-tool-fail .chat-tool-icon,
+.chat-tool-bubble.chat-tool-fail .chat-tool-status { color: var(--danger); }
+.chat-tool-result {
+  margin-left: 4px;
+  color: var(--text-secondary);
+  font-size: 9px;
+  font-style: italic;
+}
+.chat-tool-duration {
+  margin-left: auto;
+  font-size: 8px;
+  color: var(--text-secondary);
+  opacity: 0.7;
+}
+.chat-text-final { padding-top: 4px; }
+
