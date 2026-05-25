@@ -458,10 +458,8 @@ class SquidInteractionSystem {
    * Handle mouse leave
    */
   handleMouseLeave() {
-    // Clear all hovers
-    if (poseidon) {
-      poseidon.hovered = false;
-    }
+    // Clear all hovers (canvas-relative)
+    if (poseidon) poseidon.hovered = false;
     
     if (this.hoveredSquid) {
       this.hoveredSquid.isHovered = false;
@@ -471,8 +469,9 @@ class SquidInteractionSystem {
       this.hoveredSquid = null;
     }
     
-    // End drag
-    this.draggedSquid = null;
+    // IMPORTANT: do NOT clear draggedSquid here. We want drag to continue
+    // while mouse is over the projects panel so drop on temple cards works.
+    // The document-level mouseup handler will clear it when drag actually ends.
     
     this.aquarium.canvas.style.cursor = 'default';
   }

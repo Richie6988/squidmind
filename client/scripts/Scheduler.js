@@ -21,6 +21,9 @@ const Scheduler = {
   },
   
   _build() {
+    if (this.modal && !document.body.contains(this.modal)) {
+      this.modal = null;
+    }
     if (this.modal) { this.modal.classList.remove('hidden'); return; }
     this.modal = document.createElement('div');
     this.modal.className = 'modal scheduler-modal';

@@ -1601,40 +1601,54 @@ ui.openFileBrowser = function() {
 console.log('[OK] ui.openFileBrowser redirects to ModelLoader');
 
 // ==================== CLICK OUTSIDE TO CLOSE PANELS ====================
-document.addEventListener('mousedown', function(e) {
-  // Skip if clicking on something that OPENS panels
-  if (e.target.closest('.header-nav') || 
-      e.target.closest('.btn-new-project') ||
-      e.target.closest('.btn-new-project-card') ||
-      e.target.closest('#right-panel') ||      // right panel is permanent
-      e.target.closest('.projects-container') ||  // projects container
-      e.target.closest('canvas')) {             // clicking aquarium itself
-    return;
-  }
-  
-  // SPECIAL: clicking the modal backdrop (i.e. .modal itself, not its content) closes it
-  if (e.target.classList && e.target.classList.contains('modal')) {
-    e.target.classList.add('hidden');
-    // also remove inline-created modals that don't support .hidden
-    if (e.target.parentNode) e.target.remove();
-    return;
-  }
-  
-  // Skip if click is INSIDE any panel/modal/dropdown content
-  if (e.target.closest('.panel') ||
-      e.target.closest('.modal-content') ||
-      e.target.closest('.context-menu') ||
-      e.target.closest('[data-modal]')) {
-    return;
-  }
-  
-  // Click was truly outside - close everything visible (except permanent right panel)
+// Uses .hidden only (never removes DOM nodes) so cached modal references in
+// ModelLoader / AgentForm / PoseidonChat / Scheduler stay valid for next open().
+
+function _smCloseAllVisiblePanels() {
   document.querySelectorAll('.panel:not(.hidden):not(.right-panel-permanent)').forEach(p => {
     p.classList.add('hidden');
   });
   document.querySelectorAll('.modal:not(.hidden)').forEach(m => {
     m.classList.add('hidden');
   });
+}
+
+document.addEventListener('mousedown', function(e) {
+  // Skip if clicking on something that OPENS panels (these have their own toggle)
+  if (e.target.closest('.header-nav') || 
+      e.target.closest('.btn-new-project') ||
+      e.target.closest('.btn-new-project-card') ||
+      e.target.closest('#right-panel') ||           // right panel is permanent
+      e.target.closest('.projects-container') ||    // projects container (incl temple cards)
+      e.target.closest('canvas')) {                 // clicking aquarium itself
+    return;
+  }
+  
+  // SPECIAL: clicking the modal backdrop (i.e. .modal itself, not its content) closes it
+  // Just hide (do not remove) so the module's cached ref stays valid
+  if (e.target.classList && e.target.classList.contains('modal')) {
+    e.target.classList.add('hidden');
+    return;
+  }
+  
+  // Skip if click is INSIDE any panel/modal/dropdown content - these manage themselves
+  if (e.target.closest('.panel') ||
+      e.target.closest('.modal-content') ||
+      e.target.closest('.modal') ||                // covers all dynamically built modals
+      e.target.closest('.context-menu') ||
+      e.target.closest('[data-modal]')) {
+    return;
+  }
+  
+  // Click was truly outside - close everything visible
+  _smCloseAllVisiblePanels();
 });
+
+// ESC key also closes everything
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') _smCloseAllVisiblePanels();
+});
+
+console.log('[OK] Click outside + ESC to close panels enabled');
 
 console.log('[OK] Click outside to close panels enabled');

@@ -94,60 +94,10 @@ const aquarium = {
   },
   
   _fallbackProjects() {
-    return [
-      { 
-        id: 'brain', 
-        name: 'BRAIN', 
-        status: 'active', 
-        files: [
-          { name: 'neural_network.py', size: '45KB' },
-          { name: 'training_data.json', size: '2.3MB' }
-        ], 
-        tasks: [
-          { description: 'Train model on new data', status: 'working' },
-          { description: 'Optimize inference speed', status: 'pending' }
-        ]
-      },
-      { 
-        id: 'aquarium', 
-        name: 'AQUARIUM', 
-        status: 'active', 
-        files: [
-          { name: 'Squid.js', size: '12KB' },
-          { name: 'aquarium.js', size: '8KB' }
-        ], 
-        tasks: [
-          { description: 'Enhance squid AI', status: 'working' },
-          { description: 'Add new animations', status: 'complete' }
-        ]
-      },
-      { 
-        id: 'trading', 
-        name: 'TRADING', 
-        status: 'active', 
-        files: [
-          { name: 'market_analyzer.py', size: '28KB' },
-          { name: 'strategies.json', size: '156KB' }
-        ], 
-        tasks: [
-          { description: 'Backtest new strategy', status: 'pending' },
-          { description: 'Monitor live trades', status: 'working' }
-        ]
-      },
-      { 
-        id: 'newsroom', 
-        name: 'NEWSROOM', 
-        status: 'active', 
-        files: [
-          { name: 'news_scraper.js', size: '15KB' },
-          { name: 'articles.db', size: '4.5MB' }
-        ], 
-        tasks: [
-          { description: 'Aggregate latest news', status: 'working' },
-          { description: 'Analyze sentiment', status: 'pending' }
-        ]
-      }
-    ];
+    // Empty fallback - the registry IS the source of truth.
+    // If V2 endpoint fails completely, no temples shown rather than fake ones.
+    console.warn('[TEMPLE] Fallback called - registry was empty or unreachable. No temples will render.');
+    return [];
   },
 
   async updateSquidsStatus() {

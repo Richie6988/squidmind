@@ -32,7 +32,7 @@ const BrainEditor = {
         <div class="modal-content" style="width: 700px; max-height: 80vh; overflow-y: auto;">
           <div class="modal-header">
             <h2>[BRAIN] brain.json Editor</h2>
-            <button class="btn-close" onclick="BrainEditor.close()">✕</button>
+            <button class="btn-close" onclick="BrainEditor.close()">x</button>
           </div>
           <div class="modal-body">
             <form id="brain-editor-form" onsubmit="BrainEditor.save(event)">

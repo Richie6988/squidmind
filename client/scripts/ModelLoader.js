@@ -19,6 +19,10 @@ const ModelLoader = {
   },
   
   _buildModal() {
+    // If we have a cached reference but it was removed from DOM, rebuild
+    if (this.modal && !document.body.contains(this.modal)) {
+      this.modal = null;
+    }
     if (this.modal) {
       this.modal.classList.remove('hidden');
       return;
@@ -203,14 +207,17 @@ const ModelLoader = {
     const isEdit = !!existingModelId;
     const existing = isEdit ? this.library.models.find(m => m.model_id === existingModelId) : null;
     const cfg = existing?.config || {
-      contextLength: 25000, gpuLayers: 32, cpuThreads: 4, batchSize: 512,
+      contextLength: 8192, gpuLayers: 32, cpuThreads: 4, batchSize: 512,
       offloadKqvToGpu: false, randomSeed: true, autoUnloadIdleMinutes: 15
     };
+    // Find file size for estimation
+    const fileEntry = this.library.models.find(m => m.file_name === fileName);
+    const fileSizeGb = fileEntry?.file_size_gb || 0;
     
     const dlg = document.createElement('div');
     dlg.className = 'modal model-load-config-modal';
     dlg.innerHTML = `
-      <div class="modal-content" style="width:90vw; max-width:520px;">
+      <div class="modal-content" style="width:90vw; max-width:580px;">
         <div class="modal-header">
           <h2>${isEdit ? 'Edit Params' : 'Import'}: ${this._escape(fileName)}</h2>
           <button class="btn-close" onclick="this.closest('.modal').remove()">x</button>
@@ -221,9 +228,13 @@ const ModelLoader = {
               ? 'Updates the saved loading params. Changes apply on next load.'
               : 'Register this model with loading parameters. Loading happens later, automatically.'}
           </p>
-          <div class="agent-form-row"><label>Context length (max ~260k)</label>
+          
+          <!-- COMPUTE ESTIMATION (live) -->
+          <div id="ml-estimate" class="ml-estimate-box"></div>
+          
+          <div class="agent-form-row"><label>Context length</label>
             <input id="ml-ctx" type="number" min="512" max="260000" value="${cfg.contextLength}"></div>
-          <div class="agent-form-row"><label>GPU layers (32 = full GPU)</label>
+          <div class="agent-form-row"><label>GPU layers (max ~36)</label>
             <input id="ml-gpu" type="number" min="0" max="100" value="${cfg.gpuLayers}"></div>
           <div class="agent-form-row"><label>CPU threads</label>
             <input id="ml-threads" type="number" min="1" max="32" value="${cfg.cpuThreads}"></div>
@@ -248,6 +259,77 @@ const ModelLoader = {
       </div>
     `;
     document.body.appendChild(dlg);
+    
+    // === LIVE ESTIMATION ===
+    // Memory estimate: model size + KV cache (ctx * num_layers * 2 * bytes_per_element)
+    // For a Q4_K_M 9B model: ~5.5GB weights + KV cache.
+    // KV cache rough formula: ctx * 2 (K+V) * num_kv_heads * head_dim * bytes
+    // Approximation for unknown model: ~0.5MB per 1k context per GB of weights
+    const estimate = () => {
+      const ctx = parseInt(dlg.querySelector('#ml-ctx').value, 10) || 8192;
+      const gpu = parseInt(dlg.querySelector('#ml-gpu').value, 10) || 0;
+      const kqvGpu = dlg.querySelector('#ml-kqv').checked;
+      
+      // KV cache estimate (rough): proportional to ctx and model size
+      const kvCacheGb = (ctx / 1024) * 0.06 * Math.max(1, fileSizeGb);
+      
+      // Weights distribution
+      const gpuLayersClamped = Math.min(gpu, 36);
+      const layerFrac = gpuLayersClamped / 36;
+      const weightsOnGpu = fileSizeGb * layerFrac;
+      const weightsOnCpu = fileSizeGb * (1 - layerFrac);
+      const kvOnGpu = kqvGpu ? kvCacheGb : kvCacheGb * layerFrac;
+      const kvOnCpu = kvCacheGb - kvOnGpu;
+      
+      const totalVram = weightsOnGpu + kvOnGpu;
+      const totalRam = weightsOnCpu + kvOnCpu;
+      
+      // Inference speed hint
+      let speedHint = '';
+      let speedClass = 'ok';
+      if (gpu === 0) {
+        speedHint = 'CPU only - very slow (~1-3 tok/s)';
+        speedClass = 'warn';
+      } else if (layerFrac < 0.5) {
+        speedHint = 'Mostly CPU - slow (~3-8 tok/s)';
+        speedClass = 'warn';
+      } else if (layerFrac >= 0.9) {
+        speedHint = 'Mostly GPU - fast (~30-80 tok/s)';
+        speedClass = 'ok';
+      } else {
+        speedHint = 'Split GPU/CPU - moderate (~10-25 tok/s)';
+        speedClass = 'ok';
+      }
+      
+      const fmt = n => n < 0.1 ? '<0.1' : n.toFixed(2);
+      
+      dlg.querySelector('#ml-estimate').innerHTML = `
+        <div class="ml-estimate-header">Compute Estimate</div>
+        <div class="ml-estimate-row">
+          <span class="ml-estimate-label">VRAM (GPU):</span>
+          <span class="ml-estimate-val">${fmt(totalVram)} GB</span>
+          <span class="ml-estimate-detail">weights ${fmt(weightsOnGpu)} + cache ${fmt(kvOnGpu)}</span>
+        </div>
+        <div class="ml-estimate-row">
+          <span class="ml-estimate-label">RAM (CPU):</span>
+          <span class="ml-estimate-val">${fmt(totalRam)} GB</span>
+          <span class="ml-estimate-detail">weights ${fmt(weightsOnCpu)} + cache ${fmt(kvOnCpu)}</span>
+        </div>
+        <div class="ml-estimate-row">
+          <span class="ml-estimate-label">Speed:</span>
+          <span class="ml-estimate-val ${speedClass}">${speedHint}</span>
+        </div>
+        <div class="ml-estimate-hint">
+          File size: ${fileSizeGb} GB. Estimates are rough - actual VRAM depends on architecture (Q4_K_M, MoE, etc).
+        </div>
+      `;
+    };
+    
+    // Recompute on any change
+    ['#ml-ctx', '#ml-gpu', '#ml-kqv'].forEach(sel => {
+      dlg.querySelector(sel).addEventListener('input', estimate);
+    });
+    estimate();
     
     dlg.querySelector('#ml-save-btn').addEventListener('click', async () => {
       const params = {

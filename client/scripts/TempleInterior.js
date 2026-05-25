@@ -167,36 +167,115 @@ const TempleInterior = {
   /**
    * Populate working agents (REAL squids from aquarium)
    */
-  populateWorkingAgents(temple) {
+  async populateWorkingAgents(temple) {
     const container = document.getElementById('working-agents');
     
-    // Get REAL squids from aquarium - either explicitly assigned to project
-    // or animated into temple via drag-drop (insideTemple flag)
-    const allSquids = window.aquarium?.squids || [];
-    const assignedSquids = allSquids.filter(squid => 
+    // Source 1: aquarium canvas squids
+    let assignedSquids = (window.aquarium?.squids || []).filter(squid => 
       squid.currentProject === temple.name || squid.insideTemple === temple.name
     );
     
-    if (assignedSquids.length > 0) {
-      container.innerHTML = assignedSquids.map(squid => `
-        <div class="agent-avatar walking" data-squid-id="${squid.id}">
-          <div class="avatar-squid" style="filter: hue-rotate(${squid.color}deg)">[SQUID]</div>
-          <div class="avatar-name">${squid.name}</div>
-          <div class="avatar-specialty">${squid.specialty || squid.role}</div>
-          <div class="avatar-status">${squid.status || 'idle'}</div>
-          <button class="btn-config-squid" onclick="TempleInterior.configureSquid('${squid.id}')">
-            [CONFIG] Configure
-          </button>
-        </div>
-      `).join('');
-    } else {
+    // Source 2: also check V2 registry for agents assigned via 'current_project'
+    try {
+      const r = await window.ApiV2._fetch('/agents');
+      const regAgents = Object.values(r.registry.agents || {});
+      const seen = new Set(assignedSquids.map(s => s.id));
+      for (const a of regAgents) {
+        if ((a.current_project === temple.name || a.assigned_project === temple.name) && !seen.has(a.agent_id)) {
+          // Build squid-like object from registry entry
+          assignedSquids.push({
+            id: a.agent_id,
+            name: a.display_name || a.agent_id,
+            specialty: a.specialization || 'general',
+            role: a.specialization || 'general',
+            status: a.status || 'idle',
+            color: 0,
+            appearance: a.appearance || null,
+            insideTemple: temple.name
+          });
+        }
+      }
+    } catch {}
+    
+    if (assignedSquids.length === 0) {
       container.innerHTML = `
         <p class="empty-state">
-          No agents assigned yet<br>
-          Click "Assign Squids" to add workers
+          No agents assigned yet.<br>
+          Click "Assign Squids" to add workers from your roster.
         </p>
       `;
+      return;
     }
+    
+    container.innerHTML = assignedSquids.map((squid, idx) => `
+      <div class="agent-avatar walking" data-squid-id="${this._escape(squid.id)}" style="animation-delay: ${idx * 0.3}s">
+        <canvas class="avatar-squid-canvas" data-squid-id="${this._escape(squid.id)}" width="56" height="64"></canvas>
+        <div class="avatar-name">${this._escape(squid.name)}</div>
+        <div class="avatar-specialty">${this._escape(squid.specialty || squid.role || 'general')}</div>
+        <div class="avatar-status">${this._escape(squid.status || 'idle')}</div>
+        <button class="btn-config-squid" onclick="TempleInterior.configureSquid('${this._escape(squid.id)}')">
+          Configure
+        </button>
+      </div>
+    `).join('');
+    
+    // Draw each squid's pixel-art portrait on its canvas
+    setTimeout(() => {
+      assignedSquids.forEach(squid => {
+        const c = container.querySelector(`canvas[data-squid-id="${squid.id}"]`);
+        if (c) this._drawSquidSprite(c, squid);
+      });
+    }, 50);
+  },
+  
+  /**
+   * Draw a small squid pixel-art portrait on a canvas with the agent's actual
+   * appearance (color + accessories from V2 brain.appearance).
+   */
+  _drawSquidSprite(canvas, squid) {
+    const ctx = canvas.getContext('2d');
+    ctx.imageSmoothingEnabled = false;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    const app = squid.appearance || {};
+    const acc = app.accessories || {};
+    const primary = app.primary_color || squid.appearance?.body_color || '#FF6B9D';
+    const accent = app.secondary_color || squid.appearance?.accent_color || '#C44569';
+    
+    ctx.save();
+    ctx.translate(canvas.width / 2, canvas.height / 2 + 4);
+    const size = 24;
+    
+    // Body
+    ctx.fillStyle = primary;
+    ctx.fillRect(-size * 0.4, -size * 0.5, size * 0.8, size * 0.6);
+    // Belly highlight
+    ctx.fillStyle = '#FFC4D6';
+    ctx.fillRect(-size * 0.3, -size * 0.1, size * 0.6, size * 0.2);
+    // Tentacles
+    for (let i = -2; i <= 2; i++) {
+      ctx.fillStyle = i % 2 === 0 ? primary : accent;
+      ctx.fillRect(i * size * 0.18 - size * 0.05, size * 0.1, size * 0.12, size * 0.4);
+    }
+    // Eyes default
+    ctx.fillStyle = 'white';
+    ctx.fillRect(-size * 0.2, -size * 0.3, size * 0.15, size * 0.15);
+    ctx.fillRect(size * 0.05, -size * 0.3, size * 0.15, size * 0.15);
+    ctx.fillStyle = 'black';
+    ctx.fillRect(-size * 0.15, -size * 0.27, size * 0.08, size * 0.08);
+    ctx.fillRect(size * 0.1, -size * 0.27, size * 0.08, size * 0.08);
+    
+    // Accessories (if available)
+    if (typeof SquidAccessories !== 'undefined') {
+      try {
+        if (acc.eyes && acc.eyes !== 'round') SquidAccessories.drawEyes(ctx, acc.eyes, size);
+        if (acc.outfit && acc.outfit !== 'none') SquidAccessories.drawOutfit(ctx, acc.outfit, size);
+        if (acc.hat && acc.hat !== 'none') SquidAccessories.drawHat(ctx, acc.hat, size);
+        if (acc.glasses && acc.glasses !== 'none') SquidAccessories.drawGlasses(ctx, acc.glasses, size);
+      } catch {}
+    }
+    
+    ctx.restore();
   },
   
   /**
@@ -394,34 +473,65 @@ const TempleInterior = {
    * Show squid assigner (assign real squids to project)
    * Includes name search input.
    */
-  showSquidAssigner() {
+  async showSquidAssigner() {
     console.log('[SQUID] Opening squid assigner');
     
-    const allSquids = window.aquarium?.squids || [];
+    // Source 1: aquarium canvas squids (already loaded)
+    let allSquids = (window.aquarium?.squids || []).map(s => ({
+      id: s.id,
+      agent_id: s.agent_id || s.id,
+      name: s.name,
+      specialty: s.specialty || s.role || 'general',
+      currentProject: s.currentProject || s.insideTemple || null,
+      status: s.status || 'idle'
+    }));
+    
+    // Source 2: V2 agent registry (backup / source of truth)
+    try {
+      const r = await window.ApiV2._fetch('/agents');
+      const regAgents = Object.values(r.registry.agents || {});
+      // Merge - keep canvas squids, add any registry-only ones
+      const seenIds = new Set(allSquids.map(s => s.id || s.agent_id));
+      for (const a of regAgents) {
+        const aid = a.agent_id;
+        if (!seenIds.has(aid)) {
+          allSquids.push({
+            id: aid,
+            agent_id: aid,
+            name: a.display_name || aid,
+            specialty: a.specialization || 'general',
+            currentProject: a.current_project || null,
+            status: a.status || 'sleeping'
+          });
+        }
+      }
+    } catch (err) {
+      console.warn('[SQUID assigner] V2 registry load failed:', err.message);
+    }
     
     const modal = document.createElement('div');
     modal.className = 'modal squid-assigner-modal';
     modal.innerHTML = `
-      <div class="modal-content" style="width:90vw; max-width:480px;">
+      <div class="modal-content" style="width:90vw; max-width:520px;">
         <div class="modal-header">
-          <h2>Assign Squid to ${this.currentTemple.name}</h2>
+          <h2>Assign Squid to ${this._escape(this.currentTemple.name)}</h2>
           <button class="btn-close" onclick="this.closest('.modal').remove()">x</button>
         </div>
         <div class="modal-body" style="padding:16px;">
           <p class="hint" style="font-size:9px; color:var(--text-secondary); margin-bottom:12px;">
-            Pick a squid below. Status shows current assignment.
+            ${allSquids.length} squid${allSquids.length === 1 ? '' : 's'} available. Status shows current assignment.
           </p>
           <select id="squid-assigner-dropdown" style="width:100%; padding:8px; background:var(--ocean-mid); border:1px solid var(--border); color:var(--text); font-family:'Courier New',monospace; font-size:11px;">
             <option value="">-- Select a squid --</option>
             ${allSquids.length === 0
-              ? '<option disabled>No squids exist. Create one from + New Squid</option>'
+              ? '<option disabled>No squids exist. Create one from + New Squid in top nav</option>'
               : allSquids.map(s => {
                   const isHere = s.currentProject === this.currentTemple.name;
                   const elsewhere = s.currentProject && !isHere;
-                  let status = 'available';
+                  let status = `available (${s.status})`;
                   if (isHere) status = 'already here';
                   else if (elsewhere) status = `currently: ${s.currentProject}`;
-                  return `<option value="${this._escape(s.id)}" ${isHere ? 'disabled' : ''}>${this._escape(s.name)} (${this._escape(s.specialty || s.role || 'general')}) — ${status}</option>`;
+                  return `<option value="${this._escape(s.id)}" ${isHere ? 'disabled' : ''}>${this._escape(s.name)} - ${this._escape(s.specialty)} - ${status}</option>`;
                 }).join('')
             }
           </select>

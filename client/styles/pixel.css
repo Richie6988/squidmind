@@ -4320,3 +4320,108 @@ button .pixel-icon {
   color: var(--text-secondary);
   text-transform: uppercase;
 }
+
+/* ========== Model load - compute estimate ========== */
+.ml-estimate-box {
+  background: rgba(6, 255, 165, 0.06);
+  border: 1px solid var(--success);
+  padding: 10px 12px;
+  margin-bottom: 14px;
+  font-size: 10px;
+}
+.ml-estimate-header {
+  font-family: 'Press Start 2P';
+  font-size: 9px;
+  color: var(--success);
+  margin-bottom: 6px;
+  letter-spacing: 1px;
+}
+.ml-estimate-row {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 3px;
+  align-items: baseline;
+}
+.ml-estimate-label {
+  flex: 0 0 80px;
+  color: var(--text-secondary);
+  font-family: 'Courier New', monospace;
+}
+.ml-estimate-val {
+  font-family: 'Courier New', monospace;
+  font-weight: bold;
+  color: var(--text);
+  min-width: 60px;
+}
+.ml-estimate-val.warn { color: #FBBF24; }
+.ml-estimate-val.danger { color: var(--danger); }
+.ml-estimate-val.ok { color: var(--success); }
+.ml-estimate-detail {
+  font-size: 8px;
+  color: var(--text-secondary);
+  font-style: italic;
+}
+.ml-estimate-hint {
+  margin-top: 6px;
+  font-size: 8px;
+  font-style: italic;
+  color: var(--text-secondary);
+}
+
+/* ========== Temple interior: walking squid sprites ========== */
+.agent-avatar.walking {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 8px;
+  background: var(--ocean-mid);
+  border: 1px solid var(--border);
+  margin: 4px;
+  min-width: 110px;
+}
+
+.avatar-squid-canvas {
+  width: 56px;
+  height: 64px;
+  image-rendering: pixelated;
+  animation: squidWalkBob 1.4s ease-in-out infinite;
+}
+
+@keyframes squidWalkBob {
+  0%, 100% { transform: translateY(0) translateX(0); }
+  25% { transform: translateY(-3px) translateX(-2px); }
+  50% { transform: translateY(0) translateX(0); }
+  75% { transform: translateY(-3px) translateX(2px); }
+}
+
+.avatar-name {
+  font-family: 'Press Start 2P';
+  font-size: 8px;
+  color: var(--text);
+  text-align: center;
+  margin-top: 4px;
+}
+.avatar-specialty {
+  font-family: 'Courier New', monospace;
+  font-size: 8px;
+  color: var(--accent);
+}
+.avatar-status {
+  font-family: 'Courier New', monospace;
+  font-size: 8px;
+  color: var(--text-secondary);
+  padding: 1px 5px;
+  border: 1px solid var(--border);
+}
+.btn-config-squid {
+  background: var(--ocean-deep);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-family: 'Press Start 2P';
+  font-size: 7px;
+  padding: 3px 6px;
+  cursor: pointer;
+  margin-top: 4px;
+}
+.btn-config-squid:hover { border-color: var(--accent); color: var(--accent); }

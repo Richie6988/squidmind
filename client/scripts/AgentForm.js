@@ -41,6 +41,9 @@ const AgentForm = {
   },
 
   _buildModal() {
+    if (this.modal && !document.body.contains(this.modal)) {
+      this.modal = null;
+    }
     if (this.modal) {
       this.modal.classList.remove('hidden');
       return;
