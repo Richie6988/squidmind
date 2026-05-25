@@ -29,7 +29,7 @@ app.use('/api/v2', registryRoutes);
 const RegistryManager = require('./services/RegistryManager');
 const HeartbeatService = require('./services/HeartbeatService');
 const heartbeatRm = new RegistryManager(path.join(__dirname, '../data'));
-const heartbeat = new HeartbeatService(heartbeatRm, 5000);
+const heartbeat = new HeartbeatService(heartbeatRm, 15000);
 heartbeat.start();
 
 // === V2 MODEL SERVICE (GGUF loading + Poseidon chat) ===

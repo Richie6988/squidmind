@@ -139,8 +139,16 @@ class Squid {
   }
 
   draw(ctx) {
+    // Skip rendering if squid is inside a temple (assigned & animated in)
+    if (this.insideTemple && this.alpha === 0) return;
+    
     ctx.save();
     ctx.translate(this.x, this.y - this.jumpHeight);
+    
+    // Apply transparency for fade animations
+    if (this.alpha !== undefined && this.alpha < 1) {
+      ctx.globalAlpha = Math.max(0, this.alpha);
+    }
     
     const size = 40 * this.baseSize;
     

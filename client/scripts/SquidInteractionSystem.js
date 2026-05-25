@@ -214,6 +214,41 @@ class SquidInteractionSystem {
   }
 
   /**
+   * Animate squid entering a temple: shrink + glide in + hide.
+   * Visible again when the temple is opened (or squid reassigned out).
+   */
+  _animateSquidEnterTemple(squid, temple) {
+    const startScale = squid.baseSize || 1.0;
+    const startX = squid.x;
+    const startY = squid.y;
+    const targetX = temple.x;
+    const targetY = temple.y;
+    const duration = 700;
+    const start = Date.now();
+    
+    const step = () => {
+      const t = Math.min(1, (Date.now() - start) / duration);
+      const eased = 1 - Math.pow(1 - t, 3);
+      
+      squid.x = startX + (targetX - startX) * eased;
+      squid.y = startY + (targetY - startY) * eased;
+      squid.targetX = squid.x;
+      squid.targetY = squid.y;
+      squid.baseSize = startScale * (1 - eased * 0.85);
+      squid.alpha = 1 - eased;
+      
+      if (t < 1) {
+        requestAnimationFrame(step);
+      } else {
+        squid.insideTemple = temple.name;
+        squid.alpha = 0;
+        squid.baseSize = startScale;
+      }
+    };
+    requestAnimationFrame(step);
+  }
+  
+  /**
    * Handle mouse up
    */
   handleMouseUp(e) {
@@ -241,13 +276,12 @@ class SquidInteractionSystem {
           
           if (!temple.assignedSquids.includes(squid.id)) {
             temple.assignedSquids.push(squid.id);
+            // V2: also set currentProject so TempleInterior finds the squid
+            squid.currentProject = temple.name;
             console.log(`[OK] Assigned ${squid.name} to ${temple.name} temple`);
             
-            // Visual feedback - move squid inside temple
-            squid.x = temple.x;
-            squid.y = temple.y;
-            squid.targetX = temple.x;
-            squid.targetY = temple.y;
+            // Disappearance animation: shrink + fly into temple + hide
+            this._animateSquidEnterTemple(squid, temple);
             
             // Log the assignment
             if (window.ui && window.ui.addLog) {
@@ -551,14 +585,11 @@ class SquidInteractionSystem {
     
     menu.innerHTML = `
       <div style="font-size: 10px; color: var(--accent); margin-bottom: 8px;">${temple.name}</div>
-      <button onclick="SquidInteractionSystem.openProjectEditor('${temple.name}')" style="width: 100%; padding: 6px; margin: 2px 0; font-size: 9px; background: var(--success); color: black; border: none; cursor: pointer;">
-        Edit Project (V2 JSON)
+      <button onclick="SquidInteractionSystem.customizeTempleAppearance('${temple.name}')" style="width: 100%; padding: 6px; margin: 2px 0; font-size: 9px; background: var(--accent); color: black; border: none; cursor: pointer;">
+        Color &amp; Shape
       </button>
-      <button onclick="SquidInteractionSystem.customizeTempleColors('${temple.name}')" style="width: 100%; padding: 6px; margin: 2px 0; font-size: 9px; background: var(--accent); color: black; border: none; cursor: pointer;">
-        Quick: Colors only
-      </button>
-      <button onclick="TempleInterior.open('${temple.name}')" style="width: 100%; padding: 6px; margin: 2px 0; font-size: 9px; background: var(--ocean-mid); color: white; border: 1px solid var(--border); cursor: pointer;">
-        [TEMPLE] Enter Temple
+      <button onclick="TempleInterior.open('${temple.name}')" style="width: 100%; padding: 6px; margin: 2px 0; font-size: 9px; background: var(--success); color: black; border: none; cursor: pointer;">
+        Enter Temple
       </button>
     `;
     
@@ -598,35 +629,111 @@ class SquidInteractionSystem {
     }
   }
 
-  static customizeTempleColors(templeName) {
-    const outsideColor = prompt('Temple outside color (hex):', '#457B9D');
-    if (!outsideColor) return;
+  static customizeTempleAppearance(templeName) {
+    // Find current temple to get current values
+    const temple = (window.aquarium?.temples || []).find(t => t.name === templeName);
+    const currentOutside = temple?.colors?.outside || '#457B9D';
+    const currentInside = temple?.colors?.inside || '#1D3557';
+    const currentShape = temple?.shape || 'classic';
     
-    const insideColor = prompt('Temple inside color (hex):', '#1D3557');
-    if (!insideColor) return;
+    const modal = document.createElement('div');
+    modal.className = 'modal temple-appearance-modal';
+    modal.innerHTML = `
+      <div class="modal-content" style="width:90vw; max-width:480px;">
+        <div class="modal-header">
+          <h2>${templeName}: Color &amp; Shape</h2>
+          <button class="btn-close" onclick="this.closest('.modal').remove()">x</button>
+        </div>
+        <div class="modal-body" style="padding:16px;">
+          <div class="agent-form-row"><label>Outside color</label>
+            <div class="agent-form-color-wrap">
+              <input id="t-outside" type="color" value="${currentOutside}">
+              <input id="t-outside-text" type="text" value="${currentOutside}">
+            </div>
+          </div>
+          <div class="agent-form-row"><label>Inside color</label>
+            <div class="agent-form-color-wrap">
+              <input id="t-inside" type="color" value="${currentInside}">
+              <input id="t-inside-text" type="text" value="${currentInside}">
+            </div>
+          </div>
+          <div class="agent-form-row"><label>Shape</label>
+            <select id="t-shape">
+              <option value="classic" ${currentShape==='classic'?'selected':''}>Classic Greek</option>
+              <option value="round" ${currentShape==='round'?'selected':''}>Round Dome</option>
+              <option value="tall" ${currentShape==='tall'?'selected':''}>Tall Tower</option>
+              <option value="wide" ${currentShape==='wide'?'selected':''}>Wide Pavilion</option>
+              <option value="pyramid" ${currentShape==='pyramid'?'selected':''}>Pyramid</option>
+            </select>
+          </div>
+        </div>
+        <div class="agent-form-footer">
+          <span id="t-status" class="agent-form-status"></span>
+          <button class="btn-secondary" onclick="this.closest('.modal').remove()">Cancel</button>
+          <button class="btn-primary" id="t-save">Apply</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(modal);
     
-    // Update backend
-    fetch(`/api/projects/${templeName}/colors`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        outside: outsideColor,
-        inside: insideColor
-      })
-    })
-    .then(res => res.json())
-    .then(data => {
-      if (data.success) {
-        alert(`[OK] Temple colors updated!`);
-        // Reload temples
-        if (window.aquarium && window.aquarium.loadTemples) {
-          window.aquarium.loadTemples();
+    // Wire color picker <-> text input sync
+    const oPick = modal.querySelector('#t-outside');
+    const oText = modal.querySelector('#t-outside-text');
+    const iPick = modal.querySelector('#t-inside');
+    const iText = modal.querySelector('#t-inside-text');
+    oPick.addEventListener('input', () => oText.value = oPick.value);
+    oText.addEventListener('input', () => { if (/^#[0-9A-Fa-f]{6}$/.test(oText.value)) oPick.value = oText.value; });
+    iPick.addEventListener('input', () => iText.value = iPick.value);
+    iText.addEventListener('input', () => { if (/^#[0-9A-Fa-f]{6}$/.test(iText.value)) iPick.value = iText.value; });
+    
+    modal.querySelector('#t-save').addEventListener('click', async () => {
+      const status = modal.querySelector('#t-status');
+      const outside = oText.value;
+      const inside = iText.value;
+      const shape = modal.querySelector('#t-shape').value;
+      try {
+        status.textContent = 'Saving...';
+        // Colors via legacy endpoint (still works)
+        const r = await fetch(`/api/projects/${templeName}/colors`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ outside, inside })
+        });
+        const data = await r.json();
+        if (!data.success) throw new Error(data.error || 'failed');
+        // Shape via V2 PATCH on project_memory.json
+        const projectMap = { AQUARIUM: '001', TRADING: '002', BRAIN: '003', NEWSROOM: '004' };
+        const projNum = projectMap[templeName.toUpperCase()];
+        if (projNum) {
+          await window.ApiV2._fetch('/field', {
+            method: 'PATCH',
+            body: JSON.stringify({
+              filePath: `projects/PROJECT_${projNum}/project_memory.json`,
+              fieldPath: 'temple_shape',
+              newValue: shape,
+              reason: 'temple right-click appearance edit'
+            })
+          }).catch(() => {});
         }
-      } else {
-        alert('[ERROR] Failed: ' + data.error);
+        // Apply to live temple in canvas
+        if (temple) {
+          temple.colors = { outside, inside };
+          temple.shape = shape;
+        }
+        if (window.aquarium?.loadTemples) window.aquarium.loadTemples();
+        status.textContent = 'Applied';
+        status.className = 'agent-form-status success';
+        setTimeout(() => modal.remove(), 600);
+      } catch (err) {
+        status.textContent = 'Failed: ' + err.message;
+        status.className = 'agent-form-status error';
       }
-    })
-    .catch(error => alert('[ERROR] Error: ' + error.message));
+    });
+  }
+  
+  static customizeTempleColors(templeName) {
+    // Legacy alias - redirect
+    return this.customizeTempleAppearance(templeName);
   }
 }
 

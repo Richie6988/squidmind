@@ -27,10 +27,28 @@ class RegistryManager {
       return this.cache.get(relativePath);
     }
     const fullPath = path.join(this.dataRoot, relativePath);
-    const content = await fs.readFile(fullPath, 'utf8');
-    const data = JSON.parse(content);
-    this.cache.set(relativePath, data);
-    return data;
+    
+    // Retry on transient read errors (file mid-write from another tick)
+    let lastErr;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const content = await fs.readFile(fullPath, 'utf8');
+        if (!content || content.trim() === '') {
+          lastErr = new Error(`Empty file (mid-write?): ${relativePath}`);
+          await new Promise(r => setTimeout(r, 50 * (attempt + 1)));
+          continue;
+        }
+        const data = JSON.parse(content);
+        this.cache.set(relativePath, data);
+        return data;
+      } catch (err) {
+        lastErr = err;
+        if (attempt < 2) {
+          await new Promise(r => setTimeout(r, 50 * (attempt + 1)));
+        }
+      }
+    }
+    throw new Error(`Failed to read ${relativePath} after 3 attempts: ${lastErr.message}`);
   }
 
   async write(relativePath, data) {
@@ -39,7 +57,11 @@ class RegistryManager {
     if (data.metadata) {
       data.metadata.last_updated_at = data.last_updated_at;
     }
-    await fs.writeFile(fullPath, JSON.stringify(data, null, 2), 'utf8');
+    // Atomic write: write to tmp file then rename (atomic on POSIX)
+    const tmpPath = fullPath + '.tmp.' + process.pid + '.' + Date.now();
+    const json = JSON.stringify(data, null, 2);
+    await fs.writeFile(tmpPath, json, 'utf8');
+    await fs.rename(tmpPath, fullPath);
     this.cache.set(relativePath, data);
     this.dirty.delete(relativePath);
   }

@@ -75,11 +75,16 @@ const TaskQueueUI = {
   },
 
   async addTask() {
+    // Always refresh agents + projects before opening dialog
+    await Promise.all([this._loadAgents(), this._loadProjects()]);
+    
     // Inline dialog
     const dialog = document.createElement('div');
     dialog.className = 'modal task-add-modal';
-    const agentOptions = this.agents.map(a => `<option value="${a.agent_id}">${a.display_name} (${a.agent_id})</option>`).join('');
-    const projectOptions = this.projects.map(p => `<option value="${p.project_id}">${p.name}</option>`).join('');
+    const agentOptions = this.agents.length
+      ? this.agents.map(a => `<option value="${a.agent_id}">${this._escape(a.display_name)} - ${this._escape(a.specialization || 'general')} (${a.agent_id})</option>`).join('')
+      : '<option disabled>No agents - create one first</option>';
+    const projectOptions = this.projects.map(p => `<option value="${p.project_id}">${this._escape(p.name)}</option>`).join('');
     dialog.innerHTML = `
       <div class="modal-content" style="width:90vw; max-width:520px;">
         <div class="modal-header">

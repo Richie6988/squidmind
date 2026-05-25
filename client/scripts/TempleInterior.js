@@ -170,10 +170,11 @@ const TempleInterior = {
   populateWorkingAgents(temple) {
     const container = document.getElementById('working-agents');
     
-    // Get REAL squids from aquarium
+    // Get REAL squids from aquarium - either explicitly assigned to project
+    // or animated into temple via drag-drop (insideTemple flag)
     const allSquids = window.aquarium?.squids || [];
     const assignedSquids = allSquids.filter(squid => 
-      squid.currentProject === temple.name
+      squid.currentProject === temple.name || squid.insideTemple === temple.name
     );
     
     if (assignedSquids.length > 0) {
@@ -869,67 +870,8 @@ TempleInterior.openProjectMemory = async function() {
   }
 };
 
-/**
- * Show squid assigner with REAL squids from aquarium
- */
-TempleInterior.showSquidAssigner = function() {
-  if (!this.currentTemple) return;
-  
-  const modal = document.getElementById('squid-assigner-modal');
-  if (!modal) return;
-  
-  // Get all squids from aquarium
-  const allSquids = window.aquarium?.squids || [];
-  
-  if (allSquids.length === 0) {
-    alert('No squids in aquarium! Create some squids first.');
-    return;
-  }
-  
-  // Populate squid list
-  const listDiv = modal.querySelector('.squid-assigner-list');
-  listDiv.innerHTML = allSquids.map(squid => `
-    <div class="squid-assign-item">
-      <input type="checkbox" 
-             id="assign-${squid.id}" 
-             value="${squid.id}"
-             ${this.currentTemple.assignedSquids?.includes(squid.id) ? 'checked' : ''}>
-      <label for="assign-${squid.id}">
-        <span style="color: ${squid.appearance?.body_color || '#FF6B9D'}">[SQUID]</span>
-        ${squid.name} - ${squid.specialty || 'General'}
-      </label>
-    </div>
-  `).join('');
-  
-  modal.classList.remove('hidden');
-};
 
-/**
- * Save squid assignments to temple
- */
-TempleInterior.saveSquidAssignments = function() {
-  if (!this.currentTemple) return;
-  
-  const modal = document.getElementById('squid-assigner-modal');
-  const checkboxes = modal.querySelectorAll('input[type="checkbox"]:checked');
-  
-  const assignedSquids = Array.from(checkboxes).map(cb => cb.value);
-  
-  this.currentTemple.assignedSquids = assignedSquids;
-  
-  console.log('[OK] Assigned squids to temple:', assignedSquids);
-  
-  // Refresh working agents display
-  this.populateWorkingAgents(this.currentTemple);
-  
-  // Close modal
-  modal.classList.add('hidden');
-  
-  // TODO: Save to backend
-  window.ui.addLog('squid_assigned', `Assigned ${assignedSquids.length} squids to ${this.currentTemple.name}`);
-};
-
-console.log('[OK] Temple improvements loaded - Real memory + Squid assignment');
+// Legacy duplicate showSquidAssigner removed - using the search-by-name version above
 
 /**
  * Customize temple colors
