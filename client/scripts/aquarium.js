@@ -193,7 +193,7 @@ const aquarium = {
         console.log(`Loaded ${this.squids.length} squids`);
         
         // Update header count
-        document.getElementById('agent-count').textContent = `${this.squids.length} Squids`;
+        {const _e = document.getElementById("agent-count"); if(_e) _e.textContent = `${this.squids.length} Squids`;}
       }
     } catch (error) {
       console.error('Failed to load squids:', error);
@@ -207,7 +207,7 @@ const aquarium = {
       SquidInteractions.enhance(squid);
     }
     this.squids.push(squid);
-    document.getElementById('agent-count').textContent = `${this.squids.length} Squids`;
+    {const _e = document.getElementById("agent-count"); if(_e) _e.textContent = `${this.squids.length} Squids`;}
     console.log(`Added squid: ${agentData.name}`);
   },
 
@@ -216,7 +216,7 @@ const aquarium = {
     if (this.selectedSquid?.id === agentId) {
       this.selectedSquid = null;
     }
-    document.getElementById('agent-count').textContent = `${this.squids.length} Squids`;
+    {const _e = document.getElementById("agent-count"); if(_e) _e.textContent = `${this.squids.length} Squids`;}
   },
 
   updateSquidStatus(agentId, status) {

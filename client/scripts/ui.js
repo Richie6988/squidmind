@@ -163,14 +163,16 @@ const ui = {
       // Get health
       const health = await api.getHealth();
       const apiStatus = document.getElementById('api-status');
-      apiStatus.style.color = health.api_connected ? '#06FFA5' : '#E63946';
+      if (apiStatus) apiStatus.style.color = health.api_connected ? '#06FFA5' : '#E63946';
       
-      // Get task count
-      const tasks = await api.getTaskStatus();
-      document.getElementById('task-count').textContent = `${tasks.total_jobs} Tasks`;
-      
+      // Get task count (top-right header element was removed; ControlTowerLive handles it now)
+      const taskCountEl = document.getElementById('task-count');
+      if (taskCountEl) {
+        const tasks = await api.getTaskStatus();
+        taskCountEl.textContent = `${tasks.total_jobs} Tasks`;
+      }
     } catch (error) {
-      console.error('Failed to update stats:', error);
+      // silent - non-critical
     }
   },
 
@@ -923,26 +925,27 @@ console.log('[POSEIDON] Poseidon AI module loaded');
 // Tool Selection for Squids
 ui.loadAvailableTools = async function() {
   try {
-    const response = await fetch('/api/tools');
+    // Use V2 endpoint
+    const response = await fetch('/api/v2/tools');
     const data = await response.json();
+    const tools = Object.values(data.registry?.tools || {});
     
-    // Handle different response formats
-    const tools = Array.isArray(data) ? data : (data.tools || []);
-    
-    if (!Array.isArray(tools)) {
-      console.error('Tools is not an array:', tools);
-      return;
-    }
-    
-    // Populate tools checklist in both forms
     const checklistCreate = document.querySelector('#creator-panel #tools-checklist');
     const checklistEdit = document.querySelector('#edit-panel #tools-checklist');
     
-    const toolsHTML = tools.map(tool => `
-      <label class="tool-item">
-        <input type="checkbox" name="tool_${tool.name}" value="${tool.name}" checked>
-        <span class="tool-name">${tool.name}</span>
-        <span class="tool-desc">${tool.description || ''}</span>
+    if (tools.length === 0) {
+      const empty = '<p class="hint" style="font-size:9px; padding:8px;">No tools available. Restart server.</p>';
+      if (checklistCreate) checklistCreate.innerHTML = empty;
+      if (checklistEdit) checklistEdit.innerHTML = empty;
+      return;
+    }
+    
+    // Render as compact grid with hover tooltips
+    const toolsHTML = tools.map(t => `
+      <label class="tool-grid-tile" title="${ui._esc(t.name)}: ${ui._esc(t.description || '')}">
+        <input type="checkbox" name="tool_${ui._esc(t.name)}" value="${ui._esc(t.name)}" checked>
+        <span class="tool-grid-name">${ui._esc(t.name)}</span>
+        <span class="tool-grid-cat">${ui._esc(t.category || 'general')}</span>
       </label>
     `).join('');
     
@@ -950,7 +953,33 @@ ui.loadAvailableTools = async function() {
     if (checklistEdit) checklistEdit.innerHTML = toolsHTML;
     
   } catch (error) {
-    console.error('Failed to load tools:', error);
+    console.warn('Failed to load tools:', error);
+  }
+};
+
+ui._esc = function(s) {
+  return String(s || '').replace(/[<>&"]/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' })[c]);
+};
+
+// Load imported models into the creator's model dropdown
+ui.loadCreatorModels = async function() {
+  try {
+    const sel = document.getElementById('creator-model-select');
+    if (!sel) return;
+    const res = await fetch('/api/v2/models/library');
+    const data = await res.json();
+    const imported = (data.models || []).filter(m => m.imported);
+    // Preserve the "(use Poseidon default)" option
+    sel.innerHTML = '<option value="">(use Poseidon default)</option>' +
+      imported.map(m => `<option value="${ui._esc(m.model_id)}">${ui._esc(m.model_id)} (${m.file_size_gb || '?'} GB)</option>`).join('');
+    if (imported.length === 0) {
+      const opt = document.createElement('option');
+      opt.disabled = true;
+      opt.textContent = '(no models imported - open Models panel)';
+      sel.appendChild(opt);
+    }
+  } catch (err) {
+    console.warn('Failed to load creator models:', err);
   }
 };
 
@@ -964,13 +993,16 @@ ui.getSelectedTools = function(formElement) {
   return Array.from(checkboxes).map(cb => cb.value);
 };
 
-// Initialize tools when panels open
+// Initialize tools and models when panels open
 const originalShowPanelForTools = ui.showPanel;
 ui.showPanel = function(panelName) {
   originalShowPanelForTools.call(this, panelName);
   
   if (panelName === 'creator' || panelName === 'edit') {
     ui.loadAvailableTools();
+  }
+  if (panelName === 'creator') {
+    ui.loadCreatorModels();
   }
 };
 

@@ -1,43 +1,41 @@
 /**
- * AgentForm - User-friendly form for editing agents
- * 
- * NO JSON visible. Just text inputs, dropdowns, checkboxes.
- * Behind the scenes: builds a list of changes, sends as PATCH requests to V2 API.
- * Every change logged automatically by backend.
+ * AgentForm - Comprehensive agent editor mapping every field of the
+ * squid_brain_NNN.json schema to a proper UI control.
+ *
+ * Sections: Identity / Brain / Inference / Personality / Capabilities /
+ *           Tools (grid) / Memory / Appearance / Lifecycle
+ *
+ * - Model is a dropdown sourced from data/models/model_registry.json
+ * - Tools render as a video-game inventory grid with hover hints
+ * - Accessories show 2D pixel-art previews (no emojis)
  */
 
 const AgentForm = {
   modal: null,
   agentId: null,
-  brain: null,        // squid_brain_NNN.json content
-  registry: null,     // agent_registry.json content
-  toolRegistry: null, // tool_registry.json content
-  modelRegistry: null,// model_registry.json content
-  dirty: new Map(),   // fieldPath -> { file, newValue }
+  brain: null,
+  registry: null,
+  toolRegistry: null,
+  modelRegistry: null,
+  dirty: new Map(),
 
-  /**
-   * Open form for editing an agent
-   */
   async open(agentId) {
     this.agentId = agentId;
     this.dirty = new Map();
-    
     try {
-      // Load everything in parallel
       const [agentRes, toolsRes, modelsRes] = await Promise.all([
         window.ApiV2.agents.get(agentId),
         window.ApiV2.tools.list(),
         window.ApiV2.models.list()
       ]);
-      this.brain = agentRes.agent.brain;
-      this.registry = agentRes.agent.registry_entry;
-      this.toolRegistry = toolsRes.registry;
-      this.modelRegistry = modelsRes.registry;
+      this.brain = agentRes.agent.brain || {};
+      this.registry = agentRes.agent.registry_entry || {};
+      this.toolRegistry = toolsRes.registry || {};
+      this.modelRegistry = modelsRes.registry || {};
     } catch (err) {
       alert('Failed to load agent: ' + err.message);
       return;
     }
-    
     this._buildModal();
     this._render();
   },
@@ -50,7 +48,7 @@ const AgentForm = {
     this.modal = document.createElement('div');
     this.modal.className = 'modal agent-form-modal';
     this.modal.innerHTML = `
-      <div class="modal-content agent-form-content">
+      <div class="modal-content agent-form-content" style="width:96vw; max-width:1100px;">
         <div class="modal-header agent-form-header">
           <h2 class="agent-form-title">Edit Agent</h2>
           <button class="btn-close" onclick="AgentForm.close()">x</button>
@@ -59,7 +57,7 @@ const AgentForm = {
         <div class="agent-form-footer">
           <span class="agent-form-status"></span>
           <button class="btn-secondary" onclick="AgentForm.close()">Cancel</button>
-          <button class="btn-primary agent-form-save" onclick="AgentForm.save()" disabled>Save Changes (0)</button>
+          <button class="btn-primary agent-form-save" onclick="AgentForm.save()" disabled>Save (0)</button>
         </div>
       </div>
     `;
@@ -68,110 +66,406 @@ const AgentForm = {
 
   _render() {
     const title = this.modal.querySelector('.agent-form-title');
-    title.textContent = `Edit Agent: ${this.registry.display_name}`;
-    
+    title.textContent = `Edit Agent: ${this.registry.display_name || this.agentId}`;
+
     const body = this.modal.querySelector('.agent-form-body');
     body.innerHTML = '';
-    
-    // ===== IDENTITY SECTION =====
+
+    const brain = this.brain;
+    const reg = this.registry;
+    const brainFile = `agents/${reg.brain_file || 'squid_brain_001.json'}`;
+
+    // ===== IDENTITY =====
     this._addSection(body, 'Identity', [
-      this._textField('Display Name', this.registry.display_name, val =>
-        this._markDirty('agents/agent_registry.json', `agents.${this.agentId}.display_name`, val)
-      ),
-      this._textField('Role', this.brain.identity.role, val =>
-        this._markDirty(`agents/${this.registry.brain_file}`, 'identity.role', val)
-      ),
-      this._selectField('Specialization', this.registry.specialization || 'general', [
+      this._textField('Display Name', reg.display_name || '', v =>
+        this._markDirty('agents/agent_registry.json', `agents.${this.agentId}.display_name`, v)),
+      this._textField('Nickname', brain.identity?.nickname || '', v =>
+        this._markDirty(brainFile, 'identity.nickname', v)),
+      this._textField('Role', brain.identity?.role || '', v =>
+        this._markDirty(brainFile, 'identity.role', v)),
+      this._textareaField('Personal Story', brain.identity?.story || '', v =>
+        this._markDirty(brainFile, 'identity.story', v)),
+      this._selectField('Specialization', reg.specialization || 'general', [
         'general', 'frontend_specialist', 'backend_specialist', 'fullstack_dev',
-        'data_analyst', 'devops', 'qa_tester', 'designer', 'researcher'
-      ], val =>
-        this._markDirty('agents/agent_registry.json', `agents.${this.agentId}.specialization`, val)
-      ),
-      this._selectField('Status', this.registry.status, [
-        'sleeping', 'active', 'thinking', 'blocked', 'archived'
-      ], val =>
-        this._markDirty('agents/agent_registry.json', `agents.${this.agentId}.status`, val)
-      )
+        'data_analyst', 'devops', 'qa_tester', 'designer', 'researcher',
+        'ml_engineer', 'security', 'documentation'
+      ], v => this._markDirty('agents/agent_registry.json', `agents.${this.agentId}.specialization`, v)),
+      this._selectField('Status', reg.status || 'sleeping',
+        ['sleeping', 'active', 'thinking', 'blocked', 'archived'],
+        v => this._markDirty('agents/agent_registry.json', `agents.${this.agentId}.status`, v))
     ]);
-    
-    // ===== BRAIN CONFIG =====
-    const cfg = this.brain.brain_config || {};
+
+    // ===== BRAIN: MODEL BINDING (dropdown from imported models) =====
+    const cfg = brain.brain_config || {};
     const inf = cfg.inference_params || {};
-    const modelOptions = ['(none)', ...Object.keys(this.modelRegistry.models || {})];
-    
-    this._addSection(body, 'Brain Configuration', [
-      this._selectField('Preferred Model', cfg.model_binding?.preferred_model_id || '(none)', modelOptions, val =>
-        this._markDirty(`agents/${this.registry.brain_file}`, 'brain_config.model_binding.preferred_model_id', val === '(none)' ? null : val)
-      ),
-      this._numberField('Temperature', inf.temperature ?? 0.7, 0, 2, 0.1, val =>
-        this._markDirty(`agents/${this.registry.brain_file}`, 'brain_config.inference_params.temperature', val)
-      ),
-      this._numberField('Top P', inf.top_p ?? 0.9, 0, 1, 0.05, val =>
-        this._markDirty(`agents/${this.registry.brain_file}`, 'brain_config.inference_params.top_p', val)
-      ),
-      this._numberField('Max Tokens per Response', inf.max_tokens_per_response ?? 2048, 64, 8192, 64, val =>
-        this._markDirty(`agents/${this.registry.brain_file}`, 'brain_config.inference_params.max_tokens_per_response', val)
-      ),
-      this._textareaField('System Prompt', cfg.system_prompt || '', val =>
-        this._markDirty(`agents/${this.registry.brain_file}`, 'brain_config.system_prompt', val)
-      )
+    const importedModels = Object.entries(this.modelRegistry.models || {})
+      .map(([id, m]) => ({ id, label: `${id} (${m.file_size_gb || '?'} GB)` }));
+    const modelOpts = ['(use Poseidon default)', ...importedModels.map(m => m.id)];
+    const modelLabels = importedModels.reduce((acc, m) => ({ ...acc, [m.id]: m.label }), { '(use Poseidon default)': '(use Poseidon default)' });
+
+    this._addSection(body, 'Model Binding', [
+      this._selectField('Model',
+        cfg.model_binding?.preferred_model_id || '(use Poseidon default)',
+        modelOpts,
+        v => this._markDirty(brainFile, 'brain_config.model_binding.preferred_model_id', v === '(use Poseidon default)' ? null : v),
+        modelLabels),
+      importedModels.length === 0
+        ? this._infoNote('No models imported yet. Open the Models panel to import one.')
+        : null
+    ].filter(Boolean));
+
+    // ===== BRAIN: INFERENCE =====
+    this._addSection(body, 'Inference Parameters', [
+      this._numberField('Temperature (creativity)', inf.temperature ?? 0.7, 0, 2, 0.05, v =>
+        this._markDirty(brainFile, 'brain_config.inference_params.temperature', v)),
+      this._numberField('Top P (nucleus sampling)', inf.top_p ?? 0.9, 0, 1, 0.05, v =>
+        this._markDirty(brainFile, 'brain_config.inference_params.top_p', v)),
+      this._numberField('Top K', inf.top_k ?? 40, 1, 200, 1, v =>
+        this._markDirty(brainFile, 'brain_config.inference_params.top_k', v)),
+      this._numberField('Repeat Penalty', inf.repeat_penalty ?? 1.1, 0.5, 2.0, 0.05, v =>
+        this._markDirty(brainFile, 'brain_config.inference_params.repeat_penalty', v)),
+      this._numberField('Max Tokens per Response', inf.max_tokens_per_response ?? 2048, 64, 8192, 64, v =>
+        this._markDirty(brainFile, 'brain_config.inference_params.max_tokens_per_response', v)),
+      this._textareaField('System Prompt', cfg.system_prompt || '', v =>
+        this._markDirty(brainFile, 'brain_config.system_prompt', v))
     ]);
-    
-    // ===== CAPABILITIES =====
-    const skills = Object.keys(this.brain.capabilities?.skills || {});
-    const allTools = Object.values(this.toolRegistry.tools || {}).map(t => ({
-      id: t.tool_id,
-      name: t.name,
-      type: t.type,
-      label: `${t.name} (${t.type})`
-    }));
-    const allowedTools = this.brain.capabilities?.tools_allowed || [];
+
+    // ===== PERSONALITY =====
+    const per = brain.personality || {};
+    const traits = per.traits || {};
+    this._addSection(body, 'Personality', [
+      this._sliderField('Curiosity', traits.curiosity ?? 0.7, v =>
+        this._markDirty(brainFile, 'personality.traits.curiosity', v)),
+      this._sliderField('Thoroughness', traits.thoroughness ?? 0.7, v =>
+        this._markDirty(brainFile, 'personality.traits.thoroughness', v)),
+      this._sliderField('Creativity', traits.creativity ?? 0.5, v =>
+        this._markDirty(brainFile, 'personality.traits.creativity', v)),
+      this._sliderField('Assertiveness', traits.assertiveness ?? 0.5, v =>
+        this._markDirty(brainFile, 'personality.traits.assertiveness', v)),
+      this._sliderField('Empathy', traits.empathy ?? 0.6, v =>
+        this._markDirty(brainFile, 'personality.traits.empathy', v)),
+      this._selectField('Communication Style', per.communication_style || 'professional',
+        ['professional', 'casual', 'verbose', 'concise', 'playful', 'analytical'],
+        v => this._markDirty(brainFile, 'personality.communication_style', v)),
+      this._selectField('Default Mood', per.default_mood || 'neutral',
+        ['neutral', 'happy', 'focused', 'serious', 'curious', 'enthusiastic'],
+        v => this._markDirty(brainFile, 'personality.default_mood', v))
+    ]);
+
+    // ===== CAPABILITIES (skills) =====
+    const cap = brain.capabilities || {};
+    const skills = Object.keys(cap.skills || {});
     const allSkillOptions = [
-      'frontend_dev', 'backend_dev', 'fullstack', 'data_analysis',
-      'code_review', 'documentation', 'ui_design', 'devops',
-      'testing', 'security', 'database', 'machine_learning'
+      'frontend_dev', 'backend_dev', 'fullstack', 'data_analysis', 'code_review',
+      'documentation', 'ui_design', 'devops', 'testing', 'security', 'database',
+      'machine_learning', 'cloud', 'mobile', 'research', 'project_management'
     ];
-    
-    this._addSection(body, 'Capabilities', [
-      this._multiSelectField('Skills (specialities)', skills, allSkillOptions, vals =>
-        this._markDirty(`agents/${this.registry.brain_file}`, 'capabilities.skills',
-          Object.fromEntries(vals.map(s => [s, this.brain.capabilities?.skills?.[s] || { skill_level: 0.5, tasks_completed: 0 }]))
-        )
-      ),
-      this._multiSelectField('Tools Allowed', allowedTools, allTools.map(t => t.name), vals =>
-        this._markDirty(`agents/${this.registry.brain_file}`, 'capabilities.tools_allowed', vals),
-        allTools.reduce((acc, t) => ({ ...acc, [t.name]: t.label }), {})
-      )
+
+    this._addSection(body, 'Skills', [
+      this._multiSelectField('Skills', skills, allSkillOptions, vals =>
+        this._markDirty(brainFile, 'capabilities.skills',
+          Object.fromEntries(vals.map(s => [s, cap.skills?.[s] || { skill_level: 0.5, tasks_completed: 0 }]))
+        ))
     ]);
+
+    // ===== TOOLS GRID =====
+    const allTools = Object.values(this.toolRegistry.tools || {});
+    const allowedTools = cap.tools_allowed || [];
+    this._addToolsGrid(body, allTools, allowedTools, brainFile);
+
+    // ===== MEMORY =====
+    const mem = brain.memory || {};
+    this._addSection(body, 'Memory', [
+      this._sliderField('Context Retention', mem.context_retention ?? 0.7, v =>
+        this._markDirty(brainFile, 'memory.context_retention', v)),
+      this._numberField('Long-term Memory Slots', mem.long_term_capacity ?? 100, 10, 1000, 10, v =>
+        this._markDirty(brainFile, 'memory.long_term_capacity', v)),
+      this._checkboxField('Remember Across Sessions', mem.persist_across_sessions ?? true, v =>
+        this._markDirty(brainFile, 'memory.persist_across_sessions', v))
+    ]);
+
+    // ===== APPEARANCE (with pixel-art previews) =====
+    this._addAppearanceSection(body, brain.appearance || {}, brainFile);
+
+    // ===== LIFECYCLE / REPORTING =====
+    const life = brain.lifecycle || {};
+    this._addSection(body, 'Lifecycle', [
+      this._selectField('Reports To', reg.reports_to || '(none)',
+        ['(none)', 'poseidon', ...this._getOtherAgentIds()],
+        v => this._markDirty('agents/agent_registry.json', `agents.${this.agentId}.reports_to`, v === '(none)' ? null : v)),
+      this._numberField('Max Concurrent Tasks', life.max_concurrent_tasks ?? 1, 1, 10, 1, v =>
+        this._markDirty(brainFile, 'lifecycle.max_concurrent_tasks', v)),
+      this._selectField('Auto-sleep When Idle', life.auto_sleep || 'after_30min',
+        ['never', 'after_5min', 'after_30min', 'after_2h'],
+        v => this._markDirty(brainFile, 'lifecycle.auto_sleep', v))
+    ]);
+
+    this._updateSaveButton();
+  },
+
+  _getOtherAgentIds() {
+    return Object.keys((this.registry && this.registry.parent_registry?.agents) || {});
+  },
+
+  // ===== APPEARANCE WITH PIXEL ART PREVIEWS =====
+
+  _addAppearanceSection(parent, app, brainFile) {
+    const acc = app.accessories || {};
+    const section = document.createElement('div');
+    section.className = 'agent-form-section';
+    section.innerHTML = `<h3 class="agent-form-section-title">Appearance</h3>`;
+    const body = document.createElement('div');
+    body.className = 'agent-form-section-body';
+    section.appendChild(body);
+
+    // Color + size in one row
+    const topRow = document.createElement('div');
+    topRow.className = 'agent-form-row';
+    topRow.innerHTML = `
+      <label>Colors &amp; Size</label>
+      <div class="agent-form-inline-fields">
+        <span><span style="font-size:8px; color:var(--text-secondary)">Primary</span><br>
+          <input type="color" id="af-app-primary" value="${this._escape(app.primary_color || '#FF6B9D')}"></span>
+        <span><span style="font-size:8px; color:var(--text-secondary)">Accent</span><br>
+          <input type="color" id="af-app-secondary" value="${this._escape(app.secondary_color || '#C44569')}"></span>
+        <span><span style="font-size:8px; color:var(--text-secondary)">Size scale</span><br>
+          <input type="number" id="af-app-size" min="0.5" max="2.0" step="0.1" value="${app.size_scale ?? 1.0}" style="width:60px;"></span>
+      </div>
+    `;
+    body.appendChild(topRow);
+
+    // Live preview canvas (drawn squid)
+    const previewRow = document.createElement('div');
+    previewRow.className = 'agent-form-row';
+    previewRow.innerHTML = `
+      <label>Live Preview</label>
+      <canvas id="af-preview-canvas" width="180" height="180" class="af-preview-canvas"></canvas>
+    `;
+    body.appendChild(previewRow);
+
+    // Accessory pickers - each with pixel art tiles
+    const hatOpts = ['none', 'top_hat', 'cap', 'crown', 'beanie', 'pirate', 'wizard_hat', 'headphones'];
+    const glassesOpts = ['none', 'round', 'sunglasses', 'monocle', 'vr'];
+    const eyesOpts = ['round', 'happy', 'sleepy', 'angry', 'star', 'heart'];
+    const outfitOpts = ['none', 'scarf', 'tie', 'cape', 'lab_coat', 'armor'];
+
+    this._addAccessoryPicker(body, 'Hat', 'hat', hatOpts, acc.hat || 'none', brainFile);
+    this._addAccessoryPicker(body, 'Glasses', 'glasses', glassesOpts, acc.glasses || 'none', brainFile);
+    this._addAccessoryPicker(body, 'Eyes', 'eyes', eyesOpts, acc.eyes || 'round', brainFile);
+    this._addAccessoryPicker(body, 'Outfit', 'outfit', outfitOpts, acc.outfit || 'none', brainFile);
+
+    parent.appendChild(section);
+
+    // Wire color/size inputs
+    section.querySelector('#af-app-primary').addEventListener('input', e => {
+      this._markDirty(brainFile, 'appearance.primary_color', e.target.value);
+      this._updateAppearancePreview();
+    });
+    section.querySelector('#af-app-secondary').addEventListener('input', e => {
+      this._markDirty(brainFile, 'appearance.secondary_color', e.target.value);
+      this._updateAppearancePreview();
+    });
+    section.querySelector('#af-app-size').addEventListener('input', e => {
+      this._markDirty(brainFile, 'appearance.size_scale', parseFloat(e.target.value));
+      this._updateAppearancePreview();
+    });
+
+    // Initial draw
+    setTimeout(() => this._updateAppearancePreview(), 50);
+  },
+
+  _addAccessoryPicker(parent, label, key, options, current, brainFile) {
+    const row = document.createElement('div');
+    row.className = 'agent-form-row';
+    row.innerHTML = `<label>${label}</label>`;
+    const grid = document.createElement('div');
+    grid.className = 'af-accessory-grid';
+    options.forEach(opt => {
+      const tile = document.createElement('div');
+      tile.className = 'af-accessory-tile' + (opt === current ? ' selected' : '');
+      tile.dataset.value = opt;
+      tile.dataset.key = key;
+      tile.title = opt;
+      // Canvas with the accessory drawn
+      const canvas = document.createElement('canvas');
+      canvas.width = 48; canvas.height = 48;
+      this._drawAccessoryPreview(canvas, key, opt);
+      tile.appendChild(canvas);
+      const tag = document.createElement('div');
+      tag.className = 'af-accessory-tile-label';
+      tag.textContent = opt === 'none' ? '-' : opt.replace(/_/g, ' ');
+      tile.appendChild(tag);
+      tile.addEventListener('click', () => {
+        grid.querySelectorAll('.af-accessory-tile').forEach(t => t.classList.remove('selected'));
+        tile.classList.add('selected');
+        this._markDirty(brainFile, `appearance.accessories.${key}`, opt === 'none' ? null : opt);
+        // Update brain in-place so preview reflects it
+        if (!this.brain.appearance) this.brain.appearance = {};
+        if (!this.brain.appearance.accessories) this.brain.appearance.accessories = {};
+        this.brain.appearance.accessories[key] = opt === 'none' ? null : opt;
+        this._updateAppearancePreview();
+      });
+      grid.appendChild(tile);
+    });
+    row.appendChild(grid);
+    parent.appendChild(row);
+  },
+
+  _drawAccessoryPreview(canvas, key, value) {
+    const ctx = canvas.getContext('2d');
+    ctx.imageSmoothingEnabled = false;
+    ctx.fillStyle = '#0a2540';
+    ctx.fillRect(0, 0, 48, 48);
+    if (value === 'none' || !value) {
+      ctx.fillStyle = '#3B4252';
+      ctx.font = '10px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText('none', 24, 28);
+      return;
+    }
+    if (typeof SquidAccessories === 'undefined') return;
+    ctx.save();
+    ctx.translate(24, 28);
+    try {
+      const size = 28;
+      if (key === 'hat') SquidAccessories.drawHat(ctx, value, size);
+      else if (key === 'glasses') SquidAccessories.drawGlasses(ctx, value, size);
+      else if (key === 'eyes') {
+        // Eyes need a faux face to look reasonable
+        ctx.translate(0, 6);
+        SquidAccessories.drawEyes(ctx, value, size);
+      }
+      else if (key === 'outfit') {
+        ctx.translate(0, 8);
+        SquidAccessories.drawOutfit(ctx, value, size);
+      }
+    } catch (e) {
+      ctx.fillStyle = '#888';
+      ctx.font = '8px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText('?', 0, 4);
+    }
+    ctx.restore();
+  },
+
+  _updateAppearancePreview() {
+    const canvas = this.modal?.querySelector('#af-preview-canvas');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    ctx.imageSmoothingEnabled = false;
+    ctx.fillStyle = '#0a2540';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
     
-    // ===== APPEARANCE =====
+    // Build temporary squid-like object for drawing
     const app = this.brain.appearance || {};
     const acc = app.accessories || {};
-    this._addSection(body, 'Appearance', [
-      this._colorField('Primary Color', app.primary_color || '#FF6B9D', val =>
-        this._markDirty(`agents/${this.registry.brain_file}`, 'appearance.primary_color', val)
-      ),
-      this._colorField('Secondary Color', app.secondary_color || '#C44569', val =>
-        this._markDirty(`agents/${this.registry.brain_file}`, 'appearance.secondary_color', val)
-      ),
-      this._numberField('Size Scale', app.size_scale ?? 1.0, 0.5, 2.0, 0.1, val =>
-        this._markDirty(`agents/${this.registry.brain_file}`, 'appearance.size_scale', val)
-      ),
-      this._selectField('Hat', acc.hat || 'none', ['none', 'top_hat', 'cap', 'crown', 'beanie', 'pirate'], val =>
-        this._markDirty(`agents/${this.registry.brain_file}`, 'appearance.accessories.hat', val)
-      ),
-      this._selectField('Glasses', acc.glasses || 'none', ['none', 'round', 'sunglasses', 'monocle', 'vr'], val =>
-        this._markDirty(`agents/${this.registry.brain_file}`, 'appearance.accessories.glasses', val)
-      ),
-      this._selectField('Eyes', acc.eyes || 'round', ['round', 'happy', 'sleepy', 'angry', 'star', 'heart'], val =>
-        this._markDirty(`agents/${this.registry.brain_file}`, 'appearance.accessories.eyes', val)
-      ),
-      this._selectField('Outfit', acc.outfit || 'none', ['none', 'scarf', 'tie', 'cape', 'lab_coat', 'armor'], val =>
-        this._markDirty(`agents/${this.registry.brain_file}`, 'appearance.accessories.outfit', val)
-      )
-    ]);
+    const sizeScale = app.size_scale ?? 1.0;
+    const size = 36 * sizeScale;
+    const primary = app.primary_color || '#FF6B9D';
+    const accent = app.secondary_color || '#C44569';
     
-    this._updateSaveButton();
+    ctx.save();
+    ctx.translate(canvas.width / 2, canvas.height / 2 + 5);
+    
+    // Body
+    ctx.fillStyle = primary;
+    ctx.fillRect(-size * 0.4, -size * 0.5, size * 0.8, size * 0.6);
+    // Belly
+    ctx.fillStyle = '#FFC4D6';
+    ctx.fillRect(-size * 0.3, -size * 0.1, size * 0.6, size * 0.2);
+    // Tentacles
+    for (let i = -2; i <= 2; i++) {
+      ctx.fillStyle = i % 2 === 0 ? primary : accent;
+      ctx.fillRect(i * size * 0.18 - size * 0.05, size * 0.1, size * 0.12, size * 0.4);
+    }
+    // Eyes default
+    ctx.fillStyle = 'white';
+    ctx.fillRect(-size * 0.2, -size * 0.3, size * 0.15, size * 0.15);
+    ctx.fillRect(size * 0.05, -size * 0.3, size * 0.15, size * 0.15);
+    ctx.fillStyle = 'black';
+    ctx.fillRect(-size * 0.15, -size * 0.27, size * 0.08, size * 0.08);
+    ctx.fillRect(size * 0.1, -size * 0.27, size * 0.08, size * 0.08);
+    
+    // Apply accessories
+    if (typeof SquidAccessories !== 'undefined') {
+      try {
+        if (acc.eyes && acc.eyes !== 'round') SquidAccessories.drawEyes(ctx, acc.eyes, size);
+        if (acc.outfit && acc.outfit !== 'none') SquidAccessories.drawOutfit(ctx, acc.outfit, size);
+        if (acc.hat && acc.hat !== 'none') SquidAccessories.drawHat(ctx, acc.hat, size);
+        if (acc.glasses && acc.glasses !== 'none') SquidAccessories.drawGlasses(ctx, acc.glasses, size);
+      } catch {}
+    }
+    
+    ctx.restore();
+  },
+
+  // ===== TOOLS GRID =====
+
+  _addToolsGrid(parent, allTools, allowedTools, brainFile) {
+    const section = document.createElement('div');
+    section.className = 'agent-form-section';
+    section.innerHTML = `<h3 class="agent-form-section-title">Tools (${allTools.length} available)</h3>`;
+    
+    if (allTools.length === 0) {
+      section.innerHTML += '<p class="hint" style="font-size:9px;">No tools in registry. Restart server to sync built-in tools.</p>';
+      parent.appendChild(section);
+      return;
+    }
+    
+    const desc = document.createElement('p');
+    desc.className = 'hint';
+    desc.style.cssText = 'font-size:9px; color:var(--text-secondary); margin:0 0 8px 0;';
+    desc.textContent = `Click tools to allow this agent to use them. Hover for description.`;
+    section.appendChild(desc);
+    
+    // Group by category
+    const byCategory = {};
+    allTools.forEach(t => {
+      const cat = t.category || 'general';
+      (byCategory[cat] = byCategory[cat] || []).push(t);
+    });
+    
+    const allowedSet = new Set(allowedTools);
+    
+    Object.entries(byCategory).sort().forEach(([cat, tools]) => {
+      const catHeader = document.createElement('div');
+      catHeader.className = 'af-tools-cat-header';
+      catHeader.textContent = cat;
+      section.appendChild(catHeader);
+      
+      const grid = document.createElement('div');
+      grid.className = 'af-tools-grid';
+      tools.forEach(tool => {
+        const tile = document.createElement('div');
+        tile.className = 'af-tool-tile' + (allowedSet.has(tool.name) ? ' selected' : '');
+        tile.dataset.tool = tool.name;
+        // Tooltip with description
+        const desc = tool.description || '(no description)';
+        const params = tool.parameters ? Object.keys(tool.parameters).join(', ') : '';
+        tile.title = `${tool.name}\n\n${desc}${params ? '\n\nParams: ' + params : ''}\nType: ${tool.type || 'local_function'}`;
+        // Icon based on category
+        const iconMap = {
+          filesystem: 'FS', network: 'NET', code: 'CODE', shell: 'SH',
+          data: 'DAT', search: 'SCH', system: 'SYS', general: '*', custom: '*'
+        };
+        const icon = iconMap[cat] || '*';
+        tile.innerHTML = `
+          <div class="af-tool-icon">${icon}</div>
+          <div class="af-tool-name">${this._escape(tool.name)}</div>
+        `;
+        tile.addEventListener('click', () => {
+          tile.classList.toggle('selected');
+          // Recompute current selected set
+          const newAllowed = Array.from(section.querySelectorAll('.af-tool-tile.selected'))
+            .map(t => t.dataset.tool);
+          this._markDirty(brainFile, 'capabilities.tools_allowed', newAllowed);
+        });
+        grid.appendChild(tile);
+      });
+      section.appendChild(grid);
+    });
+    
+    parent.appendChild(section);
   },
 
   // ===== FIELD BUILDERS =====
@@ -179,186 +473,168 @@ const AgentForm = {
   _addSection(parent, title, fields) {
     const section = document.createElement('div');
     section.className = 'agent-form-section';
-    section.innerHTML = `<h3>${title}</h3>`;
-    for (const f of fields) section.appendChild(f);
+    section.innerHTML = `<h3 class="agent-form-section-title">${this._escape(title)}</h3>`;
+    const body = document.createElement('div');
+    body.className = 'agent-form-section-body';
+    fields.forEach(f => body.appendChild(f));
+    section.appendChild(body);
     parent.appendChild(section);
   },
 
-  _row(label, input) {
-    const row = document.createElement('div');
-    row.className = 'agent-form-row';
-    const lbl = document.createElement('label');
-    lbl.textContent = label;
-    row.appendChild(lbl);
-    row.appendChild(input);
-    return row;
+  _infoNote(text) {
+    const div = document.createElement('div');
+    div.className = 'agent-form-row';
+    div.innerHTML = `<label>&nbsp;</label><span class="hint" style="font-size:9px; color:var(--accent); font-style:italic;">${this._escape(text)}</span>`;
+    return div;
   },
 
   _textField(label, value, onChange) {
-    const input = document.createElement('input');
-    input.type = 'text';
-    input.value = value || '';
-    input.addEventListener('input', () => onChange(input.value));
-    return this._row(label, input);
+    const row = document.createElement('div');
+    row.className = 'agent-form-row';
+    row.innerHTML = `<label>${this._escape(label)}</label><input type="text" value="${this._escape(value || '')}">`;
+    row.querySelector('input').addEventListener('input', e => onChange(e.target.value));
+    return row;
   },
 
   _textareaField(label, value, onChange) {
-    const ta = document.createElement('textarea');
-    ta.value = value || '';
-    ta.rows = 4;
-    ta.addEventListener('input', () => onChange(ta.value));
-    return this._row(label, ta);
+    const row = document.createElement('div');
+    row.className = 'agent-form-row';
+    row.innerHTML = `<label>${this._escape(label)}</label><textarea rows="3">${this._escape(value || '')}</textarea>`;
+    row.querySelector('textarea').addEventListener('input', e => onChange(e.target.value));
+    return row;
   },
 
   _numberField(label, value, min, max, step, onChange) {
-    const input = document.createElement('input');
-    input.type = 'number';
-    input.value = value;
-    input.min = min;
-    input.max = max;
-    input.step = step;
-    input.addEventListener('input', () => onChange(parseFloat(input.value)));
-    return this._row(label, input);
+    const row = document.createElement('div');
+    row.className = 'agent-form-row';
+    row.innerHTML = `<label>${this._escape(label)}</label><input type="number" min="${min}" max="${max}" step="${step}" value="${value}">`;
+    row.querySelector('input').addEventListener('input', e => onChange(parseFloat(e.target.value)));
+    return row;
   },
 
-  _selectField(label, value, options, onChange) {
-    const sel = document.createElement('select');
-    for (const opt of options) {
-      const o = document.createElement('option');
-      o.value = opt;
-      o.textContent = opt;
-      if (opt === value) o.selected = true;
-      sel.appendChild(o);
-    }
-    sel.addEventListener('change', () => onChange(sel.value));
-    return this._row(label, sel);
-  },
-
-  _colorField(label, value, onChange) {
-    const wrap = document.createElement('div');
-    wrap.className = 'agent-form-color-wrap';
-    const picker = document.createElement('input');
-    picker.type = 'color';
-    picker.value = value;
-    const text = document.createElement('input');
-    text.type = 'text';
-    text.value = value;
-    text.style.width = '90px';
-    picker.addEventListener('input', () => { text.value = picker.value; onChange(picker.value); });
-    text.addEventListener('input', () => {
-      if (/^#[0-9A-Fa-f]{6}$/.test(text.value)) {
-        picker.value = text.value;
-        onChange(text.value);
-      }
+  _sliderField(label, value, onChange) {
+    const row = document.createElement('div');
+    row.className = 'agent-form-row';
+    row.innerHTML = `
+      <label>${this._escape(label)}</label>
+      <div class="agent-form-slider-wrap">
+        <input type="range" min="0" max="1" step="0.05" value="${value}">
+        <span class="agent-form-slider-val">${(value * 100).toFixed(0)}%</span>
+      </div>
+    `;
+    const range = row.querySelector('input');
+    const valEl = row.querySelector('.agent-form-slider-val');
+    range.addEventListener('input', e => {
+      const v = parseFloat(e.target.value);
+      valEl.textContent = (v * 100).toFixed(0) + '%';
+      onChange(v);
     });
-    wrap.appendChild(picker);
-    wrap.appendChild(text);
-    return this._row(label, wrap);
+    return row;
   },
 
-  _multiSelectField(label, selected, options, onChange, displayMap = {}) {
-    const wrap = document.createElement('div');
-    wrap.className = 'agent-form-multiselect';
-    const selectedSet = new Set(selected);
-    for (const opt of options) {
-      const id = `ms-${label}-${opt}`.replace(/\W/g, '_');
-      const item = document.createElement('label');
-      item.className = 'agent-form-checkbox';
-      const cb = document.createElement('input');
-      cb.type = 'checkbox';
-      cb.checked = selectedSet.has(opt);
-      cb.id = id;
+  _selectField(label, current, options, onChange, labelMap = null) {
+    const row = document.createElement('div');
+    row.className = 'agent-form-row';
+    const opts = options.map(o => `<option value="${this._escape(o)}" ${o === current ? 'selected' : ''}>${this._escape(labelMap?.[o] || o)}</option>`).join('');
+    row.innerHTML = `<label>${this._escape(label)}</label><select>${opts}</select>`;
+    row.querySelector('select').addEventListener('change', e => onChange(e.target.value));
+    return row;
+  },
+
+  _checkboxField(label, value, onChange) {
+    const row = document.createElement('div');
+    row.className = 'agent-form-row';
+    row.innerHTML = `<label>${this._escape(label)}</label>
+      <label class="agent-form-checkbox" style="flex:0 0 auto;">
+        <input type="checkbox" ${value ? 'checked' : ''}>
+        <span>${value ? 'Enabled' : 'Disabled'}</span>
+      </label>`;
+    const cb = row.querySelector('input[type=checkbox]');
+    const span = row.querySelector('span');
+    cb.addEventListener('change', e => {
+      span.textContent = e.target.checked ? 'Enabled' : 'Disabled';
+      onChange(e.target.checked);
+    });
+    return row;
+  },
+
+  _multiSelectField(label, current, options, onChange, labelMap = {}) {
+    const row = document.createElement('div');
+    row.className = 'agent-form-row';
+    const set = new Set(current);
+    row.innerHTML = `<label>${this._escape(label)}</label>
+      <div class="agent-form-multi">${options.map(o => `
+        <label class="agent-form-multi-item">
+          <input type="checkbox" value="${this._escape(o)}" ${set.has(o) ? 'checked' : ''}>
+          <span>${this._escape(labelMap[o] || o)}</span>
+        </label>
+      `).join('')}</div>`;
+    row.querySelectorAll('input[type=checkbox]').forEach(cb => {
       cb.addEventListener('change', () => {
-        if (cb.checked) selectedSet.add(opt);
-        else selectedSet.delete(opt);
-        onChange(Array.from(selectedSet));
+        const vals = Array.from(row.querySelectorAll('input[type=checkbox]:checked')).map(c => c.value);
+        onChange(vals);
       });
-      item.appendChild(cb);
-      const span = document.createElement('span');
-      span.textContent = displayMap[opt] || opt;
-      item.appendChild(span);
-      wrap.appendChild(item);
-    }
-    return this._row(label, wrap);
+    });
+    return row;
   },
 
-  // ===== DIRTY TRACKING =====
+  // ===== DIRTY TRACKING + SAVE =====
 
-  _markDirty(file, fieldPath, newValue) {
-    const key = `${file}::${fieldPath}`;
-    this.dirty.set(key, { file, fieldPath, newValue });
+  _markDirty(filePath, fieldPath, newValue) {
+    const key = `${filePath}::${fieldPath}`;
+    this.dirty.set(key, { filePath, fieldPath, newValue });
     this._updateSaveButton();
-    
-    // LIVE PREVIEW for appearance changes
-    this._livePreview(fieldPath, newValue);
-  },
-
-  _livePreview(fieldPath, value) {
-    // Find the squid this agent represents and update its visuals immediately
-    if (!window.squids) return;
-    const squid = window.squids.find(s => s.agent_id === this.agentId || s.agentId === this.agentId);
-    if (!squid) return;
-    
-    if (fieldPath === 'appearance.primary_color') squid.color = value;
-    if (fieldPath === 'appearance.secondary_color') squid.colorDark = value;
-    if (fieldPath === 'appearance.size_scale') squid.baseSize = value;
-    if (fieldPath.startsWith('appearance.accessories.')) {
-      if (!squid.accessories) squid.accessories = {};
-      const slot = fieldPath.split('.').pop();
-      squid.accessories[slot] = value === 'none' ? null : value;
-    }
   },
 
   _updateSaveButton() {
     const btn = this.modal?.querySelector('.agent-form-save');
     if (!btn) return;
-    btn.textContent = `Save Changes (${this.dirty.size})`;
-    btn.disabled = this.dirty.size === 0;
+    const count = this.dirty.size;
+    btn.disabled = count === 0;
+    btn.textContent = count === 0 ? 'Save (0)' : `Save (${count})`;
   },
-
-  // ===== SAVE =====
 
   async save() {
     const status = this.modal.querySelector('.agent-form-status');
-    status.textContent = `Saving ${this.dirty.size} change(s)...`;
-    status.className = 'agent-form-status';
-    
-    let success = 0;
-    const errors = [];
-    for (const { file, fieldPath, newValue } of this.dirty.values()) {
+    const btn = this.modal.querySelector('.agent-form-save');
+    btn.disabled = true;
+    status.textContent = 'Saving...';
+    let failed = 0;
+    for (const { filePath, fieldPath, newValue } of this.dirty.values()) {
       try {
         await window.ApiV2._fetch('/field', {
           method: 'PATCH',
-          body: JSON.stringify({
-            filePath: file,
-            fieldPath,
-            newValue,
-            reason: 'edited via AgentForm UI'
-          })
+          body: JSON.stringify({ filePath, fieldPath, newValue, reason: 'AgentForm edit' })
         });
-        success++;
       } catch (err) {
-        errors.push(`${fieldPath}: ${err.message}`);
+        console.warn('PATCH failed:', filePath, fieldPath, err);
+        failed++;
       }
     }
-    
-    if (errors.length === 0) {
-      status.textContent = `Saved ${success} change(s). All synced.`;
-      status.className = 'agent-form-status success';
-      this.dirty.clear();
-      // Reload to show updated values
-      setTimeout(() => this.open(this.agentId), 800);
-    } else {
-      status.textContent = `${success} saved, ${errors.length} failed. ${errors[0]}`;
+    if (failed > 0) {
+      status.textContent = `${this.dirty.size - failed} saved, ${failed} failed`;
       status.className = 'agent-form-status error';
+    } else {
+      status.textContent = `Saved ${this.dirty.size} changes`;
+      status.className = 'agent-form-status success';
+    }
+    this.dirty.clear();
+    this._updateSaveButton();
+    // Reload squids on canvas so changes apply visually
+    if (window.aquarium?.loadSquids) {
+      setTimeout(() => window.aquarium.loadSquids(), 400);
     }
   },
 
   close() {
     if (this.modal) this.modal.classList.add('hidden');
-    this.dirty.clear();
+  },
+
+  _escape(s) {
+    if (s == null) return '';
+    return String(s).replace(/[<>&"]/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' })[c]);
   }
 };
 
 window.AgentForm = AgentForm;
-console.log('[OK] AgentForm loaded');
+console.log('[OK] AgentForm v2 loaded');

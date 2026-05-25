@@ -9,10 +9,10 @@
       "api_call": 1,
       "mcp_server": 1
     },
-    "last_updated_at": "2026-05-25T16:28:43.073Z",
-    "next_id": 22,
-    "last_id_used": 21,
-    "total_available": 23
+    "last_updated_at": "2026-05-25T16:48:40.957Z",
+    "next_id": 23,
+    "last_id_used": 22,
+    "total_available": 24
   },
   "tools": {
     "tool_local_001": {
@@ -421,6 +421,22 @@
       "parameters": {},
       "available": true,
       "registered_at": "2026-05-25T16:28:43.072Z"
+    },
+    "tool_local_022": {
+      "tool_id": "tool_local_022",
+      "name": "read_file",
+      "type": "local_function",
+      "category": "custom",
+      "description": "Read content from a file",
+      "parameters": {
+        "path": {
+          "type": "string",
+          "required": true,
+          "description": "File path to read"
+        }
+      },
+      "available": true,
+      "registered_at": "2026-05-25T16:48:40.944Z"
     }
   },
   "type_definitions": {
@@ -463,5 +479,5 @@
       ]
     }
   },
-  "last_updated_at": "2026-05-25T16:28:43.073Z"
+  "last_updated_at": "2026-05-25T16:48:40.957Z"
 }

@@ -109,6 +109,32 @@ const PoseidonChat = {
     sendBtn.disabled = true;
     sendBtn.textContent = '...';
     
+    // === LOADING INDICATOR ===
+    // Show a status line above the placeholder text while waiting for first token
+    let firstTokenReceived = false;
+    const setStatus = (msg, kind = 'loading') => {
+      if (!textEl) return;
+      if (kind === 'loading') {
+        textEl.innerHTML = `<div class="chat-loading">
+          <span class="chat-loading-dots"><span></span><span></span><span></span></span>
+          <span class="chat-loading-msg">${this._escape(msg)}</span>
+        </div>`;
+      } else {
+        textEl.textContent = msg;
+      }
+    };
+    
+    setStatus('Sending request...');
+    
+    // Show progressive status updates so user knows the model is loading
+    const statusTimers = [
+      setTimeout(() => { if (!firstTokenReceived) setStatus('Checking model status...'); }, 800),
+      setTimeout(() => { if (!firstTokenReceived) setStatus('Loading model into memory (first load can take 30-90s)...'); }, 3000),
+      setTimeout(() => { if (!firstTokenReceived) setStatus('Still loading model. Larger models take longer...'); }, 30000),
+      setTimeout(() => { if (!firstTokenReceived) setStatus('Generating response...'); }, 60000)
+    ];
+    const clearStatusTimers = () => statusTimers.forEach(t => clearTimeout(t));
+    
     try {
       const response = await fetch('/api/v2/poseidon/chat', {
         method: 'POST',
@@ -120,6 +146,7 @@ const PoseidonChat = {
       });
       
       if (!response.ok) {
+        clearStatusTimers();
         const err = await response.json().catch(() => ({ error: 'request failed' }));
         throw new Error(err.error || `HTTP ${response.status}`);
       }
@@ -157,9 +184,18 @@ const PoseidonChat = {
               throw new Error(payload.error || 'streaming error');
             } else if (eventType === 'end') {
               // done
+            } else if (eventType === 'start') {
+              // server says generation has started (model is loaded)
+              setStatus('Generating response...');
             } else {
-              // chunk
+              // chunk - clear loading indicator on first token
               if (payload.text) {
+                if (!firstTokenReceived) {
+                  firstTokenReceived = true;
+                  clearStatusTimers();
+                  textEl.textContent = '';
+                  textEl.innerHTML = '';
+                }
                 fullText += payload.text;
                 textEl.textContent = fullText;
                 this.modal.querySelector('#poseidon-chat-messages').scrollTop = 999999;
@@ -171,8 +207,10 @@ const PoseidonChat = {
         }
       }
       
+      clearStatusTimers();
       this.history[assistantIdx].content = fullText || '(no response)';
     } catch (err) {
+      clearStatusTimers();
       // Friendly message for common errors
       let friendly = err.message;
       if (/Invalid GGUF magic/i.test(err.message)) {

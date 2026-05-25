@@ -402,22 +402,36 @@ class V2ModelService {
         action: `FAILED to load ${fileName}: ${err.message}`
       });
       
-      // Auto-retry once with halved context if this is a VRAM/RAM size error
-      const isMemoryError = /context size.*too large|out of memory|VRAM|allocation/i.test(err.message);
-      if (isMemoryError && config.contextLength > 2048 && !cfg._isRetry) {
-        const newCtx = Math.max(2048, Math.floor(config.contextLength / 2));
-        console.warn(`[V2ModelService] OOM at ctx=${config.contextLength}, retrying with ctx=${newCtx}`);
-        // Update stored config so the auto-lower persists
+      // Progressive auto-retry on memory errors:
+      //   Attempt 0: user config (e.g. 8192 ctx, 32 gpu_layers)
+      //   Attempt 1: halve context
+      //   Attempt 2: halve context again + halve gpu_layers
+      //   Attempt 3: minimum (ctx=1024, gpu_layers=0, CPU-only fallback)
+      const isMemoryError = /context size.*too large|out of memory|VRAM|allocation|insufficient|cannot allocate/i.test(err.message);
+      const attempt = cfg._retryAttempt || 0;
+      if (isMemoryError && attempt < 3) {
+        let newCtx = config.contextLength;
+        let newGpu = config.gpuLayers;
+        if (attempt === 0) {
+          newCtx = Math.max(512, Math.floor(config.contextLength / 2));
+        } else if (attempt === 1) {
+          newCtx = Math.max(512, Math.floor(config.contextLength / 2));
+          newGpu = Math.floor(config.gpuLayers / 2);
+        } else {
+          newCtx = 1024;
+          newGpu = 0;  // pure CPU
+        }
+        console.warn(`[V2ModelService] Memory error at attempt ${attempt} (ctx=${config.contextLength}, gpu=${config.gpuLayers}). Retrying with ctx=${newCtx}, gpu=${newGpu}`);
         try {
-          await this.updateModelParams(modelId, { contextLength: newCtx });
+          await this.updateModelParams(modelId, { contextLength: newCtx, gpuLayers: newGpu });
         } catch {}
-        return await this.loadModel(fileName, { ...cfg, contextLength: newCtx, _isRetry: true });
+        return await this.loadModel(fileName, { ...cfg, contextLength: newCtx, gpuLayers: newGpu, _retryAttempt: attempt + 1 });
       }
 
       // Surface friendly error
       let msg = err.message;
       if (isMemoryError) {
-        msg = `Context size ${config.contextLength} too large for your GPU/RAM. Lower 'Context length' in Edit Params (try 4096 or 2048). Current GPU layers: ${config.gpuLayers} - try lowering that too if needed.`;
+        msg = `Your GPU/RAM can't fit this model with the current settings. Auto-retry attempted 3 reductions and still failed. The model file may be too large for your hardware. Try a smaller model (1-3B params).`;
       }
       throw new Error(`Load failed: ${msg}`);
     }
