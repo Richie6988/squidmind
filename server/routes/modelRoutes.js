@@ -6,7 +6,17 @@ const express = require('express');
 function buildRouter(v2ModelService) {
   const router = express.Router();
 
-  // GET /api/v2/models/available - list local .gguf files in models dir
+  // GET /api/v2/models/library - merged scan + registry view (what user sees)
+  router.get('/library', async (req, res) => {
+    try {
+      const library = await v2ModelService.getLibrary();
+      res.json({ success: true, ...library });
+    } catch (err) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  // GET /api/v2/models/available - list local .gguf files in models dir (legacy compat)
   router.get('/available', async (req, res) => {
     try {
       const models = await v2ModelService.scanLocalModels();
@@ -21,8 +31,39 @@ function buildRouter(v2ModelService) {
     res.json({ success: true, ...v2ModelService.getStatus() });
   });
 
-  // POST /api/v2/models/load - load with full config
-  // Body: { fileName, contextLength, gpuLayers, cpuThreads, batchSize, offloadKqvToGpu, randomSeed, autoUnloadIdleMinutes }
+  // POST /api/v2/models/import - register a model in the library (no load)
+  router.post('/import', async (req, res) => {
+    try {
+      const { fileName, ...config } = req.body;
+      if (!fileName) return res.status(400).json({ success: false, error: 'fileName required' });
+      const result = await v2ModelService.importModel(fileName, config);
+      res.json(result);
+    } catch (err) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  // PATCH /api/v2/models/:id/params - edit load params
+  router.patch('/:modelId/params', async (req, res) => {
+    try {
+      const result = await v2ModelService.updateModelParams(req.params.modelId, req.body);
+      res.json(result);
+    } catch (err) {
+      res.status(400).json({ success: false, error: err.message });
+    }
+  });
+
+  // DELETE /api/v2/models/:id - remove from library
+  router.delete('/:modelId', async (req, res) => {
+    try {
+      const result = await v2ModelService.removeFromLibrary(req.params.modelId);
+      res.json(result);
+    } catch (err) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  // POST /api/v2/models/:id/load - explicit manual load (rare; usually auto)
   router.post('/load', async (req, res) => {
     try {
       const { fileName, ...cfg } = req.body;

@@ -478,130 +478,23 @@ app.post('/api/models/unload', async (req, res) => {
 // ==================== POSEIDON AI ROUTES ====================
 
 // Initialize Poseidon with model
+// DEPRECATED - V2 ModelService handles this automatically. Returns helpful error.
 app.post('/api/poseidon/init', async (req, res) => {
-  try {
-    const { modelName } = req.body;
-    
-    // Get available models
-    const loadedModels = modelManager.getLoadedModels();
-    
-    let poseidonModel = null;
-    
-    if (modelName) {
-      // Try to load specific model
-      poseidonModel = loadedModels.find(m => m.name === modelName);
-    } else {
-      // Use first available model
-      poseidonModel = loadedModels[0];
-    }
-    
-    if (!poseidonModel) {
-      // Try to load a default model if available
-      const availableModels = await modelManager.listModels();
-      if (availableModels.length > 0) {
-        const firstModel = availableModels[0];
-        await modelManager.loadModel(firstModel.path);
-        poseidonModel = { name: firstModel.name };
-      }
-    }
-    
-    res.json({
-      success: poseidonModel !== null,
-      model: poseidonModel?.name || null,
-      message: poseidonModel ? `Poseidon connected to ${poseidonModel.name}` : 'No model available'
-    });
-  } catch (error) {
-    console.error('Poseidon init error:', error);
-    res.json({
-      success: false,
-      error: error.message,
-      model: null
-    });
-  }
+  res.status(410).json({
+    success: false,
+    error: 'Deprecated endpoint. Use /api/v2/models/* to manage models. Poseidon auto-loads its assigned model on first chat.',
+    redirect: '/api/v2/models/status'
+  });
 });
 
 // Poseidon chat endpoint
-app.post('/api/poseidon/chat', async (req, res) => {
-  try {
-    const { message, context, history } = req.body;
-    
-    // Poseidon system prompt
-    const poseidonPrompt = `You are Poseidon, the mighty God of the Ocean and Supreme Dispatcher of the SquidMind system.
-
-PERSONALITY:
-- Ancient and wise ocean deity (POSEIDON - god of the sea, not Zeus!)
-- Powerful but friendly and helpful
-- Speaks with authority and occasional dramatic flair
-- Uses ocean/water metaphors ("the currents", "the tides", "my depths", "the waves")
-- Manages a workforce of AI squids (agents)
-- Genuinely cares about helping the user succeed
-
-YOUR ROLE:
-- Orchestrate and dispatch squids (AI agents) to complete tasks
-- Provide guidance and wisdom
-- Monitor squad performance
-- Motivate and encourage
-- Explain system capabilities
-
-COMMUNICATION STYLE:
-- Start responses with ocean emojis (🌊⚡🔱)
-- Keep responses concise (2-4 sentences max)
-- Use "mortal" when addressing user
-- Reference your divine powers playfully
-- Be helpful and direct, not cryptic
-
-CURRENT SYSTEM STATE:
-${context}
-
-When users ask you to do something, analyze if it needs:
-1. A single squid → Tell them which agent would be best
-2. Multiple squids → Suggest creating a team
-3. Just information → Answer directly
-
-Always be encouraging and make tasks seem manageable!`;
-
-    // Check if we have a local model loaded
-    const loadedModels = modelManager.getLoadedModels();
-    
-    if (loadedModels.length > 0) {
-      // Use local model
-      const response = await modelManager.generateWithModel(loadedModels[0].name, {
-        system: poseidonPrompt,
-        messages: [
-          ...(history || []).map(h => ({
-            role: h.role === 'poseidon' ? 'assistant' : 'user',
-            content: h.content
-          })),
-          {
-            role: 'user',
-            content: message
-          }
-        ],
-        temperature: 0.8,
-        max_tokens: 200
-      });
-      
-      res.json({
-        success: true,
-        response: response.text,
-        model: loadedModels[0].name,
-        intent: analyzeIntent(message)
-      });
-    } else {
-      // No local model loaded - inform user
-      res.json({
-        success: false,
-        error: 'No GGUF model loaded. Please load a model first from the Models panel.'
-      });
-    }
-  } catch (error) {
-    console.error('Poseidon chat error:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message,
-      response: "🌩️ A disturbance in the currents prevents my full power! " + error.message
-    });
-  }
+// DEPRECATED - V2 endpoint /api/v2/poseidon/chat replaces this.
+app.post('/api/poseidon/chat', (req, res) => {
+  res.status(410).json({
+    success: false,
+    error: 'Deprecated. Use POST /api/v2/poseidon/chat for streaming chat with brain.json context.',
+    redirect: '/api/v2/poseidon/chat'
+  });
 });
 
 // Helper: Analyze intent

@@ -17,7 +17,7 @@
       <div class="header-nav">
         <button class="btn-nav" onclick="ui.showPanel('creator')">+ New Squid</button>
         <button class="btn-nav" onclick="ui.showPanel('teams')">[TEAM] Teams</button>
-        <button class="btn-nav" onclick="ui.showPanel('models')">[MODELS] Models</button>
+        <button class="btn-nav" onclick="ModelLoader.open()">[MODELS] Models</button>
         <button class="btn-nav" onclick="ui.showPanel('logs')">[LOGS] Logs</button>
       </div>
       <div class="header-stats">
@@ -476,61 +476,7 @@
       </div>
 
       <!-- Models Panel -->
-      <div id="models-panel" class="panel hidden">
-        <div class="panel-header">
-          <h2>[MODELS] GGUF Models</h2>
-          <button class="btn-close" onclick="ui.hidePanel('models')">✕</button>
-        </div>
-        <div class="panel-content">
-          
-          <!-- Scan Section -->
-          <div class="model-section">
-            <h3>🔍 Find Models</h3>
-            <p class="hint">Scan HuggingFace cache OR browse your filesystem</p>
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
-              <button onclick="ui.scanForModels()" class="btn-primary">
-                🔍 Auto Scan
-              </button>
-              <button onclick="ui.openFileBrowser()" class="btn-primary">
-                📂 Browse Files
-              </button>
-            </div>
-            <div id="scan-status" style="margin-top: 8px; font-size: 10px;"></div>
-          </div>
-          
-          <hr style="margin: 20px 0; border-color: var(--border);">
-          
-          <!-- Available Models -->
-          <div class="model-section">
-            <h3>[TASKS] Available Models</h3>
-            <div id="available-models-list" class="content-list">
-              <p class="hint">Click "Scan for Models" to find .gguf files</p>
-            </div>
-          </div>
-          
-          <hr style="margin: 20px 0; border-color: var(--border);">
-          
-          <!-- Loaded Models -->
-          <div class="model-section">
-            <h3>[OK] Loaded Models (Ready for Chat)</h3>
-            <div id="loaded-models-list" class="content-list">
-              <p class="hint">No models loaded yet</p>
-            </div>
-          </div>
-          
-          <hr style="margin: 20px 0; border-color: var(--border);">
-          
-          <!-- Manual Path (fallback) -->
-          <div class="model-section">
-            <h3>📂 Manual Path (Advanced)</h3>
-            <input type="text" id="model-manual-path" placeholder="Full path to .gguf file" 
-                   style="width: 100%; padding: 8px; margin: 8px 0; font-family: monospace; font-size: 10px;">
-            <button onclick="ui.loadModelByPath()" class="btn-secondary" style="width: 100%;">
-              ➕ Load from Path
-            </button>
-          </div>
-        </div>
-      </div>
+      <!-- OLD #models-panel removed - replaced by V2 ModelLoader.open() modal -->
 
       <!-- Scheduler Panel -->
       <div id="scheduler-panel" class="panel hidden">

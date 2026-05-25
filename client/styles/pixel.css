@@ -3452,3 +3452,53 @@ button .pixel-icon {
 .poseidon-chat-input-row button {
   padding: 0 18px;
 }
+
+/* ========== MODEL LIBRARY CARDS ========== */
+.model-library-card {
+  background: rgba(255,255,255,0.04);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--text-secondary);
+  padding: 10px 12px;
+  margin: 8px 0;
+  font-size: 10px;
+}
+.model-library-card.is-poseidon {
+  border-left-color: var(--success);
+  background: rgba(6,255,165,0.06);
+}
+.model-card-header {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+.model-card-header strong { color: var(--text); font-size: 11px; }
+.model-id-pill { background:var(--ocean-mid); padding:1px 6px; border:1px solid var(--border); font-size:8px; color: var(--text-secondary); }
+.model-size-pill { background:var(--ocean-deep); padding:1px 6px; font-size:8px; color: var(--text-secondary); }
+.model-poseidon-pill { background:var(--success); color:black; padding:1px 6px; font-size:8px; font-weight:bold; }
+.model-loaded-pill { background:#3B82F6; color:white; padding:1px 6px; font-size:8px; font-weight:bold; }
+.model-missing-pill { background:var(--danger); color:white; padding:1px 6px; font-size:8px; font-weight:bold; }
+.model-notimport-pill { background:var(--ocean-mid); color:var(--text-secondary); padding:1px 6px; font-size:8px; border:1px solid var(--border); }
+.model-params {
+  background: rgba(0,0,0,0.2);
+  padding: 6px 8px;
+  margin: 6px 0;
+  font-size: 9px;
+  color: var(--text-secondary);
+}
+.model-params-row { line-height: 1.6; }
+.model-params strong { color: var(--text); }
+.model-runtime {
+  font-size: 8px;
+  color: var(--text-secondary);
+  margin: 4px 0 6px 0;
+  font-style: italic;
+}
+.model-card-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.model-card-actions button { font-size: 9px; padding: 4px 10px; }
+.model-card-actions .danger-action { background: var(--danger); color: white; }

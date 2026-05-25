@@ -45,6 +45,19 @@ class V2ModelService {
     return fileName.replace(/\.gguf$/i, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
   }
 
+  /**
+   * Default loading config (user spec).
+   */
+  static DEFAULT_CONFIG = {
+    contextLength: 25000,
+    gpuLayers: 32,
+    cpuThreads: 4,
+    batchSize: 512,
+    offloadKqvToGpu: false,
+    randomSeed: true,
+    autoUnloadIdleMinutes: 15
+  };
+
   async scanLocalModels() {
     const result = [];
     try {
@@ -65,6 +78,168 @@ class V2ModelService {
       console.warn('[V2ModelService] scanLocalModels:', err.message);
     }
     return result;
+  }
+
+  /**
+   * Scan local files AND merge with registry to show import status.
+   */
+  async getLibrary() {
+    const scanned = await this.scanLocalModels();
+    this.rm.invalidateCache();
+    const reg = await this.rm.read('models/model_registry.json');
+    const registered = reg.models || {};
+    
+    const items = [];
+    
+    // Files present on disk
+    const seenIds = new Set();
+    for (const file of scanned) {
+      seenIds.add(file.model_id);
+      const regEntry = registered[file.model_id];
+      items.push({
+        model_id: file.model_id,
+        file_name: file.file_name,
+        file_path: file.file_path,
+        file_size_gb: file.file_size_gb,
+        format: 'gguf',
+        imported: !!regEntry,
+        config: regEntry?.config || null,
+        status: regEntry?.status || 'not_imported',
+        is_loaded: this.loaded.has(file.model_id),
+        is_poseidon: this.poseidonModelId === file.model_id,
+        runtime: regEntry?.runtime || null
+      });
+    }
+    
+    // Registered models whose files are missing (orphans)
+    for (const [id, entry] of Object.entries(registered)) {
+      if (!seenIds.has(id)) {
+        items.push({
+          model_id: id,
+          file_name: entry.file_name,
+          file_path: entry.file_path,
+          file_size_gb: entry.file_size_gb,
+          format: 'gguf',
+          imported: true,
+          config: entry.config,
+          status: 'missing',
+          is_loaded: this.loaded.has(id),
+          is_poseidon: this.poseidonModelId === id,
+          runtime: entry.runtime
+        });
+      }
+    }
+    
+    return {
+      models: items,
+      poseidon_model_id: this.poseidonModelId,
+      currently_loaded: Array.from(this.loaded.keys())
+    };
+  }
+
+  /**
+   * Import a .gguf file into the model library (register with config).
+   * Does NOT load the model into memory - that happens on demand.
+   */
+  async importModel(fileName, config = {}) {
+    const fullPath = path.isAbsolute(fileName) ? fileName : path.join(this.modelsDir, fileName);
+    if (!fsSync.existsSync(fullPath)) {
+      throw new Error(`File not found: ${fullPath}`);
+    }
+    const stat = await fs.stat(fullPath);
+    const modelId = this._fileNameToId(path.basename(fileName));
+    const finalConfig = { ...V2ModelService.DEFAULT_CONFIG, ...config };
+    
+    await this._registryUpsert(modelId, {
+      file_name: path.basename(fileName),
+      file_path: fullPath,
+      file_size_gb: Math.round((stat.size / (1024 ** 3)) * 100) / 100,
+      format: 'gguf',
+      status: 'available',
+      config: finalConfig,
+      runtime: {
+        loaded_at: null,
+        last_used_at: null,
+        total_tokens_generated: 0,
+        total_requests: 0
+      }
+    });
+    
+    await this.rm.log({
+      event_type: 'model_loaded',
+      severity: 'info',
+      actor: { type: 'human', id: 'human_richard' },
+      subject: { type: 'model', id: modelId },
+      action: `Imported ${fileName} to library`,
+      context: { config: finalConfig }
+    });
+    
+    return { success: true, model_id: modelId, config: finalConfig };
+  }
+
+  /**
+   * Update load params for a registered model.
+   * If the model is currently loaded, the new params apply on next load.
+   */
+  async updateModelParams(modelId, params) {
+    this.rm.invalidateCache();
+    const reg = await this.rm.read('models/model_registry.json');
+    const entry = reg.models[modelId];
+    if (!entry) throw new Error(`Model ${modelId} not in library`);
+    
+    const newConfig = { ...entry.config, ...params };
+    entry.config = newConfig;
+    await this.rm.write('models/model_registry.json', reg);
+    
+    await this.rm.log({
+      event_type: 'json_update',
+      actor: { type: 'human', id: 'human_richard' },
+      subject: { type: 'model', id: modelId },
+      action: `Updated load params for ${modelId}`,
+      context: { config: newConfig, will_apply_on_next_load: this.loaded.has(modelId) }
+    });
+    
+    return { success: true, model_id: modelId, config: newConfig, currently_loaded: this.loaded.has(modelId) };
+  }
+
+  /**
+   * Remove a model from the library. Unloads if loaded.
+   */
+  async removeFromLibrary(modelId) {
+    if (this.loaded.has(modelId)) {
+      await this.unloadModel(modelId);
+    }
+    this.rm.invalidateCache();
+    const reg = await this.rm.read('models/model_registry.json');
+    delete reg.models[modelId];
+    await this.rm.write('models/model_registry.json', reg);
+    
+    if (this.poseidonModelId === modelId) this.poseidonModelId = null;
+    
+    await this.rm.log({
+      event_type: 'model_unloaded',
+      actor: { type: 'human', id: 'human_richard' },
+      subject: { type: 'model', id: modelId },
+      action: `Removed ${modelId} from library`
+    });
+    return { success: true };
+  }
+
+  /**
+   * Ensure a model is loaded into memory. Loads with stored config if not.
+   * No-op if already loaded.
+   */
+  async ensureLoaded(modelId) {
+    if (this.loaded.has(modelId)) return { already_loaded: true, model_id: modelId };
+    
+    this.rm.invalidateCache();
+    const reg = await this.rm.read('models/model_registry.json');
+    const entry = reg.models[modelId];
+    if (!entry) throw new Error(`Model ${modelId} not in library. Import it first.`);
+    if (entry.status === 'missing') throw new Error(`Model file is missing: ${entry.file_path}`);
+    
+    // Use stored config
+    return await this.loadModel(entry.file_name, entry.config || {});
   }
 
   // === LOAD ===
@@ -235,25 +410,27 @@ class V2ModelService {
   // === POSEIDON ASSIGNMENT ===
 
   async setPoseidonModel(modelId) {
-    if (!this.loaded.has(modelId)) {
-      throw new Error(`Model ${modelId} is not loaded`);
+    // Check library (not just loaded)
+    this.rm.invalidateCache();
+    const reg = await this.rm.read('models/model_registry.json');
+    if (!reg.models[modelId]) {
+      throw new Error(`Model ${modelId} is not in library. Import it first.`);
     }
     this.poseidonModelId = modelId;
 
     // Update poseidon_brain.json
-    this.rm.invalidateCache();
     const brain = await this.rm.getPoseidonBrain();
     brain.current_state.loaded_model_id = modelId;
     await this.rm.write('main/poseidon_brain.json', brain);
 
     await this.rm.log({
       event_type: 'poseidon_decision',
-      actor: { type: 'system', id: 'v2_model_service' },
+      actor: { type: 'human', id: 'human_richard' },
       subject: { type: 'model', id: modelId },
       action: `Assigned ${modelId} as Poseidon's model`
     });
 
-    return { success: true, model_id: modelId };
+    return { success: true, model_id: modelId, loaded: this.loaded.has(modelId) };
   }
 
   getStatus() {
@@ -335,11 +512,18 @@ class V2ModelService {
    */
   async *chatWithPoseidon(userMessage, history = []) {
     if (!this.poseidonModelId) {
-      throw new Error('No model assigned to Poseidon. Load a model and assign it first.');
+      throw new Error('No model assigned to Poseidon. Import a model and assign it first.');
     }
+    
+    // Auto-load if not yet loaded
+    if (!this.loaded.has(this.poseidonModelId)) {
+      console.log(`[V2ModelService] Auto-loading ${this.poseidonModelId} for Poseidon chat...`);
+      await this.ensureLoaded(this.poseidonModelId);
+    }
+    
     const entry = this.loaded.get(this.poseidonModelId);
     if (!entry) {
-      throw new Error('Poseidon model is no longer loaded');
+      throw new Error('Poseidon model failed to load');
     }
     if (entry.generating) {
       throw new Error('Poseidon is already generating a response. Wait for it to finish.');
