@@ -50,11 +50,16 @@ class V2ModelService {
    * Default loading config (user spec).
    */
   static DEFAULT_CONFIG = {
-    contextLength: 8192,
-    gpuLayers: 32,
+    // 'auto' = let llama-cpp pick the maximum context that fits VRAM.
+    // 'auto' for gpuLayers = pick the optimal CPU/GPU split.
+    // This mirrors LM Studio's defaults and is the right choice 99% of the time.
+    contextLength: 'auto',
+    gpuLayers: 'auto',
     cpuThreads: 4,
     batchSize: 512,
-    offloadKqvToGpu: false,
+    flashAttention: true,     // ~50% smaller KV cache (biggest VRAM saver)
+    useMmap: true,            // OS-level page sharing for the model file
+    useMlock: false,          // disabled by default (can be enabled in Edit Params)
     randomSeed: true,
     autoUnloadIdleMinutes: 15
   };
@@ -286,11 +291,21 @@ class V2ModelService {
    */
   async loadModel(fileName, cfg = {}) {
     const config = {
-      contextLength: cfg.contextLength ?? 25000,
-      gpuLayers: cfg.gpuLayers ?? 32,
+      // contextLength: 'auto' lets node-llama-cpp pick the max that fits VRAM
+      // (LM Studio-style). User can override with a number.
+      contextLength: cfg.contextLength ?? 'auto',
+      // gpuLayers: 'auto' = fit as many in VRAM as possible, considering ctx size.
+      // 'max' = all layers (errors if not enough VRAM).
+      // number = force exact count.
+      gpuLayers: cfg.gpuLayers ?? 'auto',
       cpuThreads: cfg.cpuThreads ?? 4,
       batchSize: cfg.batchSize ?? 512,
-      offloadKqvToGpu: cfg.offloadKqvToGpu ?? false,
+      // Flash attention: ~50% smaller KV cache. The single biggest VRAM saver.
+      flashAttention: cfg.flashAttention ?? true,
+      // mmap: lets the OS page the model file directly - faster load, shared RAM
+      useMmap: cfg.useMmap ?? true,
+      // Mlock: force keep in VRAM (LM Studio "Keep Model in Memory")
+      useMlock: cfg.useMlock ?? false,
       randomSeed: cfg.randomSeed ?? true,
       autoUnloadIdleMinutes: cfg.autoUnloadIdleMinutes ?? 15
     };
@@ -331,22 +346,48 @@ class V2ModelService {
     try {
       const llama = await this._ensureLib();
       console.log(`[V2ModelService] Loading ${fileName} ...`);
+      console.log(`  gpuLayers=${config.gpuLayers}, ctx=${config.contextLength}, flashAttention=${config.flashAttention}, mmap=${config.useMmap}`);
 
-      // node-llama-cpp v3 API
-      model = await llama.loadModel({
+      // Log GPU/VRAM state if available (debugging info)
+      try {
+        if (llama.getVramState) {
+          const vram = await llama.getVramState();
+          console.log(`  GPU VRAM: ${(vram.free / 1024 ** 3).toFixed(2)} GB free / ${(vram.total / 1024 ** 3).toFixed(2)} GB total`);
+        }
+        if (llama.gpu) console.log(`  GPU backend: ${llama.gpu}`);
+      } catch {}
+
+      // node-llama-cpp v3 model load (LM Studio-equivalent flags)
+      const modelOpts = {
         modelPath: fullPath,
-        gpuLayers: config.gpuLayers
-        // Other model-level options stay default; per-context options below
-      });
+        gpuLayers: config.gpuLayers,           // 'auto' | 'max' | number
+        useMmap: config.useMmap,
+        useMlock: config.useMlock,
+        // Tell the model that contexts will use flash attention so it sizes VRAM accordingly
+        defaultContextFlashAttention: config.flashAttention
+      };
+      
+      // If user set a numeric context limit, hint the model loader to fit it
+      if (typeof config.contextLength === 'number' && config.gpuLayers === 'auto') {
+        modelOpts.gpuLayers = {
+          fitContext: { contextSize: config.contextLength }
+        };
+      }
+      
+      model = await llama.loadModel(modelOpts);
+      console.log(`  Model loaded. Train context size: ${model.trainContextSize}`);
 
       context = await model.createContext({
-        contextSize: config.contextLength,
+        contextSize: config.contextLength,     // 'auto' or number
         batchSize: config.batchSize,
         threads: config.cpuThreads,
-        sequences: 8,  // headroom for retries / parallel agents
-        seed: config.randomSeed ? null : 42  // null = random, fixed value = deterministic
-        // offloadKqvToGpu - this option name varies by version; safe default is to omit
+        sequences: 8,                          // headroom for parallel agents
+        flashAttention: config.flashAttention  // explicit per-context (also inherited)
       });
+      
+      // Report what we actually got (auto may differ from request)
+      const actualCtx = context.contextSize;
+      console.log(`  Context created: ${actualCtx} tokens`);
 
       this.loaded.set(modelId, {
         model_id: modelId,
@@ -403,36 +444,21 @@ class V2ModelService {
         action: `FAILED to load ${fileName}: ${err.message}`
       });
       
-      // Progressive auto-retry on memory errors:
-      //   Attempt 0: user config (e.g. 8192 ctx, 32 gpu_layers)
-      //   Attempt 1: halve context
-      //   Attempt 2: halve context again + halve gpu_layers
-      //   Attempt 3: minimum (ctx=1024, gpu_layers=0, CPU-only fallback)
+      // Single retry ONLY for explicit user-set values, falling back to 'auto'.
+      // 'auto' is right almost always; we don't need progressive shrinking.
       const isMemoryError = /context size.*too large|out of memory|VRAM|allocation|insufficient|cannot allocate/i.test(err.message);
-      const attempt = cfg._retryAttempt || 0;
-      if (isMemoryError && attempt < 3) {
-        let newCtx = config.contextLength;
-        let newGpu = config.gpuLayers;
-        if (attempt === 0) {
-          newCtx = Math.max(512, Math.floor(config.contextLength / 2));
-        } else if (attempt === 1) {
-          newCtx = Math.max(512, Math.floor(config.contextLength / 2));
-          newGpu = Math.floor(config.gpuLayers / 2);
-        } else {
-          newCtx = 1024;
-          newGpu = 0;  // pure CPU
-        }
-        console.warn(`[V2ModelService] Memory error at attempt ${attempt} (ctx=${config.contextLength}, gpu=${config.gpuLayers}). Retrying with ctx=${newCtx}, gpu=${newGpu}`);
+      if (isMemoryError && !cfg._retryAttempt && config.gpuLayers !== 'auto') {
+        console.warn(`[V2ModelService] OOM with explicit gpuLayers=${config.gpuLayers}. Retrying ONCE with gpuLayers='auto' to let llama-cpp pick optimal split.`);
         try {
-          await this.updateModelParams(modelId, { contextLength: newCtx, gpuLayers: newGpu });
+          await this.updateModelParams(modelId, { gpuLayers: 'auto', contextLength: 'auto' });
         } catch {}
-        return await this.loadModel(fileName, { ...cfg, contextLength: newCtx, gpuLayers: newGpu, _retryAttempt: attempt + 1 });
+        return await this.loadModel(fileName, { ...cfg, gpuLayers: 'auto', contextLength: 'auto', _retryAttempt: 1 });
       }
 
       // Surface friendly error
       let msg = err.message;
       if (isMemoryError) {
-        msg = `Your GPU/RAM can't fit this model with the current settings. Auto-retry attempted 3 reductions and still failed. The model file may be too large for your hardware. Try a smaller model (1-3B params).`;
+        msg = `Your GPU/RAM can't fit this model. Try: (1) Lower context length, (2) Disable flash attention if your GPU doesn't support it, (3) Use a smaller model. Or click "Edit Params" and set Context Length to 'auto' (just type 'auto').`;
       }
       throw new Error(`Load failed: ${msg}`);
     }

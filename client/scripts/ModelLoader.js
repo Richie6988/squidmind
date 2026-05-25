@@ -207,17 +207,22 @@ const ModelLoader = {
     const isEdit = !!existingModelId;
     const existing = isEdit ? this.library.models.find(m => m.model_id === existingModelId) : null;
     const cfg = existing?.config || {
-      contextLength: 8192, gpuLayers: 32, cpuThreads: 4, batchSize: 512,
-      offloadKqvToGpu: false, randomSeed: true, autoUnloadIdleMinutes: 15
+      contextLength: 'auto', gpuLayers: 'auto', cpuThreads: 4, batchSize: 512,
+      flashAttention: true, useMmap: true, useMlock: false,
+      randomSeed: true, autoUnloadIdleMinutes: 15
     };
     // Find file size for estimation
     const fileEntry = this.library.models.find(m => m.file_name === fileName);
     const fileSizeGb = fileEntry?.file_size_gb || 0;
     
+    // Helper: format current value for input (auto -> "auto", number -> number)
+    const ctxValue = cfg.contextLength === 'auto' ? 'auto' : String(cfg.contextLength ?? 'auto');
+    const gpuValue = cfg.gpuLayers === 'auto' ? 'auto' : (cfg.gpuLayers === 'max' ? 'max' : String(cfg.gpuLayers ?? 'auto'));
+    
     const dlg = document.createElement('div');
     dlg.className = 'modal model-load-config-modal';
     dlg.innerHTML = `
-      <div class="modal-content" style="width:90vw; max-width:580px;">
+      <div class="modal-content" style="width:90vw; max-width:620px;">
         <div class="modal-header">
           <h2>${isEdit ? 'Edit Params' : 'Import'}: ${this._escape(fileName)}</h2>
           <button class="btn-close" onclick="this.closest('.modal').remove()">x</button>
@@ -233,22 +238,39 @@ const ModelLoader = {
           <div id="ml-estimate" class="ml-estimate-box"></div>
           
           <div class="agent-form-row"><label>Context length</label>
-            <input id="ml-ctx" type="number" min="512" max="260000" value="${cfg.contextLength}"></div>
-          <div class="agent-form-row"><label>GPU layers (max ~36)</label>
-            <input id="ml-gpu" type="number" min="0" max="100" value="${cfg.gpuLayers}"></div>
+            <input id="ml-ctx" type="text" value="${this._escape(ctxValue)}" placeholder="auto, or a number like 8192">
+          </div>
+          <div class="agent-form-row"><label>GPU layers</label>
+            <input id="ml-gpu" type="text" value="${this._escape(gpuValue)}" placeholder="auto, max, or a number">
+          </div>
+          <div class="agent-form-row"><label>&nbsp;</label>
+            <span class="hint" style="font-size:8px; color:var(--accent);">
+              Recommended: keep both as 'auto' so node-llama-cpp picks the optimal split based on your GPU memory (LM Studio default behavior).
+            </span>
+          </div>
+          
+          <div class="agent-form-row"><label>Flash Attention</label>
+            <label class="agent-form-checkbox" style="flex:0 0 auto;">
+              <input id="ml-flash" type="checkbox" ${cfg.flashAttention !== false ? 'checked' : ''}>
+              <span>Enable (~50% smaller KV cache, fastest)</span></label></div>
+          <div class="agent-form-row"><label>Use mmap</label>
+            <label class="agent-form-checkbox" style="flex:0 0 auto;">
+              <input id="ml-mmap" type="checkbox" ${cfg.useMmap !== false ? 'checked' : ''}>
+              <span>Enable (faster load, OS shares memory)</span></label></div>
+          <div class="agent-form-row"><label>Keep in memory (mlock)</label>
+            <label class="agent-form-checkbox" style="flex:0 0 auto;">
+              <input id="ml-mlock" type="checkbox" ${cfg.useMlock === true ? 'checked' : ''}>
+              <span>Force pin in RAM/VRAM (don't swap out)</span></label></div>
+          
           <div class="agent-form-row"><label>CPU threads</label>
             <input id="ml-threads" type="number" min="1" max="32" value="${cfg.cpuThreads}"></div>
           <div class="agent-form-row"><label>Batch size</label>
             <input id="ml-batch" type="number" min="32" max="2048" value="${cfg.batchSize}"></div>
           <div class="agent-form-row"><label>Auto-unload idle (min)</label>
             <input id="ml-ttl" type="number" min="1" max="240" value="${cfg.autoUnloadIdleMinutes}"></div>
-          <div class="agent-form-row"><label>Offload cache to GPU</label>
-            <label class="agent-form-checkbox" style="flex:0 0 auto;">
-              <input id="ml-kqv" type="checkbox" ${cfg.offloadKqvToGpu ? 'checked' : ''}>
-              <span>Enable</span></label></div>
           <div class="agent-form-row"><label>Random seed</label>
             <label class="agent-form-checkbox" style="flex:0 0 auto;">
-              <input id="ml-seed" type="checkbox" ${cfg.randomSeed ? 'checked' : ''}>
+              <input id="ml-seed" type="checkbox" ${cfg.randomSeed !== false ? 'checked' : ''}>
               <span>Enable (else deterministic)</span></label></div>
         </div>
         <div class="agent-form-footer">
@@ -261,84 +283,91 @@ const ModelLoader = {
     document.body.appendChild(dlg);
     
     // === LIVE ESTIMATION ===
-    // Memory estimate: model size + KV cache (ctx * num_layers * 2 * bytes_per_element)
-    // For a Q4_K_M 9B model: ~5.5GB weights + KV cache.
-    // KV cache rough formula: ctx * 2 (K+V) * num_kv_heads * head_dim * bytes
-    // Approximation for unknown model: ~0.5MB per 1k context per GB of weights
     const estimate = () => {
-      const ctx = parseInt(dlg.querySelector('#ml-ctx').value, 10) || 8192;
-      const gpu = parseInt(dlg.querySelector('#ml-gpu').value, 10) || 0;
-      const kqvGpu = dlg.querySelector('#ml-kqv').checked;
+      const ctxRaw = dlg.querySelector('#ml-ctx').value.trim().toLowerCase();
+      const gpuRaw = dlg.querySelector('#ml-gpu').value.trim().toLowerCase();
+      const flash = dlg.querySelector('#ml-flash').checked;
       
-      // KV cache estimate (rough): proportional to ctx and model size
-      const kvCacheGb = (ctx / 1024) * 0.06 * Math.max(1, fileSizeGb);
+      // For estimation purposes, treat auto as 8192 (typical) and max gpu as 36
+      const ctx = (ctxRaw === 'auto' || isNaN(parseInt(ctxRaw))) ? 8192 : parseInt(ctxRaw, 10);
+      const gpu = (gpuRaw === 'auto' || gpuRaw === 'max') ? 36 : (isNaN(parseInt(gpuRaw)) ? 36 : parseInt(gpuRaw, 10));
       
-      // Weights distribution
+      // Flash attention cuts KV cache ~50%
+      const kvMultiplier = flash ? 0.03 : 0.06;
+      const kvCacheGb = (ctx / 1024) * kvMultiplier * Math.max(1, fileSizeGb);
+      
       const gpuLayersClamped = Math.min(gpu, 36);
       const layerFrac = gpuLayersClamped / 36;
       const weightsOnGpu = fileSizeGb * layerFrac;
       const weightsOnCpu = fileSizeGb * (1 - layerFrac);
-      const kvOnGpu = kqvGpu ? kvCacheGb : kvCacheGb * layerFrac;
+      const kvOnGpu = kvCacheGb * layerFrac;  // KV follows layer placement
       const kvOnCpu = kvCacheGb - kvOnGpu;
       
       const totalVram = weightsOnGpu + kvOnGpu;
       const totalRam = weightsOnCpu + kvOnCpu;
       
-      // Inference speed hint
-      let speedHint = '';
-      let speedClass = 'ok';
-      if (gpu === 0) {
-        speedHint = 'CPU only - very slow (~1-3 tok/s)';
+      let speedHint, speedClass;
+      const isAuto = ctxRaw === 'auto' && (gpuRaw === 'auto' || gpuRaw === '');
+      if (isAuto) {
+        speedHint = 'Auto - llama-cpp will pick the optimal split (recommended)';
+        speedClass = 'ok';
+      } else if (gpu === 0) {
+        speedHint = 'CPU only - very slow (1-3 tok/s)';
         speedClass = 'warn';
       } else if (layerFrac < 0.5) {
-        speedHint = 'Mostly CPU - slow (~3-8 tok/s)';
+        speedHint = 'Mostly CPU - slow (3-8 tok/s)';
         speedClass = 'warn';
       } else if (layerFrac >= 0.9) {
-        speedHint = 'Mostly GPU - fast (~30-80 tok/s)';
+        speedHint = 'Mostly GPU - fast (30-80 tok/s)';
         speedClass = 'ok';
       } else {
-        speedHint = 'Split GPU/CPU - moderate (~10-25 tok/s)';
+        speedHint = 'Split GPU/CPU - moderate (10-25 tok/s)';
         speedClass = 'ok';
       }
       
       const fmt = n => n < 0.1 ? '<0.1' : n.toFixed(2);
       
       dlg.querySelector('#ml-estimate').innerHTML = `
-        <div class="ml-estimate-header">Compute Estimate</div>
+        <div class="ml-estimate-header">Estimated Memory Usage</div>
         <div class="ml-estimate-row">
           <span class="ml-estimate-label">VRAM (GPU):</span>
           <span class="ml-estimate-val">${fmt(totalVram)} GB</span>
-          <span class="ml-estimate-detail">weights ${fmt(weightsOnGpu)} + cache ${fmt(kvOnGpu)}</span>
+          <span class="ml-estimate-detail">${flash ? 'with flash attention' : '(enable flash attention to save ~50% KV)'}</span>
         </div>
         <div class="ml-estimate-row">
           <span class="ml-estimate-label">RAM (CPU):</span>
           <span class="ml-estimate-val">${fmt(totalRam)} GB</span>
-          <span class="ml-estimate-detail">weights ${fmt(weightsOnCpu)} + cache ${fmt(kvOnCpu)}</span>
         </div>
         <div class="ml-estimate-row">
           <span class="ml-estimate-label">Speed:</span>
           <span class="ml-estimate-val ${speedClass}">${speedHint}</span>
         </div>
         <div class="ml-estimate-hint">
-          File size: ${fileSizeGb} GB. Estimates are rough - actual VRAM depends on architecture (Q4_K_M, MoE, etc).
+          File size: ${fileSizeGb} GB. With 'auto' both fields, node-llama-cpp checks your GPU's free VRAM and picks the optimal context size and layer split. Same behavior as LM Studio.
         </div>
       `;
     };
     
     // Recompute on any change
-    ['#ml-ctx', '#ml-gpu', '#ml-kqv'].forEach(sel => {
+    ['#ml-ctx', '#ml-gpu', '#ml-flash'].forEach(sel => {
       dlg.querySelector(sel).addEventListener('input', estimate);
+      dlg.querySelector(sel).addEventListener('change', estimate);
     });
     estimate();
     
     dlg.querySelector('#ml-save-btn').addEventListener('click', async () => {
+      // Parse values - allow 'auto' / 'max' as special strings
+      const ctxRaw = dlg.querySelector('#ml-ctx').value.trim().toLowerCase();
+      const gpuRaw = dlg.querySelector('#ml-gpu').value.trim().toLowerCase();
       const params = {
-        contextLength: parseInt(dlg.querySelector('#ml-ctx').value, 10),
-        gpuLayers: parseInt(dlg.querySelector('#ml-gpu').value, 10),
+        contextLength: ctxRaw === 'auto' ? 'auto' : (parseInt(ctxRaw, 10) || 'auto'),
+        gpuLayers: gpuRaw === 'auto' ? 'auto' : (gpuRaw === 'max' ? 'max' : (isNaN(parseInt(gpuRaw)) ? 'auto' : parseInt(gpuRaw, 10))),
         cpuThreads: parseInt(dlg.querySelector('#ml-threads').value, 10),
         batchSize: parseInt(dlg.querySelector('#ml-batch').value, 10),
         autoUnloadIdleMinutes: parseInt(dlg.querySelector('#ml-ttl').value, 10),
-        offloadKqvToGpu: dlg.querySelector('#ml-kqv').checked,
+        flashAttention: dlg.querySelector('#ml-flash').checked,
+        useMmap: dlg.querySelector('#ml-mmap').checked,
+        useMlock: dlg.querySelector('#ml-mlock').checked,
         randomSeed: dlg.querySelector('#ml-seed').checked
       };
       const status = dlg.querySelector('#ml-save-status');
