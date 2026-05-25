@@ -53,50 +53,130 @@ class PoseidonOrchestrator {
   // SYSTEM PROMPT - the model's anchor for identity + capabilities
   // ===================================================================
 
+  /**
+   * Build the system prompt SMALL by default.
+   *
+   * Strategy (the user's call: short context wins):
+   *   - data/main/poseidon_brain.json is the SINGLE SOURCE OF TRUTH.
+   *     Identity, rules, soul, processes, tools_catalog all live there.
+   *     Code reads from brain.json - it never embeds prompt text inline.
+   *   - The initial system prompt is intentionally TIGHT (~2k chars):
+   *       ABSOLUTE_RULES (always - hard rules)
+   *       FINE_TUNING_BRIEF (always - 1-2 lines of vibe + learned user context)
+   *       TOOLS_POINTER (always - 1-line "you have N tools across M categories;
+   *                       call read_my_brain('processes.X') for recipes")
+   *       CURRENT_STATE (always - live agent/project/task snapshot)
+   *   - PROCESSES are NOT included by default. The model fetches the specific
+   *     one it needs via the read_my_brain(section_path) tool. This is the
+   *     "smart thematic chunks" the user asked for.
+   *
+   * Empirically this drops the prompt from ~5500 chars to ~2000 chars,
+   * which should fix the 'context shift strategy' errors with qwen3-5-9b
+   * at ctx=15000.
+   */
   async buildSystemPrompt() {
     this.rm.invalidateCache();
     const brain = await this.rm.getPoseidonBrain();
     
-    const [agentReg, projectReg, taskReg, toolReg] = await Promise.all([
+    const [agentReg, projectReg, taskReg] = await Promise.all([
       this.rm.read('agents/agent_registry.json').catch(() => ({ agents: {} })),
       this.rm.read('projects/project_registry.json').catch(() => ({ projects: {} })),
-      this.rm.read('tasks/tasks_registry.json').catch(() => ({ tasks: {} })),
-      this.rm.read('tools/tool_registry.json').catch(() => ({ tools: {} }))
+      this.rm.read('tasks/tasks_registry.json').catch(() => ({ tasks: {} }))
     ]);
     
     const sections = [
-      this._sectionAbsoluteRules(),
-      this._sectionFineTuning(brain),
-      this._sectionProcesses(),
-      this._sectionTools(),
+      this._sectionAbsoluteRules(brain),
+      this._sectionFineTuningBrief(brain),
+      this._sectionToolsPointer(brain),
       this._sectionCurrentState(brain, agentReg, projectReg, taskReg)
     ];
-    return sections.join('\n\n' + '═'.repeat(70) + '\n\n');
+    return sections.join('\n\n' + '─'.repeat(60) + '\n\n');
   }
   
   /**
-   * Section 1: ABSOLUTE_RULES - never broken, take precedence over everything.
-   * Short. Memorable. Imperative.
+   * Section 1: ABSOLUTE_RULES - read directly from brain.absolute_rules.
+   * brain.json is the source of truth, not this file.
    */
-  _sectionAbsoluteRules() {
-    return `# ABSOLUTE_RULES (never broken, override everything else)
-
-1. You ARE Poseidon, the orchestrator of this running SquidMind system.
-   You are NOT a generic chatbot. You have hands - real function calls.
-2. NEVER say "I cannot run commands" or "I would run X" - if you have a tool
-   for it, USE the tool. Describe nothing you could call.
-3. NEVER invent facts about the user. Use update_user_context only for
-   things they explicitly stated or strongly implied.
-4. NEVER delete or overwrite without confirming first. Reads, lists, and
-   logs are always safe and need no confirmation.
-5. ALWAYS call log_decision after multi-step work so future-you remembers.
-6. ALWAYS speak the user's language. Match their tone (brief, direct).`;
+  _sectionAbsoluteRules(brain) {
+    const rules = brain.absolute_rules || [
+      "You ARE Poseidon. Use your tools - never describe a command you could call.",
+      "Never invent facts about the user.",
+      "Confirm before destructive operations.",
+      "Match the user's language and tone."
+    ];
+    const lines = ['# ABSOLUTE_RULES (never broken)'];
+    rules.forEach((r, i) => lines.push(`${i + 1}. ${r}`));
+    return lines.join('\n');
   }
   
   /**
-   * Section 2: FINE_TUNING - identity, soul, learned user context.
-   * This is who you ARE, distilled from brain.json.
+   * Section 2 (small): FINE_TUNING_BRIEF.
+   * One-line vibe + whatever we've learned about the user.
+   * Full soul/boundaries available on demand via read_my_brain('fine_tuning').
    */
+  _sectionFineTuningBrief(brain) {
+    const lines = ['# YOU'];
+    lines.push(`Vibe: ${brain.fine_tuning?.vibe || brain.soul?.vibe || 'Direct, concise, action-oriented.'}`);
+    
+    const ctx = brain.user?.context || {};
+    const prefs = brain.user?.preferences || {};
+    const hasUserData = Object.keys(ctx).length > 0 || Object.keys(prefs).length > 0;
+    
+    if (!hasUserData) {
+      lines.push(`User: unknown so far. Learn over time via update_user_context.`);
+    } else {
+      lines.push('What you know about the user:');
+      for (const [k, v] of Object.entries(ctx)) {
+        lines.push(`- ${k}: ${v}`);
+      }
+      for (const [k, v] of Object.entries(prefs)) {
+        lines.push(`- ${k}: ${typeof v === 'object' ? JSON.stringify(v) : v}`);
+      }
+    }
+    lines.push('');
+    lines.push(`(For your full core_truths + boundaries call read_my_brain('fine_tuning').)`);
+    return lines.join('\n');
+  }
+  
+  /**
+   * Section 3 (small): TOOLS_POINTER.
+   * Just lists tool CATEGORIES from brain.tools_catalog. The model already
+   * has full function signatures injected by node-llama-cpp's function-calling
+   * protocol - we don't need to repeat them in the prompt.
+   * For the process recipes the model calls read_my_brain('processes.X').
+   */
+  _sectionToolsPointer(brain) {
+    const catalog = brain.tools_catalog || {};
+    const lines = ['# TOOLS'];
+    
+    let totalTools = 0;
+    const catSummary = [];
+    for (const [cat, tools] of Object.entries(catalog)) {
+      const count = Array.isArray(tools) ? tools.length : 0;
+      totalTools += count;
+      catSummary.push(`${cat.replace(/_/g, ' ')} (${count})`);
+    }
+    
+    if (totalTools === 0) {
+      lines.push('Tool catalog empty in brain.json. Function signatures still injected by runtime.');
+    } else {
+      lines.push(`You have ${totalTools} callable functions across ${Object.keys(catalog).length} categories:`);
+      lines.push(catSummary.map(s => `- ${s}`).join('\n'));
+      lines.push('');
+      lines.push(`Full schemas are injected automatically. For step-by-step recipes, call:`);
+      lines.push(`  read_my_brain('processes.create_agent')`);
+      lines.push(`  read_my_brain('processes.research_flow')`);
+      lines.push(`  read_my_brain('processes.code_edit_flow')`);
+      lines.push(`  read_my_brain('processes.git_workflow')`);
+      lines.push(`  read_my_brain('processes.archive_project')`);
+      lines.push(`Or read_my_brain('tools_catalog') to see all tools by category.`);
+    }
+    return lines.join('\n');
+  }
+  
+  // OLD section methods preserved below for backward compat if something still
+  // references them, but buildSystemPrompt() no longer uses them.
+  
   _sectionFineTuning(brain) {
     const lines = [
       '# FINE_TUNING (your identity + learned style)',
@@ -593,6 +673,21 @@ Never describe a bash command you could call instead.`;
           required: ['key', 'value']
         },
         handler: async (params) => self._updateUserContext(params)
+      }),
+      
+      read_my_brain: defineChatSessionFunction({
+        description: 'Fetch a specific section of your own brain.json. Use this for process recipes (e.g. "processes.create_agent"), tool details ("tools_catalog"), or your full soul ("fine_tuning"). Returns just that section so you do not blow context.',
+        params: {
+          type: 'object',
+          properties: {
+            section_path: {
+              type: 'string',
+              description: 'Dot-path inside brain.json. Examples: "processes.create_agent", "processes.research_flow", "fine_tuning", "absolute_rules", "tools_catalog", "user", "current_state".'
+            }
+          },
+          required: ['section_path']
+        },
+        handler: async (params) => self._readMyBrain(params)
       })
     };
   }
@@ -986,6 +1081,59 @@ Never describe a bash command you could call instead.`;
         key: safeKey,
         value,
         message: `${wasNew ? 'Recorded' : 'Updated'} user.context.${safeKey} = "${value}"`
+      };
+    } catch (err) {
+      return { ok: false, error: err.message };
+    }
+  }
+
+  /**
+   * Look up a section inside brain.json by dot-path. The model uses this
+   * for lazy-loading: instead of putting everything in the system prompt,
+   * we just expose pointers and the model fetches the chunk it needs.
+   *
+   * Examples:
+   *   "processes.create_agent"  -> { summary, when_to_use, steps, tools_used }
+   *   "fine_tuning"             -> { core_truths, boundaries, vibe, continuity }
+   *   "tools_catalog"           -> { agent_management: [...], ... }
+   *   "user"                    -> { name, role, preferences, context, ... }
+   */
+  async _readMyBrain({ section_path }) {
+    try {
+      if (!section_path || typeof section_path !== 'string') {
+        return { ok: false, error: 'section_path required (e.g. "processes.create_agent")' };
+      }
+      this.rm.invalidateCache();
+      const brain = await this.rm.getPoseidonBrain();
+      
+      // Walk dot-path
+      const parts = section_path.split('.').filter(Boolean);
+      let node = brain;
+      const traversed = [];
+      for (const p of parts) {
+        if (node && typeof node === 'object' && p in node) {
+          node = node[p];
+          traversed.push(p);
+        } else {
+          // Help the model recover - list available keys at the depth it failed
+          const available = (node && typeof node === 'object') ? Object.keys(node) : [];
+          return {
+            ok: false,
+            error: `Path "${section_path}" not found. Stopped at "${traversed.join('.') || '(root)'}". Available keys here: ${available.join(', ') || '(none)'}`
+          };
+        }
+      }
+      
+      // Return the section. Truncate if huge to protect context.
+      const serialized = JSON.stringify(node, null, 2);
+      const MAX = 4000;
+      const truncated = serialized.length > MAX;
+      return {
+        ok: true,
+        section_path,
+        char_count: serialized.length,
+        truncated,
+        content: truncated ? serialized.slice(0, MAX) + '\n... (truncated)' : serialized
       };
     } catch (err) {
       return { ok: false, error: err.message };
