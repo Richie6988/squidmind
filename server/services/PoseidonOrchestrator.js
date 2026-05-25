@@ -22,13 +22,24 @@
 
 const path = require('path');
 const fs = require('fs').promises;
+const OrchestratorTools = require('./OrchestratorTools');
 
 class PoseidonOrchestrator {
-  constructor({ registryManager, modelService, scheduler }) {
+  constructor({ registryManager, modelService, scheduler, workspaceRoot, githubToken }) {
     this.rm = registryManager;
     this.modelService = modelService;
-    this.scheduler = scheduler;          // optional, for cron creation
+    this.scheduler = scheduler;
     this._llamaCppPromise = null;
+    
+    // Workspace root = parent of data dir
+    this.workspaceRoot = workspaceRoot || path.join(this.rm.dataRoot, '..');
+    
+    // External tools (web/code-edit/github)
+    this.tools = new OrchestratorTools({
+      workspaceRoot: this.workspaceRoot,
+      registryManager: this.rm,
+      githubToken
+    });
   }
 
   async _llamaCpp() {
@@ -76,23 +87,30 @@ ${(brain.soul?.boundaries || ['Never lose track of state.', 'Always log signific
 
 Vibe: ${brain.soul?.vibe || 'direct, concise, action-oriented'}
 
-# Your User: Richard
+# Your User
+
+You don't know much about your user yet. Learn over time. What you already know:
 
 ${JSON.stringify(brain.user?.preferences || {}, null, 2)}
 
-Richard speaks French and English. Be precise and direct. Don't pad answers with disclaimers.
+Context the user has shared:
+${JSON.stringify(brain.user?.context || {}, null, 2)}
+
+As you interact, when the user reveals stable preferences ("I prefer X",
+"don't ever do Y", "I always work in Z"), call update_user_context to
+record it so future-you remembers. Never invent details about the user.
 
 # CRITICAL: You have ACTUAL tools. USE THEM.
 
 You are not a passive assistant who describes commands. You operate through
-function calls. When Richard asks you to do something — create an agent,
-archive a project, schedule a task, log a decision — you CALL the appropriate
-function. You do not say "I cannot do that" or "I would run this command".
-You do the thing.
+function calls. When the user asks you to do something — create an agent,
+archive a project, schedule a task, search the web, edit code, log a
+decision — you CALL the appropriate function. You do not say "I cannot do
+that" or "I would run this command". You do the thing.
 
-You do not need to ask permission for routine operations (creating an agent,
-logging a decision, listing files). For destructive operations (deleting an
-agent, archiving a project) confirm with Richard ONCE then act.
+You do not need to ask permission for routine operations (listing, reading,
+searching, logging). For destructive operations (deleting an agent,
+archiving a project, overwriting a file) confirm with the user ONCE then act.
 
 If a function call fails, read the error, adapt, and try again or report
 honestly. If you genuinely can't do something with the tools available, say
@@ -101,58 +119,92 @@ exactly which tool would be needed.
 # Available tools (full list)
 
 You have these specific functions available right now. Each is a real
-callable function in your context:
+callable function in your context.
 
+AGENT MANAGEMENT:
   • create_agent(display_name, specialization, role, primary_color)
-      Creates a new squid agent with a fresh brain.
   • delete_agent(agent_id)
-      Removes an agent's registry entry and brain file. Destructive.
   • list_agents()
-      Returns all agents with id, name, status, specialization, tasks_completed.
   • update_agent_field(agent_id, field_path, new_value, reason)
-      Field-level edit (e.g. "personality.communication_style" → "casual").
-  • create_project(name, vision)
-      Creates a new project folder + registry entry + project_memory.json.
-  • archive_project(project_name)
-      Sets project status to 'archived'. Reversible.
-  • list_projects()
-      Returns all projects with name, status, completion %, assigned agents.
-  • create_task(title, description, project, assigned_agent_id?, priority?)
-      Adds a task to the registry. Optional: assign to a specific agent.
-  • list_tasks(filter?)
-      Filter by status (open|in_progress|completed) or project name.
-  • schedule_cron(task_title, cron_expression, action)
-      Sets up a recurring job. Cron format: "min hour dom mon dow".
-  • log_decision(summary, reasoning, affected_entities?)
-      Writes a poseidon_decision event to logs.json. Use this whenever
-      you make a non-trivial call (especially after multi-step work).
-  • read_file(path), write_file(path, content), list_files(path)
-      Filesystem access within the project workspace.
-  • get_system_state()
-      Live CPU/RAM/agent counts/task queue snapshot.
 
-# Process recipes (use these as templates)
+PROJECT MANAGEMENT:
+  • create_project(name, vision)
+  • archive_project(project_name)
+  • list_projects()
+
+TASK MANAGEMENT:
+  • create_task(title, description, project, assigned_agent_id?, priority?)
+  • list_tasks(status?, project?)
+
+WEB / RESEARCH:
+  • web_search(query, num_results?)
+      Search the web via DuckDuckGo. Returns title, url, snippet for each hit.
+  • web_fetch(url)
+      Download and return the text content of a single URL.
+
+CODE EDITOR:
+  • read_file(path)
+      Read any file in the workspace.
+  • write_file(path, content)
+      Write a file from scratch (creates parent dirs). Confirm before overwrite.
+  • edit_file(path, search_text, replace_text)
+      Find-and-replace inside an existing file. search_text must appear exactly once.
+  • list_files(path)
+
+GITHUB:
+  • github_status()
+      Current branch, modified files, ahead/behind upstream.
+  • github_diff(path?)
+      Pending changes (whole repo or a specific file).
+  • github_commit(message, files?)
+      Stage and commit. Pass files to commit only specific paths; otherwise stages all.
+  • github_push(remote?, branch?)
+      Push to remote. Defaults: origin / current branch.
+  • github_pull(remote?, branch?)
+
+SYSTEM:
+  • get_system_state()
+  • log_decision(summary, reasoning, affected_entities?)
+  • update_user_context(key, value)
+      Stores a fact about the user that you've learned. Goes into brain.user.context.
+
+# Process recipes (numbered steps)
 
 ## CREATING AN AGENT
-1. Pick display_name (Richard usually wants something descriptive).
+1. Pick display_name (the user usually wants something descriptive).
 2. Pick specialization from: frontend_specialist, backend_specialist,
    fullstack_dev, data_analyst, devops, qa_tester, designer, researcher,
    ml_engineer, security, documentation, general.
 3. Call create_agent(...).
 4. Call log_decision summarizing why this agent.
-5. Tell Richard what was created and its agent_id.
+5. Tell the user what was created and its agent_id.
 
 ## ARCHIVING A PROJECT
-1. Confirm with Richard: "Archive PROJECT_NAME? It will be hidden but recoverable."
+1. Confirm with the user: "Archive PROJECT_NAME? It will be hidden but recoverable."
 2. On yes: call archive_project(project_name).
 3. Call log_decision noting why.
 4. Suggest next steps (reassign agents that were on it, etc.).
 
-## SCHEDULING A RECURRING TASK
-1. Ask only if you genuinely don't know: what should run, how often, what action.
-2. Translate to cron syntax.
-3. Call schedule_cron(...).
-4. Confirm to Richard with the next execution time.
+## RESEARCH FLOW (web search → answer)
+1. Call web_search(query) with a focused query.
+2. Read titles + snippets. Pick the 1-3 most relevant URLs.
+3. Optionally web_fetch one for full content.
+4. Synthesize a focused answer with source URLs.
+5. Don't pad with quoted irrelevant material.
+
+## CODE EDIT FLOW
+1. Call read_file to see the current state.
+2. For small changes: call edit_file with a unique search_text and the replacement.
+3. For brand-new files: call write_file.
+4. For destructive overwrites of existing files: confirm with user first.
+5. After non-trivial edits, github_diff to verify changes look right.
+6. Optionally github_commit with a clear message.
+
+## GITHUB FLOW
+1. github_status to see what's changed.
+2. github_diff to inspect specifics.
+3. github_commit('clear message: what changed and why').
+4. github_push when the user is ready.
 
 ## RESPONDING TO REQUESTS
 First: is this a question (just answer) or a request to do something (call tools)?
@@ -183,10 +235,10 @@ ${taskList.filter(t => t.status !== 'completed').slice(0, 10).map(t => `  ${t.ta
 
 # Final reminders
 
-- You are running locally on Richard's machine. Files written go to his disk.
+- You are running locally on the user's machine. Files written go to their disk.
 - The session resets every ${this.modelService?.contextWipeThreshold ?? 5} exchanges. Your brain.json survives.
 - When you complete multi-step work, ALWAYS log_decision so the next-life-you knows what happened.
-- Speak Richard's language: direct, brief, no fluff. He hates filler.
+- Be direct, brief, no fluff. Match the user's tone.
 `;
   }
 
@@ -367,6 +419,124 @@ ${taskList.filter(t => t.status !== 'completed').slice(0, 10).map(t => `  ${t.ta
           required: ['path']
         },
         handler: async (params) => self._listFiles(params)
+      }),
+      
+      // ============ WEB ============
+      
+      web_search: defineChatSessionFunction({
+        description: 'Search the web via DuckDuckGo. Returns top results with title, URL, and snippet. Use for current events, documentation lookups, troubleshooting unknown errors, finding the right library.',
+        params: {
+          type: 'object',
+          properties: {
+            query: { type: 'string', description: 'Search query - be specific (e.g. "node-llama-cpp v3 function calling", not just "llama")' },
+            num_results: { type: 'number', description: 'Number of results to return (default 5, max 10)' }
+          },
+          required: ['query']
+        },
+        handler: async (params) => self.tools.webSearch({ ...params, num_results: Math.min(params.num_results || 5, 10) })
+      }),
+      
+      web_fetch: defineChatSessionFunction({
+        description: 'Download a single URL and return its text content (HTML stripped to readable text). Use after web_search to get full content of a promising result. Returns up to 16k chars.',
+        params: {
+          type: 'object',
+          properties: {
+            url: { type: 'string', description: 'Full http(s) URL to fetch' }
+          },
+          required: ['url']
+        },
+        handler: async (params) => self.tools.webFetch(params)
+      }),
+      
+      // ============ CODE EDITOR ============
+      
+      edit_file: defineChatSessionFunction({
+        description: 'Find/replace inside an existing file. search_text must appear EXACTLY ONCE in the file - include enough surrounding context to make it unique. For brand-new files use write_file. For full overwrites of existing files confirm with the user first.',
+        params: {
+          type: 'object',
+          properties: {
+            path: { type: 'string', description: 'File path relative to workspace' },
+            search_text: { type: 'string', description: 'Exact text to find (must appear once in the file)' },
+            replace_text: { type: 'string', description: 'Replacement text' }
+          },
+          required: ['path', 'search_text', 'replace_text']
+        },
+        handler: async (params) => self.tools.editFile(params)
+      }),
+      
+      // ============ GITHUB ============
+      
+      github_status: defineChatSessionFunction({
+        description: 'Show current git branch, modified files, ahead/behind upstream. Use before committing to see what will be staged.',
+        params: { type: 'object', properties: {} },
+        handler: async () => self.tools.githubStatus()
+      }),
+      
+      github_diff: defineChatSessionFunction({
+        description: 'Show pending changes (working tree + staged). Optionally limit to a specific file. Use to inspect what you are about to commit.',
+        params: {
+          type: 'object',
+          properties: {
+            path: { type: 'string', description: 'Optional: limit diff to one file' }
+          }
+        },
+        handler: async (params) => self.tools.githubDiff(params)
+      }),
+      
+      github_commit: defineChatSessionFunction({
+        description: 'Stage and commit changes. If files array is omitted, stages everything (git add -A). Message should be a clear one-liner; optionally followed by a blank line and details.',
+        params: {
+          type: 'object',
+          properties: {
+            message: { type: 'string', description: 'Commit message' },
+            files: {
+              type: 'array',
+              items: { type: 'string' },
+              description: 'Optional: list of file paths to stage. If omitted, stages all changes.'
+            }
+          },
+          required: ['message']
+        },
+        handler: async (params) => self.tools.githubCommit(params)
+      }),
+      
+      github_push: defineChatSessionFunction({
+        description: 'Push commits to remote. Defaults: origin / current branch.',
+        params: {
+          type: 'object',
+          properties: {
+            remote: { type: 'string', description: 'Remote name (default: origin)' },
+            branch: { type: 'string', description: 'Branch name (default: current)' }
+          }
+        },
+        handler: async (params) => self.tools.githubPush(params)
+      }),
+      
+      github_pull: defineChatSessionFunction({
+        description: 'Pull from remote. Defaults: origin / current branch.',
+        params: {
+          type: 'object',
+          properties: {
+            remote: { type: 'string' },
+            branch: { type: 'string' }
+          }
+        },
+        handler: async (params) => self.tools.githubPull(params)
+      }),
+      
+      // ============ USER LEARNING ============
+      
+      update_user_context: defineChatSessionFunction({
+        description: 'Record a fact you have learned about the user (preference, working style, name, role, location, etc). Goes into brain.user.context so your future self remembers. Use sparingly and only for STABLE facts the user has explicitly shared or strongly implied multiple times.',
+        params: {
+          type: 'object',
+          properties: {
+            key: { type: 'string', description: 'Short snake_case key like "preferred_language" or "favorite_editor"' },
+            value: { type: 'string', description: 'The value (free-form string)' }
+          },
+          required: ['key', 'value']
+        },
+        handler: async (params) => self._updateUserContext(params)
       })
     };
   }
@@ -724,6 +894,42 @@ ${taskList.filter(t => t.status !== 'completed').slice(0, 10).map(t => `  ${t.ta
         ok: true,
         path: relPath,
         entries: entries.map(e => ({ name: e.name, type: e.isDirectory() ? 'dir' : 'file' }))
+      };
+    } catch (err) {
+      return { ok: false, error: err.message };
+    }
+  }
+
+  async _updateUserContext({ key, value }) {
+    try {
+      if (!key || typeof key !== 'string') return { ok: false, error: 'key required' };
+      // Normalize key
+      const safeKey = key.toLowerCase().replace(/[^a-z0-9_]/g, '_');
+      
+      this.rm.invalidateCache();
+      const brain = await this.rm.getPoseidonBrain();
+      brain.user = brain.user || {};
+      brain.user.context = brain.user.context || {};
+      const wasNew = !(safeKey in brain.user.context);
+      brain.user.context[safeKey] = value;
+      brain.user.last_learned_at = new Date().toISOString();
+      
+      await this.rm.write('main/poseidon_brain.json', brain);
+      
+      await this.rm.log({
+        event_type: 'user_context_learned',
+        severity: 'info',
+        actor: { type: 'system', id: 'poseidon_main' },
+        subject: { type: 'system', id: 'poseidon_main' },
+        action: `Learned ${wasNew ? 'new' : 'updated'} user fact: ${safeKey}`,
+        context: { key: safeKey, value, was_new: wasNew }
+      }).catch(() => {});
+      
+      return {
+        ok: true,
+        key: safeKey,
+        value,
+        message: `${wasNew ? 'Recorded' : 'Updated'} user.context.${safeKey} = "${value}"`
       };
     } catch (err) {
       return { ok: false, error: err.message };

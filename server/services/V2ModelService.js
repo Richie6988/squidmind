@@ -215,7 +215,7 @@ class V2ModelService {
     await this.rm.log({
       event_type: 'model_loaded',
       severity: 'info',
-      actor: { type: 'human', id: 'human_richard' },
+      actor: { type: 'human', id: 'human_user' },
       subject: { type: 'model', id: modelId },
       action: `Imported ${fileName} to library`,
       context: { config: finalConfig }
@@ -240,7 +240,7 @@ class V2ModelService {
     
     await this.rm.log({
       event_type: 'json_update',
-      actor: { type: 'human', id: 'human_richard' },
+      actor: { type: 'human', id: 'human_user' },
       subject: { type: 'model', id: modelId },
       action: `Updated load params for ${modelId}`,
       context: { config: newConfig, will_apply_on_next_load: this.loaded.has(modelId) }
@@ -265,7 +265,7 @@ class V2ModelService {
     
     await this.rm.log({
       event_type: 'model_unloaded',
-      actor: { type: 'human', id: 'human_richard' },
+      actor: { type: 'human', id: 'human_user' },
       subject: { type: 'model', id: modelId },
       action: `Removed ${modelId} from library`
     });
@@ -548,7 +548,7 @@ class V2ModelService {
 
     await this.rm.log({
       event_type: 'poseidon_decision',
-      actor: { type: 'human', id: 'human_richard' },
+      actor: { type: 'human', id: 'human_user' },
       subject: { type: 'model', id: modelId },
       action: `Assigned ${modelId} as Poseidon's model`
     });
@@ -679,24 +679,23 @@ class V2ModelService {
           systemPrompt = await this.buildPoseidonSystemPrompt();
         }
         
-        // Pick the right chat wrapper. Qwen models need QwenChatWrapper for
-        // proper function-calling support. Detect by file name.
-        let chatWrapper;
-        const fname = (entry.file_name || '').toLowerCase();
-        if (fname.includes('qwen')) {
-          chatWrapper = new llamaCpp.QwenChatWrapper();
-          console.log('[V2ModelService] Using QwenChatWrapper (detected Qwen model)');
-        }
-        // For other architectures, node-llama-cpp auto-detects from GGUF metadata.
-        
+        // Pick the right chat wrapper - model-agnostic.
+        // LlamaChatSession accepts chatWrapper:'auto' which uses the model's
+        // GGUF metadata + tokenizer to pick the right template. Works for
+        // any modern model (Qwen, Llama, Mistral, DeepSeek, Gemma, etc).
+        // We pass 'auto' as the default and let node-llama-cpp do the work.
         const sequence = entry.context.getSequence();
-        const sessionOpts = { contextSequence: sequence, systemPrompt };
-        if (chatWrapper) sessionOpts.chatWrapper = chatWrapper;
+        const sessionOpts = {
+          contextSequence: sequence,
+          systemPrompt,
+          chatWrapper: 'auto'
+        };
         entry.session = new llamaCpp.LlamaChatSession(sessionOpts);
         entry._functions = functions;
         entry._currentSequence = sequence;
         entry.sessionTurns = 0;
-        console.log(`[V2ModelService] Created fresh chat session for ${this.poseidonModelId} (system prompt reloaded from brain.json${functions ? `, ${Object.keys(functions).length} functions exposed` : ''})`);
+        const detectedWrapper = entry.session.chatWrapper?.constructor?.name || 'unknown';
+        console.log(`[V2ModelService] Created fresh chat session for ${this.poseidonModelId} (${detectedWrapper}, system prompt reloaded from brain.json${functions ? `, ${Object.keys(functions).length} functions exposed` : ''})`);
       }
       const session = entry.session;
 
@@ -751,7 +750,7 @@ class V2ModelService {
       await this.rm.log({
         event_type: 'user_input',
         severity: 'info',
-        actor: { type: 'human', id: 'human_richard' },
+        actor: { type: 'human', id: 'human_user' },
         subject: { type: 'system', id: 'poseidon_main' },
         action: 'Chat exchange',
         context: {

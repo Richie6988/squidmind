@@ -29,45 +29,12 @@
     "continuity": "Each session you wake fresh. These files ARE your memory. Read them. Update them."
   },
   "user": {
-    "user_id": "human_richard",
-    "name": "Richard",
-    "role": "Product Owner and Creator",
-    "preferences": {
-      "languages": [
-        "French",
-        "English"
-      ],
-      "code_style": "Precise, targeted edits - no full rewrites",
-      "communication": "Direct, no fluff, prove before commit",
-      "workflow": "One fix at a time, test each, then commit"
-    },
-    "context": {
-      "location": "Lyon, Rhone-Alpes, FR",
-      "timezone": "Europe/Paris",
-      "workspace_path": "/home/richard/Bureau/AIKIP/SquidSquad/squidmind",
-      "os": "Linux",
-      "editor": "VS Code"
-    },
-    "learned_patterns": [
-      {
-        "pattern": "Hates emojis in production code - FORBIDDEN",
-        "confidence": 1,
-        "learned_at": "2025-01-20T15:00:00.000Z",
-        "reinforced_count": 4
-      },
-      {
-        "pattern": "Wants proof and tests before commits",
-        "confidence": 0.95,
-        "learned_at": "2025-01-20T16:00:00.000Z",
-        "reinforced_count": 2
-      },
-      {
-        "pattern": "Deep think before implementation",
-        "confidence": 0.99,
-        "learned_at": "2025-01-20T17:00:00.000Z",
-        "reinforced_count": 3
-      }
-    ]
+    "user_id": "human_user",
+    "name": null,
+    "role": null,
+    "preferences": {},
+    "context": {},
+    "learned_patterns": []
   },
   "environment": {
     "data_root": "data/",

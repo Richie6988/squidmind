@@ -375,7 +375,7 @@ app.post('/api/projects', async (req, res) => {
     // 5. Log
     await sharedRm.log({
       event_type: 'project_created',
-      actor: { type: 'human', id: 'human_richard' },
+      actor: { type: 'human', id: 'human_user' },
       subject: { type: 'project', id: projectId },
       action: `Created project ${upperName} (${projectId})`,
       context: { folder: folderName, vision: vision || '' }

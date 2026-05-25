@@ -246,7 +246,7 @@ class RegistryManager {
       history.push({
         name: newValue,
         given_at: now,
-        given_by: options.actor || 'human_richard',
+        given_by: options.actor || 'human_user',
         active: true
       });
       this.setValueAtPath(data, historyPath, history);
@@ -258,7 +258,7 @@ class RegistryManager {
     await this.log({
       event_type: 'json_update',
       severity: 'info',
-      actor: { type: options.actor_type || 'human', id: options.actor || 'human_richard' },
+      actor: { type: options.actor_type || 'human', id: options.actor || 'human_user' },
       subject: { type: 'field', id: fieldPath },
       action: `Updated ${filePath}:${fieldPath}`,
       changes: [{
@@ -396,7 +396,7 @@ class RegistryManager {
     await this.log({
       event_type: 'agent_archived',
       severity: 'warning',
-      actor: { type: 'human', id: 'human_richard' },
+      actor: { type: 'human', id: 'human_user' },
       subject: { type: 'agent', id: agentId },
       action: `Deleted agent ${displayName} (${agentId})`,
       changes: [
@@ -430,7 +430,7 @@ class RegistryManager {
       name_history: [{
         name: displayName,
         given_at: now,
-        given_by: agentData.created_by || 'human_richard',
+        given_by: agentData.created_by || 'human_user',
         active: true
       }],
       brain_file: brainFile,
@@ -479,7 +479,7 @@ class RegistryManager {
           agent_id: agentId,
           display_name: displayName,
           created_at: agentData.brain.identity?.created_at || now,
-          created_by: agentData.created_by || 'human_richard',
+          created_by: agentData.created_by || 'human_user',
           version: '1.0.0'
         },
         current_state: agentData.brain.current_state || {
@@ -501,7 +501,7 @@ class RegistryManager {
           nickname: agentData.nickname || displayName,
           role: agentData.role || 'General Agent',
           created_at: now,
-          created_by: agentData.created_by || 'human_richard',
+          created_by: agentData.created_by || 'human_user',
           cloned_from: agentData.cloned_from || null,
           version: '1.0.0'
         },
@@ -531,7 +531,7 @@ class RegistryManager {
 
     await this.log({
       event_type: 'agent_created',
-      actor: { type: 'system', id: agentData.created_by || 'human_richard' },
+      actor: { type: 'system', id: agentData.created_by || 'human_user' },
       subject: { type: 'agent', id: agentId },
       action: `Created agent: ${displayName}`,
       changes: [
@@ -713,7 +713,7 @@ class RegistryManager {
       description: taskData.description || '',
       origin: taskData.origin || {
         type: 'human_direct',
-        source: 'human_richard',
+        source: 'human_user',
         via: 'chat_interface',
         received_at: now
       },
