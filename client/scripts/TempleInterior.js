@@ -398,61 +398,49 @@ const TempleInterior = {
     console.log('[SQUID] Opening squid assigner');
     
     const allSquids = window.aquarium?.squids || [];
-    // Show ALL squids (filterable). Indicator says if already assigned elsewhere.
     
     const modal = document.createElement('div');
-    modal.className = 'squid-assigner-modal';
+    modal.className = 'modal squid-assigner-modal';
     modal.innerHTML = `
-      <div class="squid-assigner">
-        <div class="squid-assigner-header">
-          <h2>Assign Squids to ${this.currentTemple.name}</h2>
-          <button class="btn-close" onclick="this.closest('.squid-assigner-modal').remove()">x</button>
+      <div class="modal-content" style="width:90vw; max-width:480px;">
+        <div class="modal-header">
+          <h2>Assign Squid to ${this.currentTemple.name}</h2>
+          <button class="btn-close" onclick="this.closest('.modal').remove()">x</button>
         </div>
-        <p class="hint">Type a name to search, or browse. Click a squid to assign.</p>
-        <input type="text" id="squid-assigner-search" placeholder="Search by name or role..."
-          style="width:100%; padding:8px; margin-bottom:12px; background:var(--ocean-mid); border:1px solid var(--border); color:var(--text); font-family:'Courier New',monospace; font-size:11px;" />
-        <div class="squid-grid" id="squid-assigner-grid"></div>
+        <div class="modal-body" style="padding:16px;">
+          <p class="hint" style="font-size:9px; color:var(--text-secondary); margin-bottom:12px;">
+            Pick a squid below. Status shows current assignment.
+          </p>
+          <select id="squid-assigner-dropdown" style="width:100%; padding:8px; background:var(--ocean-mid); border:1px solid var(--border); color:var(--text); font-family:'Courier New',monospace; font-size:11px;">
+            <option value="">-- Select a squid --</option>
+            ${allSquids.length === 0
+              ? '<option disabled>No squids exist. Create one from + New Squid</option>'
+              : allSquids.map(s => {
+                  const isHere = s.currentProject === this.currentTemple.name;
+                  const elsewhere = s.currentProject && !isHere;
+                  let status = 'available';
+                  if (isHere) status = 'already here';
+                  else if (elsewhere) status = `currently: ${s.currentProject}`;
+                  return `<option value="${this._escape(s.id)}" ${isHere ? 'disabled' : ''}>${this._escape(s.name)} (${this._escape(s.specialty || s.role || 'general')}) — ${status}</option>`;
+                }).join('')
+            }
+          </select>
+        </div>
+        <div style="display:flex; gap:8px; justify-content:flex-end; padding:12px 16px; border-top:1px solid var(--border);">
+          <button class="btn-secondary" onclick="this.closest('.modal').remove()">Cancel</button>
+          <button class="btn-primary" id="squid-assign-confirm">Assign</button>
+        </div>
       </div>
     `;
     document.body.appendChild(modal);
     
-    const renderGrid = (filter = '') => {
-      const grid = modal.querySelector('#squid-assigner-grid');
-      const lower = filter.toLowerCase().trim();
-      const filtered = allSquids.filter(s => !lower ||
-        (s.name && s.name.toLowerCase().includes(lower)) ||
-        (s.specialty && s.specialty.toLowerCase().includes(lower)) ||
-        (s.role && s.role.toLowerCase().includes(lower))
-      );
-      
-      if (filtered.length === 0) {
-        grid.innerHTML = '<p class="hint" style="text-align:center; padding:20px;">No squids match. Create a new one from the [SQUID] panel.</p>';
-        return;
-      }
-      
-      grid.innerHTML = filtered.map(squid => {
-        const isAssignedHere = squid.currentProject === this.currentTemple.name;
-        const isAssignedElsewhere = squid.currentProject && !isAssignedHere;
-        return `
-          <div class="squid-card ${isAssignedHere ? 'assigned-here' : ''}">
-            <div class="squid-icon" style="background:${squid.color}; width:24px; height:24px; border-radius:50%; margin-bottom:6px;"></div>
-            <div class="squid-info">
-              <div class="squid-name">${this._escape(squid.name)}</div>
-              <div class="squid-specialty">${this._escape(squid.specialty || squid.role || 'No role')}</div>
-              ${isAssignedElsewhere ? `<div class="squid-assigned-elsewhere">In ${this._escape(squid.currentProject)}</div>` : ''}
-            </div>
-            <button onclick="TempleInterior.assignSquid('${squid.id}')" ${isAssignedHere ? 'disabled' : ''}>
-              ${isAssignedHere ? '[OK] Assigned' : (isAssignedElsewhere ? 'Reassign here' : '+ Assign')}
-            </button>
-          </div>
-        `;
-      }).join('');
-    };
-    
-    renderGrid();
-    const searchInput = modal.querySelector('#squid-assigner-search');
-    searchInput.addEventListener('input', e => renderGrid(e.target.value));
-    setTimeout(() => searchInput.focus(), 50);
+    modal.querySelector('#squid-assign-confirm').addEventListener('click', () => {
+      const sel = modal.querySelector('#squid-assigner-dropdown');
+      const squidId = sel.value;
+      if (!squidId) { alert('Pick a squid first'); return; }
+      this.assignSquid(squidId);
+      modal.remove();
+    });
   },
   
   _escape(s) {

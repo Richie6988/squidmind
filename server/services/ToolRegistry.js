@@ -473,6 +473,57 @@ class ToolRegistry {
   /**
    * Register a custom tool
    */
+  /**
+   * Mirror all in-memory tools into data/tools/tool_registry.json so the
+   * V2 AgentForm "Tools Allowed" dropdown shows them.
+   */
+  async syncToRegistryFile(sharedRm) {
+    if (!sharedRm) return;
+    try {
+      sharedRm.invalidateCache();
+      const registry = await sharedRm.read('tools/tool_registry.json').catch(() => ({
+        schema_version: '2.0.0',
+        schema_type: 'tool_registry',
+        metadata: { last_id_used: 0, next_id: 1, id_format: 'tool_NNN', total_available: 0, last_updated_at: new Date().toISOString() },
+        tools: {}
+      }));
+      
+      registry.tools = registry.tools || {};
+      let nextId = registry.metadata?.next_id || 1;
+      let added = 0;
+      
+      for (const [name, tool] of this.tools.entries()) {
+        // Check if already in registry by name
+        const exists = Object.values(registry.tools).find(t => t.name === name);
+        if (exists) continue;
+        
+        const toolId = `tool_local_${String(nextId).padStart(3, '0')}`;
+        registry.tools[toolId] = {
+          tool_id: toolId,
+          name: name,
+          type: 'local_function',
+          category: tool.category || 'general',
+          description: tool.description || '',
+          parameters: tool.parameters || {},
+          available: true,
+          registered_at: new Date().toISOString()
+        };
+        nextId++;
+        added++;
+      }
+      
+      if (added > 0) {
+        registry.metadata.next_id = nextId;
+        registry.metadata.last_id_used = nextId - 1;
+        registry.metadata.total_available = Object.keys(registry.tools).length;
+        await sharedRm.write('tools/tool_registry.json', registry);
+        console.log(`[ToolRegistry] Synced ${added} built-in tools to V2 registry (total: ${registry.metadata.total_available})`);
+      }
+    } catch (err) {
+      console.warn('[ToolRegistry] syncToRegistryFile failed:', err.message);
+    }
+  }
+
   registerTool(tool) {
     if (!tool.name || !tool.execute) {
       throw new Error('Tool must have name and execute function');

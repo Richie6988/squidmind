@@ -24,9 +24,7 @@
         <button class="btn-nav" onclick="ui.showPanel('logs')">[LOGS] Logs</button>
       </div>
       <div class="header-stats">
-        <span id="agent-count">0 Squids</span>
-        <span id="task-count">0 Tasks</span>
-        <span id="api-status">●</span>
+        <span id="api-status" title="API connection">●</span>
       </div>
     </div>
   </header>
@@ -39,11 +37,15 @@
       <canvas id="aquarium"></canvas>
     </div>
     
-    <!-- Projects Container (temples + new project button) -->
+    <!-- Projects Container (temples + new project button + search) -->
     <div class="projects-container" id="projects-container">
       <button class="btn-new-project-card" onclick="window.ui.openNewProjectModal()">
         + New Project
       </button>
+      <div class="projects-search-wrap">
+        <span class="projects-search-icon">o-</span>
+        <input id="projects-search-input" type="text" placeholder="Search..." class="projects-search-input">
+      </div>
       <div id="temple-cards-list" class="temple-cards-list">
         <!-- Temple cards populated by ProjectsPanel.render() -->
       </div>

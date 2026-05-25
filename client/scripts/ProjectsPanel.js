@@ -17,6 +17,8 @@
 
 const ProjectsPanel = {
   projects: [],
+  filteredProjects: [],
+  searchQuery: '',
   draggingProjectId: null,
   
   async refresh() {
@@ -28,6 +30,7 @@ const ProjectsPanel = {
         (a.display_order ?? 999) - (b.display_order ?? 999) ||
         (a.project_id || '').localeCompare(b.project_id || '')
       );
+      this._applyFilter();
       this.render();
     } catch (err) {
       console.warn('[ProjectsPanel] refresh failed:', err.message);
@@ -36,16 +39,41 @@ const ProjectsPanel = {
     }
   },
   
+  _applyFilter() {
+    const q = this.searchQuery.toLowerCase().trim();
+    if (!q) {
+      this.filteredProjects = this.projects;
+    } else {
+      this.filteredProjects = this.projects.filter(p =>
+        (p.name || '').toLowerCase().includes(q) ||
+        (p.project_id || '').toLowerCase().includes(q) ||
+        (p.vision || '').toLowerCase().includes(q)
+      );
+    }
+  },
+  
+  setSearchQuery(q) {
+    this.searchQuery = q;
+    this._applyFilter();
+    this.render();
+  },
+  
   render() {
     const list = document.getElementById('temple-cards-list');
     if (!list) return;
+    
+    const items = this.filteredProjects;
     
     if (this.projects.length === 0) {
       list.innerHTML = '<p class="hint" style="font-size:9px; padding:8px; color:var(--text-secondary); text-align:center;">No projects yet. Click + New Project.</p>';
       return;
     }
+    if (items.length === 0) {
+      list.innerHTML = `<p class="hint" style="font-size:9px; padding:8px; color:var(--text-secondary); text-align:center;">No match for "${this._esc(this.searchQuery)}".</p>`;
+      return;
+    }
     
-    list.innerHTML = this.projects.map(p => this._renderCard(p)).join('');
+    list.innerHTML = items.map(p => this._renderCard(p)).join('');
     
     // Wire drag events
     list.querySelectorAll('.temple-card').forEach(card => {
@@ -71,7 +99,7 @@ const ProjectsPanel = {
            data-project-name="${this._esc(p.name)}"
            draggable="true">
         <div class="temple-card-svg-wrap" onclick="ProjectsPanel.enterTemple('${this._esc(p.name)}')">
-          ${this._renderTempleSvg(shape, colors)}
+          ${this._renderTempleSvg(shape, colors, agentCount)}
         </div>
         <div class="temple-card-info">
           <div class="temple-card-name">${this._esc(p.name)}</div>
@@ -88,10 +116,10 @@ const ProjectsPanel = {
   },
   
   /**
-   * Render a small pixel-art temple SVG with given shape and colors.
-   * 24x32 viewBox - small enough for card thumbnail.
+   * Render a small pixel-art temple SVG with given shape, colors, and
+   * optional squid count visible inside the temple.
    */
-  _renderTempleSvg(shape, colors) {
+  _renderTempleSvg(shape, colors, squidCount = 0) {
     const outside = colors.outside || '#457B9D';
     const inside = colors.inside || '#1D3557';
     const darker = this._darken(outside, 0.7);
@@ -149,7 +177,39 @@ const ProjectsPanel = {
     
     const shapeBody = shapes[shape] || shapes.classic;
     
-    return `<svg viewBox="0 0 24 30" class="temple-card-svg" shape-rendering="crispEdges">${shapeBody}</svg>`;
+    // Draw mini squids inside the temple (one per assigned agent, up to 5)
+    let squids = '';
+    if (squidCount > 0) {
+      const positions = [
+        { x: 10, y: 20 },   // center
+        { x: 7, y: 22 },    // left
+        { x: 13, y: 22 },   // right  
+        { x: 8, y: 19 },    // upper-left
+        { x: 14, y: 19 }    // upper-right
+      ];
+      const shown = Math.min(squidCount, 5);
+      for (let i = 0; i < shown; i++) {
+        const pos = positions[i];
+        squids += this._renderMiniSquid(pos.x, pos.y);
+      }
+      if (squidCount > 5) {
+        squids += `<text x="12" y="28" text-anchor="middle" font-size="3" fill="#FFE66D" font-family="monospace">+${squidCount - 5}</text>`;
+      }
+    }
+    
+    return `<svg viewBox="0 0 24 30" class="temple-card-svg" shape-rendering="crispEdges">${shapeBody}${squids}</svg>`;
+  },
+  
+  /**
+   * Draw a tiny pink squid at given coords.
+   */
+  _renderMiniSquid(cx, cy) {
+    return `
+      <rect x="${cx-1}" y="${cy-2}" width="2" height="2" fill="#FF6B9D"/>
+      <rect x="${cx-1}" y="${cy}" width="1" height="2" fill="#C44569"/>
+      <rect x="${cx}" y="${cy}" width="1" height="2" fill="#C44569"/>
+      <rect x="${cx-1}" y="${cy-2}" width="1" height="1" fill="#fff" opacity="0.6"/>
+    `;
   },
   
   _darken(hex, factor) {
@@ -282,6 +342,14 @@ const ProjectsPanel = {
 
 // Auto-init
 async function _initProjectsPanel() {
+  // Wire search input
+  const searchInput = document.getElementById('projects-search-input');
+  if (searchInput) {
+    searchInput.addEventListener('input', (e) => {
+      ProjectsPanel.setSearchQuery(e.target.value);
+    });
+  }
+  
   await ProjectsPanel.refresh();
   // Refresh every 30s
   setInterval(() => ProjectsPanel.refresh(), 30000);

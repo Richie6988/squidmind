@@ -1,23 +1,40 @@
 {
   "schema_version": "2.0.0",
   "schema_type": "tool_registry",
-  
   "metadata": {
     "total_tools": 3,
     "total_active": 3,
-    "by_type": {"local_function": 1, "api_call": 1, "mcp_server": 1},
-    "last_updated_at": "2025-01-20T17:00:00.000Z"
+    "by_type": {
+      "local_function": 1,
+      "api_call": 1,
+      "mcp_server": 1
+    },
+    "last_updated_at": "2026-05-25T16:28:43.073Z",
+    "next_id": 22,
+    "last_id_used": 21,
+    "total_available": 23
   },
-  
   "tools": {
     "tool_local_001": {
       "tool_id": "tool_local_001",
-      "name": "read_file",
+      "name": "write_file",
       "type": "local_function",
-      "category": "filesystem",
-      "spec_file": "read_file.json",
-      "status": "active",
-      "usage_count": 0
+      "category": "custom",
+      "description": "Write content to a file",
+      "parameters": {
+        "path": {
+          "type": "string",
+          "required": true,
+          "description": "File path to write"
+        },
+        "content": {
+          "type": "string",
+          "required": true,
+          "description": "Content to write"
+        }
+      },
+      "available": true,
+      "registered_at": "2026-05-25T16:28:43.061Z"
     },
     "tool_api_001": {
       "tool_id": "tool_api_001",
@@ -36,24 +53,415 @@
       "spec_file": "github_mcp.json",
       "status": "active",
       "usage_count": 0
+    },
+    "tool_local_002": {
+      "tool_id": "tool_local_002",
+      "name": "list_files",
+      "type": "local_function",
+      "category": "custom",
+      "description": "List files in a directory",
+      "parameters": {
+        "path": {
+          "type": "string",
+          "required": true,
+          "description": "Directory path"
+        },
+        "recursive": {
+          "type": "boolean",
+          "required": false,
+          "description": "Recursive listing"
+        }
+      },
+      "available": true,
+      "registered_at": "2026-05-25T16:28:43.072Z"
+    },
+    "tool_local_003": {
+      "tool_id": "tool_local_003",
+      "name": "delete_file",
+      "type": "local_function",
+      "category": "custom",
+      "description": "Delete a file",
+      "parameters": {
+        "path": {
+          "type": "string",
+          "required": true,
+          "description": "File path to delete"
+        }
+      },
+      "available": true,
+      "registered_at": "2026-05-25T16:28:43.072Z"
+    },
+    "tool_local_004": {
+      "tool_id": "tool_local_004",
+      "name": "web_fetch",
+      "type": "local_function",
+      "category": "custom",
+      "description": "Fetch content from a URL",
+      "parameters": {
+        "url": {
+          "type": "string",
+          "required": true,
+          "description": "URL to fetch"
+        }
+      },
+      "available": true,
+      "registered_at": "2026-05-25T16:28:43.072Z"
+    },
+    "tool_local_005": {
+      "tool_id": "tool_local_005",
+      "name": "calculator",
+      "type": "local_function",
+      "category": "custom",
+      "description": "Evaluate mathematical expressions",
+      "parameters": {
+        "expression": {
+          "type": "string",
+          "required": true,
+          "description": "Math expression to evaluate"
+        }
+      },
+      "available": true,
+      "registered_at": "2026-05-25T16:28:43.072Z"
+    },
+    "tool_local_006": {
+      "tool_id": "tool_local_006",
+      "name": "get_datetime",
+      "type": "local_function",
+      "category": "custom",
+      "description": "Get current date and time",
+      "parameters": {
+        "timezone": {
+          "type": "string",
+          "required": false,
+          "description": "Timezone (default: UTC)"
+        }
+      },
+      "available": true,
+      "registered_at": "2026-05-25T16:28:43.072Z"
+    },
+    "tool_local_007": {
+      "tool_id": "tool_local_007",
+      "name": "json_parse",
+      "type": "local_function",
+      "category": "custom",
+      "description": "Parse JSON string",
+      "parameters": {
+        "json_string": {
+          "type": "string",
+          "required": true,
+          "description": "JSON string to parse"
+        }
+      },
+      "available": true,
+      "registered_at": "2026-05-25T16:28:43.072Z"
+    },
+    "tool_local_008": {
+      "tool_id": "tool_local_008",
+      "name": "json_stringify",
+      "type": "local_function",
+      "category": "custom",
+      "description": "Convert object to JSON string",
+      "parameters": {
+        "data": {
+          "type": "object",
+          "required": true,
+          "description": "Data to stringify"
+        }
+      },
+      "available": true,
+      "registered_at": "2026-05-25T16:28:43.072Z"
+    },
+    "tool_local_009": {
+      "tool_id": "tool_local_009",
+      "name": "create_directory",
+      "type": "local_function",
+      "category": "filesystem",
+      "description": "Create directory with parent directories",
+      "parameters": {
+        "path": {
+          "type": "string",
+          "required": true,
+          "description": "Directory path to create"
+        }
+      },
+      "available": true,
+      "registered_at": "2026-05-25T16:28:43.072Z"
+    },
+    "tool_local_010": {
+      "tool_id": "tool_local_010",
+      "name": "directory_tree",
+      "type": "local_function",
+      "category": "filesystem",
+      "description": "Get recursive directory tree structure",
+      "parameters": {
+        "path": {
+          "type": "string",
+          "required": false,
+          "description": "Directory path (default: workspace root)"
+        },
+        "excludePatterns": {
+          "type": "array",
+          "required": false,
+          "description": "Patterns to exclude"
+        }
+      },
+      "available": true,
+      "registered_at": "2026-05-25T16:28:43.072Z"
+    },
+    "tool_local_011": {
+      "tool_id": "tool_local_011",
+      "name": "search_files",
+      "type": "local_function",
+      "category": "filesystem",
+      "description": "Search files by pattern (glob-style)",
+      "parameters": {
+        "path": {
+          "type": "string",
+          "required": false,
+          "description": "Search root (default: workspace)"
+        },
+        "pattern": {
+          "type": "string",
+          "required": true,
+          "description": "Pattern (e.g., *.tsx, **/*.json)"
+        }
+      },
+      "available": true,
+      "registered_at": "2026-05-25T16:28:43.072Z"
+    },
+    "tool_local_012": {
+      "tool_id": "tool_local_012",
+      "name": "get_file_info",
+      "type": "local_function",
+      "category": "filesystem",
+      "description": "Get file metadata (size, dates, permissions)",
+      "parameters": {
+        "path": {
+          "type": "string",
+          "required": true,
+          "description": "File or directory path"
+        }
+      },
+      "available": true,
+      "registered_at": "2026-05-25T16:28:43.072Z"
+    },
+    "tool_local_013": {
+      "tool_id": "tool_local_013",
+      "name": "move_file",
+      "type": "local_function",
+      "category": "filesystem",
+      "description": "Move or rename file/directory",
+      "parameters": {
+        "source": {
+          "type": "string",
+          "required": true,
+          "description": "Source path"
+        },
+        "destination": {
+          "type": "string",
+          "required": true,
+          "description": "Destination path"
+        }
+      },
+      "available": true,
+      "registered_at": "2026-05-25T16:28:43.072Z"
+    },
+    "tool_local_014": {
+      "tool_id": "tool_local_014",
+      "name": "run_javascript",
+      "type": "local_function",
+      "category": "code",
+      "description": "Execute JavaScript code in sandbox (timeout: 60s max)",
+      "parameters": {
+        "code": {
+          "type": "string",
+          "required": true,
+          "description": "JavaScript code to execute"
+        },
+        "timeout_seconds": {
+          "type": "number",
+          "required": false,
+          "description": "Timeout in seconds (default: 5)"
+        }
+      },
+      "available": true,
+      "registered_at": "2026-05-25T16:28:43.072Z"
+    },
+    "tool_local_015": {
+      "tool_id": "tool_local_015",
+      "name": "read_media_file",
+      "type": "local_function",
+      "category": "filesystem",
+      "description": "Read image/audio file as base64",
+      "parameters": {
+        "path": {
+          "type": "string",
+          "required": true,
+          "description": "Media file path"
+        }
+      },
+      "available": true,
+      "registered_at": "2026-05-25T16:28:43.072Z"
+    },
+    "tool_local_016": {
+      "tool_id": "tool_local_016",
+      "name": "hf_search_models",
+      "type": "local_function",
+      "category": "ai",
+      "description": "Search HuggingFace models",
+      "parameters": {
+        "query": {
+          "type": "string",
+          "required": true,
+          "description": "Search query"
+        },
+        "task": {
+          "type": "string",
+          "required": false,
+          "description": "Filter by task (text-generation, etc.)"
+        },
+        "limit": {
+          "type": "number",
+          "required": false,
+          "description": "Number of results (default: 20)"
+        }
+      },
+      "available": true,
+      "registered_at": "2026-05-25T16:28:43.072Z"
+    },
+    "tool_local_017": {
+      "tool_id": "tool_local_017",
+      "name": "hf_generate",
+      "type": "local_function",
+      "category": "ai",
+      "description": "Generate text with HuggingFace Inference API",
+      "parameters": {
+        "model": {
+          "type": "string",
+          "required": true,
+          "description": "Model ID (e.g., mistralai/Mistral-7B-Instruct-v0.2)"
+        },
+        "input": {
+          "type": "string",
+          "required": true,
+          "description": "Input prompt"
+        },
+        "max_tokens": {
+          "type": "number",
+          "required": false,
+          "description": "Max tokens (default: 500)"
+        },
+        "temperature": {
+          "type": "number",
+          "required": false,
+          "description": "Temperature (default: 0.7)"
+        }
+      },
+      "available": true,
+      "registered_at": "2026-05-25T16:28:43.072Z"
+    },
+    "tool_local_018": {
+      "tool_id": "tool_local_018",
+      "name": "hf_generate_code",
+      "type": "local_function",
+      "category": "ai",
+      "description": "Generate code with HuggingFace models",
+      "parameters": {
+        "prompt": {
+          "type": "string",
+          "required": true,
+          "description": "Code generation prompt"
+        },
+        "language": {
+          "type": "string",
+          "required": false,
+          "description": "Programming language (default: python)"
+        },
+        "max_tokens": {
+          "type": "number",
+          "required": false,
+          "description": "Max tokens (default: 1000)"
+        }
+      },
+      "available": true,
+      "registered_at": "2026-05-25T16:28:43.072Z"
+    },
+    "tool_local_019": {
+      "tool_id": "tool_local_019",
+      "name": "scan_local_models",
+      "type": "local_function",
+      "category": "ai",
+      "description": "Scan PC for GGUF/GGML models (HF cache, Ollama, LM Studio, etc.)",
+      "parameters": {},
+      "available": true,
+      "registered_at": "2026-05-25T16:28:43.072Z"
+    },
+    "tool_local_020": {
+      "tool_id": "tool_local_020",
+      "name": "find_local_model",
+      "type": "local_function",
+      "category": "ai",
+      "description": "Search for specific model by name",
+      "parameters": {
+        "searchTerm": {
+          "type": "string",
+          "required": true,
+          "description": "Model name or partial match"
+        }
+      },
+      "available": true,
+      "registered_at": "2026-05-25T16:28:43.072Z"
+    },
+    "tool_local_021": {
+      "tool_id": "tool_local_021",
+      "name": "get_model_stats",
+      "type": "local_function",
+      "category": "ai",
+      "description": "Get statistics about local models",
+      "parameters": {},
+      "available": true,
+      "registered_at": "2026-05-25T16:28:43.072Z"
     }
   },
-  
   "type_definitions": {
     "local_function": {
       "description": "Direct code execution on local machine",
-      "requires": ["function_reference", "permission_scope", "sandbox_boundaries"],
-      "risks": ["filesystem_access", "code_execution"]
+      "requires": [
+        "function_reference",
+        "permission_scope",
+        "sandbox_boundaries"
+      ],
+      "risks": [
+        "filesystem_access",
+        "code_execution"
+      ]
     },
     "api_call": {
       "description": "External HTTP/HTTPS API service",
-      "requires": ["endpoint_url", "authentication", "rate_limits"],
-      "risks": ["external_dependency", "api_quotas", "data_privacy"]
+      "requires": [
+        "endpoint_url",
+        "authentication",
+        "rate_limits"
+      ],
+      "risks": [
+        "external_dependency",
+        "api_quotas",
+        "data_privacy"
+      ]
     },
     "mcp_server": {
       "description": "Model Context Protocol compliant server",
-      "requires": ["server_url", "protocol_version", "transport", "capabilities"],
-      "risks": ["protocol_mismatch", "server_availability"]
+      "requires": [
+        "server_url",
+        "protocol_version",
+        "transport",
+        "capabilities"
+      ],
+      "risks": [
+        "protocol_mismatch",
+        "server_availability"
+      ]
     }
-  }
+  },
+  "last_updated_at": "2026-05-25T16:28:43.073Z"
 }

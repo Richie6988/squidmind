@@ -2,11 +2,11 @@
   "schema_version": "2.0.0",
   "schema_type": "logs",
   "metadata": {
-    "total_entries": 9,
-    "last_entry_id": 9,
+    "total_entries": 10,
+    "last_entry_id": 10,
     "rotation_policy": "Archive entries older than 30 days or when exceeding 10000",
     "archive_path": "logs/archive/",
-    "last_updated_at": "2026-05-25T11:44:39.269Z"
+    "last_updated_at": "2026-05-25T16:28:46.319Z"
   },
   "event_types": [
     "system_startup",
@@ -231,7 +231,26 @@
         "id": "kwen3-5-9b"
       },
       "action": "Assigned kwen3-5-9b as Poseidon's model"
+    },
+    {
+      "log_id": 10,
+      "timestamp": "2026-05-25T16:28:46.319Z",
+      "severity": "info",
+      "event_type": "project_created",
+      "actor": {
+        "type": "human",
+        "id": "human_richard"
+      },
+      "subject": {
+        "type": "project",
+        "id": "project_005"
+      },
+      "action": "Created project TEST_PROJ (project_005)",
+      "context": {
+        "folder": "PROJECT_005",
+        "vision": "test creation"
+      }
     }
   ],
-  "last_updated_at": "2026-05-25T11:44:39.269Z"
+  "last_updated_at": "2026-05-25T16:28:46.319Z"
 }

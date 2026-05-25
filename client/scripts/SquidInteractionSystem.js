@@ -38,15 +38,20 @@ class SquidInteractionSystem {
     // Mouse down (start drag)
     canvas.addEventListener('mousedown', (e) => this.handleMouseDown(e));
     
-    // Mouse up (end drag, click) - on canvas
+    // Mouse up (end drag, click) - on canvas only
     canvas.addEventListener('mouseup', (e) => this.handleMouseUp(e));
     
-    // Also listen on document so dragged squid drops on HTML temple cards work
+    // Document-level listeners ONLY when mouse is outside canvas during drag
+    // (prevents double-firing when mouseup happens on canvas)
     document.addEventListener('mousemove', (e) => {
-      if (this.draggedSquid) this.handleMouseMove(e);
+      if (!this.draggedSquid) return;
+      if (e.target === canvas) return; // canvas listener handles this
+      this.handleMouseMove(e);
     });
     document.addEventListener('mouseup', (e) => {
-      if (this.draggedSquid) this.handleMouseUp(e);
+      if (!this.draggedSquid) return;
+      if (e.target === canvas) return; // canvas listener handles this
+      this.handleMouseUp(e);
     });
     
     // Context menu (right click)
@@ -79,18 +84,12 @@ class SquidInteractionSystem {
       return { type: 'poseidon', entity: poseidon };
     }
     
-    // Check temples
-    if (this.aquarium.templeManager) {
-      const temple = this.aquarium.templeManager.findTempleAt(x, y);
-      if (temple) {
-        return { type: 'temple', entity: temple };
-      }
-    }
+    // Temples are now HTML cards in projects-container (not canvas) -
+    // squid drop detection happens via ProjectsPanel.findCardAtPoint in mouseup
     
-    // Check squids (removed verbose logging)
+    // Check squids
     for (const squid of this.aquarium.squids) {
       if (!squid.isPointOver) continue;
-      
       const isOver = squid.isPointOver(x, y);
       if (isOver) {
         return { type: 'squid', entity: squid };
@@ -213,6 +212,14 @@ class SquidInteractionSystem {
     
     if (result && result.type === 'squid') {
       const squid = result.entity;
+      
+      // Wake from sleep on interaction
+      if (squid.isSleeping) {
+        squid.isSleeping = false;
+        console.log(`[SQUID] ${squid.name} woke up`);
+      }
+      squid.idleAccumulated = 0;
+      squid.lastInteractedAt = Date.now();
       
       // Prepare for potential drag
       this.draggedSquid = squid;
@@ -500,114 +507,62 @@ class SquidInteractionSystem {
   }
 
   /**
+  /**
    * Handle double click on squid
    */
   handleSquidDoubleClick(squid) {
-    console.log('🎉 Double clicked squid:', squid.name);
+    if (squid._celebratingUntil && squid._celebratingUntil > Date.now()) {
+      return; // already celebrating, ignore
+    }
+    squid._celebratingUntil = Date.now() + 2500;
     
-    // Cycle through fun animations
-    const animations = ['celebrate', 'loop', 'figure8', 'spin', 'jump'];
-    const randomAnim = animations[Math.floor(Math.random() * animations.length)];
+    // Single, smooth celebration: 3 quick jumps + a small spin
+    const startX = squid.x, startY = squid.y;
+    const startTime = Date.now();
+    const duration = 2200;
     
-    console.log(`   → Playing animation: ${randomAnim}`);
+    const step = () => {
+      const t = (Date.now() - startTime) / duration;
+      if (t >= 1) {
+        squid.targetX = startX;
+        squid.targetY = startY;
+        squid.jumpHeight = 0;
+        squid.isJumping = false;
+        squid._celebratingUntil = 0;
+        return;
+      }
+      // 3-jump easing
+      const jumpPhase = (t * 3) % 1;
+      squid.jumpHeight = Math.sin(jumpPhase * Math.PI) * 25;
+      squid.isJumping = true;
+      // Subtle horizontal sway
+      squid.x = startX + Math.sin(t * Math.PI * 6) * 10;
+      squid.targetX = squid.x;
+      
+      requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
     
-    switch(randomAnim) {
-      case 'celebrate':
-        if (squid.celebrate) squid.celebrate();
-        break;
-        
-      case 'loop':
-        // Move in a looping circle
-        this.animateLoop(squid);
-        break;
-        
-      case 'figure8':
-        // Move in figure-8 pattern
-        this.animateFigure8(squid);
-        break;
-        
-      case 'spin':
-        // Spin in place
-        this.animateSpin(squid);
-        break;
-        
-      case 'jump':
-        // Multiple jumps
-        this.animateMultiJump(squid);
-        break;
+    // Heart particles burst
+    if (squid.heartParticles) {
+      for (let i = 0; i < 5; i++) {
+        squid.heartParticles.push({
+          x: (Math.random() - 0.5) * 40,
+          y: -30 - Math.random() * 20,
+          life: 1.0,
+          vx: (Math.random() - 0.5) * 2,
+          vy: -1 - Math.random()
+        });
+      }
     }
   }
   
-  animateLoop(squid) {
-    const startX = squid.x;
-    const startY = squid.y;
-    const radius = 80;
-    let angle = 0;
-    
-    const loopInterval = setInterval(() => {
-      angle += 0.1;
-      squid.targetX = startX + Math.cos(angle) * radius;
-      squid.targetY = startY + Math.sin(angle) * radius;
-      
-      if (angle >= Math.PI * 2) {
-        clearInterval(loopInterval);
-        squid.targetX = startX;
-        squid.targetY = startY;
-      }
-    }, 30);
-  }
+  // Legacy animation methods kept as no-ops (removed jankiness)
+  animateLoop(squid) {}
+  animateFigure8(squid) {}
+  animateSpin(squid) {}
+  animateMultiJump(squid) {}
   
-  animateFigure8(squid) {
-    const startX = squid.x;
-    const startY = squid.y;
-    const width = 100;
-    const height = 60;
-    let t = 0;
-    
-    const fig8Interval = setInterval(() => {
-      t += 0.05;
-      squid.targetX = startX + Math.sin(t) * width;
-      squid.targetY = startY + Math.sin(t * 2) * height;
-      
-      if (t >= Math.PI * 2) {
-        clearInterval(fig8Interval);
-        squid.targetX = startX;
-        squid.targetY = startY;
-      }
-    }, 30);
-  }
-  
-  animateSpin(squid) {
-    let spins = 0;
-    const spinInterval = setInterval(() => {
-      squid.direction = (squid.direction + 15) % 360;
-      spins++;
-      
-      if (spins >= 24) { // 360 degrees
-        clearInterval(spinInterval);
-      }
-    }, 30);
-  }
-  
-  animateMultiJump(squid) {
-    let jumps = 0;
-    const originalY = squid.targetY;
-    
-    const jumpInterval = setInterval(() => {
-      if (jumps % 2 === 0) {
-        squid.targetY = originalY - 50;
-      } else {
-        squid.targetY = originalY;
-        jumps++;
-      }
-      
-      if (jumps >= 6) { // 3 jumps
-        clearInterval(jumpInterval);
-        squid.targetY = originalY;
-      }
-    }, 200);
-  }
-
   /**
    * Handle context menu (right-click)
    */

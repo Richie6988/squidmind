@@ -25,6 +25,9 @@ class Agent {
       glow_intensity: 0.5 // 0-1
     };
     
+    // V2 accessories (also nested in appearance.accessories)
+    this.accessories = data.accessories || (data.appearance && data.appearance.accessories) || null;
+    
     // Outfit/Accessories (unlock system)
     this.outfit = data.outfit || {
       hat: null, // 'wizard_hat', 'crown', 'cap', 'headphones'
@@ -184,9 +187,20 @@ class Agent {
     return {
       id: this.id,
       name: this.name,
+      nickname: this.nickname,
       type: this.type,
       created_at: this.created_at,
       status: this.status,
+      current_thought: this.current_thought,
+      group_id: this.group_id,
+      brain_id: this.brain_id,
+      // V2 fields - critical for canvas rendering
+      appearance: this.appearance,
+      outfit: this.outfit,
+      accessories: this.accessories || (this.appearance && this.appearance.accessories) || null,
+      stats: this.stats,
+      personality: this.personality,
+      // Legacy V1 fields
       llm: this.llm,
       prompt: this.prompt,
       tools: this.tools,

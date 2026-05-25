@@ -85,6 +85,16 @@ const v2ModelService = new V2ModelService(sharedRm, path.join(__dirname, '../dat
 app.use('/api/v2/models', buildModelRouter(v2ModelService));
 app.post('/api/v2/poseidon/chat', buildPoseidonChatRoute(v2ModelService));
 
+// Reset Poseidon chat session (clears history, keeps model loaded)
+app.post('/api/v2/poseidon/reset-session', async (req, res) => {
+  try {
+    const result = await v2ModelService.resetPoseidonSession();
+    res.json(result);
+  } catch (err) {
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
+
 // Hook V2ModelService TTL check into heartbeat
 const _originalTick = heartbeat.tick.bind(heartbeat);
 heartbeat.tick = async function() {
@@ -233,17 +243,37 @@ app.post('/api/projects', async (req, res) => {
       return res.status(400).json({ success: false, error: 'Project name required' });
     }
     
-    const projectDir = path.join(__dirname, '../data/projects', name.toUpperCase());
+    const upperName = name.toUpperCase();
     
-    // Create project folder structure
+    // 1. Read current registry to figure out next ID
+    sharedRm.invalidateCache();
+    const registry = await sharedRm.read('projects/project_registry.json');
+    
+    // Check for duplicate name
+    for (const existing of Object.values(registry.projects)) {
+      if (existing.name === upperName) {
+        return res.status(400).json({ success: false, error: `Project "${upperName}" already exists` });
+      }
+    }
+    
+    const nextId = registry.metadata.next_id || 1;
+    const projectId = `project_${String(nextId).padStart(3, '0')}`;
+    const folderName = `PROJECT_${String(nextId).padStart(3, '0')}`;
+    const projectDir = path.join(__dirname, '../data/projects', folderName);
+    
+    // 2. Create folder + subfolders
     await fs.mkdir(projectDir, { recursive: true });
     await fs.mkdir(path.join(projectDir, 'input'), { recursive: true });
     await fs.mkdir(path.join(projectDir, 'output'), { recursive: true });
     
-    // Create project_memory.json
+    // 3. Write project_memory.json
     const projectMemory = {
-      project: name.toUpperCase(),
-      vision: vision || `${name} project workspace`,
+      schema_version: '2.0.0',
+      schema_type: 'project_memory',
+      project_id: projectId,
+      name: upperName,
+      registered_in: 'projects/project_registry.json',
+      vision: vision || `${upperName} project workspace`,
       goals: [],
       tasks: [],
       progress: {
@@ -252,20 +282,11 @@ app.post('/api/projects', async (req, res) => {
         recent_achievements: [],
         next_steps: []
       },
-      architecture: {
-        frontend: {},
-        backend: {}
-      },
-      files: {
-        input: [],
-        output: []
-      },
+      architecture: { frontend: {}, backend: {} },
+      files: { input: [], output: [] },
       agents_communication: [],
       decisions: [],
-      colors: colors || {
-        outside: '#667eea',
-        inside: '#764ba2'
-      },
+      colors: colors || { outside: '#667eea', inside: '#764ba2' },
       created: new Date().toISOString()
     };
     
@@ -275,8 +296,44 @@ app.post('/api/projects', async (req, res) => {
       'utf8'
     );
     
-    res.json({ success: true, project: projectMemory });
+    // 4. Register in project_registry.json (CRITICAL - this is what UI reads)
+    registry.projects[projectId] = {
+      project_id: projectId,
+      name: upperName,
+      folder: folderName,
+      memory_file: `${folderName}/project_memory.json`,
+      status: 'active',
+      colors: colors || { outside: '#667eea', inside: '#764ba2' },
+      temple_shape: 'classic',
+      assigned_agents: [],
+      vision: vision || '',
+      display_order: Object.keys(registry.projects).length,
+      created_at: new Date().toISOString(),
+      metrics: {
+        tasks_total: 0,
+        tasks_completed: 0,
+        tasks_pending: 0,
+        completion_percent: 0
+      }
+    };
+    registry.metadata.next_id = nextId + 1;
+    registry.metadata.last_id_used = nextId;
+    registry.metadata.total_active = (registry.metadata.total_active || 0) + 1;
+    
+    await sharedRm.write('projects/project_registry.json', registry);
+    
+    // 5. Log
+    await sharedRm.log({
+      event_type: 'project_created',
+      actor: { type: 'human', id: 'human_richard' },
+      subject: { type: 'project', id: projectId },
+      action: `Created project ${upperName} (${projectId})`,
+      context: { folder: folderName, vision: vision || '' }
+    });
+    
+    res.json({ success: true, project: { ...projectMemory, project_id: projectId, folder: folderName } });
   } catch (error) {
+    console.error('[POST /api/projects] error:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });
@@ -868,6 +925,8 @@ async function start() {
     
     // Initialize tool registry (filesystem tools, etc.)
     await toolRegistry.init();
+    // Mirror built-in tools to V2 tool_registry.json so AgentForm sees them
+    await toolRegistry.syncToRegistryFile(sharedRm);
     
     // Initialize scheduler
     await scheduler.initialize();

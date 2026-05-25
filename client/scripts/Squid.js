@@ -20,6 +20,18 @@ class Squid {
       glow_intensity: 0.5
     };
     
+    // V2: accessories live under appearance.accessories - bring them up so
+    // the draw loop can find them at this.accessories.{hat, glasses, outfit, eyes}
+    this.accessories = data.accessories || (this.appearance && this.appearance.accessories) || null;
+    
+    // V2: also support appearance.primary_color / secondary_color (newer field names)
+    if (this.appearance.primary_color && !this.appearance.body_color) {
+      this.appearance.body_color = this.appearance.primary_color;
+    }
+    if (this.appearance.secondary_color && !this.appearance.accent_color) {
+      this.appearance.accent_color = this.appearance.secondary_color;
+    }
+    
     this.outfit = data.outfit || {
       hat: null,
       accessory: null,
@@ -70,6 +82,10 @@ class Squid {
   }
 
   getSizeMultiplier() {
+    // V2: numeric size_scale (0.5 - 2.0) takes priority
+    if (typeof this.appearance.size_scale === 'number') {
+      return Math.max(0.4, Math.min(3.0, this.appearance.size_scale));
+    }
     const sizes = { small: 0.8, medium: 1.0, large: 1.3 };
     return sizes[this.appearance.size] || 1.0;
   }
@@ -78,6 +94,18 @@ class Squid {
     this.animFrame += deltaTime * 0.001;
     this.glowPulse += deltaTime * 0.003;
     this.idleTimer += deltaTime;
+    
+    // === SLEEP STATE: if nothing happens for 20s, the squid falls asleep ===
+    // Wakes up on any interaction (hover, click, drag) - handled elsewhere
+    if (!this.isDragging && !this.isHovered && (this.status === 'idle' || !this.status) && !this.currentTask) {
+      this.timeSinceActivity = (this.timeSinceActivity || 0) + deltaTime;
+      if (this.timeSinceActivity > 20000) {
+        this.isSleeping = true;
+      }
+    } else {
+      this.timeSinceActivity = 0;
+      this.isSleeping = false;
+    }
     
     // Change idle animation every 3 seconds
     if (this.idleTimer > 3000) {
@@ -94,39 +122,54 @@ class Squid {
       }
     }
     
-    // Smooth movement toward target (for dragging)
+    // Smooth movement toward target (for dragging or wandering toward a point)
     const dx = this.targetX - this.x;
     const dy = this.targetY - this.y;
     const distance = Math.sqrt(dx * dx + dy * dy);
     
-    if (distance > 1) {
-      // Lerp toward target (smooth following)
-      this.x += dx * 0.3; // 30% of distance per frame = smooth
-      this.y += dy * 0.3;
-    } else {
-      // Close enough, snap to target
-      this.x = this.targetX;
-      this.y = this.targetY;
-    }
-    
-    // Movement (good swimming speed) - only when idle
-    if (!this.isDragging && this.status === 'idle' && distance < 1) {
-      const speed = this.personality.animation_style === 'energetic' ? 1.3 : 1.0; // Slower: 1.3x/1.0x
-      this.x += this.vx * speed;
-      this.y += this.vy * speed;
+    if (this.isDragging) {
+      // Hard lerp while dragged
+      if (distance > 1) {
+        this.x += dx * 0.3;
+        this.y += dy * 0.3;
+      } else {
+        this.x = this.targetX;
+        this.y = this.targetY;
+      }
+    } else if (this.isSleeping) {
+      // Gentle drift while asleep - bob slightly
+      this.x += Math.sin(this.animFrame * 0.5) * 0.1;
+      this.y += Math.cos(this.animFrame * 0.4) * 0.1;
+    } else if (this.status === 'idle' || !this.status) {
+      // Auto-sleep after 60s of pure idle (no task, no interaction)
+      this.idleAccumulated = (this.idleAccumulated || 0) + deltaTime;
+      if (this.idleAccumulated > 60000 && !this.isSleeping && !this.lastInteractedAt) {
+        this.isSleeping = true;
+        console.log(`[SQUID] ${this.name} fell asleep`);
+      }
       
-      // Update target to follow
-      this.targetX = this.x;
-      this.targetY = this.y;
+      // Wandering: pick a new random target periodically, then smoothly swim there
+      this.wanderTimer = (this.wanderTimer || 0) + deltaTime;
+      if (this.wanderTimer > 3000 + Math.random() * 3000) {
+        // Pick new random target covering most of the canvas
+        const canvas = this.aquarium?.canvas || (window.aquarium?.canvas);
+        const w = canvas?.width || 800;
+        const h = canvas?.height || 600;
+        this.targetX = 40 + Math.random() * (w - 80);
+        this.targetY = 40 + Math.random() * (h - 80);
+        this.wanderTimer = 0;
+        // Random direction flip for variety
+        if (Math.random() < 0.3) {
+          this.vx = (Math.random() - 0.5) * 4;
+          this.vy = (Math.random() - 0.5) * 4;
+        }
+      }
       
-      // Bounce off edges
-      if (this.x < 50 || this.x > 750) this.vx *= -1;
-      if (this.y < 50 || this.y > 550) this.vy *= -1;
-      
-      // Random direction changes
-      if (Math.random() < 0.015) {
-        this.vx = (Math.random() - 0.5) * 3; // 1.5x
-        this.vy = (Math.random() - 0.5) * 3;
+      // Smoothly swim toward target
+      if (distance > 5) {
+        const speed = this.personality.animation_style === 'energetic' ? 0.04 : 0.025;
+        this.x += dx * speed;
+        this.y += dy * speed;
       }
     }
     
@@ -172,10 +215,18 @@ class Squid {
     this.drawTentacles(ctx, size);
     
     // Eyes (custom from accessories, falls back to default)
-    if (this.accessories && this.accessories.eyes && this.accessories.eyes !== 'round' && typeof SquidAccessories !== 'undefined') {
+    // When asleep, draw closed eyes (horizontal lines)
+    if (this.isSleeping) {
+      this._drawSleepEyes(ctx, size);
+    } else if (this.accessories && this.accessories.eyes && this.accessories.eyes !== 'round' && typeof SquidAccessories !== 'undefined') {
       SquidAccessories.drawEyes(ctx, this.accessories.eyes, size);
     } else {
       this.drawEyes(ctx, size);
+    }
+    
+    // Sleep "Z" particles floating up
+    if (this.isSleeping) {
+      this._drawSleepZ(ctx, size);
     }
     
     // === V2 Pixel Art Accessories (from agent.appearance.accessories) ===
@@ -368,6 +419,42 @@ class Squid {
     }
   }
 
+  _drawSleepEyes(ctx, size) {
+    // Closed eyes = two short horizontal lines
+    ctx.strokeStyle = '#1a1a1a';
+    ctx.lineWidth = 2.5;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(-size * 0.35, 0);
+    ctx.lineTo(-size * 0.15, 0);
+    ctx.moveTo(size * 0.15, 0);
+    ctx.lineTo(size * 0.35, 0);
+    ctx.stroke();
+  }
+  
+  _drawSleepZ(ctx, size) {
+    // Animated Z floating up next to head
+    const t = this.animFrame * 2;
+    const zCount = 2;
+    for (let i = 0; i < zCount; i++) {
+      const phase = ((t + i * 0.7) % 2);
+      const yOffset = -size * 0.7 - phase * 25;
+      const xOffset = size * 0.3 + Math.sin(phase * Math.PI) * 5;
+      const alpha = phase < 1 ? 1 : (2 - phase);
+      const zSize = 8 + phase * 4;
+      
+      ctx.save();
+      ctx.globalAlpha = alpha * 0.8;
+      ctx.fillStyle = '#FFFFFF';
+      ctx.strokeStyle = '#1a1a1a';
+      ctx.lineWidth = 2;
+      ctx.font = `bold ${zSize}px monospace`;
+      ctx.strokeText('Z', xOffset, yOffset);
+      ctx.fillText('Z', xOffset, yOffset);
+      ctx.restore();
+    }
+  }
+  
   drawEyes(ctx, size) {
     const eyeY = this.currentIdleAnim === 'blink' && this.idleTimer < 200 ? 5 : 0;
     
@@ -640,14 +727,14 @@ class Squid {
       ctx.restore();
     }
     
-    if (this.status === 'sleeping') {
+    if (this.status === 'sleeping' || this.isSleeping) {
       // Zzz (Pokemon-style)
-      ctx.fillStyle = 'rgba(100, 100, 200, 0.6)';
-      ctx.font = 'bold 16px Arial';
+      ctx.fillStyle = 'rgba(100, 100, 200, 0.7)';
+      ctx.font = 'bold 14px Arial';
       const zzz = ['Z', 'z', 'z'];
       zzz.forEach((z, i) => {
-        const y = -size - 20 - i * 15 + Math.sin(this.animFrame + i) * 5;
-        ctx.fillText(z, size * 0.5 + i * 10, y);
+        const y = -size - 18 - i * 12 + Math.sin(this.animFrame + i) * 4;
+        ctx.fillText(z, size * 0.5 + i * 8, y);
       });
     }
   }

@@ -49,7 +49,7 @@ class V2ModelService {
    * Default loading config (user spec).
    */
   static DEFAULT_CONFIG = {
-    contextLength: 25000,
+    contextLength: 8192,
     gpuLayers: 32,
     cpuThreads: 4,
     batchSize: 512,
@@ -342,6 +342,7 @@ class V2ModelService {
         contextSize: config.contextLength,
         batchSize: config.batchSize,
         threads: config.cpuThreads,
+        sequences: 8,  // headroom for retries / parallel agents
         seed: config.randomSeed ? null : 42  // null = random, fixed value = deterministic
         // offloadKqvToGpu - this option name varies by version; safe default is to omit
       });
@@ -352,6 +353,7 @@ class V2ModelService {
         file_path: fullPath,
         model,
         context,
+        session: null,          // LlamaChatSession created lazily on first chat, reused after
         config,
         loadedAt: Date.now(),
         lastUsedAt: Date.now(),
@@ -399,8 +401,25 @@ class V2ModelService {
         subject: { type: 'model', id: modelId },
         action: `FAILED to load ${fileName}: ${err.message}`
       });
+      
+      // Auto-retry once with halved context if this is a VRAM/RAM size error
+      const isMemoryError = /context size.*too large|out of memory|VRAM|allocation/i.test(err.message);
+      if (isMemoryError && config.contextLength > 2048 && !cfg._isRetry) {
+        const newCtx = Math.max(2048, Math.floor(config.contextLength / 2));
+        console.warn(`[V2ModelService] OOM at ctx=${config.contextLength}, retrying with ctx=${newCtx}`);
+        // Update stored config so the auto-lower persists
+        try {
+          await this.updateModelParams(modelId, { contextLength: newCtx });
+        } catch {}
+        return await this.loadModel(fileName, { ...cfg, contextLength: newCtx, _isRetry: true });
+      }
 
-      throw new Error(`Load failed: ${err.message}`);
+      // Surface friendly error
+      let msg = err.message;
+      if (isMemoryError) {
+        msg = `Context size ${config.contextLength} too large for your GPU/RAM. Lower 'Context length' in Edit Params (try 4096 or 2048). Current GPU layers: ${config.gpuLayers} - try lowering that too if needed.`;
+      }
+      throw new Error(`Load failed: ${msg}`);
     }
   }
 
@@ -412,6 +431,7 @@ class V2ModelService {
       throw new Error('Cannot unload while generating. Try again in a moment.');
     }
 
+    try { if (entry.session) await entry.session.dispose?.(); } catch {}
     try { if (entry.context) await entry.context.dispose(); } catch {}
     try { if (entry.model) await entry.model.dispose(); } catch {}
 
@@ -566,34 +586,27 @@ class V2ModelService {
     entry.totalRequests++;
 
     try {
-      const systemPrompt = await this.buildPoseidonSystemPrompt();
       const llamaCpp = await import('node-llama-cpp');
 
-      // Create a session for this conversation
-      const session = new llamaCpp.LlamaChatSession({
-        contextSequence: entry.context.getSequence(),
-        systemPrompt
-      });
-
-      // Replay history
-      for (const turn of (history || [])) {
-        if (turn.role === 'user') {
-          // Tell session we sent this, but we have to actually replay both pairs
-          // For simplicity, we'll just prepend history into the prompt itself
-        }
+      // Reuse the same session across chats so we don't burn through sequences.
+      // The session holds ONE sequence and reuses it. If the session was nulled
+      // (e.g. after an error), we recreate cleanly.
+      if (!entry.session) {
+        const systemPrompt = await this.buildPoseidonSystemPrompt();
+        // Get a fresh sequence (the context allows up to `sequences: 4`)
+        const sequence = entry.context.getSequence();
+        entry.session = new llamaCpp.LlamaChatSession({
+          contextSequence: sequence,
+          systemPrompt
+        });
+        entry._currentSequence = sequence;
+        console.log(`[V2ModelService] Created persistent chat session for ${this.poseidonModelId}`);
       }
-
-      // Build prompt with history inline (simpler than session.setChatHistory)
-      let promptWithHistory = '';
-      for (const turn of (history || [])) {
-        if (turn.role === 'user') promptWithHistory += `User: ${turn.content}\n\n`;
-        else if (turn.role === 'assistant' || turn.role === 'poseidon') promptWithHistory += `Poseidon: ${turn.content}\n\n`;
-      }
-      promptWithHistory += userMessage;
+      const session = entry.session;
 
       // Stream chunks via async iterator
       const chunks = [];
-      const completion = session.prompt(promptWithHistory, {
+      const completion = session.prompt(userMessage, {
         onTextChunk: (chunk) => { chunks.push(chunk); }
       });
 
@@ -617,6 +630,17 @@ class V2ModelService {
           break;
         }
       }
+    } catch (err) {
+      // If we get a sequence-related error, FULLY clean up session AND sequence
+      if (/no sequences|sequence|context/i.test(err.message)) {
+        console.warn(`[V2ModelService] Session error, resetting fully:`, err.message);
+        try { if (entry.session?.dispose) await entry.session.dispose(); } catch {}
+        try { if (entry._currentSequence?.dispose) entry._currentSequence.dispose(); } catch {}
+        entry.session = null;
+        entry._currentSequence = null;
+        // Retry recommended on next call
+      }
+      throw err;
     } finally {
       entry.generating = false;
       entry.lastUsedAt = Date.now();
@@ -631,6 +655,20 @@ class V2ModelService {
         }
       }).catch(() => {});
     }
+  }
+
+  /**
+   * Reset Poseidon's chat session - clears all conversation history but keeps
+   * the model loaded. Called when user clicks "Reset" in chat UI.
+   */
+  async resetPoseidonSession() {
+    if (!this.poseidonModelId) return { success: false, error: 'No Poseidon model' };
+    const entry = this.loaded.get(this.poseidonModelId);
+    if (!entry || !entry.session) return { success: true, info: 'No session to reset' };
+    if (entry.generating) throw new Error('Cannot reset while generating');
+    try { await entry.session.dispose?.(); } catch {}
+    entry.session = null;
+    return { success: true, model_id: this.poseidonModelId };
   }
 
   // === TTL CHECK (called by HeartbeatService) ===

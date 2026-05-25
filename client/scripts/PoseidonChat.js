@@ -25,6 +25,7 @@ const PoseidonChat = {
         <div class="modal-header poseidon-chat-header">
           <h2>Poseidon</h2>
           <span id="poseidon-chat-status" class="poseidon-chat-status">checking...</span>
+          <button class="btn-secondary" onclick="PoseidonChat.resetConversation()" style="font-size:9px;" title="Clear conversation history">Reset</button>
           <button class="btn-secondary" onclick="ModelLoader.open()" style="font-size:9px;">Manage Models</button>
           <button class="btn-close" onclick="PoseidonChat.close()">x</button>
         </div>
@@ -176,6 +177,10 @@ const PoseidonChat = {
       let friendly = err.message;
       if (/Invalid GGUF magic/i.test(err.message)) {
         friendly = 'The model file is not a valid GGUF (it may be a placeholder or corrupted). Open the Models panel and use Browse Files or Download HF to get a real .gguf file.';
+      } else if (/context size.*too large|out of memory|VRAM/i.test(err.message)) {
+        friendly = err.message + '\n\nTip: Open Models panel > Edit Params and set Context Length to 4096 or 2048.';
+      } else if (/No sequences left|sequence/i.test(err.message)) {
+        friendly = 'Chat session exhausted. Click "Reset" or close and reopen this chat. (Model stays loaded.)';
       } else if (/No model assigned/i.test(err.message)) {
         friendly = 'No model is assigned to Poseidon. Open the Models panel and click "Use as Poseidon" on an imported model.';
       } else if (/Model file is missing/i.test(err.message)) {
@@ -188,6 +193,18 @@ const PoseidonChat = {
       this.currentRequest = null;
       sendBtn.disabled = false;
       sendBtn.textContent = 'Send';
+    }
+  },
+  
+  async resetConversation() {
+    if (!confirm('Clear conversation history? (Keeps model loaded)')) return;
+    try {
+      await fetch('/api/v2/poseidon/reset-session', { method: 'POST' });
+      this.history = [];
+      const messagesEl = this.modal.querySelector('#poseidon-chat-messages');
+      if (messagesEl) messagesEl.innerHTML = '<div class="poseidon-msg system">Conversation reset.</div>';
+    } catch (err) {
+      alert('Reset failed: ' + err.message);
     }
   },
   

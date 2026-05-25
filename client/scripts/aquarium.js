@@ -236,12 +236,8 @@ const aquarium = {
     // Draw ocean gradient background
     this.drawBackground();
     
-    // Temples are rendered as HTML cards in .projects-container (not on canvas).
-    // We keep templeManager.update() for stats tracking but skip draw().
-    if (this.templeManager) {
-      this.templeManager.update(deltaTime, this.squids);
-      // this.templeManager.draw(this.ctx);  // moved to HTML projects panel
-    }
+    // Temples are HTML cards in .projects-container - no canvas updates or drawing.
+    // (Temple manager is kept around only for legacy interaction code paths.)
     
     // Update and draw squids
     for (const squid of this.squids) {

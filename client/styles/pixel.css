@@ -3934,3 +3934,74 @@ button .pixel-icon {
   color: var(--text);
 }
 
+
+/* ========== Projects search ========== */
+.projects-search-wrap {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 12px 8px 12px;
+  background: var(--ocean-deep);
+}
+
+.projects-search-icon {
+  color: var(--text-secondary);
+  font-family: 'Press Start 2P';
+  font-size: 9px;
+}
+
+.projects-search-input {
+  flex: 1;
+  background: var(--ocean-mid);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 5px 8px;
+  font-family: 'Courier New', monospace;
+  font-size: 10px;
+  outline: none;
+}
+
+.projects-search-input:focus {
+  border-color: var(--accent);
+}
+
+
+/* ========== UNIFIED CLOSE BUTTON STYLE ========== */
+.btn-close {
+  background: var(--danger) !important;
+  color: white !important;
+  border: none !important;
+  width: 24px;
+  height: 24px;
+  padding: 0 !important;
+  cursor: pointer;
+  font-family: 'Press Start 2P';
+  font-size: 11px;
+  line-height: 22px;
+  text-align: center;
+  border-radius: 2px;
+  margin-left: auto;
+  flex: 0 0 auto;
+  text-indent: -9999px;
+  overflow: hidden;
+  position: relative;
+}
+
+.btn-close::before {
+  content: '×';
+  position: absolute;
+  top: 0; left: 0;
+  width: 24px;
+  height: 24px;
+  line-height: 24px;
+  text-align: center;
+  text-indent: 0;
+  font-size: 16px;
+  color: white;
+}
+
+.btn-close:hover {
+  background: #B91C1C !important;
+}
+

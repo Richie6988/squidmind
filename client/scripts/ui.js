@@ -1218,9 +1218,14 @@ ui.createNewProject = async function() {
       alert(`[OK] Project "${name}" created successfully!`);
       this.closeNewProjectModal();
       
-      // Refresh temples
+      // Refresh canvas temples (legacy)
       if (typeof aquarium !== 'undefined' && aquarium.loadTemples) {
         await aquarium.loadTemples();
+      }
+      
+      // Refresh HTML temple cards (the new projects-container)
+      if (typeof ProjectsPanel !== 'undefined') {
+        await ProjectsPanel.refresh();
       }
       
       // Clear form
@@ -1568,35 +1573,35 @@ document.addEventListener('mousedown', function(e) {
   // Skip if clicking on something that OPENS panels
   if (e.target.closest('.header-nav') || 
       e.target.closest('.btn-new-project') ||
-      e.target.closest('#right-panel') ||  // right panel is permanent
-      e.target.closest('canvas')) {        // clicking aquarium itself
+      e.target.closest('.btn-new-project-card') ||
+      e.target.closest('#right-panel') ||      // right panel is permanent
+      e.target.closest('.projects-container') ||  // projects container
+      e.target.closest('canvas')) {             // clicking aquarium itself
     return;
   }
   
-  // Skip if click is INSIDE any panel/modal
+  // SPECIAL: clicking the modal backdrop (i.e. .modal itself, not its content) closes it
+  if (e.target.classList && e.target.classList.contains('modal')) {
+    e.target.classList.add('hidden');
+    // also remove inline-created modals that don't support .hidden
+    if (e.target.parentNode) e.target.remove();
+    return;
+  }
+  
+  // Skip if click is INSIDE any panel/modal/dropdown content
   if (e.target.closest('.panel') ||
-      e.target.closest('.modal') ||
-      e.target.closest('.squid-detail-modal') ||
-      e.target.closest('.squid-assigner-modal') ||
-      e.target.closest('.temple-appearance-modal')) {
+      e.target.closest('.modal-content') ||
+      e.target.closest('.context-menu') ||
+      e.target.closest('[data-modal]')) {
     return;
   }
   
-  // Click was outside - close everything visible
-  document.querySelectorAll('.panel:not(.hidden):not(.right-panel-permanent)').forEach(p => p.classList.add('hidden'));
+  // Click was truly outside - close everything visible (except permanent right panel)
+  document.querySelectorAll('.panel:not(.hidden):not(.right-panel-permanent)').forEach(p => {
+    p.classList.add('hidden');
+  });
   document.querySelectorAll('.modal:not(.hidden)').forEach(m => {
-    // Some modals are inline-created (no .hidden support), so remove them
-    if (m.parentNode && (m.classList.contains('task-add-modal') ||
-                          m.classList.contains('squid-assigner-modal') ||
-                          m.classList.contains('temple-appearance-modal') ||
-                          m.classList.contains('model-load-config-modal') ||
-                          m.classList.contains('scheduler-modal') ||
-                          m.classList.contains('model-loader-modal') ||
-                          m.classList.contains('poseidon-chat-modal') ||
-                          m.classList.contains('agent-form-modal') ||
-                          m.classList.contains('editor-browser-modal'))) {
-      m.classList.add('hidden');
-    }
+    m.classList.add('hidden');
   });
 });
 
