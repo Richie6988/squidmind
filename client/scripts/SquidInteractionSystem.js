@@ -182,10 +182,6 @@ class SquidInteractionSystem {
       }
       
       // Clear temple hovers
-      if (this.aquarium.templeManager) {
-        this.aquarium.templeManager.temples.forEach(t => t.hovered = false);
-      }
-      
       if (this.hoveredSquid) {
         this.hoveredSquid.isHovered = false;
         if (this.hoveredSquid.hideThoughtBubble) {

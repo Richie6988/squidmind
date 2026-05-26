@@ -5,8 +5,6 @@ const aquarium = {
   lastTime: 0,
   selectedSquid: null,
   interactionSystem: null,
-  templeManager: null,
-
   async init() {
     this.canvas = document.getElementById('aquarium');
     this.ctx = this.canvas.getContext('2d');
@@ -24,14 +22,6 @@ const aquarium = {
         console.log('[POSEIDON] Poseidon position restored:', poseidon.x, poseidon.y);
       }
     }
-    
-    // Initialize Temple Manager
-    if (typeof TempleManager !== 'undefined') {
-      this.templeManager = new TempleManager();
-      await this.loadTemples();
-      console.log('[TEMPLE] Temples initialized');
-    }
-    
     // Initialize interaction system
     if (typeof SquidInteractionSystem !== 'undefined') {
       this.interactionSystem = new SquidInteractionSystem(this);
@@ -49,50 +39,6 @@ const aquarium = {
     
     console.log('[OCEAN] Aquarium initialized');
   },
-
-  async loadTemples() {
-    // Clear existing temples (in case of re-load)
-    this.templeManager.temples = [];
-    
-    // FIRST: try to load from real V2 project_registry.json
-    let projects = [];
-    try {
-      const res = await fetch('/api/v2/projects');
-      const data = await res.json();
-      if (data.success && data.registry?.projects) {
-        projects = Object.values(data.registry.projects).map(p => ({
-          id: p.project_id,
-          name: p.name,
-          status: p.status || 'active',
-          colors: p.colors || null,
-          shape: p.temple_shape || 'classic',
-          files: [],
-          tasks: [],
-          // Pass through useful fields
-          project_id: p.project_id,
-          assigned_agents: p.assigned_agents || [],
-          metrics: p.metrics || {}
-        }));
-        console.log(`[TEMPLE] Loaded ${projects.length} projects from V2 registry`);
-      }
-    } catch (err) {
-      console.warn('[TEMPLE] V2 project registry unavailable, using fallback:', err.message);
-    }
-    
-    // FALLBACK: only if V2 failed
-    if (projects.length === 0) {
-      console.warn('[TEMPLE] Using hardcoded fallback (V2 registry empty or unreachable)');
-      projects = this._fallbackProjects();
-    }
-    
-    projects.forEach(project => {
-      this.templeManager.createTemple(project);
-    });
-    
-    this.templeManager.arrangeTemples(this.canvas.width, this.canvas.height);
-    console.log(`[TEMPLE] Created ${projects.length} project temples: ${projects.map(p => p.name).join(', ')}`);
-  },
-  
   _fallbackProjects() {
     // Empty fallback - the registry IS the source of truth.
     // If V2 endpoint fails completely, no temples shown rather than fake ones.

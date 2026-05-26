@@ -22,10 +22,6 @@ const SquidInteractions = {
     squid.thoughtBubble = null;
     
     // Add methods
-    squid.feed = this.feed.bind(squid);
-    squid.play = this.play.bind(squid);
-    squid.sleep = this.sleep.bind(squid);
-    squid.celebrate = this.celebrate.bind(squid);
     squid.showThoughtBubble = this.showThoughtBubble.bind(squid);
     squid.hideThoughtBubble = this.hideThoughtBubble.bind(squid);
     squid.doSpin = this.doSpin.bind(squid);

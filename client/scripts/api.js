@@ -32,21 +32,6 @@ const api = {
   async getAgent(id) {
     return this.request(`/api/agents/${id}`);
   },
-
-  async createAgent(data) {
-    return this.request('/api/agents', {
-      method: 'POST',
-      body: JSON.stringify(data)
-    });
-  },
-
-  async updateAgent(id, data) {
-    return this.request(`/api/agents/${id}`, {
-      method: 'PUT',
-      body: JSON.stringify(data)
-    });
-  },
-
   async deleteAgent(id) {
     return this.request(`/api/agents/${id}`, {
       method: 'DELETE'
@@ -55,8 +40,4 @@ const api = {
   async getLogs(filters = {}) {
     const params = new URLSearchParams(filters);
     return this.request(`/api/logs?${params}`);
-  },
-  async getHealth() {
-    return this.request('/api/system/health');
-  }
-};
+  },};
