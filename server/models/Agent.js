@@ -11,6 +11,7 @@ class Agent {
     this.type = data.type || 'worker';
     this.created_at = data.created_at || new Date().toISOString();
     this.status = data.status || 'idle'; // idle, working, thinking, sleeping, error
+    this.specialization = data.specialization || null;
     this.current_thought = data.current_thought || null;
     this.group_id = data.group_id || null;
     this.brain_id = data.brain_id || null; // Reference to Brain
@@ -161,36 +162,40 @@ class Agent {
   static async findAll() {
     try {
       await fs.mkdir(AGENTS_DIR, { recursive: true });
-      const files = await fs.readdir(AGENTS_DIR);
       
-      // Load V2 agent_registry once - it holds performance_summary per agent
+      // SINGLE SOURCE OF TRUTH: agent_registry.json. We iterate registered
+      // agents and load each brain file by its registered brain_file path.
+      // Stale brain JSON files lying around in the directory are IGNORED -
+      // this fixes the "hardcoded agents keep showing up" bug.
       let registry = { agents: {} };
       try {
         const regRaw = await fs.readFile(path.join(AGENTS_DIR, 'agent_registry.json'), 'utf8');
         registry = JSON.parse(regRaw);
-      } catch {}
+      } catch {
+        return [];  // no registry = no agents
+      }
       
-      const agents = await Promise.all(
-        files
-          .filter(f => f.endsWith('.json') && f !== 'agent_registry.json')
-          .map(async (file) => {
-            const data = await fs.readFile(path.join(AGENTS_DIR, file), 'utf8');
-            const brain = JSON.parse(data);
-            // Merge performance_summary from registry by agent_id
-            const agentId = brain.id || brain.identity?.agent_id;
-            if (agentId && registry.agents?.[agentId]?.performance_summary) {
-              brain.performance_summary = registry.agents[agentId].performance_summary;
-            }
-            // Also pull display_name + status from registry (registry is authoritative)
-            if (agentId && registry.agents?.[agentId]) {
-              brain.name = registry.agents[agentId].display_name || brain.name || brain.identity?.display_name;
-              brain.id = brain.id || agentId;
-              brain.status = registry.agents[agentId].status || brain.status;
-            }
-            return new Agent(brain);
-          })
-      );
-      return agents;
+      const entries = Object.values(registry.agents || {});
+      const agents = await Promise.all(entries.map(async (entry) => {
+        try {
+          const brainPath = path.join(AGENTS_DIR, entry.brain_file);
+          const data = await fs.readFile(brainPath, 'utf8');
+          const brain = JSON.parse(data);
+          
+          // Registry is authoritative for these fields
+          brain.id = entry.agent_id;
+          brain.name = entry.display_name || brain.identity?.display_name;
+          brain.status = entry.status || 'sleeping';
+          brain.specialization = entry.specialization;
+          if (entry.performance_summary) brain.performance_summary = entry.performance_summary;
+          
+          return new Agent(brain);
+        } catch (err) {
+          console.warn(`[Agent.findAll] Could not load ${entry.agent_id} (${entry.brain_file}):`, err.message);
+          return null;
+        }
+      }));
+      return agents.filter(Boolean);
     } catch (error) {
       console.warn('[Agent.findAll]', error.message);
       return [];
@@ -215,6 +220,7 @@ class Agent {
       type: this.type,
       created_at: this.created_at,
       status: this.status,
+      specialization: this.specialization,
       current_thought: this.current_thought,
       group_id: this.group_id,
       brain_id: this.brain_id,

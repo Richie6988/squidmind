@@ -190,19 +190,31 @@ const PoseidonChat = {
               if (payload.turn !== undefined && payload.wipe_threshold) {
                 this._updateTurnCounter(payload.turn, payload.wipe_threshold);
               }
+              // If Poseidon mutated state (created/deleted agents, projects, tasks),
+              // tell the UI to refresh. We don't have to know which - just kick everything.
+              if (this._mutatedThisTurn) {
+                if (window.aquarium?.loadSquids) window.aquarium.loadSquids();
+                if (window.ProjectsPanel?.refresh) window.ProjectsPanel.refresh();
+                this._mutatedThisTurn = false;
+              }
             } else if (eventType === 'start') {
               setStatus('Generating response...');
+              this._mutatedThisTurn = false;  // reset for new turn
             } else if (eventType === 'tool_call') {
-              // Model invoked a function. Show it as an inline "thinking" bubble.
               if (!firstTokenReceived) {
                 firstTokenReceived = true;
                 clearStatusTimers();
                 textEl.innerHTML = '';
               }
               this._appendToolCall(textEl, payload.name, payload.args);
+              // Mark mutating calls so we know to refresh the UI on `end`
+              const MUTATING = ['create_agent', 'delete_agent', 'update_agent_field',
+                                'create_project', 'archive_project',
+                                'create_task', 'write_file', 'edit_file',
+                                'github_commit', 'github_pull'];
+              if (MUTATING.includes(payload.name)) this._mutatedThisTurn = true;
               this.modal.querySelector('#poseidon-chat-messages').scrollTop = 999999;
             } else if (eventType === 'tool_result') {
-              // Function returned. Show outcome inline.
               this._appendToolResult(textEl, payload.name, payload.ok, payload.summary, payload.duration_ms);
               this.modal.querySelector('#poseidon-chat-messages').scrollTop = 999999;
             } else {
@@ -214,7 +226,6 @@ const PoseidonChat = {
                   // Don't wipe existing tool-call bubbles - just append text after them
                 }
                 fullText += payload.text;
-                // Find or create a text node at the end (after any tool bubbles)
                 let textNode = textEl.querySelector('.chat-text-final');
                 if (!textNode) {
                   textNode = document.createElement('div');

@@ -435,11 +435,16 @@ class V2ModelService {
       console.log(`[V2ModelService] ✓ ${fileName} ready`);
       return { success: true, model_id: modelId, config };
     } catch (err) {
-      // PROPER CLEANUP: dispose context AND model, wait for VRAM to actually release
+      // PROPER CLEANUP: dispose context AND model, null refs so GC can collect.
       try { if (context) await context.dispose(); } catch {}
       try { if (model) await model.dispose(); } catch {}
-      // VRAM cleanup is async at the CUDA driver level - give it time to release
-      await new Promise(r => setTimeout(r, 500));
+      context = null;
+      model = null;
+      // Force GC if node was started with --expose-gc
+      if (typeof global.gc === 'function') { try { global.gc(); } catch {} }
+      // CUDA cleanup is async at the driver level. 1.5s is empirically what
+      // it takes for VRAM to actually free on most setups.
+      await new Promise(r => setTimeout(r, 1500));
 
       await this._registryUpsert(modelId, {
         status: 'available',
@@ -458,19 +463,49 @@ class V2ModelService {
       const isMemoryError = /context size.*too large|out of memory|VRAM|allocation|insufficient|cannot allocate/i.test(err.message);
       const attempt = cfg._retryAttempt || 0;
       
-      // Fallback ladder for memory errors. Each attempt:
-      //   - Uses smaller, KNOWN-GOOD numeric values (not 'auto')
-      //   - Optionally disables flash attention (last resort)
-      //   - DOES NOT persist these to registry (preserves user's preferred config)
+      // Fallback ladder: MONOTONICALLY REDUCE both context and gpu_layers
+      // from the user's saved values. Bug we fixed: previously this would
+      // INCREASE gpu_layers from the user's value (e.g. 24 -> 28), which
+      // is worse, not better - if 24 layers OOMs, 28 layers also OOMs.
+      //
+      // Compute from user's actual config so we always step DOWN.
+      const userCtx = cfg.contextLength || config.contextLength;
+      const userGpu = cfg.gpuLayers || config.gpuLayers;
+      const baseCtx = typeof userCtx === 'number' ? userCtx : 8192;
+      const baseGpu = typeof userGpu === 'number' ? userGpu : 28;
+      
+      // Each retry: cut context in half AND drop a few gpu layers.
+      // Last attempts disable flash attention (may not be supported on this
+      // arch even if libllama says it is).
       const fallbacks = [
-        // attempt 0 (initial) -> attempt 1
-        { contextLength: 8192, gpuLayers: 28, flashAttention: true,  reason: 'try ctx=8192 gpu=28 with flash' },
-        // attempt 1 -> attempt 2
-        { contextLength: 4096, gpuLayers: 24, flashAttention: true,  reason: 'try ctx=4096 gpu=24 with flash' },
-        // attempt 2 -> attempt 3 (flash off - this model arch may not support it well)
-        { contextLength: 4096, gpuLayers: 20, flashAttention: false, reason: 'try ctx=4096 gpu=20 WITHOUT flash attention' },
-        // attempt 3 -> attempt 4 (small + low gpu)
-        { contextLength: 2048, gpuLayers: 16, flashAttention: false, reason: 'try ctx=2048 gpu=16 WITHOUT flash attention' }
+        // attempt 0 -> attempt 1: halve ctx, drop 4 gpu layers
+        {
+          contextLength: Math.max(1024, Math.floor(baseCtx / 2)),
+          gpuLayers: Math.max(8, baseGpu - 4),
+          flashAttention: true,
+          reason: `halve ctx + drop 4 gpu layers (from user: ctx=${baseCtx} gpu=${baseGpu})`
+        },
+        // attempt 1 -> attempt 2: quarter ctx, drop 8 gpu layers
+        {
+          contextLength: Math.max(1024, Math.floor(baseCtx / 4)),
+          gpuLayers: Math.max(8, baseGpu - 8),
+          flashAttention: true,
+          reason: 'quarter ctx + drop 8 gpu layers'
+        },
+        // attempt 2 -> attempt 3: same, disable flash attention
+        {
+          contextLength: Math.max(1024, Math.floor(baseCtx / 4)),
+          gpuLayers: Math.max(8, baseGpu - 8),
+          flashAttention: false,
+          reason: 'same conservative ctx/gpu WITHOUT flash attention'
+        },
+        // attempt 3 -> attempt 4: minimum viable
+        {
+          contextLength: 2048,
+          gpuLayers: Math.max(4, Math.floor(baseGpu / 2)),
+          flashAttention: false,
+          reason: 'minimum viable: ctx=2048, gpu halved, no flash'
+        }
       ];
       
       if (isMemoryError && attempt < fallbacks.length) {

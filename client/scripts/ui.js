@@ -160,10 +160,24 @@ const ui = {
 
   async updateStats() {
     try {
-      // Get health
-      const health = await api.getHealth();
+      // Status indicator (top-right): GREEN if a model is loaded for Poseidon,
+      // RED if no model loaded or no model assigned. The user wanted
+      // model-loaded status here, not just API-connected.
       const apiStatus = document.getElementById('api-status');
-      if (apiStatus) apiStatus.style.color = health.api_connected ? '#06FFA5' : '#E63946';
+      if (apiStatus) {
+        try {
+          const res = await fetch('/api/v2/models/status', { cache: 'no-store' });
+          const status = res.ok ? await res.json() : {};
+          const hasLoaded = status.poseidon_model_id && status.loaded_models?.some(m => m.model_id === status.poseidon_model_id);
+          apiStatus.style.color = hasLoaded ? '#06FFA5' : '#E63946';
+          apiStatus.title = hasLoaded
+            ? `Model loaded: ${status.poseidon_model_id}`
+            : (status.poseidon_model_id ? `Model assigned but not loaded: ${status.poseidon_model_id}` : 'No model assigned to Poseidon');
+        } catch {
+          apiStatus.style.color = '#E63946';
+          apiStatus.title = 'Server unreachable';
+        }
+      }
       
       // Get task count (top-right header element was removed; ControlTowerLive handles it now)
       const taskCountEl = document.getElementById('task-count');

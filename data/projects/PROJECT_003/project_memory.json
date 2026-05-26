@@ -1,9 +1,9 @@
 {
   "schema_version": "2.0.0",
   "schema_type": "project_memory",
-  "project_id": "project_002",
-  "name": "TRADING",
-  "vision": "Market analysis & automated trading research",
+  "project_id": "project_003",
+  "name": "NEWSROOM",
+  "vision": "Daily news monitoring, summaries, and trend tracking",
   "goals": [],
   "tasks": [],
   "progress": {
@@ -15,7 +15,7 @@
   "agents_communication": [],
   "decisions": [],
   "colors": {
-    "outside": "#06FFA5",
+    "outside": "#FFD93D",
     "inside": "#1D3557"
   },
   "created": "2026-05-26T06:20:32.739Z"
