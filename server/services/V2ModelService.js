@@ -355,16 +355,60 @@ class V2ModelService {
     try {
       const llama = await this._ensureLib();
       console.log(`[V2ModelService] Loading ${fileName} ...`);
-      console.log(`  gpuLayers=${config.gpuLayers}, ctx=${config.contextLength}, flashAttention=${config.flashAttention}, mmap=${config.useMmap}`);
 
-      // Log GPU/VRAM state if available (debugging info)
+      // Log GPU/VRAM state + COMPUTE a sensible context if user asked for 'auto'.
+      // BUG WE'RE FIXING: node-llama-cpp's contextSize:'auto' picks "max that fits
+      // VRAM AFTER model weights load". With 6.24 GB free and a 9B Q4 model (~5.5 GB
+      // weights), that left only ~256-2560 tokens - smaller than our system prompt,
+      // causing immediate "context shift strategy" errors.
+      //
+      // Fix: when ctx=='auto', compute target ourselves:
+      //   1. Estimate model weight size from file size on disk.
+      //   2. Subtract from free VRAM, keep 500MB safety margin.
+      //   3. Compute how many tokens fit in remaining VRAM using rough KV-cache math:
+      //      per-token cost ≈ 2 * n_layers * n_kv_heads * head_dim * 2 bytes (fp16)
+      //      With flash attention this is ~half.
+      //      For 9B models ≈ 100-200 KB/token without flash, ~50-100 KB/token with.
+      //   4. Clamp result to [4096, 32768] - never let it go below 4096 (system
+      //      prompt + a turn of conversation needs at least that).
+      let vramInfo = null;
       try {
         if (llama.getVramState) {
-          const vram = await llama.getVramState();
-          console.log(`  GPU VRAM: ${(vram.free / 1024 ** 3).toFixed(2)} GB free / ${(vram.total / 1024 ** 3).toFixed(2)} GB total`);
+          vramInfo = await llama.getVramState();
+          console.log(`  GPU VRAM: ${(vramInfo.free / 1024 ** 3).toFixed(2)} GB free / ${(vramInfo.total / 1024 ** 3).toFixed(2)} GB total`);
         }
+      } catch {}
+
+      // Replace 'auto' contextLength with a concrete computed number.
+      // If the user passed a number, respect it.
+      if (config.contextLength === 'auto') {
+        const freeBytes = vramInfo?.free || 0;
+        const modelBytes = stat.size;  // file size ≈ model weights when loaded fully on GPU
+        const safetyMargin = 500 * 1024 * 1024;  // 500 MB headroom for activations, scratch
+        const availableForKv = Math.max(0, freeBytes - modelBytes - safetyMargin);
+
+        // Rough KV-cache estimate: for a 9B model with flash attention,
+        // budget ~75 KB per token. Without flash attention, ~150 KB.
+        // This is conservative - actual costs depend on model architecture.
+        const bytesPerToken = config.flashAttention ? 75 * 1024 : 150 * 1024;
+        const estimatedTokens = Math.floor(availableForKv / bytesPerToken);
+
+        // Clamp: never go below 4096 (system prompt needs that), cap at 32768
+        // (anything larger is rarely useful and risks OOM on subtle issues).
+        const computedCtx = Math.max(4096, Math.min(32768, estimatedTokens));
+
+        // Round down to power-of-2-ish increments for cleanliness
+        const roundedCtx = Math.floor(computedCtx / 1024) * 1024;
+
+        console.log(`  [ctx-auto] free=${(freeBytes/(1024**3)).toFixed(2)}GB - weights=${(modelBytes/(1024**3)).toFixed(2)}GB - margin=0.5GB -> ${(availableForKv/(1024**3)).toFixed(2)}GB for KV @ ${bytesPerToken/1024}KB/tok = ~${estimatedTokens} tokens, clamped to ${roundedCtx}`);
+        config.contextLength = roundedCtx;
+      }
+
+      try {
         if (llama.gpu) console.log(`  GPU backend: ${llama.gpu}`);
       } catch {}
+
+      console.log(`  gpuLayers=${config.gpuLayers}, ctx=${config.contextLength}, flashAttention=${config.flashAttention}, mmap=${config.useMmap}`);
 
       // node-llama-cpp v3 model load (LM Studio-equivalent flags)
       const modelOpts = {

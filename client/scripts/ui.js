@@ -13,34 +13,31 @@ const ui = {
 
   showPanel(panelId) {
     const panel = document.getElementById(`${panelId}-panel`);
-    if (panel) {
-      // NEWEST AT TOP: Move panel to top of DOM (but after Clear All)
+    if (!panel) return;
+    
+    // Don't reparent the permanent control tower - it has a fixed slot
+    if (!panel.classList.contains('right-panel-permanent')) {
       const container = panel.parentElement;
       if (container) {
         panel.remove();
-        
-        // Find Clear All panel
         const clearAllPanel = document.getElementById('clear-all-panel');
-        
-        // Insert after Clear All panel (so Clear All stays on top)
         if (clearAllPanel && clearAllPanel.nextSibling) {
           container.insertBefore(panel, clearAllPanel.nextSibling);
         } else {
           container.insertBefore(panel, container.firstChild);
         }
       }
-      
-      panel.classList.remove('hidden');
-      
-      // Z-index for overlapping
-      const allPanels = document.querySelectorAll('.panel:not(.hidden)');
-      allPanels.forEach(p => {
-        p.style.zIndex = '100';
-      });
-      panel.style.zIndex = '200';
-      
-      console.log(`📌 Panel "${panelId}" at TOP of list (below Clear All)`);
     }
+    
+    panel.classList.remove('hidden');
+    
+    // Z-index for overlapping (only toggleable panels, not the right panel)
+    document.querySelectorAll('.panel:not(.hidden):not(.right-panel-permanent)').forEach(p => {
+      p.style.zIndex = '100';
+    });
+    panel.style.zIndex = '200';
+    
+    console.log(`📌 Panel "${panelId}" opened`);
   },
 
   hidePanel(panelId) {
@@ -179,22 +176,7 @@ async function loadLogs() {
   }
 }
 // Squid Interaction Functions
-ui.selectedSquid = null;// Removed detail panel wrapper to fix infinite recursion
-// showSquidDetails now handles panel opening directly
-
-ui.showPanel = function(panelName) {
-  const panel = document.getElementById(`${panelName}-panel`);
-  if (panel) {
-    panel.classList.remove('hidden');
-    
-    // Z-index for overlapping
-    const allPanels = document.querySelectorAll('.panel:not(.hidden)');
-    allPanels.forEach(p => { p.style.zIndex = '100'; });
-    panel.style.zIndex = '200';
-    
-    console.log(`📌 Panel "${panelName}" opened`);
-  }
-};
+ui.selectedSquid = null;
 
 console.log('[OK] UI panel manager loaded');
 

@@ -76,89 +76,88 @@
         </div>
       </div>
 
-      
-      
-        </div>
-      </div>
-
     </div>
+    <!-- /.panels-container -->
 
-      <!-- CONTROL TOWER (right panel) - sibling of aquarium and panels -->
-      <div id="right-panel" class="right-panel-permanent">
-        <!-- Drag handle for resizing -->
-        <div id="right-panel-resizer" class="right-panel-resizer" title="Drag to resize panel"></div>
-        <div class="right-panel-header">
-          <h2>[SYSTEM] Control Tower</h2>
+    <!-- CONTROL TOWER (right panel) - sibling of aquarium and panels -->
+    <div id="right-panel" class="right-panel-permanent">
+      <!-- Drag handle for resizing -->
+      <div id="right-panel-resizer" class="right-panel-resizer" title="Drag to resize panel"></div>
+      <div class="right-panel-header">
+        <h2>[SYSTEM] Control Tower</h2>
+      </div>
+      <div class="right-panel-content">
+        
+        <!-- System Resources (live from heartbeat) -->
+        <div class="monitor-section">
+          <h3>Resources</h3>
+          <div id="monitor-system-stats">
+            <div class="stat-item">
+              <span class="stat-label">CPU</span>
+              <div class="stat-bar">
+                <div id="monitor-cpu-bar" class="stat-fill"></div>
+              </div>
+              <span id="monitor-cpu-value" class="stat-value">--</span>
+            </div>
+            <div class="stat-item">
+              <span class="stat-label">RAM</span>
+              <div class="stat-bar">
+                <div id="monitor-mem-bar" class="stat-fill"></div>
+              </div>
+              <span id="monitor-mem-value" class="stat-value">--</span>
+            </div>
+            <div class="stat-item">
+              <span class="stat-label">VRAM</span>
+              <div class="stat-bar">
+                <div id="monitor-vram-bar" class="stat-fill"></div>
+              </div>
+              <span id="monitor-vram-value" class="stat-value">--</span>
+            </div>
+            <div class="stat-row" style="margin-top:4px;">
+              <span>Model:</span>
+              <span id="monitor-model-pill" style="font-size:8px; color:var(--text-secondary);">none</span>
+            </div>
+          </div>
         </div>
-        <div class="right-panel-content">
-          
-          <!-- System Resources (live from heartbeat) -->
-          <div class="monitor-section">
-            <h3>Resources</h3>
-            <div id="monitor-system-stats">
-              <div class="stat-item">
-                <span class="stat-label">CPU</span>
-                <div class="stat-bar">
-                  <div id="monitor-cpu-bar" class="stat-fill"></div>
-                </div>
-                <span id="monitor-cpu-value" class="stat-value">--</span>
-              </div>
-              <div class="stat-item">
-                <span class="stat-label">RAM</span>
-                <div class="stat-bar">
-                  <div id="monitor-mem-bar" class="stat-fill"></div>
-                </div>
-                <span id="monitor-mem-value" class="stat-value">--</span>
-              </div>
-              <div class="stat-item">
-                <span class="stat-label">VRAM</span>
-                <div class="stat-bar">
-                  <div id="monitor-vram-bar" class="stat-fill"></div>
-                </div>
-                <span id="monitor-vram-value" class="stat-value">--</span>
-              </div>
-              <div class="stat-row" style="margin-top:4px;">
-                <span>Model:</span>
-                <span id="monitor-model-pill" style="font-size:8px; color:var(--text-secondary);">none</span>
-              </div>
-            </div>
+        
+        <!-- Squad (live from agent_registry) -->
+        <div class="monitor-section">
+          <h3>Squad</h3>
+          <div id="monitor-squad-stats">
+            <div class="stat-row"><span>Total:</span><span id="monitor-total-squids">0</span></div>
+            <div class="stat-row"><span>Active:</span><span id="monitor-active-squids">0</span></div>
+            <div class="stat-row"><span>Sleeping:</span><span id="monitor-sleeping-squids">0</span></div>
+            <div class="stat-row"><span>Working:</span><span id="monitor-working-squids">0</span></div>
           </div>
-          
-          <!-- Squad (live from agent_registry) -->
-          <div class="monitor-section">
-            <h3>Squad</h3>
-            <div id="monitor-squad-stats">
-              <div class="stat-row"><span>Total:</span><span id="monitor-total-squids">0</span></div>
-              <div class="stat-row"><span>Active:</span><span id="monitor-active-squids">0</span></div>
-              <div class="stat-row"><span>Sleeping:</span><span id="monitor-sleeping-squids">0</span></div>
-              <div class="stat-row"><span>Working:</span><span id="monitor-working-squids">0</span></div>
-            </div>
+        </div>
+        
+        <!-- Task Queue (interactive) -->
+        <div class="monitor-section">
+          <h3>Task Queue</h3>
+          <div id="task-queue" style="max-height: 280px; overflow-y: auto;">
+            <p class="hint" style="font-size: 9px; color: var(--text-secondary);">Loading...</p>
           </div>
-          
-          <!-- Task Queue (interactive) -->
-          <div class="monitor-section">
-            <h3>Task Queue</h3>
-            <div id="task-queue" style="max-height: 280px; overflow-y: auto;">
-              <p class="hint" style="font-size: 9px; color: var(--text-secondary);">Loading...</p>
-            </div>
-            <button class="btn-secondary" onclick="TaskQueueUI.addTask()" style="width: 100%; margin-top: 8px; font-size: 9px;">
-              + Add Task
-            </button>
+          <button class="btn-secondary" onclick="TaskQueueUI.addTask()" style="width: 100%; margin-top: 8px; font-size: 9px;">
+            + Add Task
+          </button>
+        </div>
+        
+        <!-- Scheduler (create recurring tasks without Poseidon) -->
+        <div class="monitor-section">
+          <h3>Scheduler</h3>
+          <div id="scheduler-stats" style="font-size:9px; color:var(--text-secondary); margin-bottom:6px;">
+            <span id="scheduler-count">0</span> scheduled
           </div>
-          
-          <!-- Scheduler (create recurring tasks without Poseidon) -->
-          <div class="monitor-section">
-            <h3>Scheduler</h3>
-            <div id="scheduler-stats" style="font-size:9px; color:var(--text-secondary); margin-bottom:6px;">
-              <span id="scheduler-count">0</span> scheduled
-            </div>
-            <button class="btn-secondary" onclick="Scheduler.open()" style="width: 100%; font-size: 9px;">
-              + Schedule Task
-            </button>
-          </div>
+          <button class="btn-secondary" onclick="Scheduler.open()" style="width: 100%; font-size: 9px;">
+            + Schedule Task
+          </button>
         </div>
       </div>
+    </div>
+    <!-- /#right-panel -->
+
   </div>
+  <!-- /.main-container -->
 
   <!-- New Project Modal -->
   <div id="new-project-modal" class="squid-detail-modal hidden">
@@ -192,102 +191,6 @@
       
       <button class="squid-detail-save" onclick="window.ui.createNewProject()">
         Create Project
-      </button>
-    </div>
-  </div>
-      <!-- AI Brain Section -->
-      <div class="squid-detail-section">
-        <h3>[BRAIN] AI Brain Configuration</h3>
-        <div class="squid-detail-field">
-          <label>Model</label>
-          <input type="text" id="squid-model" placeholder="e.g., llama-2-7b-chat.Q4_K_M.gguf" />
-        </div>
-        <div class="squid-detail-field">
-          <label>Temperature (0-2)</label>
-          <input type="number" id="squid-temperature" step="0.1" min="0" max="2" value="0.7" />
-        </div>
-        <div class="squid-detail-field">
-          <label>Max Tokens</label>
-          <input type="number" id="squid-max-tokens" step="100" value="2000" />
-        </div>
-        <div class="squid-detail-field">
-          <label>System Prompt</label>
-          <textarea id="squid-system-prompt" placeholder="You are a helpful AI assistant..." style="min-height: 80px;"></textarea>
-        </div>
-        <div class="squid-detail-field">
-          <label>Tools Enabled</label>
-          <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-            <label style="font-size: 9px;"><input type="checkbox" id="squid-tool-code"> Code</label>
-            <label style="font-size: 9px;"><input type="checkbox" id="squid-tool-web"> Web Search</label>
-            <label style="font-size: 9px;"><input type="checkbox" id="squid-tool-file"> File Ops</label>
-            <label style="font-size: 9px;"><input type="checkbox" id="squid-tool-git"> Git</label>
-          </div>
-        </div>
-      </div>
-      
-      <!-- Appearance Section -->
-      <div class="squid-detail-section">
-        <h3>🎨 Appearance (Pixel Art)</h3>
-        <div class="squid-detail-field">
-          <label>Body Color</label>
-          <input type="color" id="squid-body-color" />
-        </div>
-        <div class="squid-detail-field">
-          <label>Accent Color</label>
-          <input type="color" id="squid-accent-color" />
-        </div>
-        <div class="squid-detail-field">
-          <label>Size</label>
-          <select id="squid-size">
-            <option value="small">Small</option>
-            <option value="medium" selected>Medium</option>
-            <option value="large">Large</option>
-          </select>
-        </div>
-        <div class="squid-detail-field">
-          <label>Hat (Pixel Art)</label>
-          <select id="squid-hat">
-            <option value="">None</option>
-            <option value="tophat">🎩 Top Hat</option>
-            <option value="wizard">🧙 Wizard Hat</option>
-            <option value="crown">👑 Crown</option>
-            <option value="cap">🧢 Baseball Cap</option>
-          </select>
-        </div>
-        <div class="squid-detail-field">
-          <label>Glasses (Pixel Art)</label>
-          <select id="squid-glasses">
-            <option value="">None</option>
-            <option value="round">🤓 Round</option>
-            <option value="sunglasses">😎 Sunglasses</option>
-            <option value="monocle">🧐 Monocle</option>
-            <option value="vr">🥽 VR Headset</option>
-          </select>
-        </div>
-        <div class="squid-detail-field">
-          <label>Eyes (Pixel Art)</label>
-          <select id="squid-eyes">
-            <option value="round" selected>⚫ Round</option>
-            <option value="happy">😊 Happy</option>
-            <option value="determined">😤 Determined</option>
-            <option value="sleepy">😴 Sleepy</option>
-            <option value="robot">🤖 Robot</option>
-          </select>
-        </div>
-        <div class="squid-detail-field">
-          <label>Outfit (Pixel Art)</label>
-          <select id="squid-outfit">
-            <option value="">None</option>
-            <option value="suit">🤵 Business Suit</option>
-            <option value="hoodie">👕 Hoodie</option>
-            <option value="lab_coat">🥼 Lab Coat</option>
-            <option value="armor">🛡️ Armor</option>
-          </select>
-        </div>
-      </div>
-      
-      <button class="squid-detail-save" onclick="window.ui.saveSquidDetails()">
-        💾 Save Changes
       </button>
     </div>
   </div>
