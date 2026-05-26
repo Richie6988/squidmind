@@ -164,8 +164,14 @@ class SquidInteractionSystem {
           }
         }
         
-        // Set new hover
+        // Set new hover. Hovering also wakes a sleeping squid (registry-seeded
+        // or auto-slept) so the user gets the halo + cursor feedback.
         squid.isHovered = true;
+        if (squid.isSleeping || squid.status === 'sleeping') {
+          squid.isSleeping = false;
+          if (squid.status === 'sleeping') squid.status = 'idle';
+        }
+        squid.timeSinceActivity = 0;
         this.hoveredSquid = squid;
         
         // Show thought bubble
@@ -209,13 +215,18 @@ class SquidInteractionSystem {
     if (result && result.type === 'squid') {
       const squid = result.entity;
       
-      // Wake from sleep on interaction
-      if (squid.isSleeping) {
+      // Wake from sleep on interaction. Two flags can keep a squid sleeping:
+      // - isSleeping (set by update() after inactivity)
+      // - status === 'sleeping' (seeded from registry)
+      // Clear BOTH so the squid actually starts swimming.
+      if (squid.isSleeping || squid.status === 'sleeping') {
         squid.isSleeping = false;
+        if (squid.status === 'sleeping') squid.status = 'idle';
         console.log(`[SQUID] ${squid.name} woke up`);
       }
       squid.idleAccumulated = 0;
       squid.lastInteractedAt = Date.now();
+      squid.timeSinceActivity = 0;
       
       // Prepare for potential drag
       this.draggedSquid = squid;

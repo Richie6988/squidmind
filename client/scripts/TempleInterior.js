@@ -488,10 +488,13 @@ const TempleInterior = {
    * Includes name search input.
    */
   async showSquidAssigner() {
-    console.log('[SQUID] Opening squid assigner');
+    console.log('[SQUID] Opening squid assigner. Current temple:', this.currentTemple?.name);
     
     // Source 1: aquarium canvas squids (already loaded)
-    let allSquids = (window.aquarium?.squids || []).map(s => ({
+    const canvasSquids = (window.aquarium?.squids || []);
+    console.log(`[SQUID assigner] Canvas has ${canvasSquids.length} squids`);
+    
+    let allSquids = canvasSquids.map(s => ({
       id: s.id,
       agent_id: s.agent_id || s.id,
       name: s.name,
@@ -500,10 +503,14 @@ const TempleInterior = {
       status: s.status || 'idle'
     }));
     
-    // Source 2: V2 agent registry (backup / source of truth)
+    // Source 2: V2 agent registry (backup / source of truth - use raw fetch
+    // so we don't depend on ApiV2 wrapper having loaded)
     try {
-      const r = await window.ApiV2._fetch('/agents');
-      const regAgents = Object.values(r.registry.agents || {});
+      const res = await fetch('/api/v2/agents');
+      const data = await res.json();
+      const regAgents = Object.values(data?.registry?.agents || {});
+      console.log(`[SQUID assigner] Registry has ${regAgents.length} agents`);
+      
       // Merge - keep canvas squids, add any registry-only ones
       const seenIds = new Set(allSquids.map(s => s.id || s.agent_id));
       for (const a of regAgents) {
@@ -522,6 +529,8 @@ const TempleInterior = {
     } catch (err) {
       console.warn('[SQUID assigner] V2 registry load failed:', err.message);
     }
+    
+    console.log(`[SQUID assigner] Final list: ${allSquids.length} squids`);
     
     const modal = document.createElement('div');
     modal.className = 'modal squid-assigner-modal';

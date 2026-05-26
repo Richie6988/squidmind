@@ -111,10 +111,16 @@ class Squid {
     this.idleTimer += deltaTime;
     
     // === SLEEP STATE: if nothing happens for 20s, the squid falls asleep ===
+    // The registry can also seed `status: 'sleeping'` directly - treat both
+    // (status === 'sleeping') and (isSleeping flag) as equivalent.
+    // Treat 'sleeping' as an idle variant for movement purposes.
+    const isIdleLike = (this.status === 'idle' || this.status === 'sleeping' || !this.status);
+    
     // Wakes up on any interaction (hover, click, drag) - handled elsewhere
-    if (!this.isDragging && !this.isHovered && (this.status === 'idle' || !this.status) && !this.currentTask) {
+    if (!this.isDragging && !this.isHovered && isIdleLike && !this.currentTask) {
       this.timeSinceActivity = (this.timeSinceActivity || 0) + deltaTime;
-      if (this.timeSinceActivity > 20000) {
+      // Honor registry-seeded sleeping immediately; otherwise need 20s of inactivity
+      if (this.status === 'sleeping' || this.timeSinceActivity > 20000) {
         this.isSleeping = true;
       }
     } else {
@@ -155,14 +161,7 @@ class Squid {
       // Gentle drift while asleep - bob slightly
       this.x += Math.sin(this.animFrame * 0.5) * 0.1;
       this.y += Math.cos(this.animFrame * 0.4) * 0.1;
-    } else if (this.status === 'idle' || !this.status) {
-      // Auto-sleep after 60s of pure idle (no task, no interaction)
-      this.idleAccumulated = (this.idleAccumulated || 0) + deltaTime;
-      if (this.idleAccumulated > 60000 && !this.isSleeping && !this.lastInteractedAt) {
-        this.isSleeping = true;
-        console.log(`[SQUID] ${this.name} fell asleep`);
-      }
-      
+    } else if (isIdleLike) {
       // Wandering: pick a new random target periodically, then smoothly swim there
       this.wanderTimer = (this.wanderTimer || 0) + deltaTime;
       if (this.wanderTimer > 3000 + Math.random() * 3000) {
@@ -215,10 +214,9 @@ class Squid {
       this.drawBackgroundEffect(ctx, size);
     }
     
-    // Glow effect
-    if (this.status !== 'sleeping') {
-      this.drawGlow(ctx, size);
-    }
+    // Glow effect: always render so hover halo works; sleeping squids
+    // get a much subtler glow (just enough to show hover when interacted with).
+    this.drawGlow(ctx, size);
     
     // Shadow
     this.drawShadow(ctx, size);
@@ -310,10 +308,13 @@ class Squid {
     let glowColor = this.appearance.body_color;
     let intensity = this.appearance.glow_intensity;
     
-    // HOVER EFFECT: Brighter glow!
+    // HOVER EFFECT: Brighter glow - highest priority, overrides sleep dimming
     if (this.isHovered) {
-      intensity = 1.0; // Max brightness!
-      size = size * 1.2; // Bigger!
+      intensity = 1.0;
+      size = size * 1.2;
+    } else if (this.isSleeping || this.status === 'sleeping') {
+      // Sleeping squids: very dim glow (just a hint they're there)
+      intensity = (intensity || 0.5) * 0.15;
     } else if (this.status === 'thinking') {
       glowColor = '#FFD60A';
       intensity = 0.8 + Math.sin(this.glowPulse) * 0.2;
