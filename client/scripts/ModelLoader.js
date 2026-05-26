@@ -162,10 +162,16 @@ const ModelLoader = {
     
     let paramsSection = '';
     if (m.config) {
+      const isRunning = m.is_loaded && m.runtime_config;
+      const showCfg = isRunning ? m.runtime_config : m.config;
+      const savedHint = isRunning && (
+        m.config.contextLength !== m.runtime_config.contextLength ||
+        m.config.gpuLayers !== m.runtime_config.gpuLayers
+      ) ? ` <span class="ml-hint">(saved: ctx=${m.config.contextLength}, gpu_layers=${m.config.gpuLayers})</span>` : '';
       paramsSection = `
         <div class="model-params">
-          <div class="model-params-row">ctx=<strong>${m.config.contextLength}</strong> | gpu_layers=<strong>${m.config.gpuLayers}</strong> | threads=<strong>${m.config.cpuThreads}</strong></div>
-          <div class="model-params-row">batch=<strong>${m.config.batchSize}</strong> | TTL=<strong>${m.config.autoUnloadIdleMinutes}m</strong> | offload_kqv=${m.config.offloadKqvToGpu ? 'yes' : 'no'} | random_seed=${m.config.randomSeed ? 'yes' : 'no'}</div>
+          <div class="model-params-row">ctx=<strong>${showCfg.contextLength}</strong> | gpu_layers=<strong>${showCfg.gpuLayers}</strong> | threads=<strong>${showCfg.cpuThreads}</strong>${savedHint}</div>
+          <div class="model-params-row">batch=<strong>${showCfg.batchSize}</strong> | TTL=<strong>${showCfg.autoUnloadIdleMinutes}m</strong> | flash=${showCfg.flashAttention ? 'yes' : 'no'} | mmap=${showCfg.useMmap ? 'yes' : 'no'} | mlock=${showCfg.useMlock ? 'yes' : 'no'}</div>
         </div>`;
     }
     
@@ -245,7 +251,9 @@ const ModelLoader = {
           </div>
           <div class="agent-form-row"><label>&nbsp;</label>
             <span class="hint" style="font-size:8px; color:var(--accent);">
-              Recommended: keep both as 'auto' so node-llama-cpp picks the optimal split based on your GPU memory (LM Studio default behavior).
+              Recommended: 'auto' for both fields. SquidMind probes your free VRAM
+              at load time and picks: gpu_layers to fit ~70% of free VRAM, ctx to
+              fill the remainder (min 4096, max 32768). Specify numbers to override.
             </span>
           </div>
           
@@ -343,7 +351,10 @@ const ModelLoader = {
           <span class="ml-estimate-val ${speedClass}">${speedHint}</span>
         </div>
         <div class="ml-estimate-hint">
-          File size: ${fileSizeGb} GB. With 'auto' both fields, node-llama-cpp checks your GPU's free VRAM and picks the optimal context size and layer split. Same behavior as LM Studio.
+          File size: ${fileSizeGb} GB. With 'auto' both fields, SquidMind reads your
+          free VRAM at load time and picks gpu_layers (~70% VRAM for weights) +
+          contextLength (remaining for KV cache, min 4096). Resolved values are
+          shown after load and used as starting point for retries on OOM.
         </div>
       `;
     };

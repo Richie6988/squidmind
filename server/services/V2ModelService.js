@@ -126,6 +126,7 @@ class V2ModelService {
     for (const file of scanned) {
       seenIds.add(file.model_id);
       const regEntry = registered[file.model_id];
+      const loadedEntry = this.loaded.get(file.model_id);
       items.push({
         model_id: file.model_id,
         file_name: file.file_name,
@@ -133,7 +134,8 @@ class V2ModelService {
         file_size_gb: file.file_size_gb,
         format: 'gguf',
         imported: !!regEntry,
-        config: regEntry?.config || null,
+        config: regEntry?.config || null,             // SAVED config (user preference, may have 'auto')
+        runtime_config: loadedEntry?.config || null,  // RESOLVED config (all numeric, what's actually running)
         status: regEntry?.status || 'not_imported',
         is_loaded: this.loaded.has(file.model_id),
         is_poseidon: this.poseidonModelId === file.model_id,
@@ -146,6 +148,7 @@ class V2ModelService {
     // Registered models whose files are missing (orphans)
     for (const [id, entry] of Object.entries(registered)) {
       if (!seenIds.has(id)) {
+        const loadedEntry = this.loaded.get(id);
         items.push({
           model_id: id,
           file_name: entry.file_name,
@@ -154,6 +157,7 @@ class V2ModelService {
           format: 'gguf',
           imported: true,
           config: entry.config,
+          runtime_config: loadedEntry?.config || null,
           status: 'missing',
           is_loaded: this.loaded.has(id),
           is_poseidon: this.poseidonModelId === id,
@@ -292,28 +296,34 @@ class V2ModelService {
   // === LOAD ===
 
   /**
-   * Load a GGUF model with the user's exact settings.
+   * Load a GGUF model into memory.
    * 
-   * @param {string} fileName - just the filename in models dir, e.g. 'kwen3.5-9B.gguf'
-   * @param {object} cfg - { contextLength, gpuLayers, cpuThreads, batchSize, offloadKqvToGpu, randomSeed, autoUnloadIdleMinutes }
-   * @returns {object} status
+   * Parameters mirror the standard GGUF loader contract (see ComfyUI's
+   * LLM-GGUF Loader). Caller passes concrete numbers; we never pass 'auto'
+   * through to node-llama-cpp because it picks pathological values on
+   * tight-VRAM systems (e.g. 256 tokens with a 9B model and 6GB free).
+   * 
+   * @param {string} fileName - file in the models dir, e.g. 'qwen3.5-9B.gguf'
+   * @param {object} cfg
+   *   @param {number|'auto'} cfg.contextLength - max ctx tokens. 'auto' = compute from VRAM
+   *   @param {number|'auto'|'max'} cfg.gpuLayers - GPU layer count. 'auto' = compute from VRAM
+   *   @param {number} cfg.cpuThreads
+   *   @param {number} cfg.batchSize
+   *   @param {boolean} cfg.flashAttention - ~50% smaller KV
+   *   @param {boolean} cfg.useMmap
+   *   @param {boolean} cfg.useMlock - pin in VRAM (LM Studio "Keep in Memory")
+   *   @param {boolean} cfg.randomSeed
+   *   @param {number} cfg.autoUnloadIdleMinutes
+   * @returns {object} { success, model_id, config } - config holds the RESOLVED numbers
    */
   async loadModel(fileName, cfg = {}) {
     const config = {
-      // contextLength: 'auto' lets node-llama-cpp pick the max that fits VRAM
-      // (LM Studio-style). User can override with a number.
       contextLength: cfg.contextLength ?? 'auto',
-      // gpuLayers: 'auto' = fit as many in VRAM as possible, considering ctx size.
-      // 'max' = all layers (errors if not enough VRAM).
-      // number = force exact count.
       gpuLayers: cfg.gpuLayers ?? 'auto',
       cpuThreads: cfg.cpuThreads ?? 4,
       batchSize: cfg.batchSize ?? 512,
-      // Flash attention: ~50% smaller KV cache. The single biggest VRAM saver.
       flashAttention: cfg.flashAttention ?? true,
-      // mmap: lets the OS page the model file directly - faster load, shared RAM
       useMmap: cfg.useMmap ?? true,
-      // Mlock: force keep in VRAM (LM Studio "Keep Model in Memory")
       useMlock: cfg.useMlock ?? false,
       randomSeed: cfg.randomSeed ?? true,
       autoUnloadIdleMinutes: cfg.autoUnloadIdleMinutes ?? 15
@@ -354,93 +364,116 @@ class V2ModelService {
     let model, context;
     try {
       const llama = await this._ensureLib();
-      console.log(`[V2ModelService] Loading ${fileName} ...`);
+      console.log(`[V2ModelService] Loading ${fileName} (${fileSizeGb} GB)`);
 
-      // Log GPU/VRAM state + COMPUTE a sensible context if user asked for 'auto'.
-      // BUG WE'RE FIXING: node-llama-cpp's contextSize:'auto' picks "max that fits
-      // VRAM AFTER model weights load". With 6.24 GB free and a 9B Q4 model (~5.5 GB
-      // weights), that left only ~256-2560 tokens - smaller than our system prompt,
-      // causing immediate "context shift strategy" errors.
-      //
-      // Fix: when ctx=='auto', compute target ourselves:
-      //   1. Estimate model weight size from file size on disk.
-      //   2. Subtract from free VRAM, keep 500MB safety margin.
-      //   3. Compute how many tokens fit in remaining VRAM using rough KV-cache math:
-      //      per-token cost ≈ 2 * n_layers * n_kv_heads * head_dim * 2 bytes (fp16)
-      //      With flash attention this is ~half.
-      //      For 9B models ≈ 100-200 KB/token without flash, ~50-100 KB/token with.
-      //   4. Clamp result to [4096, 32768] - never let it go below 4096 (system
-      //      prompt + a turn of conversation needs at least that).
-      let vramInfo = null;
+      // === STEP 1: Probe VRAM ===
+      let vram = null;
       try {
-        if (llama.getVramState) {
-          vramInfo = await llama.getVramState();
-          console.log(`  GPU VRAM: ${(vramInfo.free / 1024 ** 3).toFixed(2)} GB free / ${(vramInfo.total / 1024 ** 3).toFixed(2)} GB total`);
-        }
+        if (llama.getVramState) vram = await llama.getVramState();
       } catch {}
-
-      // Replace 'auto' contextLength with a concrete computed number.
-      // If the user passed a number, respect it.
-      if (config.contextLength === 'auto') {
-        const freeBytes = vramInfo?.free || 0;
-        const modelBytes = stat.size;  // file size ≈ model weights when loaded fully on GPU
-        const safetyMargin = 500 * 1024 * 1024;  // 500 MB headroom for activations, scratch
-        const availableForKv = Math.max(0, freeBytes - modelBytes - safetyMargin);
-
-        // Rough KV-cache estimate: for a 9B model with flash attention,
-        // budget ~75 KB per token. Without flash attention, ~150 KB.
-        // This is conservative - actual costs depend on model architecture.
-        const bytesPerToken = config.flashAttention ? 75 * 1024 : 150 * 1024;
-        const estimatedTokens = Math.floor(availableForKv / bytesPerToken);
-
-        // Clamp: never go below 4096 (system prompt needs that), cap at 32768
-        // (anything larger is rarely useful and risks OOM on subtle issues).
-        const computedCtx = Math.max(4096, Math.min(32768, estimatedTokens));
-
-        // Round down to power-of-2-ish increments for cleanliness
-        const roundedCtx = Math.floor(computedCtx / 1024) * 1024;
-
-        console.log(`  [ctx-auto] free=${(freeBytes/(1024**3)).toFixed(2)}GB - weights=${(modelBytes/(1024**3)).toFixed(2)}GB - margin=0.5GB -> ${(availableForKv/(1024**3)).toFixed(2)}GB for KV @ ${bytesPerToken/1024}KB/tok = ~${estimatedTokens} tokens, clamped to ${roundedCtx}`);
-        config.contextLength = roundedCtx;
+      
+      const freeGb = vram ? vram.free / (1024 ** 3) : 0;
+      const totalGb = vram ? vram.total / (1024 ** 3) : 0;
+      if (vram) {
+        console.log(`  VRAM: ${freeGb.toFixed(2)} / ${totalGb.toFixed(2)} GB free`);
       }
-
       try {
         if (llama.gpu) console.log(`  GPU backend: ${llama.gpu}`);
       } catch {}
 
-      console.log(`  gpuLayers=${config.gpuLayers}, ctx=${config.contextLength}, flashAttention=${config.flashAttention}, mmap=${config.useMmap}`);
+      // === STEP 2: Resolve 'auto' to concrete numbers based on VRAM ===
+      // Strategy: target ~70% of free VRAM for model weights, ~25% for KV
+      // cache, 5% margin for activations/scratch.
+      //
+      // gpu_layers: estimate total layers from file size (rule of thumb:
+      //   ~33 layers for 7B, ~40 for 13B, ~32 for 9B). Without metadata we
+      //   estimate from file size: ~1 layer per ~150 MB.
+      //
+      // contextLength: derive from remaining VRAM using ~75 KB/token (flash)
+      //   or ~150 KB/token (no flash) - the same model that worked in our
+      //   previous fix.
+      
+      // Estimate layer count: GGUF files are ~150-180 MB per layer at Q4_K_M.
+      // We can't read metadata until model loads, so use a heuristic.
+      const estimatedTotalLayers = Math.max(20, Math.min(80, Math.round(fileSizeGb * 1024 / 160)));
+      
+      if (config.gpuLayers === 'auto' || config.gpuLayers === 'max') {
+        if (vram && freeGb > 0.5) {
+          // Aim to fit weights in 70% of free VRAM
+          const weightBudgetGb = freeGb * 0.7;
+          const gpuLayerFrac = Math.min(1.0, weightBudgetGb / fileSizeGb);
+          const computed = Math.round(estimatedTotalLayers * gpuLayerFrac);
+          // 'max' = try to push all layers; 'auto' = our computed value
+          config.gpuLayers = (config.gpuLayers === 'max')
+            ? estimatedTotalLayers
+            : Math.max(1, Math.min(estimatedTotalLayers, computed));
+          console.log(`  [auto-resolve] gpuLayers: ${config.gpuLayers} (≈${(gpuLayerFrac*100).toFixed(0)}% of ${estimatedTotalLayers} layers on GPU)`);
+        } else {
+          // No VRAM info - default to CPU-only (safer than guessing high)
+          config.gpuLayers = 0;
+          console.log(`  [auto-resolve] gpuLayers: 0 (no VRAM info available, CPU only)`);
+        }
+      }
+      
+      if (config.contextLength === 'auto') {
+        if (vram && freeGb > 1.0) {
+          // Compute available VRAM for KV after weights:
+          //   on-GPU weights = file_size * (gpu_layers / total_layers)
+          //   margin = 500 MB
+          //   available_for_kv = free - weights_on_gpu - margin
+          const layerFrac = config.gpuLayers / estimatedTotalLayers;
+          const weightsOnGpu = fileSizeGb * layerFrac;
+          const marginGb = 0.5;
+          const availForKv = Math.max(0, freeGb - weightsOnGpu - marginGb);
+          const bytesPerToken = config.flashAttention ? 75 * 1024 : 150 * 1024;
+          const tokensFit = Math.floor((availForKv * 1024 ** 3) / bytesPerToken);
+          // Clamp to [4096, 32768], round to 1024
+          const computed = Math.max(4096, Math.min(32768, tokensFit));
+          config.contextLength = Math.floor(computed / 1024) * 1024;
+          console.log(`  [auto-resolve] contextLength: ${config.contextLength} tokens (${availForKv.toFixed(2)} GB for KV at ${bytesPerToken/1024} KB/tok)`);
+        } else {
+          // No VRAM or very tight - default to 4096 (enough for system prompt + a few turns)
+          config.contextLength = 4096;
+          console.log(`  [auto-resolve] contextLength: 4096 (default, no VRAM info)`);
+        }
+      }
+      
+      // Final summary line - everything is now numeric
+      console.log(`  Resolved: ctx=${config.contextLength}, gpuLayers=${config.gpuLayers}, flash=${config.flashAttention}, mmap=${config.useMmap}, mlock=${config.useMlock}`);
 
-      // node-llama-cpp v3 model load (LM Studio-equivalent flags)
+      // === STEP 3: Load model ===
       const modelOpts = {
         modelPath: fullPath,
-        gpuLayers: config.gpuLayers,           // 'auto' | 'max' | number
+        gpuLayers: config.gpuLayers,
         useMmap: config.useMmap,
         useMlock: config.useMlock,
-        // Tell the model that contexts will use flash attention so it sizes VRAM accordingly
         defaultContextFlashAttention: config.flashAttention
       };
       
-      // If user set a numeric context limit, hint the model loader to fit it
-      if (typeof config.contextLength === 'number' && config.gpuLayers === 'auto') {
-        modelOpts.gpuLayers = {
-          fitContext: { contextSize: config.contextLength }
-        };
-      }
-      
       model = await llama.loadModel(modelOpts);
-      console.log(`  Model loaded. Train context size: ${model.trainContextSize}`);
+      const trainCtx = model.trainContextSize;
+      console.log(`  Model loaded. Train context size: ${trainCtx}`);
+      
+      // Refine our context estimate: never exceed the model's own training ctx
+      if (config.contextLength > trainCtx) {
+        console.warn(`  ctx ${config.contextLength} > trainCtx ${trainCtx}, clamping`);
+        config.contextLength = trainCtx;
+      }
 
+      // === STEP 4: Create context (always concrete numbers, never 'auto') ===
       context = await model.createContext({
-        contextSize: config.contextLength,     // 'auto' or number
+        contextSize: config.contextLength,
         batchSize: config.batchSize,
         threads: config.cpuThreads,
         sequences: 8,                          // headroom for parallel agents
-        flashAttention: config.flashAttention  // explicit per-context (also inherited)
+        flashAttention: config.flashAttention
       });
       
-      // Report what we actually got (auto may differ from request)
       const actualCtx = context.contextSize;
       console.log(`  Context created: ${actualCtx} tokens`);
+      if (actualCtx !== config.contextLength) {
+        config.contextLength = actualCtx;  // record what we actually got
+      }
 
       this.loaded.set(modelId, {
         model_id: modelId,
