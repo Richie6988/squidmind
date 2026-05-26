@@ -202,38 +202,6 @@ const ui = {
 // CRITICAL: Export to window IMMEDIATELY so onclick handlers work
 window.ui = ui;
 console.log('[OK] UI exported to window');
-
-// Global functions called from HTML
-async function executeSquid() {
-  if (!ui.currentSquid) return;
-  
-  try {
-    ui.showNotification('Executing squid...', 'info');
-    
-    // Update squid status
-    aquarium.updateSquidStatus(ui.currentSquid.id, 'working');
-    
-    const response = await api.executeAgent(ui.currentSquid.id);
-    
-    if (response.success) {
-      ui.showNotification('Execution completed!', 'success');
-      console.log('Output:', response.output);
-    } else {
-      ui.showNotification(`Error: ${response.error}`, 'error');
-    }
-    
-    // Reset status
-    setTimeout(() => {
-      aquarium.updateSquidStatus(ui.currentSquid.id, 'idle');
-    }, 2000);
-    
-  } catch (error) {
-    console.error('Execution failed:', error);
-    ui.showNotification(`Error: ${error.message}`, 'error');
-    aquarium.updateSquidStatus(ui.currentSquid.id, 'idle');
-  }
-}
-
 async function editSquid() {
   if (!ui.currentSquid) return;
   
@@ -277,39 +245,6 @@ async function editSquid() {
   ui.hidePanel('detail');
   ui.showPanel('edit');
 }
-
-// Set schedule with intuitive presets
-ui.setSchedule = function(preset) {
-  let cron = '';
-  let description = '';
-  
-  switch (preset) {
-    case 'hourly':
-      cron = '0 * * * *';
-      description = 'Every hour on the hour';
-      break;
-    case 'daily':
-      cron = '0 9 * * *';
-      description = 'Every day at 9:00 AM';
-      break;
-    case 'weekly':
-      cron = '0 9 * * 1';
-      description = 'Every Monday at 9:00 AM';
-      break;
-    case 'custom':
-      const time = prompt('Enter time (HH:MM in 24h format):', '09:00');
-      if (!time) return;
-      const [hour, minute] = time.split(':');
-      cron = `${minute} ${hour} * * *`;
-      description = `Every day at ${time}`;
-      break;
-  }
-  
-  document.getElementById('cron-value').value = cron;
-  document.querySelector('[name="schedule_enabled"]').checked = true;
-  ui.updateSchedulePreview(cron);
-};
-
 // Update schedule preview
 ui.updateSchedulePreview = function(cron) {
   const preview = document.getElementById('schedule-preview');
@@ -394,124 +329,6 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 });
-
-// Load models
-ui.loadModels = async function() {
-  try {
-    const response = await fetch('/api/models');
-    const data = await response.json();
-    const models = data.models || [];
-    
-    const modelsList = document.getElementById('models-list');
-    if (!modelsList) return;
-    
-    if (models.length === 0) {
-      modelsList.innerHTML = '<p class="empty-message">No models found. Download GGUF models to data/models/</p>';
-      return;
-    }
-    
-    modelsList.innerHTML = models.map(model => `
-      <div class="list-item">
-        <div class="list-item-header">
-          <strong>${model.name || model.file}</strong>
-          ${model.loaded ? '<span class="badge badge-success">Loaded</span>' : '<span class="badge badge-idle">Not Loaded</span>'}
-        </div>
-        <div class="list-item-meta">
-          ${model.size_mb ? `${model.size_mb} MB` : ''} • ${model.source}
-        </div>
-        <div class="list-item-actions">
-          ${!model.loaded ? `<button class="btn-small" onclick="ui.loadModel('${model.file}')">Load</button>` : ''}
-          ${model.loaded ? `<button class="btn-small" onclick="ui.unloadModel('${model.file}')">Unload</button>` : ''}
-        </div>
-      </div>
-    `).join('');
-  } catch (error) {
-    console.error('Failed to load models:', error);
-  }
-};
-
-// Load scheduler status
-ui.loadSchedulerStatus = async function() {
-  try {
-    const response = await fetch('/api/scheduler/status');
-    const data = await response.json();
-    
-    const statusDiv = document.getElementById('scheduler-status');
-    if (!statusDiv) return;
-    
-    const queues = data.queues || {};
-    const resources = data.resources || {};
-    const stats = data.stats || {};
-    
-    statusDiv.innerHTML = `
-      <div class="status-section">
-        <h3>Queue Status</h3>
-        <div class="stats-grid">
-          <div class="stat-card">
-            <div class="stat-label">VIP</div>
-            <div class="stat-value">${queues.vip || 0}</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-label">High</div>
-            <div class="stat-value">${queues.high || 0}</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-label">Normal</div>
-            <div class="stat-value">${queues.normal || 0}</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-label">Low</div>
-            <div class="stat-value">${queues.low || 0}</div>
-          </div>
-        </div>
-      </div>
-      
-      <div class="status-section">
-        <h3>Resources</h3>
-        <div class="resource-bar">
-          <div class="resource-label">GPU VRAM</div>
-          <div class="progress-bar">
-            <div class="progress-fill" style="width: ${resources.gpu ? (resources.gpu.in_use ? 100 : 0) : 0}%"></div>
-          </div>
-          <div class="resource-info">${resources.gpu ? `${resources.gpu.available_vram.toFixed(1)}GB / ${resources.gpu.total_vram.toFixed(1)}GB` : 'N/A'}</div>
-        </div>
-        
-        <div class="resource-bar">
-          <div class="resource-label">CPU</div>
-          <div class="progress-bar">
-            <div class="progress-fill" style="width: ${resources.cpu ? resources.cpu.utilization : 0}%"></div>
-          </div>
-          <div class="resource-info">${resources.cpu ? `${resources.cpu.utilization}% utilization` : 'N/A'}</div>
-        </div>
-      </div>
-      
-      <div class="status-section">
-        <h3>Statistics</h3>
-        <div class="stats-list">
-          <div class="stat-row">
-            <span>Total Scheduled:</span>
-            <strong>${stats.total_scheduled || 0}</strong>
-          </div>
-          <div class="stat-row">
-            <span>Completed:</span>
-            <strong>${stats.total_completed || 0}</strong>
-          </div>
-          <div class="stat-row">
-            <span>Failed:</span>
-            <strong>${stats.total_failed || 0}</strong>
-          </div>
-          <div class="stat-row">
-            <span>Avg Wait Time:</span>
-            <strong>${stats.avg_wait_time_ms ? (stats.avg_wait_time_ms / 1000).toFixed(1) + 's' : 'N/A'}</strong>
-          </div>
-        </div>
-      </div>
-    `;
-  } catch (error) {
-    console.error('Failed to load scheduler status:', error);
-  }
-};
-
 // Load model
 ui.loadModel = async function(modelPath) {
   try {
@@ -635,37 +452,6 @@ async function loadLogs() {
     console.error('Failed to load logs:', error);
   }
 }
-
-// Poseidon Chat Functions
-ui.sendToPoseidon = async function() {
-  const input = document.getElementById('poseidon-chat-input');
-  const message = input.value.trim();
-  
-  if (!message) return;
-  
-  // Clear input
-  input.value = '';
-  
-  // Add user message to chat
-  this.addPoseidonMessage(message, 'user');
-  
-  // Get context
-  const agents = await api.getAgents();
-  const context = {
-    agents: agents.agents || [],
-    systemStatus: {}
-  };
-  
-  // Get Poseidon response
-  const response = await poseidon.respond(message, context);
-  
-  // Add Poseidon response
-  this.addPoseidonMessage(response.message, 'poseidon');
-  
-  // Update suggestions
-  this.updatePoseidonSuggestions(response.suggestions);
-};
-
 ui.addPoseidonMessage = function(message, sender) {
   const messagesDiv = document.getElementById('poseidon-chat-messages');
   
@@ -703,38 +489,6 @@ ui.usePoseidonSuggestion = function(suggestion) {
 
 // Squid Interaction Functions
 ui.selectedSquid = null;
-
-ui.interactWithSquid = function(action) {
-  if (!this.selectedSquid) return;
-  
-  const squid = this.selectedSquid;
-  
-  switch (action) {
-    case 'feed':
-      squid.feed();
-      this.showNotification('🍕 Fed the squid!', 'success');
-      break;
-    case 'play':
-      squid.play();
-      this.showNotification('[INTERACT] Playing with squid!', 'success');
-      break;
-    case 'sleep':
-      squid.sleep();
-      this.showNotification('💤 Squid is resting!', 'success');
-      break;
-    case 'celebrate':
-      squid.celebrate();
-      this.showNotification('🎉 Celebration time!', 'success');
-      break;
-    case 'details':
-      this.showSquidDetails(squid);
-      break;
-  }
-  
-  // Hide menu
-  document.getElementById('squid-menu').classList.add('hidden');
-};
-
 ui.showSquidContextMenu = function(squid, x, y) {
   this.selectedSquid = squid;
   
@@ -743,49 +497,6 @@ ui.showSquidContextMenu = function(squid, x, y) {
   menu.style.left = x + 'px';
   menu.style.top = y + 'px';
 };
-
-ui.showSquidDetails = function(squid) {
-  console.log('[TASKS] Showing squid details:', squid.name);
-  this.currentSquid = squid;
-  
-  // Populate detail panel
-  document.getElementById('squid-name-display').textContent = squid.name;
-  document.getElementById('squid-specialty-display').textContent = squid.specialty || 'General Agent';
-  document.getElementById('squid-status-display').textContent = squid.status || 'idle';
-  document.getElementById('squid-thought-display').textContent = squid.current_thought || 'Resting...';
-  
-  // Stats
-  const stats = squid.stats || {};
-  document.getElementById('squid-level').textContent = stats.level || 1;
-  document.getElementById('squid-xp').textContent = `${stats.xp || 0} / ${stats.xpToNext || 100}`;
-  document.getElementById('squid-tasks').textContent = stats.tasksCompleted || 0;
-  
-  // Energy bar
-  const energy = squid.energy || 100;
-  const energyBar = document.querySelector('#detail-panel .stat-bar-fill');
-  if (energyBar) {
-    energyBar.style.width = `${energy}%`;
-  }
-  
-  // Brain info
-  const brainInfo = document.getElementById('squid-brain-info');
-  if (brainInfo && squid.brain) {
-    brainInfo.innerHTML = `
-      <div class="brain-detail">
-        <strong>Model:</strong> ${squid.brain.model || 'claude-sonnet-4'}
-      </div>
-      <div class="brain-detail">
-        <strong>Prompt:</strong> ${squid.brain.system_prompt || 'N/A'}
-      </div>
-      <div class="brain-detail">
-        <strong>Tools:</strong> ${squid.brain.available_tools ? squid.brain.available_tools.length : 0}
-      </div>
-    `;
-  }
-  
-  this.showPanel('detail');
-};
-
 // Removed detail panel wrapper to fix infinite recursion
 // showSquidDetails now handles panel opening directly
 
@@ -872,42 +583,6 @@ if (document.readyState === 'loading') {
 }
 
 console.log('[POSEIDON] Poseidon AI module loaded');
-
-// Tool Selection for Squids
-ui.loadAvailableTools = async function() {
-  try {
-    // Use V2 endpoint
-    const response = await fetch('/api/v2/tools');
-    const data = await response.json();
-    const tools = Object.values(data.registry?.tools || {});
-    
-    const checklistCreate = document.querySelector('#creator-panel #tools-checklist');
-    const checklistEdit = document.querySelector('#edit-panel #tools-checklist');
-    
-    if (tools.length === 0) {
-      const empty = '<p class="hint" style="font-size:9px; padding:8px;">No tools available. Restart server.</p>';
-      if (checklistCreate) checklistCreate.innerHTML = empty;
-      if (checklistEdit) checklistEdit.innerHTML = empty;
-      return;
-    }
-    
-    // Render as compact grid with hover tooltips
-    const toolsHTML = tools.map(t => `
-      <label class="tool-grid-tile" title="${ui._esc(t.name)}: ${ui._esc(t.description || '')}">
-        <input type="checkbox" name="tool_${ui._esc(t.name)}" value="${ui._esc(t.name)}" checked>
-        <span class="tool-grid-name">${ui._esc(t.name)}</span>
-        <span class="tool-grid-cat">${ui._esc(t.category || 'general')}</span>
-      </label>
-    `).join('');
-    
-    if (checklistCreate) checklistCreate.innerHTML = toolsHTML;
-    if (checklistEdit) checklistEdit.innerHTML = toolsHTML;
-    
-  } catch (error) {
-    console.warn('Failed to load tools:', error);
-  }
-};
-
 ui._esc = function(s) {
   return String(s || '').replace(/[<>&"]/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' })[c]);
 };
@@ -933,12 +608,6 @@ ui.loadCreatorModels = async function() {
     console.warn('Failed to load creator models:', err);
   }
 };
-
-ui.toggleAllTools = function(enabled) {
-  const checkboxes = document.querySelectorAll('#tools-checklist input[type="checkbox"]');
-  checkboxes.forEach(cb => cb.checked = enabled);
-};
-
 ui.getSelectedTools = function(formElement) {
   const checkboxes = formElement.querySelectorAll('#tools-checklist input[type="checkbox"]:checked');
   return Array.from(checkboxes).map(cb => cb.value);
@@ -992,63 +661,6 @@ ui.clearAllPanels = function() {
   
   console.log(`[OK] Closed ${panels.length} panels`);
 };
-
-// Update System Monitor Stats
-ui.updateSystemMonitor = async function() {
-  if (!aquarium || !aquarium.squids) return;
-  
-  const squids = aquarium.squids;
-  
-  // Squad stats
-  document.getElementById('monitor-total-squids').textContent = squids.length;
-  document.getElementById('monitor-active-squids').textContent = 
-    squids.filter(s => s.status !== 'sleeping').length;
-  document.getElementById('monitor-idle-squids').textContent = 
-    squids.filter(s => s.status === 'idle').length;
-  document.getElementById('monitor-working-squids').textContent = 
-    squids.filter(s => s.status === 'working').length;
-  
-  // Fetch system stats (CPU/Memory)
-  try {
-    const response = await fetch('/api/system/monitor');
-    const data = await response.json();
-    
-    if (data.success && data.system) {
-      const cpuUsage = parseFloat(data.system.cpu_usage || 0);
-      const memUsage = parseFloat(data.system.memory_usage || 0);
-      
-      const cpuBar = document.getElementById('monitor-cpu-bar');
-      const cpuValue = document.getElementById('monitor-cpu-value');
-      const memBar = document.getElementById('monitor-mem-bar');
-      const memValue = document.getElementById('monitor-mem-value');
-      
-      if (cpuBar) cpuBar.style.width = `${cpuUsage}%`;
-      if (cpuValue) cpuValue.textContent = `${cpuUsage.toFixed(1)}%`;
-      if (memBar) memBar.style.width = `${memUsage}%`;
-      if (memValue) memValue.textContent = `${memUsage.toFixed(1)}%`;
-    }
-  } catch (error) {
-    console.log('System monitor API not available:', error.message);
-  }
-  
-  // Poseidon status
-  if (typeof poseidon !== 'undefined') {
-    const info = poseidon.getModelInfo();
-    document.getElementById('monitor-poseidon-model').textContent = 
-      info.loaded ? 'Yes' : 'No';
-    document.getElementById('monitor-poseidon-mode').textContent = info.mode;
-  }
-  
-  // Count agents in projects
-  if (aquarium.templeManager) {
-    let totalAgentsInProjects = 0;
-    aquarium.templeManager.temples.forEach(temple => {
-      totalAgentsInProjects += temple.agentCount;
-    });
-    document.getElementById('monitor-project-agents').textContent = totalAgentsInProjects;
-  }
-};
-
 // Auto-update monitor every 2 seconds
 setInterval(() => {
   const monitorPanel = document.getElementById('monitor-panel');
@@ -1238,79 +850,6 @@ ui.openSquidDetailModal = function(squid) {
   }
   console.warn('AgentForm not loaded, cannot open squid editor');
 };
-
-ui.closeSquidDetailModal = function() {
-  const modal = document.getElementById('squid-detail-modal');
-  if (modal) {
-    modal.classList.add('hidden');
-  }
-  this.currentSquidForEdit = null;
-};
-
-ui.saveSquidDetails = async function() {
-  if (!this.currentSquidForEdit) return;
-  
-  const squid = this.currentSquidForEdit;
-  
-  // Get values from form
-  const name = document.getElementById('squid-name').value.trim();
-  const specialty = document.getElementById('squid-specialty').value.trim();
-  const mission = document.getElementById('squid-mission').value.trim();
-  const model = document.getElementById('squid-model').value.trim();
-  const temperature = parseFloat(document.getElementById('squid-temperature').value);
-  const bodyColor = document.getElementById('squid-body-color').value;
-  
-  // Update squid object IMMEDIATELY (visual update)
-  squid.name = name;
-  squid.specialty = specialty;
-  squid.mission = mission;
-  if (!squid.brain) squid.brain = {};
-  squid.brain.model = model;
-  squid.brain.temperature = temperature;
-  if (!squid.appearance) squid.appearance = {};
-  squid.appearance.body_color = bodyColor;
-  
-  console.log('[OK] Squid updated visually:', name);
-  
-  // Save to backend
-  try {
-    const response = await fetch(`/api/agents/${squid.id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        name,
-        specialty,
-        mission,
-        brain: {
-          model,
-          temperature,
-          system_prompt: squid.brain.system_prompt || ''
-        },
-        appearance: {
-          body_color: bodyColor,
-          accent_color: squid.appearance.accent_color || '#FFE66D',
-          eye_style: squid.appearance.eye_style || 'round',
-          tentacle_style: squid.appearance.tentacle_style || 'wavy',
-          size: squid.appearance.size || 'medium',
-          glow_intensity: squid.appearance.glow_intensity || 0.5
-        }
-      })
-    });
-    
-    const data = await response.json();
-    
-    if (data.success) {
-      console.log('[OK] Squid saved to backend:', name);
-      this.closeSquidDetailModal();
-    } else {
-      alert('Failed to save: ' + data.error);
-    }
-  } catch (error) {
-    console.error('[ERROR] Save squid error:', error);
-    alert('Error saving squid (changes applied locally): ' + error.message);
-  }
-};
-
 console.log('[OK] UI module with modals loaded');
 
 // ==================== GGUF MODEL LOADING ====================
@@ -1527,15 +1066,7 @@ ui.refreshLogs = function(filter = 'all') {
     </div>
   `).join('');
 };
-
-ui.switchPoseidonModel = function(modelName) {
-  if (!modelName) return;
-  console.log('Switching to model:', modelName);
-  this.addLog('model_switch', `Switched to model: ${modelName}`);
-};
-
 console.log('[OK] Poseidon process & logs system loaded');
-
 
 // ==================== MODEL BROWSER (V2) ====================
 // Old file browser removed - use ModelLoader.open() for V2 library workflow

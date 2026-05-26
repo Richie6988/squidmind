@@ -52,30 +52,10 @@ const api = {
       method: 'DELETE'
     });
   },
-
-  async executeAgent(id, input = '', mcpServers = []) {
-    return this.request(`/api/agents/${id}/execute`, {
-      method: 'POST',
-      body: JSON.stringify({ input, mcp_servers: mcpServers })
-    });
-  },
-
-  // Log endpoints
   async getLogs(filters = {}) {
     const params = new URLSearchParams(filters);
     return this.request(`/api/logs?${params}`);
   },
-
-  // Task endpoints
-  async getTaskStatus() {
-    return this.request('/api/tasks/status');
-  },
-
-  async getUpcomingTasks(limit = 10) {
-    return this.request(`/api/tasks/upcoming?limit=${limit}`);
-  },
-
-  // System endpoints
   async getHealth() {
     return this.request('/api/system/health');
   }
