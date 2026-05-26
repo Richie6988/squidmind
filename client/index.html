@@ -19,8 +19,7 @@
       <h1>SquidMind</h1>
       <div class="header-nav">
         <button class="btn-nav" onclick="AgentForm.openNew()">+ New Squid</button>
-        <button class="btn-nav" onclick="ui.showPanel('teams')">[TEAM] Teams</button>
-        <button class="btn-nav" onclick="ModelLoader.open()">[MODELS] Models</button>
+<button class="btn-nav" onclick="ModelLoader.open()">[MODELS] Models</button>
         <button class="btn-nav" onclick="ui.showPanel('logs')">[LOGS] Logs</button>
       </div>
       <div class="header-stats">
@@ -290,21 +289,6 @@
               <button type="button" class="btn-secondary" onclick="ui.hidePanel('edit')">Cancel</button>
             </div>
           </form>
-        </div>
-      </div>
-
-      <!-- Teams Panel -->
-      <div id="teams-panel" class="panel hidden">
-        <div class="panel-header">
-          <h2>[TEAM] Agent Teams</h2>
-          <button class="btn-close" onclick="ui.hidePanel('teams')">x</button>
-        </div>
-        <div class="panel-content">
-          <div class="panel-toolbar">
-            <button class="btn-primary" onclick="ui.showCreateTeam()">+ Create Team</button>
-            <button class="btn-secondary" onclick="ui.loadTeams()">🔄 Refresh</button>
-          </div>
-          <div id="teams-list" class="content-list"></div>
         </div>
       </div>
 

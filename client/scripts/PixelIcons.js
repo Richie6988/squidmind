@@ -440,7 +440,6 @@ const PixelIcons = {
     '[TASKS]': 'tasks',
     '[TARGET]': 'target',
     '[LOGS]': 'logs',
-    '[TEAM]': 'team',
     '[MODELS]': 'models',
     '[POSEIDON]': 'poseidon',
     '[BRAIN]': 'brain',

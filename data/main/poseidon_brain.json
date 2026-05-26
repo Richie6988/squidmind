@@ -183,7 +183,6 @@
     "registries": {
       "agents": "agents/agent_registry.json",
       "projects": "projects/project_registry.json",
-      "teams": "teams/team_registry.json",
       "tasks": "tasks/tasks_registry.json",
       "tools": "tools/tool_registry.json",
       "models": "models/model_registry.json"
@@ -262,5 +261,5 @@
   "settings": {
     "theme": "ocean"
   },
-  "last_updated_at": "2026-05-25T22:10:43.796Z"
+  "last_updated_at": "2026-05-26T06:45:17.304Z"
 }

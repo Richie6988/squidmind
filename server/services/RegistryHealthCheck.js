@@ -42,7 +42,6 @@ const DEFAULTS = {
         agents: 'agents/agent_registry.json',
         projects: 'projects/project_registry.json',
         tasks: 'tasks/tasks_registry.json',
-        teams: 'teams/team_registry.json',
         tools: 'tools/tool_registry.json',
         models: 'models/model_registry.json'
       },
@@ -129,17 +128,6 @@ const DEFAULTS = {
       active: 'Being worked on', planned: 'Not yet started',
       paused: 'Temporarily paused', archived: 'Done'
     }
-  }),
-  
-  'teams/team_registry.json': () => ({
-    schema_version: '2.0.0',
-    schema_type: 'team_registry',
-    metadata: {
-      last_id_used: 0, next_id: 1, id_format: 'team_NNN',
-      total_active: 0, total_archived: 0,
-      last_updated_at: new Date().toISOString()
-    },
-    teams: {}
   }),
   
   'models/model_registry.json': () => ({

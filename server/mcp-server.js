@@ -127,7 +127,7 @@ class SquidMindMCPServer {
           },
           {
             name: 'create_group',
-            description: 'Create a new agent group for team tasks',
+            description: 'Create a new agent group',
             inputSchema: {
               type: 'object',
               properties: {

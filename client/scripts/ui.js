@@ -395,69 +395,6 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 });
 
-// Load teams
-ui.loadTeams = async function() {
-  try {
-    const response = await fetch('/api/teams');
-    const teams = await response.json();
-    
-    const teamsList = document.getElementById('teams-list');
-    if (!teamsList) return;
-    
-    if (!teams || teams.length === 0) {
-      teamsList.innerHTML = '<p class="empty-message">No teams yet. Create your first team!</p>';
-      return;
-    }
-    
-    teamsList.innerHTML = teams.map(team => `
-      <div class="list-item" onclick="ui.showTeamDetails('${team.id}')">
-        <div class="list-item-header">
-          <strong>${team.name}</strong>
-          <span class="badge badge-${team.status}">${team.status}</span>
-        </div>
-        <div class="list-item-meta">
-          ${team.members} members ${team.workflow ? `• ${team.workflow}` : ''}
-        </div>
-      </div>
-    `).join('');
-  } catch (error) {
-    console.error('Failed to load teams:', error);
-  }
-};
-
-// Show create team modal (simple version for now)
-ui.showCreateTeam = async function() {
-  const teamName = prompt('Enter team name:');
-  if (!teamName) return;
-  
-  const agents = await api.getAgents();
-  if (!agents.agents || agents.agents.length === 0) {
-    alert('Create some squids first!');
-    return;
-  }
-  
-  // Simple team creation
-  try {
-    const response = await fetch('/api/teams', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        name: teamName,
-        leader_id: agents.agents[0].id,
-        members: agents.agents.slice(0, 3).map(a => a.id),
-        auto_assign_roles: true
-      })
-    });
-    
-    if (response.ok) {
-      ui.showNotification('Team created!', 'success');
-      await ui.loadTeams();
-    }
-  } catch (error) {
-    ui.showNotification('Failed to create team', 'error');
-  }
-};
-
 // Load models
 ui.loadModels = async function() {
   try {

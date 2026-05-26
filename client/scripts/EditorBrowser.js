@@ -26,9 +26,6 @@ const EditorBrowser = {
     'Tasks': [
       { path: 'tasks/tasks_registry.json', label: 'Task Registry' }
     ],
-    'Teams': [
-      { path: 'teams/team_registry.json', label: 'Team Registry' }
-    ],
     'Models': [
       { path: 'models/model_registry.json', label: 'Model Registry' }
     ],

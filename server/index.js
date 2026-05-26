@@ -58,7 +58,7 @@ app.get('/api/v2/health', async (req, res) => {
   try {
     sharedRm.invalidateCache();
     const checks = {};
-    for (const reg of ['main/poseidon_brain.json','agents/agent_registry.json','tasks/tasks_registry.json','projects/project_registry.json','models/model_registry.json','teams/team_registry.json','tools/tool_registry.json','logs/logs.json']) {
+    for (const reg of ['main/poseidon_brain.json','agents/agent_registry.json','tasks/tasks_registry.json','projects/project_registry.json','models/model_registry.json','tools/tool_registry.json','logs/logs.json']) {
       try {
         await sharedRm.read(reg);
         checks[reg] = 'ok';
@@ -752,59 +752,6 @@ app.get('/api/system/monitor', async (req, res) => {
         total_in_progress: activeTasks.reduce((sum, a) => sum + a.tasks.length, 0)
       }
     });
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
-// ==================== TEAM ROUTES ====================
-
-const teamCoordinator = require('./services/TeamCoordinator');
-
-app.get('/api/teams', (req, res) => {
-  try {
-    const teams = teamCoordinator.listTeams();
-    res.json(teams);
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
-app.get('/api/teams/:id', (req, res) => {
-  try {
-    const team = teamCoordinator.activeTeams.get(req.params.id);
-    if (!team) {
-      return res.status(404).json({ success: false, error: 'Team not found' });
-    }
-    res.json(team);
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
-app.post('/api/teams', async (req, res) => {
-  try {
-    const team = await teamCoordinator.createTeam(req.body);
-    res.json({ success: true, team });
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
-app.post('/api/teams/:id/execute', async (req, res) => {
-  try {
-    const result = await teamCoordinator.executeTeamTask(req.params.id, req.body);
-    res.json({ success: true, result });
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
-app.post('/api/teams/:id/consensus', async (req, res) => {
-  try {
-    const { question, options } = req.body;
-    const result = await teamCoordinator.teamConsensus(req.params.id, question, options);
-    res.json({ success: true, result });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }

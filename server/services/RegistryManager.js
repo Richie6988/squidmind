@@ -131,7 +131,6 @@ class RegistryManager {
     '*.task_id',
     '*.tool_id',
     '*.model_id',
-    '*.team_id',
     '*.created_at',
     '*.last_updated_at',
     '*.priority.computed_score',
@@ -729,7 +728,6 @@ class RegistryManager {
         related_task_ids: [],
         blocks_task_ids: [],
         blocked_by_task_ids: taskData.blocked_by || [],
-        team_id: null
       },
       priority: this.computePriority(taskData),
       lifecycle: {
