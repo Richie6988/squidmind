@@ -227,3 +227,6 @@ const aquarium = {
     ui.showSquidDetail(squid);
   }
 };
+
+// Globalize so window.aquarium.loadSquids() works from AgentForm/PoseidonChat
+window.aquarium = aquarium;

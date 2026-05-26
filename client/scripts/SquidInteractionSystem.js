@@ -16,7 +16,7 @@ class SquidInteractionSystem {
     this.draggedSquid = null;
     this.dragOffset = { x: 0, y: 0 };
     this.lastClickTime = 0;
-    this.doubleClickDelay = 300;
+    this.doubleClickDelay = 250;
     
     // Track mouse movement for drag detection
     this.mouseDownPos = null;

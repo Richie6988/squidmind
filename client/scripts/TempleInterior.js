@@ -318,18 +318,31 @@ const TempleInterior = {
   },
   
   /**
-   * Populate cron tasks
+   * Populate cron tasks: read from V2 tasks registry, filtered by project_id.
    */
-  populateCronTasks(temple) {
+  async populateCronTasks(temple) {
     const container = document.getElementById('cron-tasks');
-    const cronTasks = temple.project?.cronTasks || [];
+    if (!container) return;
+    
+    const projectId = temple.project_id;
+    let cronTasks = [];
+    
+    if (projectId) {
+      try {
+        const r = await window.ApiV2._fetch('/tasks');
+        const allTasks = Object.values(r.registry?.tasks || {});
+        cronTasks = allTasks.filter(t => t.project_id === projectId && t.schedule?.cron);
+      } catch (err) {
+        console.warn('[TempleInterior] populateCronTasks fetch failed:', err.message);
+      }
+    }
     
     if (cronTasks.length > 0) {
       container.innerHTML = cronTasks.map(task => `
         <div class="cron-task">
-          <span class="cron-schedule">${this.humanizeCron(task.schedule)}</span>
-          <span class="cron-desc">${task.description}</span>
-          <button class="btn-edit-cron" onclick="TempleInterior.editCron('${task.id}')">✏️</button>
+          <span class="cron-schedule">${this._escape(task.schedule?.human || this.humanizeCron(task.schedule?.cron) || '')}</span>
+          <span class="cron-desc">${this._escape(task.description || task.name || '')}</span>
+          <button class="btn-edit-cron" onclick="TempleInterior.editCron('${this._escape(task.task_id || task.id)}')">✏️</button>
         </div>
       `).join('');
     } else {
@@ -935,9 +948,9 @@ const TempleInterior = {
   },
   
   /**
-   * Save cron task (REAL IMPLEMENTATION)
+   * Save cron task: persist as a V2 scheduled task in the registry.
    */
-  saveCronTask() {
+  async saveCronTask() {
     const name = document.getElementById('cron-name')?.value;
     const desc = document.getElementById('cron-desc')?.value;
     const expression = document.getElementById('cron-expression')?.textContent;
@@ -953,59 +966,47 @@ const TempleInterior = {
       return;
     }
     
-    console.log('💾 Creating REAL cron task:', name);
-    console.log('   Expression:', expression);
-    console.log('   Description:', desc);
+    // The temple object passed by ProjectsPanel.enterTemple is a shim with
+    // {name, project_id, files, tasks}. There is no `.project` sub-object,
+    // so we never write cronTasks onto it. The single source of truth is
+    // the V2 tasks registry. Read project_id from the shim.
+    const projectId = this.currentTemple.project_id;
+    const projectName = this.currentTemple.name;
     
-    // Create task object
-    const task = {
-      id: Date.now().toString(),
-      name: name,
-      description: desc,
-      schedule: expression,
-      humanSchedule: preview,
-      project: this.currentTemple.name,
-      enabled: true,
-      createdAt: new Date().toISOString()
-    };
-    
-    // Save to backend (TEMPORARY: Save locally until backend ready)
-    console.log('💾 Saving cron task:', task);
-    
-    // Add to temple project immediately (works without backend)
-    if (!this.currentTemple.project.cronTasks) {
-      this.currentTemple.project.cronTasks = [];
+    if (!projectId) {
+      alert(`Cannot save: no project_id on temple "${projectName}". Try closing and re-opening the temple.`);
+      console.warn('[TempleInterior] saveCronTask: missing project_id', this.currentTemple);
+      return;
     }
-    this.currentTemple.project.cronTasks.push(task);
     
-    // Refresh display
-    this.populateCronTasks(this.currentTemple);
-    
-    // Close modal
-    this.closeCronBuilder();
-    
-    alert(`[OK] Task "${name}" created!\nSchedule: ${preview}\n\n(Saved locally - backend integration pending)`);
-    
-    // TODO: Uncomment when backend is ready
-    /*
-    fetch('/api/cron/create', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(task)
-    })
-    .then(res => {
-      if (!res.ok) throw new Error('Backend not available');
-      return res.json();
-    })
-    .then(data => {
-      console.log('[OK] Task saved to backend:', data);
-    })
-    .catch(err => {
-      console.warn('Backend not ready, task saved locally:', err);
-    });
-    */
+    try {
+      const res = await window.ApiV2._fetch('/tasks', {
+        method: 'POST',
+        body: JSON.stringify({
+          name,
+          description: desc,
+          project_id: projectId,
+          schedule: {
+            cron: expression,
+            human: preview,
+            enabled: true,
+            timezone: 'Europe/Paris'
+          },
+          source: 'temple_cron_builder',
+          status: 'scheduled'
+        })
+      });
+      
+      console.log('[OK] Cron task saved:', res);
+      alert(`[OK] Task "${name}" created and scheduled: ${preview}`);
+      
+      // Refresh the temple's task display
+      this.populateCronTasks(this.currentTemple);
+      this.closeCronBuilder();
+    } catch (err) {
+      console.error('[TempleInterior] saveCronTask failed:', err);
+      alert(`Failed to save task: ${err.message}`);
+    }
   }
 };
 
