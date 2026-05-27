@@ -326,124 +326,124 @@ const TempleInterior = {
     const darken  = (hex, f) => { try { const r=parseInt(hex.slice(1,3),16),g=parseInt(hex.slice(3,5),16),b=parseInt(hex.slice(5,7),16); return `rgb(${Math.floor(r*f)},${Math.floor(g*f)},${Math.floor(b*f)})`; } catch { return hex; } };
     const brighten = (hex, f) => { try { const r=Math.min(255,parseInt(hex.slice(1,3),16)*f),g=Math.min(255,parseInt(hex.slice(3,5),16)*f),b=Math.min(255,parseInt(hex.slice(5,7),16)*f); return `rgb(${Math.floor(r)},${Math.floor(g)},${Math.floor(b)})`; } catch { return hex; } };
 
-    // Random walk in arena space (px/py = center of squid in arena coords)
-    const margin = size + 4;
+    const margin = size + 6;
     const arenaW = cW || 600;
     const arenaH = cH || 130;
     let px = margin + Math.random() * (arenaW - margin * 2);
     let py = margin + Math.random() * (arenaH - margin * 2);
-    let vx = (Math.random() - 0.5) * 1.4;
-    let vy = (Math.random() - 0.5) * 0.8;
-    let frame = Math.floor(Math.random() * 300);
+    let vx = (Math.random() - 0.5) * 0.8;
+    let vy = (Math.random() - 0.5) * 0.4;
+    let frame = Math.floor(Math.random() * 600);
+    // Idle state: squid occasionally stops and gently sways
+    let idleFrames = 0;     // frames left in idle pause
+    let nextIdleIn = 80 + Math.floor(Math.random() * 120); // frames until next idle
 
-    // Stride timing — walk cycle period in frames
-    const stride = 22;
+    const stride = 30; // slower stride = more chill
 
     const loop = () => {
       frame++;
 
-      // Smooth random walk: small nudges, strong speed cap, gentle deceleration
-      vx += (Math.random() - 0.5) * 0.18;
-      vy += (Math.random() - 0.5) * 0.10;
-      vx *= 0.995; vy *= 0.995; // gentle drag
-      const spd = Math.sqrt(vx * vx + vy * vy);
-      const maxSpd = 1.3;
-      if (spd > maxSpd) { vx *= maxSpd / spd; vy *= maxSpd / spd; }
-      // Ensure minimum speed so squid doesn't freeze
-      if (spd < 0.3) { vx += (Math.random() - 0.5) * 0.5; vy += (Math.random() - 0.5) * 0.3; }
-      px += vx; py += vy;
-      if (px < margin)         { px = margin;         vx =  Math.abs(vx) * 0.8; }
-      if (px > arenaW - margin){ px = arenaW - margin; vx = -Math.abs(vx) * 0.8; }
-      if (py < margin)         { py = margin;         vy =  Math.abs(vy) * 0.8; }
-      if (py > arenaH - margin){ py = arenaH - margin; vy = -Math.abs(vy) * 0.8; }
+      // Decide whether to idle
+      if (idleFrames > 0) {
+        idleFrames--;
+        // Drift very gently when idle (barely move)
+        vx *= 0.85; vy *= 0.85;
+      } else {
+        nextIdleIn--;
+        if (nextIdleIn <= 0) {
+          idleFrames  = 40 + Math.floor(Math.random() * 60);
+          nextIdleIn  = 100 + Math.floor(Math.random() * 150);
+        }
+        // Gentle random walk nudges
+        vx += (Math.random() - 0.5) * 0.10;
+        vy += (Math.random() - 0.5) * 0.06;
+        vx *= 0.97; vy *= 0.97;
+        const spd = Math.sqrt(vx * vx + vy * vy);
+        const maxSpd = 0.85;
+        if (spd > maxSpd) { vx *= maxSpd / spd; vy *= maxSpd / spd; }
+        if (spd < 0.15) { vx += (Math.random() - 0.5) * 0.3; vy += (Math.random() - 0.5) * 0.15; }
+      }
 
-      // Move the wrapper div
+      px += vx; py += vy;
+      if (px < margin)         { px = margin;         vx =  Math.abs(vx) * 0.7; }
+      if (px > arenaW - margin){ px = arenaW - margin; vx = -Math.abs(vx) * 0.7; }
+      if (py < margin)         { py = margin;         vy =  Math.abs(vy) * 0.7; }
+      if (py > arenaH - margin){ py = arenaH - margin; vy = -Math.abs(vy) * 0.7; }
+
       walkerDiv.style.left = (px - CW / 2) + 'px';
       walkerDiv.style.top  = (py - CH / 2) + 'px';
 
-      const facingRight = vx >= 0;
+      const isIdle      = idleFrames > 0;
+      const facingRight = isIdle ? (vx >= 0) : (vx >= 0);
       const walkPhase   = (frame / stride) * Math.PI * 2;
-      const bodyBob     = Math.sin(walkPhase * 2) * 1.8; // bob twice per stride
+      const bodyBob     = isIdle
+        ? Math.sin(frame * 0.04) * 1.2          // gentle sway when idle
+        : Math.sin(walkPhase * 2) * 1.5;        // bob while walking
 
-      // Draw squid centered in canvas
       ctx.clearRect(0, 0, CW, CH);
+
+      // Use real Squid.draw() for pixel-perfect match with aquarium
+      if (typeof Squid !== 'undefined') {
+        try {
+          const sq = new Squid({
+            id: '__tw__', name: '', status: 'idle',
+            appearance: { ...app }, accessories: acc,
+            x: facingRight ? CW/2 : CW/2, y: CH/2 - 2 + bodyBob
+          });
+          sq.animFrame     = walkPhase;
+          sq.bobOffset     = 0;
+          sq.isDragging    = true;   // freeze drawBody bob
+          sq.isSleeping    = false;
+          sq.isHovered     = false;
+          sq.alpha         = 1;
+          sq.insideTemple  = null;
+          sq.jumpHeight    = 0;
+          sq.heartParticles = [];
+          sq._confetti     = null;
+          sq.baseSize      = size / 40;
+
+          if (!facingRight) {
+            ctx.save();
+            ctx.translate(CW, 0); ctx.scale(-1, 1);
+            sq.x = CW - sq.x;
+            sq.draw(ctx);
+            ctx.restore();
+          } else {
+            sq.draw(ctx);
+          }
+          TempleInterior._rafMap[squid.id] = requestAnimationFrame(loop);
+          return;
+        } catch(e) { /* fall through to manual */ }
+      }
+
+      // Fallback manual draw
       ctx.save();
-      ctx.translate(CW / 2, CH / 2 - 2 + bodyBob);
+      ctx.translate(CW/2, CH/2 - 2 + bodyBob);
       if (!facingRight) ctx.scale(-1, 1);
-
-      // --- Mantle cap (pointy top, like a real squid) ---
-      ctx.fillStyle   = darken(primary, 0.85);
-      ctx.strokeStyle = '#1a1a1a';
-      ctx.lineWidth   = 1.5;
-      ctx.beginPath();
-      ctx.moveTo(-size * 0.55, -size * 0.35);
-      ctx.quadraticCurveTo(0, -size * 1.35, size * 0.55, -size * 0.35);
-      ctx.closePath();
-      ctx.fill();
-      ctx.stroke();
-
-      // --- Body (slightly oval, gradient) ---
-      const grad = ctx.createRadialGradient(-size * 0.15, -size * 0.2, 0, 0, 0, size);
-      grad.addColorStop(0,   brighten(primary, 1.25));
-      grad.addColorStop(0.5, primary);
-      grad.addColorStop(1,   darken(primary, 0.75));
-      ctx.fillStyle   = grad;
-      ctx.strokeStyle = '#1a1a1a';
-      ctx.lineWidth   = 2;
-      ctx.beginPath();
-      ctx.ellipse(0, 0, size * 0.82, size, 0, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.stroke();
-
-      // Belly shine
-      ctx.fillStyle = 'rgba(255,255,255,0.22)';
-      ctx.beginPath();
-      ctx.ellipse(-size * 0.2, -size * 0.15, size * 0.4, size * 0.55, -0.3, 0, Math.PI * 2);
-      ctx.fill();
-
-      // --- Eyes: pixel squares, pupils shift toward movement direction ---
-      const pupilShift = facingRight ? 2 : -2; // always 0 here since we flipped ctx
-      ctx.fillStyle = 'white';
-      ctx.fillRect(-size * 0.42, -size * 0.25, size * 0.24, size * 0.22);
-      ctx.fillRect( size * 0.18, -size * 0.25, size * 0.24, size * 0.22);
-      ctx.fillStyle = '#111';
-      ctx.fillRect(-size * 0.34 + 1, -size * 0.21, size * 0.12, size * 0.12);
-      ctx.fillRect( size * 0.26 + 1, -size * 0.21, size * 0.12, size * 0.12);
-
-      // --- Tentacles: 6 legs anchored at body bottom, alternating stride ---
-      // Body ellipse bottom edge at y=+size. Legs must start WITHIN that width.
-      // At y=size, ellipse half-width = size*0.82*sqrt(1-(size/size)²) = 0 → use y=size*0.85
-      // At y=size*0.85, half-width = size*0.82*sqrt(1-0.85²) ≈ size*0.43
-      ctx.lineCap = 'round';
-      const legSpread = size * 0.34; // total half-width; fits inside body
-      for (let i = 0; i < 6; i++) {
-        const lx = (i - 2.5) * (legSpread * 2 / 5); // -legSpread..+legSpread
-        const phase = walkPhase + (i % 2 === 0 ? 0 : Math.PI); // alternating pairs
-        const swing = Math.sin(phase) * 5;
-        const lift  = Math.max(0, Math.sin(phase)) * 2.5;
-        ctx.strokeStyle = i % 2 === 0 ? primary : darken(primary, 0.75);
-        ctx.lineWidth   = 2.5;
-        // Anchor at body surface (ellipse edge at this x)
-        const bodyEdgeY = size * Math.sqrt(Math.max(0, 1 - Math.pow(lx / (size * 0.82), 2)));
-        ctx.beginPath();
-        ctx.moveTo(lx, bodyEdgeY);
-        ctx.quadraticCurveTo(
-          lx + swing * 0.5, bodyEdgeY + size * 0.45 - lift,
-          lx + swing,       bodyEdgeY + size * 0.95 - lift * 0.5
-        );
+      const grad = ctx.createRadialGradient(-size*.15,-size*.2,0,0,0,size);
+      grad.addColorStop(0, brighten(primary,1.25)); grad.addColorStop(.6,primary); grad.addColorStop(1,darken(primary,.75));
+      ctx.fillStyle=grad; ctx.strokeStyle='#1a1a1a'; ctx.lineWidth=2;
+      ctx.beginPath(); ctx.arc(0,0,size,0,Math.PI*2); ctx.fill(); ctx.stroke();
+      ctx.fillStyle='rgba(255,255,255,.22)'; ctx.beginPath();
+      ctx.ellipse(-size*.15,-size*.1,size*.4,size*.5,0,0,Math.PI*2); ctx.fill();
+      ctx.fillStyle='white';
+      ctx.beginPath(); ctx.arc(-size*.28,-size*.15,size*.16,0,Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc( size*.28,-size*.15,size*.16,0,Math.PI*2); ctx.fill();
+      ctx.fillStyle='#111';
+      ctx.beginPath(); ctx.arc(-size*.26,-size*.14,size*.08,0,Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc( size*.30,-size*.14,size*.08,0,Math.PI*2); ctx.fill();
+      ctx.lineCap='round';
+      for(let i=0;i<6;i++){
+        const lx=(i-2.5)*size*.28;
+        const ph=walkPhase+(i%2===0?0:Math.PI);
+        const sw=isIdle?Math.sin(frame*.06+i)*2:Math.sin(ph)*5;
+        const lf=isIdle?0:Math.max(0,Math.sin(ph))*2.5;
+        const bY=size*Math.sqrt(Math.max(0,1-Math.pow(lx/(size*.82),2)));
+        ctx.strokeStyle=i%2===0?primary:darken(primary,.8); ctx.lineWidth=2.2;
+        ctx.beginPath(); ctx.moveTo(lx,bY);
+        ctx.quadraticCurveTo(lx+sw*.5,bY+size*.4-lf,lx+sw,bY+size*.85-lf*.5);
         ctx.stroke();
       }
-
-      // --- Accessories ---
-      if (typeof SquidAccessories !== 'undefined') {
-        try {
-          if (acc.eyes    && acc.eyes    !== 'round') SquidAccessories.drawEyes(ctx, acc.eyes, size);
-          if (acc.outfit  && acc.outfit  !== 'none')  SquidAccessories.drawOutfit(ctx, acc.outfit, size);
-          if (acc.hat     && acc.hat     !== 'none')  SquidAccessories.drawHat(ctx, acc.hat, size);
-          if (acc.glasses && acc.glasses !== 'none')  SquidAccessories.drawGlasses(ctx, acc.glasses, size);
-        } catch {}
-      }
-
       ctx.restore();
       TempleInterior._rafMap[squid.id] = requestAnimationFrame(loop);
     };

@@ -515,49 +515,51 @@ class SquidInteractionSystem {
    * Handle double click on squid
    */
   handleSquidDoubleClick(squid) {
-    if (squid._celebratingUntil && squid._celebratingUntil > Date.now()) {
-      return; // already celebrating, ignore
-    }
-    squid._celebratingUntil = Date.now() + 2500;
-    
-    // Single, smooth celebration: 3 quick jumps + a small spin
+    if (squid._celebratingUntil && squid._celebratingUntil > Date.now()) return;
+    squid._celebratingUntil = Date.now() + 3000;
+
     const startX = squid.x, startY = squid.y;
     const startTime = Date.now();
-    const duration = 2200;
-    
+    const duration = 2800;
+
     const step = () => {
       const t = (Date.now() - startTime) / duration;
       if (t >= 1) {
-        squid.targetX = startX;
-        squid.targetY = startY;
-        squid.jumpHeight = 0;
-        squid.isJumping = false;
+        squid.targetX = startX; squid.targetY = startY;
+        squid.jumpHeight = 0; squid.isJumping = false;
         squid._celebratingUntil = 0;
         return;
       }
-      // 3-jump easing
-      const jumpPhase = (t * 3) % 1;
-      squid.jumpHeight = Math.sin(jumpPhase * Math.PI) * 25;
-      squid.isJumping = true;
-      // Subtle horizontal sway
-      squid.x = startX + Math.sin(t * Math.PI * 6) * 10;
+      // 4 high bounces with progressively smaller amplitude
+      const bounceCount = 4;
+      const jumpPhase = (t * bounceCount) % 1;
+      const decay = 1 - t * 0.6;
+      squid.jumpHeight = Math.sin(jumpPhase * Math.PI) * 45 * decay;
+      squid.isJumping  = true;
+      // Wide figure-8 sway
+      squid.x = startX + Math.sin(t * Math.PI * 4) * 18;
       squid.targetX = squid.x;
-      
       requestAnimationFrame(step);
     };
     requestAnimationFrame(step);
-    
-    // Heart particles burst
-    if (squid.heartParticles) {
-      for (let i = 0; i < 5; i++) {
-        squid.heartParticles.push({
-          x: (Math.random() - 0.5) * 40,
-          y: -30 - Math.random() * 20,
-          life: 1.0,
-          vx: (Math.random() - 0.5) * 2,
-          vy: -1 - Math.random()
-        });
-      }
+
+    // Confetti burst — colorful star/diamond particles
+    const colors = ['#FF6B9D','#FFD700','#06FFA5','#4FACFE','#FF4757','#A855F7','#FFA500','#00E5FF'];
+    if (!squid._confetti) squid._confetti = [];
+    for (let i = 0; i < 18; i++) {
+      const angle = (i / 18) * Math.PI * 2 + Math.random() * 0.5;
+      const spd   = 2.5 + Math.random() * 3;
+      squid._confetti.push({
+        x: 0, y: -20,
+        vx: Math.cos(angle) * spd,
+        vy: Math.sin(angle) * spd - 3,
+        color: colors[i % colors.length],
+        shape: i % 3,  // 0=star 1=circle 2=diamond
+        life: 1.0,
+        size: 4 + Math.random() * 4,
+        rot: Math.random() * Math.PI * 2,
+        rotSpeed: (Math.random() - 0.5) * 0.2
+      });
     }
   }
   

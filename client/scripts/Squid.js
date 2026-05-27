@@ -203,6 +203,18 @@ class Squid {
       p.alpha -= 0.02;
       return p.alpha > 0;
     });
+    // Update confetti particles
+    if (this._confetti) {
+      this._confetti = this._confetti.filter(p => {
+        p.x  += p.vx;
+        p.y  += p.vy;
+        p.vy += 0.12;
+        p.vx *= 0.98;
+        p.rot += p.rotSpeed;
+        p.life -= 0.018;
+        return p.life > 0;
+      });
+    }
   }
 
   draw(ctx) {
@@ -272,6 +284,8 @@ class Squid {
     
     // Heart particles (when pet)
     this.heartParticles.forEach(p => this.drawHeart(ctx, p));
+    // Confetti particles (celebration)
+    if (this._confetti) this._confetti.forEach(p => this._drawConfetti(ctx, p));
     
     ctx.restore();
   }
@@ -386,9 +400,9 @@ class Squid {
     
     ctx.fillStyle = gradient;
     
-    // Round body with pixel-art bounce
+    // Round body with pixel-art bounce — freeze bob while dragging so visual center = this.x/y
     const bobAmount = this.personality.animation_style === 'bouncy' ? 10 : 5;
-    const bob = Math.sin(this.animFrame * 2 + this.bobOffset) * bobAmount;
+    const bob = this.isDragging ? 0 : Math.sin(this.animFrame * 2 + this.bobOffset) * bobAmount;
     
     // Draw body with outline
     ctx.beginPath();
@@ -842,6 +856,40 @@ class Squid {
     ctx.bezierCurveTo(10, 1, 5, -2, 0, 3);
     ctx.fill();
     
+    ctx.restore();
+  }
+
+  _drawConfetti(ctx, p) {
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, p.life);
+    ctx.fillStyle = p.color;
+    ctx.translate(this.x + p.x, this.y + p.y - this.jumpHeight);
+    ctx.rotate(p.rot);
+    const s = p.size;
+    if (p.shape === 0) {
+      // Star
+      ctx.beginPath();
+      for (let i = 0; i < 5; i++) {
+        const a = (i * 4 * Math.PI / 5) - Math.PI / 2;
+        const b = a + Math.PI / 5;
+        ctx.lineTo(Math.cos(a) * s, Math.sin(a) * s);
+        ctx.lineTo(Math.cos(b) * s * 0.4, Math.sin(b) * s * 0.4);
+      }
+      ctx.closePath();
+      ctx.fill();
+    } else if (p.shape === 1) {
+      // Circle
+      ctx.beginPath();
+      ctx.arc(0, 0, s * 0.7, 0, Math.PI * 2);
+      ctx.fill();
+    } else {
+      // Diamond
+      ctx.beginPath();
+      ctx.moveTo(0, -s); ctx.lineTo(s * 0.6, 0);
+      ctx.lineTo(0, s);  ctx.lineTo(-s * 0.6, 0);
+      ctx.closePath();
+      ctx.fill();
+    }
     ctx.restore();
   }
 
