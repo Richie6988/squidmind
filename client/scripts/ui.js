@@ -139,6 +139,14 @@ console.log('[OK] UI exported to window');
 
 // Describe cron in human terms
 
+ui.openLogsModal = function() {
+  const modal = document.getElementById('logs-modal');
+  if (modal) {
+    modal.classList.remove('hidden');
+    loadLogs();
+  }
+};
+
 async function loadLogs() {
   try {
     const agentFilter = document.getElementById('log-agent-filter').value;

@@ -894,7 +894,7 @@ const TempleInterior = {
   /**
    * Close cron builder
    */
-  closeCronBuilder() {
+  async closeCronBuilder() {
     const modal = document.querySelector('.cron-builder-modal');
     if (modal) modal.remove();
   },
@@ -902,7 +902,7 @@ const TempleInterior = {
   /**
    * Save file
    */
-  saveFile() {
+  async saveFile() {
     if (!this.currentFile) {
       await SquidModal.alert('No file open');
       return;
@@ -918,7 +918,7 @@ const TempleInterior = {
   /**
    * Refresh preview
    */
-  refreshPreview() {
+  async refreshPreview() {
     const content = document.getElementById('temple-editor').value;
     const preview = document.getElementById('temple-preview');
     
@@ -931,7 +931,7 @@ const TempleInterior = {
   /**
    * Close temple
    */
-  close() {
+  async close() {
     const interior = document.getElementById('temple-interior');
     if (interior) {
       interior.classList.add('hidden');
@@ -1204,7 +1204,7 @@ TempleInterior.customizeColors = function() {
     })
   })
   .then(res => res.json())
-  .then(data => {
+  .then(async data => {
     if (data.success) {
       // Update local temple
       this.currentTemple.colors = { outside: outsideColor, inside: insideColor };
@@ -1218,7 +1218,7 @@ TempleInterior.customizeColors = function() {
       await SquidModal.alert('[ERROR] Failed to update colors: ' + data.error);
     }
   })
-  .catch(error => {
+  .catch(async error => {
     await SquidModal.alert('[ERROR] Error: ' + error.message);
   });
 };

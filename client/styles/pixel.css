@@ -4666,3 +4666,36 @@ option {
   gap: 8px;
   justify-content: flex-end;
 }
+
+/* ===== Logs Modal ===== */
+.logs-modal-content {
+  width: 90vw;
+  max-width: 800px;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.log-list {
+  flex: 1;
+  overflow-y: auto;
+  max-height: 55vh;
+}
+
+.log-entry {
+  background: var(--ocean-mid);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 8px 10px;
+  margin-bottom: 6px;
+  font-family: 'Courier New', monospace;
+  font-size: 9px;
+  line-height: 1.5;
+}
+
+.log-entry.success { border-left: 3px solid var(--success); }
+.log-entry.error   { border-left: 3px solid var(--danger); }
+
+.log-timestamp { color: var(--text-secondary); font-size: 8px; }
+.log-agent     { color: var(--accent); font-weight: bold; margin: 2px 0; }
+.log-message   { color: var(--text-primary); white-space: pre-wrap; word-break: break-word; }

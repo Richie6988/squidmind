@@ -20,7 +20,7 @@
       <div class="header-nav">
         <button class="btn-nav" onclick="AgentForm.openNew()">+ New Squid</button>
 <button class="btn-nav" onclick="ModelLoader.open()">[MODELS] Models</button>
-        <button class="btn-nav" onclick="ui.showPanel('logs')">[LOGS] Logs</button>
+        <button class="btn-nav" onclick="ui.openLogsModal()">[LOGS] Logs</button>
       </div>
       <div class="header-stats">
         <span id="api-status" title="API connection">●</span>
@@ -54,26 +54,7 @@
       
       
       
-      <div id="logs-panel" class="panel hidden">
-        <div class="panel-header">
-          <h2>[LOGS] Execution Logs</h2>
-          <button class="btn-close" onclick="ui.hidePanel('logs')">x</button>
-        </div>
-        <div class="panel-content">
-          <div class="log-filters">
-            <select id="log-agent-filter">
-              <option value="">All Squids</option>
-            </select>
-            <select id="log-status-filter">
-              <option value="">All Statuses</option>
-              <option value="success">Success</option>
-              <option value="error">Error</option>
-            </select>
-            <button onclick="loadLogs()">Refresh</button>
-          </div>
-          <div id="log-list" class="log-list"></div>
-        </div>
-      </div>
+      <!-- Logs moved to modal overlay (see #logs-modal below) -->
 
     </div>
     <!-- /.panels-container -->
@@ -193,6 +174,30 @@
   </div>
 
   <!-- Scripts - ui.js MUST load FIRST! -->
+  <!-- LOGS MODAL -->
+  <div id="logs-modal" class="modal hidden">
+    <div class="modal-content logs-modal-content">
+      <div class="modal-header">
+        <h2>📋 Execution Logs</h2>
+        <button class="btn-close" onclick="document.getElementById('logs-modal').classList.add('hidden')">✕</button>
+      </div>
+      <div class="modal-body" style="padding:16px;">
+        <div class="log-filters" style="display:flex;gap:8px;margin-bottom:12px;">
+          <select id="log-agent-filter" style="flex:1;background:var(--ocean-mid);border:1px solid var(--border);color:var(--text-primary);font-size:9px;padding:5px;">
+            <option value="">All Squids</option>
+          </select>
+          <select id="log-status-filter" style="flex:1;background:var(--ocean-mid);border:1px solid var(--border);color:var(--text-primary);font-size:9px;padding:5px;">
+            <option value="">All Statuses</option>
+            <option value="success">Success</option>
+            <option value="error">Error</option>
+          </select>
+          <button class="btn-secondary" onclick="loadLogs()" style="font-size:9px;padding:5px 10px;">↻ Refresh</button>
+        </div>
+        <div id="log-list" class="log-list"></div>
+      </div>
+    </div>
+  </div>
+
   <script src="scripts/SquidModal.js"></script>
   <script src="scripts/ui.js"></script>
   <script src="scripts/api.js"></script>
