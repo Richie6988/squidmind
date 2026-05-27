@@ -500,11 +500,13 @@ const ModelLoader = {
     const picked = document.getElementById('ml-browse-picked');
     document.getElementById('ml-picked-name').textContent = file.name;
     document.getElementById('ml-picked-size').textContent = (file.size / 1024 / 1024).toFixed(1) + ' MB';
-    // Browser doesn't expose full path — show what we can
-    document.getElementById('ml-picked-path').textContent = file.name + ' (use path input below to specify exact location)';
-    // Pre-fill path input with the filename hint
-    document.getElementById('ml-browse-path').value = file.name;
+    document.getElementById('ml-picked-path').textContent = 'Browser cannot expose the full path. Paste the absolute path in the field below.';
+    // Do NOT pre-fill with just the filename — it would trigger an ENOENT on the server
+    // Leave the path input as-is so user pastes the real absolute path
+    const pathInput = document.getElementById('ml-browse-path');
+    if (!pathInput.value) pathInput.placeholder = 'e.g. /home/user/models/' + file.name;
     picked.style.display = 'block';
+    pathInput.focus();
   },
 
   async _importFromPathInput() {

@@ -36,10 +36,23 @@ function buildRouter(v2ModelService) {
     try {
       const { sourcePath, ...config } = req.body;
       if (!sourcePath) return res.status(400).json({ success: false, error: 'sourcePath required' });
-      const result = await fsBrowser.importFromPath(sourcePath, v2ModelService.modelsDir);
-      // Now register in library with default config
-      const imported = await v2ModelService.importModel(result.fileName, config);
-      res.json({ success: true, ...result, ...imported });
+
+      const path = require('path');
+      const absPath = path.resolve(sourcePath);
+
+      // If the file is already inside modelsDir, import directly (no symlink needed)
+      // Otherwise symlink/copy it into modelsDir first
+      let fileName;
+      if (absPath.startsWith(path.resolve(v2ModelService.modelsDir))) {
+        fileName = path.basename(absPath);
+      } else {
+        const result = await fsBrowser.importFromPath(absPath, v2ModelService.modelsDir);
+        fileName = result.fileName;
+      }
+
+      // importModel handles absolute paths: if not in modelsDir, use absPath directly
+      const imported = await v2ModelService.importModel(absPath, config);
+      res.json({ success: true, fileName, ...imported });
     } catch (err) {
       res.status(400).json({ success: false, error: err.message });
     }
