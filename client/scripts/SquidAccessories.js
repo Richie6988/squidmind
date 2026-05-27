@@ -21,10 +21,10 @@ const SquidAccessories = {
 
   drawHat(ctx, hatName, size) {
     if (!hatName || hatName === 'none') return;
-    const cell = size / 12;
+    const cell = size / 10;   // bigger cells → hat fits the head width
     ctx.save();
-    // Position hat ABOVE the squid head
-    ctx.translate(0, -size * 0.85);
+    // Position hat ABOVE the squid head (body radius = size, top = -size)
+    ctx.translate(0, -size * 0.88);
 
     switch (hatName) {
       case 'top_hat': this._topHat(ctx, cell); break;
@@ -135,10 +135,10 @@ const SquidAccessories = {
 
   drawGlasses(ctx, glassesName, size) {
     if (!glassesName || glassesName === 'none') return;
-    const cell = size / 12;
+    const cell = size / 8;   // larger cell to match eye span
     ctx.save();
-    // Position over eyes
-    ctx.translate(0, -size * 0.05);
+    // Position over eyes - align with actual eye y (drawEyes uses eyeY=0)
+    ctx.translate(0, 0);
 
     switch (glassesName) {
       case 'round':      this._roundGlasses(ctx, cell); break;
@@ -203,10 +203,10 @@ const SquidAccessories = {
 
   drawOutfit(ctx, outfitName, size) {
     if (!outfitName || outfitName === 'none') return;
-    const cell = size / 12;
+    const cell = size / 9;   // larger cell to cover torso properly
     ctx.save();
-    // Position on body (below head)
-    ctx.translate(0, size * 0.15);
+    // Position on body center (body arc is at origin)
+    ctx.translate(0, size * 0.1);
 
     switch (outfitName) {
       case 'scarf':    this._scarf(ctx, cell); break;

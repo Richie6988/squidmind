@@ -52,16 +52,34 @@ const ModelLoader = {
           
           <!-- TAB: Browse computer -->
           <div id="ml-tab-browse" class="ml-tab-content" style="display:none;">
-            <p class="hint" style="font-size:9px; color:var(--text-secondary); margin-bottom:12px;">
-              Navigate your filesystem to pick a .gguf file from anywhere. The file will be symlinked into the library (no disk duplication).
+            <p class="hint" style="font-size:9px; color:var(--text-secondary); margin-bottom:16px;">
+              Pick a .gguf file from your computer. The file stays where it is — only its path is registered.
             </p>
-            <div class="ml-browse-toolbar">
-              <button class="btn-secondary" onclick="ModelLoader._browseHome()">~ Home</button>
-              <button class="btn-secondary" id="ml-browse-up">.. Up</button>
-              <input id="ml-browse-path" type="text" placeholder="Enter absolute path...">
-              <button class="btn-secondary" onclick="ModelLoader._browseEnter()">Go</button>
+            <label class="ml-filepick-label" onclick="document.getElementById('ml-native-file-input').click()">
+              📂 Open File Explorer
+            </label>
+            <input id="ml-native-file-input" type="file" accept=".gguf" style="display:none;"
+              onchange="ModelLoader._onNativeFilePicked(this)">
+            <div id="ml-browse-picked" style="margin-top:16px; display:none;">
+              <div class="ml-picked-info">
+                <span id="ml-picked-name" style="color:var(--accent); font-weight:bold;"></span>
+                <span id="ml-picked-size" style="color:var(--text-secondary); font-size:9px; margin-left:8px;"></span>
+              </div>
+              <div style="margin-top:8px; font-size:9px; color:var(--text-secondary);">
+                <strong>Path:</strong> <span id="ml-picked-path" style="word-break:break-all;"></span>
+              </div>
+              <div style="margin-top:4px; font-size:8px; color:var(--text-secondary);">
+                Note: Browser security hides the full path. Paste the absolute path below if you need to import from a specific location.
+              </div>
             </div>
-            <div id="ml-browse-list" class="ml-browse-list"></div>
+            <div style="margin-top:20px;">
+              <p style="font-size:9px; color:var(--text-secondary); margin-bottom:6px;">Or paste the full path directly:</p>
+              <div style="display:flex; gap:6px;">
+                <input id="ml-browse-path" type="text" placeholder="/home/user/models/mymodel.gguf or C:\Models\model.gguf"
+                  style="flex:1; background:var(--ocean-mid); border:1px solid var(--border); color:var(--text-primary); font-size:9px; padding:6px; border-radius:3px;">
+                <button class="btn-primary" onclick="ModelLoader._importFromPathInput()">Import</button>
+              </div>
+            </div>
           </div>
           
           <!-- TAB: HuggingFace download -->
@@ -89,12 +107,13 @@ const ModelLoader = {
     `;
     document.body.appendChild(this.modal);
     
-    // Wire keyboard for path input
+    // Wire path input enter key
     const pathInput = this.modal.querySelector('#ml-browse-path');
-    pathInput.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') this._browseEnter();
-    });
-    this.modal.querySelector('#ml-browse-up').addEventListener('click', () => this._browseUp());
+    if (pathInput) {
+      pathInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') this._importFromPathInput();
+      });
+    }
   },
   
   _switchTab(name) {
@@ -475,6 +494,25 @@ const ModelLoader = {
   _browseCurrentPath: null,
   _browseData: null,
   
+  _onNativeFilePicked(input) {
+    const file = input.files?.[0];
+    if (!file) return;
+    const picked = document.getElementById('ml-browse-picked');
+    document.getElementById('ml-picked-name').textContent = file.name;
+    document.getElementById('ml-picked-size').textContent = (file.size / 1024 / 1024).toFixed(1) + ' MB';
+    // Browser doesn't expose full path — show what we can
+    document.getElementById('ml-picked-path').textContent = file.name + ' (use path input below to specify exact location)';
+    // Pre-fill path input with the filename hint
+    document.getElementById('ml-browse-path').value = file.name;
+    picked.style.display = 'block';
+  },
+
+  async _importFromPathInput() {
+    const p = document.getElementById('ml-browse-path')?.value?.trim();
+    if (!p) { await SquidModal.alert('Enter a file path first'); return; }
+    await this._importFromPath(p);
+  },
+
   async _browseHome() { await this._browseGo(null); },
   
   async _browseUp() {
