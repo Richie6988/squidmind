@@ -179,8 +179,11 @@ class Squid {
         const canvas = this.aquarium?.canvas || (window.aquarium?.canvas);
         const w = canvas?.width || 800;
         const h = canvas?.height || 600;
-        this.targetX = 40 + Math.random() * (w - 80);
-        this.targetY = 40 + Math.random() * (h - 80);
+        const sz = 40 * (this.baseSize || 1);
+        const mx = sz + 20;   // horizontal margin — keeps squids away from panel edges
+        const my = sz + 10;   // vertical margin
+        this.targetX = mx + Math.random() * (w - mx * 2);
+        this.targetY = my + Math.random() * (h - my * 2);
         this.wanderTimer = 0;
         // Random direction flip for variety
         if (Math.random() < 0.3) {
@@ -266,7 +269,7 @@ class Squid {
     
     // === V2 Pixel Art Accessories (from agent.appearance.accessories) ===
     if (typeof SquidAccessories !== 'undefined' && this.accessories) {
-      if (this.accessories.outfit) SquidAccessories.drawOutfit(ctx, this.accessories.outfit, size);
+      if (this.accessories.outfit) SquidAccessories.drawOutfit(ctx, this.accessories.outfit, size, this.animFrame || 0);
       if (this.accessories.hat) SquidAccessories.drawHat(ctx, this.accessories.hat, size);
       if (this.accessories.glasses) SquidAccessories.drawGlasses(ctx, this.accessories.glasses, size);
     }

@@ -167,26 +167,32 @@ const SquidAccessories = {
     this._rb(ctx, -0.5, -7.2, 1, 1.2, C, '#00b37a', c);
   },
 
-  _headphones(ctx, c, size) {
-    // Full-size gaming headphones spanning the head width
-    const s = size || 40;
-    const HW = s * 0.55; // actual px half-width of headset
-    const cc = s / 8;
-    const R = '#DC2626', RD = '#991B1B', BK = '#1F2937', G = '#06FFA5', W = '#fff';
-    // Headband arc (draw as a rectangle spanning head)
-    this._rb(ctx, -HW / cc, -4, (HW * 2) / cc, 0.8, BK, '#000', cc);
-    this._r(ctx, -HW / cc + 0.2, -3.8, (HW * 2) / cc - 0.4, 0.3, '#374151', cc);
+  _headphones(ctx, c) {
+    // Gaming headphones — size derived entirely from c (= size/8).
+    // At size=40, c=5: HW=4c=20px each side, cup width=2c=10px.
+    const R = '#DC2626', RD = '#991B1B', BK = '#1F2937', G = '#06FFA5';
+    const HW = 4.2;  // half-width in cells from center to outer edge of cup
+    // Headband (spans full width)
+    this._rb(ctx, -HW - 0.8, -4.5, (HW + 0.8) * 2, 0.9, BK, '#000', c);
+    this._r(ctx,  -HW - 0.5, -4.3, (HW + 0.5) * 2 - 0.4, 0.35, '#374151', c);
     // Left ear cup
-    this._rb(ctx, -HW / cc - 1, -2.5, 2, 3.5, R, RD, cc);
-    this._r(ctx, -HW / cc - 0.8, -2.2, 1.6, 2.8, RD, cc);  // grille
-    this._r(ctx, -HW / cc - 0.5, -1.2, 1, 0.4, G, cc);      // LED
+    this._rb(ctx, -HW - 1.1, -3.3, 2.2, 3.8, R, RD, c);
+    this._r(ctx,  -HW - 0.85,-3.0, 1.7, 3.2, RD, c);        // grille
+    this._r(ctx,  -HW - 0.6, -1.8, 1.2, 0.45, G, c);        // LED strip
     // Right ear cup
-    this._rb(ctx, HW / cc - 1, -2.5, 2, 3.5, R, RD, cc);
-    this._r(ctx, HW / cc - 0.8, -2.2, 1.6, 2.8, RD, cc);
-    this._r(ctx, HW / cc - 0.5, -1.2, 1, 0.4, G, cc);
-    // Mic boom (left side)
-    this._rb(ctx, -HW / cc - 0.9, 0.8, 0.5, 1.5, BK, '#000', cc);
-    this._rb(ctx, -HW / cc - 1.2, 2.1, 1.1, 0.7, G, '#00b37a', cc);
+    this._rb(ctx, HW - 1.1, -3.3, 2.2, 3.8, R, RD, c);
+    this._r(ctx,  HW - 0.85,-3.0, 1.7, 3.2, RD, c);
+    this._r(ctx,  HW - 0.6, -1.8, 1.2, 0.45, G, c);
+    // Padding foam rings on cups
+    this._r(ctx, -HW - 1.05, -3.25, 2.1, 0.3, '#450a0a', c);
+    this._r(ctx, -HW - 1.05,  0.2,  2.1, 0.3, '#450a0a', c);
+    this._r(ctx,  HW - 1.05, -3.25, 2.1, 0.3, '#450a0a', c);
+    this._r(ctx,  HW - 1.05,  0.2,  2.1, 0.3, '#450a0a', c);
+    // Mic boom arm
+    this._rb(ctx, -HW - 0.95, 0.6, 0.55, 1.7, BK, '#000', c);
+    // Mic capsule
+    this._rb(ctx, -HW - 1.3,  2.0, 1.3,  0.85, G,  '#00b37a', c);
+    this._r(ctx,  -HW - 1.0,  2.1, 0.7,  0.4,  '#fff', c);  // highlight
   },
 
   // ===================== GLASSES =====================
@@ -301,149 +307,132 @@ const SquidAccessories = {
     this._rb(ctx, hw-0.2, -0.8, 1.2, 1.6, TE, '#000', c);
   },
 
-  // ===================== OUTFITS =====================
+  // ===================== OUTFITS (shoes at tentacle tips) =====================
+  // Shoes are drawn at the tip of each tentacle.
+  // Tentacles use ctx.rotate((2π/6)*i) then draw from y=size*0.7 to y=size*1.5.
+  // Tip in rotated frame = (wave*2, size*1.5). We replicate that transform.
 
-  drawOutfit(ctx, outfitName, size) {
+  drawOutfit(ctx, outfitName, size, animFrame) {
     if (!outfitName || outfitName === 'none') return;
-    const c = size / 7;   // coarser grid — outfits are large
     ctx.save();
-    switch (outfitName) {
-      case 'scarf':    this._scarf(ctx, c, size); break;
-      case 'tie':      this._tie(ctx, c, size); break;
-      case 'cape':     this._cape(ctx, c, size); break;
-      case 'lab_coat': this._labCoat(ctx, c, size); break;
-      case 'armor':    this._armor(ctx, c, size); break;
+    const af = animFrame || 0;
+    const TENTACLES = 6;
+    for (let i = 0; i < TENTACLES; i++) {
+      ctx.save();
+      ctx.rotate((Math.PI * 2 / TENTACLES) * i);
+      const wave = Math.sin(af * 3 + i) * 5;
+      // Move to tentacle tip (matching drawTentacles wavy path)
+      ctx.translate(wave * 2, size * 1.5);
+      switch (outfitName) {
+        case 'scarf':    this._shoeSneaker(ctx, size, i); break;
+        case 'tie':      this._shoeLoafer(ctx, size, i); break;
+        case 'cape':     this._shoeBoots(ctx, size, i); break;
+        case 'lab_coat': this._shoeLabShoe(ctx, size, i); break;
+        case 'armor':    this._shoeArmorBoot(ctx, size, i); break;
+      }
+      ctx.restore();
     }
     ctx.restore();
   },
 
-  _scarf(ctx, c, size) {
-    // Chunky knit scarf wrapped around the neck
-    const neckY = -size * 0.38 / c;  // neck level in cells
-    const R = '#DC2626', W = '#fff', RD = '#991B1B';
-    // Main scarf loop (3 stripes — red, white, red)
-    this._rb(ctx, -4.2, neckY,       8.4, 1,   R,  RD, c);
-    this._rb(ctx, -4.2, neckY+1,     8.4, 0.7, W,  '#ccc', c);
-    this._rb(ctx, -4.2, neckY+1.7,   8.4, 0.9, R,  RD, c);
-    // Knit texture dots
-    for (let i = 0; i < 5; i++) {
-      this._r(ctx, -3.5 + i * 1.5, neckY + 0.2, 0.4, 0.5, RD, c);
-      this._r(ctx, -3.2 + i * 1.5, neckY + 1.2, 0.4, 0.5, '#ccc', c);
-    }
-    // Dangling tail (right side)
-    this._rb(ctx, 2.8,  neckY+2.6, 1.2, 2.5, R, RD, c);
-    this._r(ctx,  2.8,  neckY+2.6, 1.2, 0.5, W, c);
-    this._r(ctx,  2.8,  neckY+3.5, 1.2, 0.5, W, c);
-    // Fringe tips
-    for (let i = 0; i < 4; i++) {
-      this._r(ctx, 2.9 + i * 0.25, neckY + 5, 0.15, 0.6, RD, c);
-    }
+  // Shoe helpers — drawn at (0,0) = tentacle tip, facing down.
+  // w/h in pixels derived from size to scale properly.
+
+  _shoeBase(ctx, col, sole, size) {
+    const w = size * 0.28, h = size * 0.16;
+    // Upper
+    ctx.fillStyle = col;
+    ctx.strokeStyle = '#111';
+    ctx.lineWidth = Math.max(1, size * 0.03);
+    ctx.beginPath();
+    ctx.roundRect(-w * 0.5, -h, w, h, 2);
+    ctx.fill(); ctx.stroke();
+    // Sole (wider, slightly below)
+    ctx.fillStyle = sole;
+    ctx.beginPath();
+    ctx.roundRect(-w * 0.6, -2, w * 1.2, size * 0.07, 1);
+    ctx.fill(); ctx.stroke();
   },
 
-  _tie(ctx, c, size) {
-    // Sharp business tie with collar and tie pin
-    const neckY = -size * 0.3 / c;
-    const TI = '#1E40AF', TIL = '#3B82F6', ST = '#FBBF24', W = '#fff', GR = '#F3F4F6';
-    // Shirt collar (white)
-    this._rb(ctx, -2,   neckY,       4, 1.2, W, '#ccc', c);
-    this._rb(ctx, -2,   neckY+0.8,   2, 0.8, GR, '#ccc', c);  // left collar fold
-    this._rb(ctx,  0,   neckY+0.8,   2, 0.8, GR, '#bbb', c);  // right collar fold
-    // Tie knot
-    this._rb(ctx, -0.7, neckY+1.3,   1.4, 1.2, TIL, TI, c);
-    // Tie body (widening downward)
-    this._rb(ctx, -1,   neckY+2.5,   2, 1.2, TI, '#142972', c);
-    this._rb(ctx, -1.3, neckY+3.7,   2.6, 1.2, TI, '#142972', c);
-    this._rb(ctx, -1.6, neckY+4.9,   3.2, 1.5, TI, '#142972', c);
-    // Diagonal stripe
-    for (let i = 0; i < 4; i++) {
-      this._r(ctx, -0.8 + i * 0.35, neckY + 2.2 + i * 0.7, 0.5, 0.3, ST, c);
-    }
-    // Tie pin
-    this._rb(ctx, -1.5, neckY + 4.0, 3, 0.4, ST, '#a0720a', c);
+  _shoeSneaker(ctx, size, i) {
+    // Colourful sneaker — alternating colours per leg
+    const COLS = ['#EF4444','#3B82F6','#10B981','#F59E0B','#A855F7','#EC4899'];
+    const col  = COLS[i % COLS.length];
+    this._shoeBase(ctx, col, '#1a1a1a', size);
+    // Lace stripe
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(-size * 0.08, -size * 0.13, size * 0.16, size * 0.04);
+    // Toe cap highlight
+    ctx.fillStyle = 'rgba(255,255,255,0.35)';
+    ctx.beginPath();
+    ctx.ellipse(size * 0.06, -size * 0.12, size * 0.06, size * 0.04, 0, 0, Math.PI * 2);
+    ctx.fill();
   },
 
-  _cape(ctx, c, size) {
-    // Dramatic superhero cape with collar + inner lining + clasp
-    const capY = -size * 0.35 / c;
-    const R = '#9B1C1C', RL = '#DC2626', INN = '#FFD700', G = '#FFD700', BK = '#111';
-    // Cape body (wide sweep)
-    this._rb(ctx, -5,   capY+1,   10, 5.5, R, BK, c);
-    this._rb(ctx, -4.5, capY+1.3, 9, 5, RL, R, c);
-    // Inner lining shows at bottom (V-shape via two panels)
-    this._rb(ctx, -5, capY+5, 2.5, 1.5, INN, '#a07a00', c);
-    this._rb(ctx, 2.5, capY+5, 2.5, 1.5, INN, '#a07a00', c);
-    // Shoulder collar
-    this._rb(ctx, -4.5, capY, 9, 1.2, RL, BK, c);
-    this._r(ctx, -4.2, capY+0.1, 8.4, 0.4, '#f87171', c);  // collar shine
-    // Clasp (center)
-    this._rb(ctx, -0.6, capY+0.9, 1.2, 1.2, G, '#a07a00', c);
-    this._r(ctx, -0.25, capY+1.1, 0.5, 0.5, '#fff', c);  // clasp gem
-    // Cape edge trim
-    this._r(ctx, -5, capY+1, 0.4, 5, G, c);
-    this._r(ctx, 4.6, capY+1, 0.4, 5, G, c);
+  _shoeLoafer(ctx, size, i) {
+    // Classic brown loafer with buckle
+    const col = i % 2 === 0 ? '#92400E' : '#78350F';
+    this._shoeBase(ctx, col, '#451A03', size);
+    // Buckle
+    ctx.strokeStyle = '#FFD700'; ctx.lineWidth = Math.max(1, size*0.025);
+    ctx.strokeRect(-size*0.05, -size*0.12, size*0.1, size*0.07);
+    ctx.fillStyle = '#FFD700';
+    ctx.fillRect(-size*0.01, -size*0.11, size*0.02, size*0.05);
   },
 
-  _labCoat(ctx, c, size) {
-    // Clean lab coat — lapels, pocket, emblem, buttons
-    const coatY = -size * 0.25 / c;
-    const W = '#F9FAFB', GR = '#E5E7EB', BL = '#3B82F6', RD = '#EF4444', BK = '#1a1a1a';
-    // Main coat body
-    this._rb(ctx, -4.5, coatY, 9, 7, W, GR, c);
-    // Left lapel
-    this._rb(ctx, -4.5, coatY, 2.5, 3.5, GR, BK, c);
-    // Right lapel
-    this._rb(ctx, 2,    coatY, 2.5, 3.5, GR, BK, c);
-    // Shirt visible (blue)
-    this._rb(ctx, -2, coatY+0.2, 4, 3, BL, '#1d4ed8', c);
-    // Collar & lapel fold lines
-    this._r(ctx, -4.2, coatY+0.1, 2, 0.3, W, c);
-    this._r(ctx,  2.2, coatY+0.1, 2, 0.3, W, c);
-    // Breast pocket (left)
-    this._rb(ctx, -4, coatY+1.5, 2, 1.5, W, GR, c);
-    this._r(ctx, -3.8, coatY+1.5, 1.6, 0.3, GR, c);
-    // Pen in pocket
-    this._rb(ctx, -3.5, coatY+1.4, 0.35, 2, BL, '#1d4ed8', c);
-    this._r(ctx,  -3.5, coatY+1.4, 0.35, 0.3, RD, c);
-    // Buttons (center front seam)
-    for (let i = 0; i < 3; i++) {
-      this._rb(ctx, -0.35, coatY+1.2+i*1.6, 0.7, 0.7, GR, '#9ca3af', c);
-    }
-    // Red cross emblem on breast
-    this._r(ctx, 2.5, coatY+0.6, 0.8, 2.2, RD, c);
-    this._r(ctx, 2,   coatY+1.3, 1.8, 0.8, RD, c);
+  _shoeBoots(ctx, size, i) {
+    // Tall black boot with red trim
+    const w = size * 0.26, h = size * 0.22;
+    ctx.fillStyle = '#1a1a1a'; ctx.strokeStyle = '#333'; ctx.lineWidth = Math.max(1, size*0.03);
+    ctx.beginPath(); ctx.roundRect(-w*0.5, -h, w, h, 2); ctx.fill(); ctx.stroke();
+    // Red trim stripe
+    ctx.fillStyle = '#DC2626';
+    ctx.fillRect(-w*0.5, -size*0.08, w, size*0.04);
+    // Sole
+    ctx.fillStyle = '#555'; ctx.strokeStyle = '#111';
+    ctx.beginPath(); ctx.roundRect(-w*0.6, -size*0.02, w*1.2, size*0.07, 1); ctx.fill(); ctx.stroke();
+    // Lace holes
+    ctx.fillStyle = '#888';
+    [-0.12,-0.16,-0.20].forEach(y => {
+      ctx.beginPath(); ctx.arc(-size*0.04, y*size, size*0.015, 0, Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc( size*0.04, y*size, size*0.015, 0, Math.PI*2); ctx.fill();
+    });
   },
 
-  _armor(ctx, c, size) {
-    // Futuristic plate armor — segmented, glowing accents, sci-fi aesthetic
-    const armY = -size * 0.35 / c;
-    const ST = '#6B7280', STL = '#9CA3AF', STD = '#374151', C = '#06FFA5', BK = '#111';
-    // Breastplate main
-    this._rb(ctx, -3.8, armY+0.5, 7.6, 5.5, ST, BK, c);
-    // Upper shoulder pauldrons
-    this._rb(ctx, -5.2, armY, 2.5, 2.5, STL, BK, c);
-    this._rb(ctx, 2.7,  armY, 2.5, 2.5, STL, BK, c);
-    // Pauldron ridges
-    this._r(ctx, -5, armY+0.2, 2, 0.35, '#d1d5db', c);
-    this._r(ctx,  3, armY+0.2, 2, 0.35, '#d1d5db', c);
-    // Chest segment lines
-    this._r(ctx, -3.8, armY+2,   7.6, 0.4, BK, c);
-    this._r(ctx, -3.8, armY+3.8, 7.6, 0.4, BK, c);
-    // Central energy core
-    this._rb(ctx, -1, armY+1.8, 2, 2, BK, C, c);
-    this._rb(ctx, -0.6, armY+2.1, 1.2, 1.4, C, '#00b37a', c);
-    this._r(ctx, -0.3, armY+2.3, 0.6, 0.8, '#ffffff', c);  // core glow
-    // Plate highlights
-    this._r(ctx, -3.5, armY+0.6, 2.5, 0.3, STL, c);
-    this._r(ctx,  1,   armY+0.6, 2.5, 0.3, STL, c);
-    // Waist segmented belt
-    this._rb(ctx, -3.8, armY+5, 7.6, 1, STD, BK, c);
-    for (let i = 0; i < 5; i++) {
-      this._rb(ctx, -3.2+i*1.4, armY+5.1, 1, 0.8, ST, BK, c);
-    }
-    // Glowing trim lines
-    this._r(ctx, -3.8, armY+0.5, 0.4, 5.5, C, c);
-    this._r(ctx, 3.4,  armY+0.5, 0.4, 5.5, C, c);
+  _shoeLabShoe(ctx, size, i) {
+    // White lab clog / slip-on
+    const col = '#F9FAFB';
+    this._shoeBase(ctx, col, '#D1D5DB', size);
+    // Blue toe cap
+    ctx.fillStyle = '#3B82F6';
+    ctx.beginPath();
+    ctx.ellipse(size*0.07, -size*0.12, size*0.07, size*0.055, 0, 0, Math.PI*2);
+    ctx.fill();
+    // White cross on toe
+    ctx.fillStyle = '#fff'; ctx.fillRect(-size*0.01, -size*0.14, size*0.02, size*0.06);
+    ctx.fillRect(-size*0.03, -size*0.12, size*0.06, size*0.02);
   },
+
+  _shoeArmorBoot(ctx, size, i) {
+    // Armored sabatons — segmented metal with cyan glow edge
+    const w = size * 0.30, h = size * 0.24;
+    ctx.fillStyle = '#6B7280'; ctx.strokeStyle = '#111'; ctx.lineWidth = Math.max(1, size*0.03);
+    ctx.beginPath(); ctx.roundRect(-w*0.5, -h, w, h, 2); ctx.fill(); ctx.stroke();
+    // Segment lines
+    ctx.strokeStyle = '#374151'; ctx.lineWidth = Math.max(1, size*0.02);
+    [-0.14,-0.20].forEach(y => { ctx.beginPath(); ctx.moveTo(-w*0.5, y*size); ctx.lineTo(w*0.5, y*size); ctx.stroke(); });
+    // Plate highlight
+    ctx.fillStyle = '#9CA3AF';
+    ctx.fillRect(-w*0.4, -h+size*0.01, w*0.3, size*0.03);
+    // Cyan glow edge
+    ctx.strokeStyle = '#06FFA5'; ctx.lineWidth = Math.max(1.5, size*0.025);
+    ctx.beginPath(); ctx.moveTo(-w*0.5, -h); ctx.lineTo(-w*0.5, 0); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo( w*0.5, -h); ctx.lineTo( w*0.5, 0); ctx.stroke();
+    // Sole
+    ctx.fillStyle = '#1a1a1a'; ctx.strokeStyle = '#06FFA5'; ctx.lineWidth = Math.max(1, size*0.02);
+    ctx.beginPath(); ctx.roundRect(-w*0.6, -size*0.02, w*1.2, size*0.07, 1); ctx.fill(); ctx.stroke();
+  },
+
 
   // ===================== EYES =====================
 
