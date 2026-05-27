@@ -499,19 +499,31 @@ const ModelLoader = {
   _browseCurrentPath: null,
   _browseData: null,
   
-  _onNativeFilePicked(input) {
+  async _onNativeFilePicked(input) {
     const file = input.files?.[0];
     if (!file) return;
-    const picked = document.getElementById('ml-browse-picked');
+    const picked   = document.getElementById('ml-browse-picked');
+    const pathInput = document.getElementById('ml-browse-path');
     document.getElementById('ml-picked-name').textContent = file.name;
     document.getElementById('ml-picked-size').textContent = (file.size / 1024 / 1024).toFixed(1) + ' MB';
-    document.getElementById('ml-picked-path').textContent = 'Browser cannot expose the full path. Paste the absolute path in the field below.';
-    // Do NOT pre-fill with just the filename — it would trigger an ENOENT on the server
-    // Leave the path input as-is so user pastes the real absolute path
-    const pathInput = document.getElementById('ml-browse-path');
-    if (!pathInput.value) pathInput.placeholder = 'e.g. /home/user/models/' + file.name;
     picked.style.display = 'block';
+
+    // Fetch the server's models directory and construct the likely full path.
+    // The user almost certainly browsed to the models dir to pick the file.
+    try {
+      const data = await window.ApiV2._fetch('/models/dir');
+      const sep  = data.dir.includes('\\') ? '\\' : '/';
+      const fullPath = data.dir + sep + file.name;
+      pathInput.value = fullPath;
+      document.getElementById('ml-picked-path').textContent = fullPath;
+    } catch {
+      // Fallback: can't get server dir — user must paste manually
+      pathInput.placeholder = '/absolute/path/to/' + file.name;
+      document.getElementById('ml-picked-path').textContent =
+        'Could not auto-detect path. Paste the absolute path in the field below.';
+    }
     pathInput.focus();
+    pathInput.select();
   },
 
   async _importFromPathInput() {

@@ -118,6 +118,13 @@ function buildRouter(v2ModelService) {
     }
   });
 
+  // GET /api/v2/models/dir - returns the absolute path of the models directory
+  // Used by the client to auto-fill the path input after native file picker
+  router.get('/dir', (req, res) => {
+    const path = require('path');
+    res.json({ success: true, dir: path.resolve(v2ModelService.modelsDir) });
+  });
+
   // GET /api/v2/models/status - what's loaded right now
   router.get('/status', (req, res) => {
     res.json({ success: true, ...v2ModelService.getStatus() });
