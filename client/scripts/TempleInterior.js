@@ -83,7 +83,7 @@ const TempleInterior = {
             ➕ Assign Squids
           </button>
           <div id="squid-assign-inline" style="display:none; margin-top:6px; display:none;">
-            <select id="temple-squid-select" style="width:100%; padding:6px; background:#0d1b2a; border:1px solid #4facfe; color:#f1faee; font-family:'Courier New',monospace; font-size:10px; border-radius:3px; margin-bottom:4px;"></select>
+            <select id="temple-squid-select" style="width:100%; padding:6px; background:#0d1b2a; border:1px solid #4facfe; color:#f1faee; font-size:11px; border-radius:3px; margin-bottom:4px;"></select>
             <div style="display:flex; gap:6px;">
               <button class="btn-primary" style="flex:1; font-size:9px; padding:5px;" onclick="TempleInterior.confirmAssign()">✔ Assign</button>
               <button class="btn-secondary" style="font-size:9px; padding:5px;" onclick="document.getElementById('squid-assign-inline').style.display='none'">✕</button>
@@ -392,22 +392,26 @@ const TempleInterior = {
       ctx.fillRect(-size * 0.34 + 1, -size * 0.21, size * 0.12, size * 0.12);
       ctx.fillRect( size * 0.26 + 1, -size * 0.21, size * 0.12, size * 0.12);
 
-      // --- Tentacles: alternating pairs walk stride ---
+      // --- Tentacles: 6 legs anchored at body bottom, alternating stride ---
+      // Body ellipse bottom edge at y=+size. Legs must start WITHIN that width.
+      // At y=size, ellipse half-width = size*0.82*sqrt(1-(size/size)²) = 0 → use y=size*0.85
+      // At y=size*0.85, half-width = size*0.82*sqrt(1-0.85²) ≈ size*0.43
       ctx.lineCap = 'round';
+      const legSpread = size * 0.34; // total half-width; fits inside body
       for (let i = 0; i < 6; i++) {
-        const lx = (i - 2.5) * (size * 0.38);
-        // Even legs (0,2,4) vs odd (1,3,5) are half-phase apart → natural stride
-        const phase  = walkPhase + (i % 2 === 0 ? 0 : Math.PI);
-        const swing  = Math.sin(phase) * 6;          // fwd/back swing
-        const lift   = Math.max(0, Math.sin(phase)) * 3; // lift when swinging forward
-        const thick  = i % 2 === 0 ? 2.5 : 2.0;
-        ctx.strokeStyle = i % 3 === 0 ? accent : primary;
-        ctx.lineWidth   = thick;
+        const lx = (i - 2.5) * (legSpread * 2 / 5); // -legSpread..+legSpread
+        const phase = walkPhase + (i % 2 === 0 ? 0 : Math.PI); // alternating pairs
+        const swing = Math.sin(phase) * 5;
+        const lift  = Math.max(0, Math.sin(phase)) * 2.5;
+        ctx.strokeStyle = i % 2 === 0 ? primary : darken(primary, 0.75);
+        ctx.lineWidth   = 2.5;
+        // Anchor at body surface (ellipse edge at this x)
+        const bodyEdgeY = size * Math.sqrt(Math.max(0, 1 - Math.pow(lx / (size * 0.82), 2)));
         ctx.beginPath();
-        ctx.moveTo(lx, size * 0.72);
+        ctx.moveTo(lx, bodyEdgeY);
         ctx.quadraticCurveTo(
-          lx + swing * 0.45, size * 1.1 - lift,
-          lx + swing * 0.8,  size * 1.6  - lift * 0.6
+          lx + swing * 0.5, bodyEdgeY + size * 0.45 - lift,
+          lx + swing,       bodyEdgeY + size * 0.95 - lift * 0.5
         );
         ctx.stroke();
       }
@@ -673,6 +677,15 @@ const TempleInterior = {
     const panel = document.getElementById('squid-assign-inline');
     if (panel) panel.style.display = 'block';
     sel.focus();
+
+    // Click outside → collapse (one-shot listener)
+    const onOutside = (e) => {
+      if (!panel.contains(e.target) && !e.target.closest('.btn-assign')) {
+        panel.style.display = 'none';
+        document.removeEventListener('click', onOutside, true);
+      }
+    };
+    setTimeout(() => document.addEventListener('click', onOutside, true), 100);
   },
 
   confirmAssign() {
