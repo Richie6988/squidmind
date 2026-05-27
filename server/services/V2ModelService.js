@@ -742,6 +742,15 @@ class V2ModelService {
           systemPrompt = await this.buildPoseidonSystemPrompt();
         }
 
+        // Qwen3 models default to "thinking mode" which outputs <think>...</think>
+        // blocks before every response — wastes tokens and confuses the UI.
+        // Prepend /no_think to disable it. The streaming filter below is a backup.
+        const modelFileName = (entry?.file_name || '').toLowerCase();
+        if (/qwen3|qwen-3/.test(modelFileName)) {
+          systemPrompt = '/no_think\n\n' + systemPrompt;
+          console.log(`[V2ModelService] Qwen3 detected — prepended /no_think to disable thinking mode`);
+        }
+
         // Auto-slim system prompt when context is tight.
         // Rule of thumb: system prompt should not exceed 60% of total ctx,
         // leaving 40% for conversation. ~4 chars per token.
@@ -812,9 +821,49 @@ class V2ModelService {
         }
       }
       
+      // Read inference params from brain (set via AgentForm or brain.json).
+      // Fall back to generous defaults so Qwen3 thinking blocks don't eat all tokens.
+      let brainParams = {};
+      try {
+        const b = await this.rm.getPoseidonBrain();
+        brainParams = b?.brain_config?.inference_params || b?.current_state?.inference_params || {};
+      } catch {}
+      const maxTokens = brainParams.max_tokens_per_response || 4096;
+
       const promptOpts = {
-        onTextChunk: (chunk) => { events.push({ type: 'text', chunk }); },
-        maxTokens: 512
+        onTextChunk: (chunk) => {
+          // Filter Qwen3 <think>...</think> blocks from streaming output.
+          // The thinking content is internal reasoning — don't emit it to the client.
+          // We buffer across chunks to handle split tags.
+          if (!entry._thinkBuf) entry._thinkBuf = '';
+          entry._thinkBuf += chunk;
+          // Drain anything before <think> or after </think>
+          let buf = entry._thinkBuf;
+          while (true) {
+            const tOpen  = buf.indexOf('<think>');
+            const tClose = buf.indexOf('</think>');
+            if (tOpen === -1 && tClose === -1) {
+              // No think tags in buffer — emit all of it
+              if (buf.length > 0) { events.push({ type: 'text', chunk: buf }); buf = ''; }
+              break;
+            }
+            if (tOpen > 0) {
+              // Emit text BEFORE the <think> tag
+              events.push({ type: 'text', chunk: buf.slice(0, tOpen) });
+              buf = buf.slice(tOpen);
+            }
+            if (tClose !== -1) {
+              // Skip from <think> through </think>
+              const endIdx = buf.indexOf('</think>') + '</think>'.length;
+              buf = buf.slice(endIdx).trimStart();  // trim leading newline after </think>
+            } else {
+              // <think> found but no closing tag yet — buffer until next chunk
+              break;
+            }
+          }
+          entry._thinkBuf = buf;
+        },
+        maxTokens
       };
       if (wrappedFunctions) promptOpts.functions = wrappedFunctions;
       const completion = session.prompt(userMessage, promptOpts);
@@ -856,6 +905,12 @@ class V2ModelService {
         }
       }
       
+      // Flush any remaining buffered text after think-filter
+      if (entry._thinkBuf && entry._thinkBuf.trim().length > 0) {
+        events.push({ type: 'text', chunk: entry._thinkBuf.trim() });
+      }
+      entry._thinkBuf = '';
+
       // Successfully completed a turn
       entry.sessionTurns++;
       
@@ -889,6 +944,7 @@ class V2ModelService {
         entry.session = null;
         entry._currentSequence = null;
         entry.sessionTurns = 0;
+        entry._thinkBuf = '';
         await this.rm.log({
           event_type: 'poseidon_decision',
           severity: 'info',
