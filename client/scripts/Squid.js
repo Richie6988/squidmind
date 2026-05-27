@@ -11,7 +11,11 @@ class Squid {
     this.current_thought = data.current_thought;
     
     // Appearance & outfit
-    this.appearance = data.appearance || {
+    // Two field-name conventions are in use across the codebase:
+    //   old: body_color, accent_color, glow_intensity
+    //   new: primary_color, secondary_color  (no glow field)
+    // Merge with defaults so downstream code never sees undefined.
+    const DEFAULT_APPEARANCE = {
       body_color: '#FF6B9D',
       accent_color: '#FFE66D',
       eye_style: 'round',
@@ -19,18 +23,24 @@ class Squid {
       size: 'medium',
       glow_intensity: 0.5
     };
+    this.appearance = { ...DEFAULT_APPEARANCE, ...(data.appearance || {}) };
+    
+    // V2: support newer primary_color/secondary_color naming - mirror to old names
+    if (this.appearance.primary_color) {
+      this.appearance.body_color = this.appearance.primary_color;
+    }
+    if (this.appearance.secondary_color) {
+      this.appearance.accent_color = this.appearance.secondary_color;
+    }
+    
+    // Final safety: make sure body_color and accent_color are valid hex strings
+    const hex6 = /^#[0-9a-fA-F]{6}$/;
+    if (!hex6.test(this.appearance.body_color)) this.appearance.body_color = DEFAULT_APPEARANCE.body_color;
+    if (!hex6.test(this.appearance.accent_color)) this.appearance.accent_color = DEFAULT_APPEARANCE.accent_color;
     
     // V2: accessories live under appearance.accessories - bring them up so
     // the draw loop can find them at this.accessories.{hat, glasses, outfit, eyes}
     this.accessories = data.accessories || (this.appearance && this.appearance.accessories) || null;
-    
-    // V2: also support appearance.primary_color / secondary_color (newer field names)
-    if (this.appearance.primary_color && !this.appearance.body_color) {
-      this.appearance.body_color = this.appearance.primary_color;
-    }
-    if (this.appearance.secondary_color && !this.appearance.accent_color) {
-      this.appearance.accent_color = this.appearance.secondary_color;
-    }
     
     this.outfit = data.outfit || {
       hat: null,
@@ -305,16 +315,27 @@ class Squid {
   }
 
   drawGlow(ctx, size) {
-    let glowColor = this.appearance.body_color;
-    let intensity = this.appearance.glow_intensity;
+    // Validate inputs - any of these being missing/NaN would crash addColorStop
+    let glowColor = this.appearance?.body_color || '#FF6B9D';
+    // Make sure glowColor is a valid 6-char hex (#RRGGBB). If it's #RGB or
+    // anything else, fall back to a known good default.
+    if (!/^#[0-9a-fA-F]{6}$/.test(glowColor)) {
+      glowColor = '#FF6B9D';
+    }
+    
+    // Default intensity if appearance didn't set it
+    let intensity = this.appearance?.glow_intensity;
+    if (typeof intensity !== 'number' || isNaN(intensity)) {
+      intensity = 0.5;
+    }
     
     // HOVER EFFECT: Brighter glow - highest priority, overrides sleep dimming
     if (this.isHovered) {
       intensity = 1.0;
       size = size * 1.2;
     } else if (this.isSleeping || this.status === 'sleeping') {
-      // Sleeping squids: very dim glow (just a hint they're there)
-      intensity = (intensity || 0.5) * 0.15;
+      // Sleeping squids: very dim glow
+      intensity = intensity * 0.15;
     } else if (this.status === 'thinking') {
       glowColor = '#FFD60A';
       intensity = 0.8 + Math.sin(this.glowPulse) * 0.2;
@@ -323,9 +344,15 @@ class Squid {
       intensity = 0.6 + Math.sin(this.glowPulse * 2) * 0.2;
     }
     
+    // Final clamp - intensity must be a finite number in [0, 1]
+    intensity = Math.max(0, Math.min(1, intensity || 0));
+    
+    // Build hex alpha byte. Math.floor(0..50) -> 0..50 -> '00'..'32'
+    const alphaHex = Math.floor(intensity * 50).toString(16).padStart(2, '0');
+    
     const gradient = ctx.createRadialGradient(0, 0, size * 0.5, 0, 0, size * 1.5);
     gradient.addColorStop(0, `${glowColor}00`);
-    gradient.addColorStop(0.5, `${glowColor}${Math.floor(intensity * 50).toString(16).padStart(2, '0')}`);
+    gradient.addColorStop(0.5, `${glowColor}${alphaHex}`);
     gradient.addColorStop(1, `${glowColor}00`);
     
     ctx.fillStyle = gradient;

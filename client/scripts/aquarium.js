@@ -135,16 +135,26 @@ const aquarium = {
     // Temples are HTML cards in .projects-container - no canvas updates or drawing.
     // (Temple manager is kept around only for legacy interaction code paths.)
     
-    // Update and draw squids
+    // Update and draw squids. Each in its own try/catch so a single bad
+    // squid (e.g. malformed appearance data) can't kill the animation
+    // loop for everyone.
     for (const squid of this.squids) {
-      squid.update(deltaTime);
-      squid.draw(this.ctx);
+      try {
+        squid.update(deltaTime);
+        squid.draw(this.ctx);
+      } catch (err) {
+        console.warn(`[SQUID] Error rendering ${squid.id || squid.name}:`, err.message);
+      }
     }
     
     // Update and draw Poseidon (the mighty god!)
     if (typeof poseidon !== 'undefined' && poseidon.visible) {
-      poseidon.update(deltaTime);
-      poseidon.draw(this.ctx, this.canvas);
+      try {
+        poseidon.update(deltaTime);
+        poseidon.draw(this.ctx, this.canvas);
+      } catch (err) {
+        console.warn('[POSEIDON] Error rendering:', err.message);
+      }
     }
     
     // Continue loop
