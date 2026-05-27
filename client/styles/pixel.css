@@ -4382,6 +4382,7 @@ button .pixel-icon {
   height: 72px;
   image-rendering: pixelated;
   display: block;
+  background: transparent;
 }
 
 .avatar-name {

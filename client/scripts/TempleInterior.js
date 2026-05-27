@@ -176,32 +176,52 @@ const TempleInterior = {
   async populateWorkingAgents(temple) {
     const container = document.getElementById('working-agents');
     
-    // Source 1: aquarium canvas squids
-    let assignedSquids = (window.aquarium?.squids || []).filter(squid => 
-      squid.currentProject === temple.name || squid.insideTemple === temple.name
-    );
-    
-    // Source 2: also check V2 registry for agents assigned via 'current_project'
+    // Source of truth: project registry assigned_agents[]
+    let assignedSquids = [];
     try {
-      const r = await window.ApiV2._fetch('/agents');
-      const regAgents = Object.values(r.registry.agents || {});
-      const seen = new Set(assignedSquids.map(s => s.id));
-      for (const a of regAgents) {
-        if ((a.current_project === temple.name || a.assigned_project === temple.name) && !seen.has(a.agent_id)) {
-          // Build squid-like object from registry entry
-          assignedSquids.push({
-            id: a.agent_id,
-            name: a.display_name || a.agent_id,
-            specialty: a.specialization || 'general',
-            role: a.specialization || 'general',
-            status: a.status || 'idle',
-            color: 0,
-            appearance: a.appearance || null,
-            insideTemple: temple.name
-          });
+      const pr = await window.ApiV2._fetch('/projects');
+      const proj = Object.values(pr.registry.projects || {}).find(p =>
+        p.project_id === temple.project_id || p.name === temple.name
+      );
+      const assignedIds = proj?.assigned_agents || [];
+      
+      const canvasSquids = window.aquarium?.squids || [];
+      const seen = new Set();
+      
+      // Match by agent_id OR id (canvas squids may use either)
+      for (const agentId of assignedIds) {
+        const sq = canvasSquids.find(s => (s.agent_id || s.id) === agentId);
+        if (sq) {
+          sq.currentProject = temple.name; // restore in-memory
+          assignedSquids.push(sq);
+          seen.add(agentId);
         }
       }
-    } catch {}
+      // Fallback: agent registry for any id not matched in canvas
+      if (assignedIds.length > seen.size) {
+        const ar = await window.ApiV2._fetch('/agents');
+        const regAgents = Object.values(ar.registry.agents || {});
+        for (const a of regAgents) {
+          if (assignedIds.includes(a.agent_id) && !seen.has(a.agent_id)) {
+            assignedSquids.push({
+              id: a.agent_id,
+              name: a.display_name || a.agent_id,
+              specialty: a.specialization || 'general',
+              role: a.specialization || 'general',
+              status: a.status || 'idle',
+              appearance: a.appearance || null,
+              insideTemple: temple.name
+            });
+            seen.add(a.agent_id);
+          }
+        }
+      }
+    } catch {
+      // Fallback to in-memory canvas state
+      assignedSquids = (window.aquarium?.squids || []).filter(s =>
+        s.currentProject === temple.name || s.insideTemple === temple.name
+      );
+    }
     
     if (assignedSquids.length === 0) {
       container.innerHTML = `
@@ -629,14 +649,14 @@ const TempleInterior = {
           <select id="squid-assigner-dropdown" style="width:100%; padding:8px; background:var(--ocean-mid); border:1px solid var(--border); color:var(--text); font-family:'Courier New',monospace; font-size:11px;">
             <option value="">-- Select a squid --</option>
             ${allSquids.length === 0
-              ? '<option disabled>No squids exist. Create one from + New Squid in top nav</option>'
+              ? '<option style="background:#0d1b2a;color:#f1faee;" disabled>No squids exist. Create one from + New Squid in top nav</option>'
               : allSquids.map(s => {
                   const isHere = s.currentProject === this.currentTemple.name;
                   const elsewhere = s.currentProject && !isHere;
                   let status = `available (${s.status})`;
                   if (isHere) status = 'already here';
                   else if (elsewhere) status = `currently: ${s.currentProject}`;
-                  return `<option value="${this._escape(s.id)}" ${isHere ? 'disabled' : ''}>${this._escape(s.name)} - ${this._escape(s.specialty)} - ${status}</option>`;
+                  return `<option value="${this._escape(s.id)}" ${isHere ? 'disabled' : ''} style="background:#0d1b2a;color:#f1faee;">${this._escape(s.name)} - ${this._escape(s.specialty)} - ${status}</option>`;
                 }).join('')
             }
           </select>
@@ -974,59 +994,52 @@ const TempleInterior = {
     if (typeof ProjectsPanel !== 'undefined') ProjectsPanel.refresh();
   },
   
-  assignSquid(squidId) {
+  async assignSquid(squidId) {
     console.log('➕ REALLY assigning squid:', squidId, 'to', this.currentTemple.name);
     
     const squid = window.aquarium?.squids.find(s => s.id === squidId);
-    if (!squid) {
-      alert('Squid not found!');
-      return;
-    }
+    if (!squid) { alert('Squid not found!'); return; }
     
-    // Update squid's project assignment
-    const previousProject = squid.currentProject;
-    squid.currentProject = this.currentTemple.name;
+    const projectId   = this.currentTemple.project_id;
+    const projectName = this.currentTemple.name;
+    if (!projectId) { alert('No project_id on this temple.'); return; }
     
-    // Save to backend
-    fetch('/api/agents/assign', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        agentId: squidId,
-        project: this.currentTemple.name
-      })
-    })
-    .then(res => res.json())
-    .then(data => {
-      if (data.success) {
-        console.log('[OK] Squid assigned successfully!');
-        
-        // Refresh working agents display
-        this.populateWorkingAgents(this.currentTemple);
-        
-        // Update button in modal
-        const button = document.querySelector(`[onclick="TempleInterior.assignSquid('${squidId}')"]`);
-        if (button) {
-          button.textContent = '[OK] Assigned';
-          button.disabled = true;
-          button.style.opacity = '0.6';
-        }
-        
-        alert(`[OK] ${squid.name} assigned to ${this.currentTemple.name}!`);
-      } else {
-        // Rollback on failure
-        squid.currentProject = previousProject;
-        alert('[ERROR] Failed to assign: ' + (data.error || 'Unknown error'));
+    try {
+      // Read current assigned_agents from project registry
+      const pr = await window.ApiV2._fetch('/projects');
+      const proj = pr.registry.projects[projectId];
+      if (!proj) throw new Error('Project not found: ' + projectId);
+      
+      const assigned = [...(proj.assigned_agents || [])];
+      const agentRef  = squid.agent_id || squid.id;
+      
+      if (!assigned.includes(agentRef)) {
+        assigned.push(agentRef);
+        await window.ApiV2._fetch('/field', {
+          method: 'PATCH',
+          body: JSON.stringify({
+            filePath: 'projects/project_registry.json',
+            fieldPath: `projects.${projectId}.assigned_agents`,
+            newValue: assigned,
+            reason: 'squid assigned via temple modal'
+          })
+        });
       }
-    })
-    .catch(err => {
+      
+      // Update in-memory state + fade squid into temple
+      squid.currentProject = projectName;
+      if (squid.insideTemple !== projectName) {
+        squid.insideTemple = projectName;
+        squid.alpha = 0;
+      }
+      
+      console.log(`[OK] ${squid.name} assigned to ${projectName}`);
+      this.populateWorkingAgents(this.currentTemple);
+      if (typeof ProjectsPanel !== 'undefined') ProjectsPanel.refresh();
+    } catch (err) {
       console.error('Failed to assign squid:', err);
-      // Rollback
-      squid.currentProject = previousProject;
-      alert('[ERROR] Error assigning squid. See console for details.');
-    });
+      alert('[ERROR] ' + err.message);
+    }
   },
   
   /**

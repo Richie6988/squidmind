@@ -90,6 +90,22 @@ const aquarium = {
         
         // Update header count
         {const _e = document.getElementById("agent-count"); if(_e) _e.textContent = `${this.squids.length} Squids`;}
+        
+        // Restore project assignments from project registry
+        try {
+          const pr = await fetch('/api/v2/projects').then(r => r.json());
+          const projects = Object.values(pr.registry?.projects || {});
+          for (const proj of projects) {
+            for (const agentId of (proj.assigned_agents || [])) {
+              const squid = this.squids.find(s => (s.agent_id || s.id) === agentId);
+              if (squid) {
+                squid.currentProject = proj.name;
+                squid.insideTemple   = proj.name;
+                squid.alpha          = 0; // hide from aquarium - they're inside temple
+              }
+            }
+          }
+        } catch {}
       }
     } catch (error) {
       console.error('Failed to load squids:', error);
