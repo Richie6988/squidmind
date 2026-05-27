@@ -1202,10 +1202,15 @@ input[type="color"]::-webkit-color-swatch {
   text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
 }
 
-.resource-list, .agents-workspace, .task-board {
+.resource-list, .task-board {
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+/* Arena for free-roaming squids */
+.agents-workspace {
+  position: relative;
 }
 
 .resource-item {
@@ -4511,3 +4516,124 @@ option {
   background: var(--ocean-deep, #0d1b2a);
   color: var(--text-primary, #f1faee);
 }
+
+/* ===== Temple: free-roaming squid walkers ===== */
+.squid-arena {
+  position: relative;
+  width: 100%;
+  min-height: 130px;
+  overflow: hidden;
+}
+
+.squid-walker {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  pointer-events: none;
+}
+
+.squid-walker canvas {
+  display: block;
+  background: transparent;
+  image-rendering: pixelated;
+}
+
+.walker-name {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 6px;
+  color: var(--text-primary, #f1faee);
+  white-space: nowrap;
+  text-shadow: 0 0 4px rgba(0,0,0,0.8);
+}
+
+.squid-action-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 6px 0 2px;
+  border-top: 1px solid var(--border);
+  margin-top: 4px;
+}
+
+.squid-action-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-family: 'Courier New', monospace;
+  font-size: 9px;
+  color: var(--text-primary);
+}
+
+.squid-action-name {
+  color: var(--accent);
+}
+
+.btn-danger {
+  background: rgba(230,57,70,0.15) !important;
+  border-color: var(--danger) !important;
+  color: var(--danger) !important;
+}
+
+/* ===== Squid picker (replaces native select) ===== */
+.squid-pick-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 240px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 4px;
+  background: var(--ocean-deep, #0d1b2a);
+}
+
+.squid-pick-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 3px;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: background 0.1s;
+  font-family: 'Courier New', monospace;
+  font-size: 10px;
+  color: var(--text-primary, #f1faee);
+}
+
+.squid-pick-item:hover:not(.disabled) {
+  background: rgba(79,172,254,0.15);
+  border-color: var(--accent);
+}
+
+.squid-pick-item.selected {
+  background: rgba(79,172,254,0.25);
+  border-color: var(--accent);
+}
+
+.squid-pick-item.disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.pick-name {
+  flex: 1;
+  font-weight: bold;
+  color: var(--accent, #4facfe);
+}
+
+.pick-role {
+  font-size: 9px;
+  color: var(--text-secondary, #a8dadc);
+}
+
+.pick-badge {
+  font-size: 8px;
+  padding: 2px 5px;
+  border-radius: 3px;
+}
+
+.pick-badge.here  { background: rgba(6,255,165,0.2); color: #06ffa5; }
+.pick-badge.busy  { background: rgba(255,165,0,0.2); color: #ffa500; }

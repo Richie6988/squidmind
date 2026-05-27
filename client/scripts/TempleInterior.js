@@ -233,86 +233,109 @@ const TempleInterior = {
       return;
     }
     
-    container.innerHTML = assignedSquids.map((squid, idx) => `
-      <div class="agent-avatar walking" data-squid-id="${this._escape(squid.id)}">
-        <canvas class="avatar-squid-canvas" data-squid-id="${this._escape(squid.id)}" width="120" height="72"></canvas>
-        <div class="avatar-name">${this._escape(squid.name)}</div>
-        <div class="avatar-specialty">${this._escape(squid.specialty || squid.role || 'general')}</div>
-        <div class="avatar-status">${this._escape(squid.status || 'idle')}</div>
-        <div class="avatar-btn-row">
-          <button class="btn-config-squid" onclick="TempleInterior.configureSquid('${this._escape(squid.id)}')" title="Open agent edit form">Edit</button>
-          <button class="btn-config-squid" onclick="TempleInterior.unassignSquid('${this._escape(squid.id)}')" title="Send back to aquarium - removes from this temple" style="background:rgba(230,57,70,0.15); border-color:var(--danger); color:var(--danger);">Aquarium</button>
-        </div>
+    // Build arena + action rows
+    container.innerHTML = `
+      <div class="squid-arena" id="squid-arena"></div>
+      <div class="squid-action-row">
+        ${assignedSquids.map(squid => `
+          <span class="squid-action-item">
+            <span class="squid-action-name">${this._escape(squid.name)}</span>
+            <button class="btn-config-squid" onclick="TempleInterior.configureSquid('${this._escape(squid.id)}')">Edit</button>
+            <button class="btn-config-squid btn-danger" onclick="TempleInterior.unassignSquid('${this._escape(squid.id)}')">↩ Aquarium</button>
+          </span>
+        `).join('')}
       </div>
-    `).join('');
-    
-    // Start animated walking squid on each canvas
+    `;
+
+    // Spawn walker divs in arena
+    const arena = container.querySelector('#squid-arena');
     setTimeout(() => {
+      if (!arena) return;
+      const W = arena.clientWidth  || 600;
+      const H = arena.clientHeight || 130;
       assignedSquids.forEach(squid => {
-        const c = container.querySelector(`canvas[data-squid-id="${squid.id}"]`);
-        if (c) this._animateTempleSquid(c, squid);
+        const walker = document.createElement('div');
+        walker.className = 'squid-walker';
+        walker.dataset.squidId = squid.id;
+        const cvs = document.createElement('canvas');
+        cvs.width  = 50;
+        cvs.height = 55;
+        const lbl = document.createElement('div');
+        lbl.className = 'walker-name';
+        lbl.textContent = squid.name;
+        walker.appendChild(cvs);
+        walker.appendChild(lbl);
+        arena.appendChild(walker);
+        this._animateTempleSquid(walker, cvs, squid, W, H);
       });
-    }, 50);
+    }, 80);
   },
   
   /**
    * Animate a walking squid on a temple canvas using the same visual style as Squid.js.
    * The squid walks left/right, flips direction, tentacles swing like legs.
    */
-  _animateTempleSquid(canvas, squid) {
-    // Cancel any existing animation for this squid
+  // walkerDiv: the absolutely-positioned wrapper div
+  // cvs: the 50×55 canvas inside it
+  // squid: data object
+  // cW/cH: arena container dimensions for wall bounce
+  _animateTempleSquid(walkerDiv, cvs, squid, cW, cH) {
     if (!TempleInterior._rafMap) TempleInterior._rafMap = {};
     if (TempleInterior._rafMap[squid.id]) {
       cancelAnimationFrame(TempleInterior._rafMap[squid.id]);
       delete TempleInterior._rafMap[squid.id];
     }
 
-    const ctx = canvas.getContext('2d');
+    const ctx = cvs.getContext('2d');
     ctx.imageSmoothingEnabled = false;
 
-    const W = canvas.width;   // 120
-    const H = canvas.height;  // 72
-    const size = 15;          // body radius
+    const CW = cvs.width;   // 50
+    const CH = cvs.height;  // 55
+    const size = 16;        // body radius (fits inside 50px canvas)
 
     const app     = squid.appearance || {};
     const acc     = app.accessories  || {};
     const primary = app.primary_color  || app.body_color   || '#FF6B9D';
     const accent  = app.secondary_color || app.accent_color || '#C44569';
 
-    // Inline color helpers (no Squid instance dependency)
     const darken  = (hex, f) => { try { const r=parseInt(hex.slice(1,3),16),g=parseInt(hex.slice(3,5),16),b=parseInt(hex.slice(5,7),16); return `rgb(${Math.floor(r*f)},${Math.floor(g*f)},${Math.floor(b*f)})`; } catch { return hex; } };
     const brighten = (hex, f) => { try { const r=Math.min(255,parseInt(hex.slice(1,3),16)*f),g=Math.min(255,parseInt(hex.slice(3,5),16)*f),b=Math.min(255,parseInt(hex.slice(5,7),16)*f); return `rgb(${Math.floor(r)},${Math.floor(g)},${Math.floor(b)})`; } catch { return hex; } };
 
-    const margin = size + 6;
-    // 2D random walk state
-    let px = margin + Math.random() * (W - margin * 2);
-    let py = margin + Math.random() * (H - margin * 2);
-    let vx = (Math.random() - 0.5) * 1.2;
-    let vy = (Math.random() - 0.5) * 0.6;
-    let frame = Math.random() * 200; // stagger tentacle phase
+    // Random walk in arena space (px/py = center of squid in arena coords)
+    const margin = size + 4;
+    const arenaW = cW || 600;
+    const arenaH = cH || 130;
+    let px = margin + Math.random() * (arenaW - margin * 2);
+    let py = margin + Math.random() * (arenaH - margin * 2);
+    let vx = (Math.random() - 0.5) * 1.4;
+    let vy = (Math.random() - 0.5) * 0.8;
+    let frame = Math.floor(Math.random() * 300);
 
     const loop = () => {
       frame++;
-      ctx.clearRect(0, 0, W, H);
 
-      // Random walk: nudge velocity + speed cap + wall bounce
+      // Random walk physics
       vx += (Math.random() - 0.5) * 0.25;
       vy += (Math.random() - 0.5) * 0.15;
       const spd = Math.sqrt(vx * vx + vy * vy);
-      const maxSpd = 1.4;
-      if (spd > maxSpd) { vx *= maxSpd / spd; vy *= maxSpd / spd; }
+      if (spd > 1.5) { vx *= 1.5 / spd; vy *= 1.5 / spd; }
       px += vx; py += vy;
-      // Bounce off canvas edges
-      if (px < margin)     { px = margin;     vx = Math.abs(vx); }
-      if (px > W - margin) { px = W - margin; vx = -Math.abs(vx); }
-      if (py < margin)     { py = margin;     vy = Math.abs(vy); }
-      if (py > H - margin) { py = H - margin; vy = -Math.abs(vy); }
+      if (px < margin)         { px = margin;         vx =  Math.abs(vx); }
+      if (px > arenaW - margin){ px = arenaW - margin; vx = -Math.abs(vx); }
+      if (py < margin)         { py = margin;         vy =  Math.abs(vy); }
+      if (py > arenaH - margin){ py = arenaH - margin; vy = -Math.abs(vy); }
+
+      // Move the div (offset so canvas center = px,py)
+      walkerDiv.style.left = (px - CW / 2) + 'px';
+      walkerDiv.style.top  = (py - CH / 2) + 'px';
 
       const facingRight = vx >= 0;
 
+      // Draw squid CENTERED in its small canvas
+      ctx.clearRect(0, 0, CW, CH);
       ctx.save();
-      ctx.translate(px, py);
-      if (!facingRight) ctx.scale(-1, 1); // flip when moving left
+      ctx.translate(CW / 2, CH / 2 - 4);
+      if (!facingRight) ctx.scale(-1, 1);
 
       // --- Body (same style as Squid.js drawBody) ---
       const grad = ctx.createRadialGradient(0, -size * 0.3, 0, 0, 0, size);
@@ -646,20 +669,23 @@ const TempleInterior = {
           <p class="hint" style="font-size:9px; color:var(--text-secondary); margin-bottom:12px;">
             ${allSquids.length} squid${allSquids.length === 1 ? '' : 's'} available. Status shows current assignment.
           </p>
-          <select id="squid-assigner-dropdown" style="width:100%; padding:8px; background:var(--ocean-mid); border:1px solid var(--border); color:var(--text); font-family:'Courier New',monospace; font-size:11px;">
-            <option value="">-- Select a squid --</option>
+          <div class="squid-pick-list" id="squid-pick-list">
             ${allSquids.length === 0
-              ? '<option style="background:#0d1b2a;color:#f1faee;" disabled>No squids exist. Create one from + New Squid in top nav</option>'
+              ? '<p style="color:#f1faee;font-size:10px;padding:8px;">No squids exist. Create one first.</p>'
               : allSquids.map(s => {
                   const isHere = s.currentProject === this.currentTemple.name;
                   const elsewhere = s.currentProject && !isHere;
-                  let status = `available (${s.status})`;
-                  if (isHere) status = 'already here';
-                  else if (elsewhere) status = `currently: ${s.currentProject}`;
-                  return `<option value="${this._escape(s.id)}" ${isHere ? 'disabled' : ''} style="background:#0d1b2a;color:#f1faee;">${this._escape(s.name)} - ${this._escape(s.specialty)} - ${status}</option>`;
+                  let badge = '';
+                  if (isHere) badge = '<span class="pick-badge here">here</span>';
+                  else if (elsewhere) badge = `<span class="pick-badge busy">${this._escape(s.currentProject)}</span>`;
+                  return `<div class="squid-pick-item ${isHere ? 'disabled' : ''}" data-squid-id="${this._escape(s.id)}" onclick="TempleInterior._pickSquid(this)">
+                    <span class="pick-name">${this._escape(s.name)}</span>
+                    <span class="pick-role">${this._escape(s.specialty || 'general')}</span>
+                    ${badge}
+                  </div>`;
                 }).join('')
             }
-          </select>
+          </div>
         </div>
         <div style="display:flex; gap:8px; justify-content:flex-end; padding:12px 16px; border-top:1px solid var(--border);">
           <button class="btn-secondary" onclick="this.closest('.modal').remove()">Cancel</button>
@@ -669,15 +695,23 @@ const TempleInterior = {
     `;
     document.body.appendChild(modal);
     
+    // _pickSquid highlights the selection; confirm reads it
+    TempleInterior._selectedPickId = null;
     modal.querySelector('#squid-assign-confirm').addEventListener('click', () => {
-      const sel = modal.querySelector('#squid-assigner-dropdown');
-      const squidId = sel.value;
+      const squidId = TempleInterior._selectedPickId;
       if (!squidId) { alert('Pick a squid first'); return; }
       this.assignSquid(squidId);
       modal.remove();
     });
   },
   
+  _pickSquid(el) {
+    if (el.classList.contains('disabled')) return;
+    document.querySelectorAll('.squid-pick-item.selected').forEach(e => e.classList.remove('selected'));
+    el.classList.add('selected');
+    TempleInterior._selectedPickId = el.dataset.squidId;
+  },
+
   _escape(s) {
     if (!s) return '';
     return String(s).replace(/[<>&"]/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' })[c]);
