@@ -10,6 +10,7 @@
  */
 
 const path = require('path');
+const ImageGenerationService = require('./ImageGenerationService');
 const fs = require('fs').promises;
 const fsSync = require('fs');
 
@@ -18,6 +19,7 @@ class V2ModelService {
     this.rm = registryManager;
     this.modelsDir = modelsDir;
     this.llama = null;                       // node-llama-cpp instance (singleton)
+    this.imageGen = new ImageGenerationService();
     this.loaded = new Map();                 // model_id -> { model, context, session, config, lastUsedAt, generating }
     this.poseidonModelId = null;             // currently assigned to Poseidon
     this._libPromise = null;
@@ -201,11 +203,15 @@ class V2ModelService {
     const modelId = this._fileNameToId(path.basename(fileName));
     const finalConfig = { ...V2ModelService.DEFAULT_CONFIG, ...config };
     
+    // Auto-detect model type from filename if not specified in config
+    const model_type = config.model_type || ImageGenerationService.detectModelType(path.basename(fileName));
+
     await this._registryUpsert(modelId, {
       file_name: path.basename(fileName),
       file_path: fullPath,
       file_size_gb: Math.round((stat.size / (1024 ** 3)) * 100) / 100,
       format: 'gguf',
+      model_type,            // 'text' | 'image'
       status: 'available',
       config: finalConfig,
       runtime: {
@@ -1002,6 +1008,24 @@ class V2ModelService {
   }
 
   // === REGISTRY MERGE HELPER ===
+
+  /**
+   * Generate an image using an image-type GGUF model.
+   * Returns { ok, outputPath, bytes, url } or { ok:false, error }.
+   */
+  async generateImage({ modelId, prompt, outputPath, width, height, steps, cfg, seed, negativePrompt }) {
+    this.rm.invalidateCache();
+    const reg = await this.rm.read('models/model_registry.json');
+    const entry = reg.models?.[modelId];
+    if (!entry) return { ok: false, error: `Model ${modelId} not in registry` };
+    if (entry.model_type !== 'image') {
+      return { ok: false, error: `Model ${modelId} is type '${entry.model_type || 'text'}', not an image model. Change model_type in the library.` };
+    }
+    return this.imageGen.generate({
+      modelPath: entry.file_path,
+      prompt, outputPath, width, height, steps, cfg, seed, negativePrompt
+    });
+  }
 
   async _registryUpsert(modelId, partial) {
     this.rm.invalidateCache();

@@ -24,10 +24,11 @@ const { promisify } = require('util');
 const execAsync = promisify(exec);
 
 class OrchestratorTools {
-  constructor({ workspaceRoot, registryManager, githubToken }) {
+  constructor({ workspaceRoot, registryManager, githubToken, modelService }) {
     this.workspaceRoot = workspaceRoot;
     this.rm = registryManager;
     this.githubToken = githubToken || process.env.GITHUB_TOKEN || null;
+    this.modelService = modelService || null;
   }
 
   // ====================================================================
@@ -449,6 +450,53 @@ class OrchestratorTools {
     const res = await this._git(`pull ${remote} ${branchName}`);
     if (!res.ok) return { ok: false, error: res.stderr || res.error };
     return { ok: true, remote, branch: branchName, output: res.stdout };
+  }
+
+  // ====================================================================
+  // IMAGE GENERATION
+  // ====================================================================
+
+  /**
+   * Generate an image using an assigned image-type GGUF model.
+   * Saves the result to the project outputs folder and returns a URL.
+   */
+  async generateImage({ model_id, prompt, project_id, filename, width, height, steps, cfg_scale, seed, negative_prompt }) {
+    try {
+      if (!model_id) return { ok: false, error: 'model_id is required' };
+      if (!prompt)   return { ok: false, error: 'prompt is required' };
+      if (!project_id) return { ok: false, error: 'project_id is required' };
+
+      // Resolve output path: data/projects/{PROJECT_XXX}/outputs/{filename}
+      const safeFilename = (filename || `generated_${Date.now()}.png`).replace(/[^a-zA-Z0-9._-]/g, '_');
+      const projectFolder = project_id.toUpperCase().startsWith('PROJECT_')
+        ? project_id.toUpperCase()
+        : `PROJECT_${project_id.replace(/\D/g, '').padStart(3, '0')}`;
+      const outputDir  = path.join(this.workspaceRoot, 'data', 'projects', projectFolder, 'outputs');
+      const outputPath = path.join(outputDir, safeFilename);
+
+      // Delegate to V2ModelService which knows the model file path
+      if (!this.modelService) return { ok: false, error: 'modelService not available on OrchestratorTools' };
+
+      const result = await this.modelService.generateImage({
+        modelId: model_id,
+        prompt,
+        outputPath,
+        width:          width         || 512,
+        height:         height        || 512,
+        steps:          steps         || 20,
+        cfg:            cfg_scale     || 7,
+        seed:           seed          ?? -1,
+        negativePrompt: negative_prompt || ''
+      });
+
+      if (!result.ok) return result;
+
+      // Serve URL: /api/v2/projects/{folder}/outputs/{filename}
+      const url = `/api/v2/projects/${projectFolder}/outputs/${safeFilename}`;
+      return { ok: true, url, outputPath: result.outputPath, bytes: result.bytes, filename: safeFilename };
+    } catch (err) {
+      return { ok: false, error: err.message };
+    }
   }
 }
 

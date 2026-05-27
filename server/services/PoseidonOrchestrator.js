@@ -38,7 +38,8 @@ class PoseidonOrchestrator {
     this.tools = new OrchestratorTools({
       workspaceRoot: this.workspaceRoot,
       registryManager: this.rm,
-      githubToken
+      githubToken,
+      modelService: modelService   // needed for image generation
     });
   }
 
@@ -688,6 +689,29 @@ Never describe a bash command you could call instead.`;
           required: ['section_path']
         },
         handler: async (params) => self._readMyBrain(params)
+      }),
+
+      // ============ IMAGE GENERATION ============
+
+      generate_image: defineChatSessionFunction({
+        description: 'Generate an image from a text prompt using an image-type GGUF model (Stable Diffusion, FLUX, etc.). Saves the PNG to project outputs and returns a viewable URL. Only call this when the agent has an image model assigned.',
+        params: {
+          type: 'object',
+          properties: {
+            model_id:        { type: 'string',  description: 'ID of the image model to use (must be model_type: image)' },
+            prompt:          { type: 'string',  description: 'Text description of the image to generate' },
+            project_id:      { type: 'string',  description: 'Project ID where the image is saved, e.g. project_001' },
+            filename:        { type: 'string',  description: 'Output filename like banner.png (optional)' },
+            negative_prompt: { type: 'string',  description: 'Things to avoid in the image (optional)' },
+            width:           { type: 'integer', description: 'Width in pixels (default 512)' },
+            height:          { type: 'integer', description: 'Height in pixels (default 512)' },
+            steps:           { type: 'integer', description: 'Inference steps (default 20)' },
+            cfg_scale:       { type: 'number',  description: 'CFG guidance scale (default 7)' },
+            seed:            { type: 'integer', description: 'Random seed (-1 = random)' }
+          },
+          required: ['model_id', 'prompt', 'project_id']
+        },
+        handler: async (params) => self.tools.generateImage(params)
       })
     };
   }

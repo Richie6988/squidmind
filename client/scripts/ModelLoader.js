@@ -145,6 +145,11 @@ const ModelLoader = {
     if (isMissing) statusBadge += '<span class="model-missing-pill">FILE MISSING</span>';
     if (isInvalid) statusBadge += '<span class="model-missing-pill">INVALID GGUF</span>';
     if (!m.imported && !isMissing && !isInvalid) statusBadge += '<span class="model-notimport-pill">NOT IMPORTED</span>';
+    // model_type badge (text vs image)
+    const mtype = m.config?.model_type || m.model_type || 'text';
+    statusBadge += mtype === 'image'
+      ? '<span class="model-imgtype-pill">🖼 IMAGE MODEL</span>'
+      : '<span class="model-texttype-pill">💬 TEXT</span>';
     
     let actions = '';
     if (isInvalid) {
@@ -152,9 +157,13 @@ const ModelLoader = {
     } else if (!m.imported) {
       actions = `<button class="btn-primary" onclick="ModelLoader.showImportDialog('${this._escape(m.file_name)}')">Import to Library</button>`;
     } else {
+      const curType = m.config?.model_type || m.model_type || 'text';
+      const toggleLabel = curType === 'image' ? '→ Text Model' : '→ Image Model';
+      const nextType    = curType === 'image' ? 'text' : 'image';
       actions = `
         ${!m.is_poseidon ? `<button class="btn-secondary" onclick="ModelLoader.assignPoseidon('${m.model_id}')">Use as Poseidon</button>` : ''}
         <button class="btn-secondary" onclick="ModelLoader.showImportDialog('${this._escape(m.file_name)}', '${m.model_id}')">Edit Params</button>
+        <button class="btn-secondary" title="Toggle between text and image generation mode" onclick="ModelLoader.setModelType('${m.model_id}','${nextType}')">${toggleLabel}</button>
         ${m.is_loaded ? `<button class="btn-secondary" onclick="ModelLoader.unload('${m.model_id}')">Unload from Memory</button>` : ''}
         <button class="btn-secondary danger-action" onclick="ModelLoader.remove('${m.model_id}')">Remove</button>
       `;
@@ -407,6 +416,18 @@ const ModelLoader = {
     });
   },
   
+  async setModelType(modelId, model_type) {
+    try {
+      await window.ApiV2._fetch(`/models/${modelId}/type`, {
+        method: 'PATCH',
+        body: JSON.stringify({ model_type })
+      });
+      await this._refresh();
+    } catch (err) {
+      await SquidModal.alert('Failed to update model type: ' + err.message);
+    }
+  },
+
   async assignPoseidon(modelId) {
     try {
       await window.ApiV2._fetch(`/models/${modelId}/assign-poseidon`, { method: 'POST' });

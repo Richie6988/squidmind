@@ -174,6 +174,31 @@ function buildRouter(v2ModelService) {
     }
   });
 
+  // POST /api/v2/models/generate-image
+  router.post('/generate-image', async (req, res) => {
+    try {
+      const result = await v2ModelService.generateImage(req.body);
+      if (!result.ok) return res.status(400).json({ success: false, error: result.error });
+      res.json({ success: true, ...result });
+    } catch (err) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  // PATCH /api/v2/models/:modelId/type — manually set model_type (text|image)
+  router.patch('/:modelId/type', async (req, res) => {
+    try {
+      const { model_type } = req.body;
+      if (!['text', 'image'].includes(model_type)) {
+        return res.status(400).json({ success: false, error: 'model_type must be "text" or "image"' });
+      }
+      await v2ModelService.updateModelParams(req.params.modelId, { model_type });
+      res.json({ success: true, model_id: req.params.modelId, model_type });
+    } catch (err) {
+      res.status(400).json({ success: false, error: err.message });
+    }
+  });
+
   return router;
 }
 

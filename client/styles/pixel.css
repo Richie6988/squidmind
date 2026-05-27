@@ -4699,3 +4699,24 @@ option {
 .log-timestamp { color: var(--text-secondary); font-size: 8px; }
 .log-agent     { color: var(--accent); font-weight: bold; margin: 2px 0; }
 .log-message   { color: var(--text-primary); white-space: pre-wrap; word-break: break-word; }
+
+/* ===== Model type pills (library) ===== */
+.model-imgtype-pill {
+  background: rgba(139,92,246,0.2);
+  color: #a78bfa;
+  border: 1px solid #7c3aed;
+  padding: 2px 6px;
+  font-size: 8px;
+  border-radius: 3px;
+  font-family: 'Press Start 2P', monospace;
+}
+
+.model-texttype-pill {
+  background: rgba(6,255,165,0.1);
+  color: var(--success);
+  border: 1px solid rgba(6,255,165,0.3);
+  padding: 2px 6px;
+  font-size: 8px;
+  border-radius: 3px;
+  font-family: 'Press Start 2P', monospace;
+}

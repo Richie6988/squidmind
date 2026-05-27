@@ -162,21 +162,39 @@ const TempleInterior = {
       inputContainer.innerHTML = '<p class="empty-state">No input files yet<br>Upload files to get started</p>';
     }
     
-    // Output resources (agent-created)
-    const outputFiles = temple.project?.outputs || [];
-    if (outputFiles.length > 0) {
-      outputContainer.innerHTML = outputFiles.map(file => `
-        <div class="resource-item output-item" onclick="TempleInterior.openFile('${file.name}', '${file.path}', 'output')">
-          <span class="resource-icon">✨</span>
-          <span class="resource-name">${file.name}</span>
-          <span class="resource-agent">by ${file.creator || 'Agent'}</span>
-        </div>
-      `).join('');
-    } else {
-      outputContainer.innerHTML = '<p class="empty-state">No outputs yet<br>Agents will create files here</p>';
-    }
+    // Output resources — read from disk (images + text files in outputs/ folder)
+    this._loadOutputFiles(temple, outputContainer);
   },
   
+  async _loadOutputFiles(temple, container) {
+    const projectFolder = (temple.project_id || 'PROJECT_001')
+      .toUpperCase().replace(/^project_/i, 'PROJECT_');
+    try {
+      const res = await fetch(`/api/v2/projects/${projectFolder}/outputs`);
+      if (!res.ok) throw new Error('no outputs dir');
+      const data = await res.json();
+      const files = data.files || [];
+      if (files.length === 0) {
+        container.innerHTML = '<p class="empty-state">No outputs yet<br>Agents will create files here</p>';
+        return;
+      }
+      container.innerHTML = files.map(f => {
+        const isImg = /\.(png|jpg|jpeg|gif|webp|svg)$/i.test(f.name);
+        const icon  = isImg ? '🖼' : '✨';
+        const thumb = isImg
+          ? `<img src="/api/v2/projects/${projectFolder}/outputs/${encodeURIComponent(f.name)}" style="width:40px;height:40px;object-fit:cover;border-radius:3px;margin-right:6px;vertical-align:middle;">`
+          : '';
+        return `<div class="resource-item output-item" onclick="TempleInterior.openFile('${this._escape(f.name)}','${this._escape(f.path)}','output')">
+          ${thumb}<span class="resource-icon">${icon}</span>
+          <span class="resource-name">${this._escape(f.name)}</span>
+          <span class="resource-agent">${this._escape(f.size || '')}</span>
+        </div>`;
+      }).join('');
+    } catch {
+      container.innerHTML = '<p class="empty-state">No outputs yet<br>Agents will create files here</p>';
+    }
+  },
+
   /**
    * Populate working agents (REAL squids from aquarium)
    */
@@ -509,33 +527,48 @@ const TempleInterior = {
    */
   openFile(filename, filepath, type) {
     console.log('📂 Opening file:', filename, 'Type:', type);
-    
+
     this.currentFile = { filename, filepath, type };
     document.getElementById('editor-filename').textContent = filename;
-    
-    // Load file content
+
+    const lower = filename.toLowerCase();
+    const isImage = /\.(png|jpg|jpeg|gif|webp|svg|bmp)$/.test(lower);
+
+    if (isImage) {
+      // For image outputs: show directly in the preview pane, blank the editor
+      document.getElementById('temple-editor').value = `[Image file: ${filename}]\n\nPreview shown on the right.`;
+      const preview = document.getElementById('temple-preview');
+      // Build URL: if filepath looks like a project output use the API route
+      const projectFolder = this.currentTemple?.project_id
+        ? this.currentTemple.project_id.toUpperCase().replace(/project_/i, 'PROJECT_')
+        : null;
+      const imgUrl = filepath.startsWith('http')
+        ? filepath
+        : `/api/v2/projects/${projectFolder || 'PROJECT_001'}/outputs/${encodeURIComponent(filename)}`;
+      preview.srcdoc = `<!DOCTYPE html><html><body style="margin:0;background:#0d1b2a;display:flex;align-items:center;justify-content:center;min-height:100vh;">
+        <img src="${imgUrl}" style="max-width:100%;max-height:100vh;image-rendering:pixelated;" alt="${filename}"
+          onerror="this.style.display='none';document.body.innerHTML+='<p style=color:#e63946;font-family:monospace;font-size:11px;padding:16px>Image not found: ${imgUrl}</p>'">
+        </body></html>`;
+      return;
+    }
+
+    // Load file content (text/JSON)
     fetch(`/api/files/read?path=${encodeURIComponent(filepath)}`)
       .then(res => {
-        const contentType = res.headers.get('content-type');
-        if (contentType && contentType.includes('application/json')) {
-          return res.json();
-        } else {
-          return res.text().then(text => ({ content: text }));
-        }
+        const ct = res.headers.get('content-type');
+        if (ct && ct.includes('application/json')) return res.json();
+        return res.text().then(text => ({ content: text }));
       })
       .then(data => {
         const content = data.content || data;
-        document.getElementById('temple-editor').value = content;
-        
-        // Auto-preview if HTML
-        if (filename.endsWith('.html')) {
-          this.refreshPreview();
-        }
+        document.getElementById('temple-editor').value =
+          typeof content === 'string' ? content : JSON.stringify(content, null, 2);
+        if (lower.endsWith('.html')) this.refreshPreview();
       })
       .catch(err => {
         console.error('Failed to load file:', err);
-        document.getElementById('temple-editor').value = 
-          `// Failed to load file: ${err.message}\n// File API might not be implemented yet`;
+        document.getElementById('temple-editor').value =
+          `// Failed to load file: ${err.message}`;
       });
   },
   
