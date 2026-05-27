@@ -330,303 +330,197 @@ class V2ModelService {
   async loadModel(fileName, cfg = {}) {
     const config = {
       contextLength: cfg.contextLength ?? 'auto',
-      gpuLayers: cfg.gpuLayers ?? 'auto',
-      cpuThreads: cfg.cpuThreads ?? 4,
-      batchSize: cfg.batchSize ?? 512,
-      flashAttention: cfg.flashAttention ?? true,
-      useMmap: cfg.useMmap ?? true,
-      useMlock: cfg.useMlock ?? false,
-      randomSeed: cfg.randomSeed ?? true,
+      gpuLayers:     cfg.gpuLayers     ?? 'auto',
+      cpuThreads:    cfg.cpuThreads    ?? 4,
+      batchSize:     cfg.batchSize     ?? 512,
+      flashAttention:cfg.flashAttention ?? true,
+      useMmap:       cfg.useMmap       ?? true,
+      useMlock:      cfg.useMlock      ?? false,
+      randomSeed:    cfg.randomSeed    ?? true,
       autoUnloadIdleMinutes: cfg.autoUnloadIdleMinutes ?? 15
     };
 
-    const modelId = this._fileNameToId(fileName);
+    const modelId   = this._fileNameToId(fileName);
+    if (this.loaded.has(modelId)) return { success: true, alreadyLoaded: true, model_id: modelId };
 
-    // Already loaded?
-    if (this.loaded.has(modelId)) {
-      return { success: true, alreadyLoaded: true, model_id: modelId };
-    }
-
-    // Resolve path
     const fullPath = path.isAbsolute(fileName) ? fileName : path.join(this.modelsDir, fileName);
-    if (!fsSync.existsSync(fullPath)) {
-      throw new Error(`Model file not found: ${fullPath}`);
-    }
-    const stat = await fs.stat(fullPath);
+    if (!fsSync.existsSync(fullPath)) throw new Error(`Model file not found: ${fullPath}`);
+    const stat      = await fs.stat(fullPath);
     const fileSizeGb = Math.round((stat.size / (1024 ** 3)) * 100) / 100;
 
-    // Mark in registry as 'loading'
     await this._registryUpsert(modelId, {
-      file_name: fileName,
-      file_path: fullPath,
-      file_size_gb: fileSizeGb,
-      format: 'gguf',
-      status: 'loading',
-      config,
-      runtime: {
-        loading_started_at: new Date().toISOString(),
-        loaded_at: null,
-        last_used_at: null,
-        total_tokens_generated: 0,
-        total_requests: 0
-      }
+      file_name: fileName, file_path: fullPath, file_size_gb: fileSizeGb,
+      format: 'gguf', status: 'loading', config,
+      runtime: { loading_started_at: new Date().toISOString(), loaded_at: null,
+                 last_used_at: null, total_tokens_generated: 0, total_requests: 0 }
     });
 
-    let model, context;
+    let model = null, context = null;
     try {
       const llama = await this._ensureLib();
       console.log(`[V2ModelService] Loading ${fileName} (${fileSizeGb} GB)`);
 
-      // === STEP 1: Probe VRAM ===
-      let vram = null;
-      try {
-        if (llama.getVramState) vram = await llama.getVramState();
-      } catch {}
-      
-      const freeGb = vram ? vram.free / (1024 ** 3) : 0;
-      const totalGb = vram ? vram.total / (1024 ** 3) : 0;
-      if (vram) {
-        console.log(`  VRAM: ${freeGb.toFixed(2)} / ${totalGb.toFixed(2)} GB free`);
-      }
-      try {
-        if (llama.gpu) console.log(`  GPU backend: ${llama.gpu}`);
-      } catch {}
+      // ── Step 1: VRAM snapshot before weights ──────────────────────────────
+      let vramBefore = null;
+      try { if (llama.getVramState) vramBefore = await llama.getVramState(); } catch {}
+      const freeBeforeGb = vramBefore ? vramBefore.free  / (1024 ** 3) : 0;
+      const totalGb      = vramBefore ? vramBefore.total / (1024 ** 3) : 0;
+      if (vramBefore) console.log(`  VRAM before load: ${freeBeforeGb.toFixed(2)} / ${totalGb.toFixed(2)} GB free`);
+      try { if (llama.gpu) console.log(`  GPU backend: ${llama.gpu}`); } catch {}
 
-      // === STEP 2: Resolve 'auto' to concrete numbers based on VRAM ===
-      // Strategy: target ~70% of free VRAM for model weights, ~25% for KV
-      // cache, 5% margin for activations/scratch.
-      //
-      // gpu_layers: estimate total layers from file size (rule of thumb:
-      //   ~33 layers for 7B, ~40 for 13B, ~32 for 9B). Without metadata we
-      //   estimate from file size: ~1 layer per ~150 MB.
-      //
-      // contextLength: derive from remaining VRAM using ~75 KB/token (flash)
-      //   or ~150 KB/token (no flash) - the same model that worked in our
-      //   previous fix.
-      
-      // Estimate layer count: GGUF files are ~150-180 MB per layer at Q4_K_M.
-      // We can't read metadata until model loads, so use a heuristic.
-      const estimatedTotalLayers = Math.max(20, Math.min(80, Math.round(fileSizeGb * 1024 / 160)));
-      
+      // Estimate total layers for gpu_layers auto-resolve.
+      // ~160 MB/layer at Q4_K_M. Clamp to [20, 80].
+      const estLayers = Math.max(20, Math.min(80, Math.round(fileSizeGb * 1024 / 160)));
+
       if (config.gpuLayers === 'auto' || config.gpuLayers === 'max') {
-        if (vram && freeGb > 0.5) {
-          // Aim to fit weights in 70% of free VRAM
-          const weightBudgetGb = freeGb * 0.7;
-          const gpuLayerFrac = Math.min(1.0, weightBudgetGb / fileSizeGb);
-          const computed = Math.round(estimatedTotalLayers * gpuLayerFrac);
-          // 'max' = try to push all layers; 'auto' = our computed value
-          config.gpuLayers = (config.gpuLayers === 'max')
-            ? estimatedTotalLayers
-            : Math.max(1, Math.min(estimatedTotalLayers, computed));
-          console.log(`  [auto-resolve] gpuLayers: ${config.gpuLayers} (≈${(gpuLayerFrac*100).toFixed(0)}% of ${estimatedTotalLayers} layers on GPU)`);
+        if (vramBefore && freeBeforeGb > 0.5) {
+          const frac    = Math.min(1.0, (freeBeforeGb * 0.72) / fileSizeGb);
+          const computed = Math.round(estLayers * frac);
+          config.gpuLayers = config.gpuLayers === 'max' ? estLayers : Math.max(1, computed);
+          console.log(`  [auto] gpuLayers: ${config.gpuLayers} / ${estLayers}`);
         } else {
-          // No VRAM info - default to CPU-only (safer than guessing high)
           config.gpuLayers = 0;
-          console.log(`  [auto-resolve] gpuLayers: 0 (no VRAM info available, CPU only)`);
+          console.log(`  [auto] gpuLayers: 0 (no VRAM info, CPU only)`);
         }
       }
-      
-      if (config.contextLength === 'auto') {
-        if (vram && freeGb > 1.0) {
-          // Compute available VRAM for KV after weights:
-          //   on-GPU weights = file_size * (gpu_layers / total_layers)
-          //   margin = 500 MB
-          //   available_for_kv = free - weights_on_gpu - margin
-          const layerFrac = config.gpuLayers / estimatedTotalLayers;
-          const weightsOnGpu = fileSizeGb * layerFrac;
-          const marginGb = 0.5;
-          const availForKv = Math.max(0, freeGb - weightsOnGpu - marginGb);
-          const bytesPerToken = config.flashAttention ? 75 * 1024 : 150 * 1024;
-          const tokensFit = Math.floor((availForKv * 1024 ** 3) / bytesPerToken);
-          // Clamp to [4096, 32768], round to 1024
-          const computed = Math.max(4096, Math.min(32768, tokensFit));
-          config.contextLength = Math.floor(computed / 1024) * 1024;
-          console.log(`  [auto-resolve] contextLength: ${config.contextLength} tokens (${availForKv.toFixed(2)} GB for KV at ${bytesPerToken/1024} KB/tok)`);
-        } else {
-          // No VRAM or very tight - default to 4096 (enough for system prompt + a few turns)
-          config.contextLength = 4096;
-          console.log(`  [auto-resolve] contextLength: 4096 (default, no VRAM info)`);
-        }
-      }
-      
-      // Final summary line - everything is now numeric
-      console.log(`  Resolved: ctx=${config.contextLength}, gpuLayers=${config.gpuLayers}, flash=${config.flashAttention}, mmap=${config.useMmap}, mlock=${config.useMlock}`);
 
-      // === STEP 3: Load model ===
-      const modelOpts = {
-        modelPath: fullPath,
-        gpuLayers: config.gpuLayers,
-        useMmap: config.useMmap,
-        useMlock: config.useMlock,
+      // ── Step 2: LOAD WEIGHTS ONCE ────────────────────────────────────────
+      model = await llama.loadModel({
+        modelPath:  fullPath,
+        gpuLayers:  config.gpuLayers,
+        useMmap:    config.useMmap,
+        useMlock:   config.useMlock,
         defaultContextFlashAttention: config.flashAttention
-      };
-      
-      model = await llama.loadModel(modelOpts);
-      const trainCtx = model.trainContextSize;
-      console.log(`  Model loaded. Train context size: ${trainCtx}`);
+      });
 
-      // Hard reject: if trainCtx is below minimum viable, this model can't
-      // handle the Poseidon system prompt. Unload immediately and throw.
+      const trainCtx = model.trainContextSize;
+      console.log(`  Weights loaded. trainCtx=${trainCtx}, gpuLayers=${config.gpuLayers}`);
+
       if (trainCtx < V2ModelService.MIN_VIABLE_CTX) {
-        try { await model.dispose(); } catch {}
-        model = null;
+        await model.dispose(); model = null;
         throw new Error(
-          `Model train context (${trainCtx} tokens) is below minimum viable (${V2ModelService.MIN_VIABLE_CTX}). ` +
-          `This is not a text-generation LLM — it appears to be an encoder (T5, CLIP, VAE, etc.). ` +
-          `Use it with an image generation pipeline, not as a chat model. ` +
-          `Tag it as model_type: "image" in the library.`
+          `trainCtx=${trainCtx} < ${V2ModelService.MIN_VIABLE_CTX} — encoder model (T5/CLIP/VAE), not a chat LLM. ` +
+          `Tag it as model_type: "image".`
         );
       }
 
-      // Refine: never exceed the model's own training ctx
+      // ── Step 3: VRAM snapshot AFTER weights — real remaining budget ───────
+      let vramAfter = null;
+      try { if (llama.getVramState) vramAfter = await llama.getVramState(); } catch {}
+      const freeAfterGb = vramAfter ? vramAfter.free / (1024 ** 3) : 0;
+      if (vramAfter) console.log(`  VRAM after weights: ${freeAfterGb.toFixed(2)} GB free`);
+
+      // ── Step 4: Compute target contextLength from REAL remaining VRAM ─────
+      if (config.contextLength === 'auto') {
+        if (vramAfter && freeAfterGb > 0.3) {
+          const margin       = 0.4;  // 400 MB headroom for activations
+          const availKvGb    = Math.max(0, freeAfterGb - margin);
+          const bytesPerTok  = config.flashAttention ? 75 * 1024 : 150 * 1024;
+          const toksFit      = Math.floor(availKvGb * 1024 ** 3 / bytesPerTok);
+          const capped       = Math.min(toksFit, trainCtx, 32768);
+          config.contextLength = Math.max(V2ModelService.MIN_VIABLE_CTX, Math.floor(capped / 1024) * 1024);
+          console.log(`  [auto] contextLength: ${config.contextLength} (${availKvGb.toFixed(2)} GB for KV)`);
+        } else {
+          config.contextLength = V2ModelService.MIN_VIABLE_CTX;
+          console.log(`  [auto] contextLength: ${config.contextLength} (fallback, no VRAM info)`);
+        }
+      }
+
+      // Never exceed model's own trainCtx
       if (config.contextLength > trainCtx) {
-        console.warn(`  ctx ${config.contextLength} > trainCtx ${trainCtx}, clamping to ${trainCtx}`);
         config.contextLength = trainCtx;
+        console.log(`  clamped contextLength to trainCtx=${trainCtx}`);
       }
 
-      // === STEP 4: Create context (always concrete numbers, never 'auto') ===
-      context = await model.createContext({
-        contextSize: config.contextLength,
-        batchSize: config.batchSize,
-        threads: config.cpuThreads,
-        sequences: 8,                          // headroom for parallel agents
-        flashAttention: config.flashAttention
-      });
-      
-      const actualCtx = context.contextSize;
-      console.log(`  Context created: ${actualCtx} tokens`);
-      if (actualCtx !== config.contextLength) {
-        config.contextLength = actualCtx;  // record what we actually got
+      // ── Step 5: CREATE CONTEXT — retry DOWN without reloading the model ───
+      // Retry ladder: start at desired ctx, step down if createContext OOMs.
+      // We NEVER reload the model — just try smaller contexts.
+      const ctxLadder = (() => {
+        const target = config.contextLength;
+        const steps  = [target, Math.floor(target / 2), Math.floor(target / 4), V2ModelService.MIN_VIABLE_CTX, 2048];
+        return [...new Set(steps.map(v => Math.max(2048, Math.min(v, trainCtx))))];
+      })();
+
+      let ctxErr = null;
+      for (let i = 0; i < ctxLadder.length; i++) {
+        const tryCtx = ctxLadder[i];
+        if (context) { try { await context.dispose(); } catch {} context = null; }
+        try {
+          if (i > 0) console.log(`  [ctx retry ${i}] trying ctx=${tryCtx}`);
+          context = await model.createContext({
+            contextSize:    tryCtx,
+            batchSize:      config.batchSize,
+            threads:        config.cpuThreads,
+            sequences:      4,
+            flashAttention: config.flashAttention
+          });
+          config.contextLength = context.contextSize;
+          console.log(`  Context created: ${config.contextLength} tokens${i > 0 ? ` (after ${i} retry/ies)` : ''}`);
+          ctxErr = null;
+          break;
+        } catch (e) {
+          ctxErr = e;
+          const isOOM = /out of memory|VRAM|allocation|context size.*too large|insufficient/i.test(e.message);
+          if (!isOOM) throw e;  // non-OOM error → propagate immediately
+          console.warn(`  [ctx retry ${i}] OOM at ctx=${tryCtx}: ${e.message.slice(0, 80)}`);
+        }
+      }
+      if (!context) {
+        await model.dispose(); model = null;
+        throw ctxErr || new Error('All context sizes failed (OOM)');
       }
 
+      // Warn if context ended up too small for the system prompt
+      if (config.contextLength < V2ModelService.MIN_VIABLE_CTX) {
+        console.warn(
+          `[V2ModelService] ⚠ Context ${config.contextLength} < ${V2ModelService.MIN_VIABLE_CTX} minimum. ` +
+          `Chat may fail. Try: smaller model, fewer GPU layers, or CPU-only mode.`
+        );
+      }
+
+      // ── Step 6: Register as loaded ────────────────────────────────────────
       this.loaded.set(modelId, {
-        model_id: modelId,
-        file_name: fileName,
-        file_path: fullPath,
-        model,
-        context,
-        session: null,          // LlamaChatSession created lazily on first chat, reused after
-        config,
-        loadedAt: Date.now(),
-        lastUsedAt: Date.now(),
-        generating: false,
-        totalTokensGenerated: 0,
-        totalRequests: 0
+        model_id: modelId, file_name: fileName, file_path: fullPath,
+        model, context, session: null, config,
+        loadedAt: Date.now(), lastUsedAt: Date.now(),
+        generating: false, totalTokensGenerated: 0, totalRequests: 0
       });
 
       await this._registryUpsert(modelId, {
         status: 'loaded',
         runtime: {
-          loading_started_at: null,
-          loaded_at: new Date().toISOString(),
+          loading_started_at: null, loaded_at: new Date().toISOString(),
           last_used_at: new Date().toISOString(),
-          total_tokens_generated: 0,
-          total_requests: 0
+          total_tokens_generated: 0, total_requests: 0
         }
       });
-
       await this.rm.log({
-        event_type: 'model_loaded',
-        actor: { type: 'system', id: 'v2_model_service' },
+        event_type: 'model_loaded', actor: { type: 'system', id: 'v2_model_service' },
         subject: { type: 'model', id: modelId },
         action: `Loaded ${fileName} (ctx=${config.contextLength}, gpu_layers=${config.gpuLayers})`,
         context: { config }
       });
-
-      console.log(`[V2ModelService] ✓ ${fileName} ready`);
+      console.log(`[V2ModelService] ✓ ${fileName} ready (ctx=${config.contextLength})`);
       return { success: true, model_id: modelId, config };
-    } catch (err) {
-      // PROPER CLEANUP: dispose context AND model, null refs so GC can collect.
-      try { if (context) await context.dispose(); } catch {}
-      try { if (model) await model.dispose(); } catch {}
-      context = null;
-      model = null;
-      // Force GC if node was started with --expose-gc
-      if (typeof global.gc === 'function') { try { global.gc(); } catch {} }
-      // CUDA cleanup is async at the driver level. 1.5s is empirically what
-      // it takes for VRAM to actually free on most setups.
-      await new Promise(r => setTimeout(r, 1500));
 
+    } catch (err) {
+      try { if (context) await context.dispose(); } catch {}
+      try { if (model)   await model.dispose();   } catch {}
+      context = null; model = null;
+      if (typeof global.gc === 'function') { try { global.gc(); } catch {} }
+      await new Promise(r => setTimeout(r, 1500));
       await this._registryUpsert(modelId, {
         status: 'available',
         runtime: { loading_started_at: null, loaded_at: null, last_used_at: null,
                    total_tokens_generated: 0, total_requests: 0 }
       });
-
       await this.rm.log({
-        event_type: 'model_loaded',
-        severity: 'error',
+        event_type: 'model_loaded', severity: 'error',
         actor: { type: 'system', id: 'v2_model_service' },
         subject: { type: 'model', id: modelId },
         action: `FAILED to load ${fileName}: ${err.message}`
       });
-      
-      const isMemoryError = /context size.*too large|out of memory|VRAM|allocation|insufficient|cannot allocate/i.test(err.message);
-      const attempt = cfg._retryAttempt || 0;
-      
-      // Fallback ladder: MONOTONICALLY REDUCE both context and gpu_layers
-      // from the user's saved values. Bug we fixed: previously this would
-      // INCREASE gpu_layers from the user's value (e.g. 24 -> 28), which
-      // is worse, not better - if 24 layers OOMs, 28 layers also OOMs.
-      //
-      // Compute from user's actual config so we always step DOWN.
-      const userCtx = cfg.contextLength || config.contextLength;
-      const userGpu = cfg.gpuLayers || config.gpuLayers;
-      const baseCtx = typeof userCtx === 'number' ? userCtx : 8192;
-      const baseGpu = typeof userGpu === 'number' ? userGpu : 28;
-      
-      // Each retry: cut context in half AND drop a few gpu layers.
-      // Last attempts disable flash attention (may not be supported on this
-      // arch even if libllama says it is).
-      const fallbacks = [
-        // attempt 0 -> attempt 1: halve ctx, drop 4 gpu layers
-        {
-          contextLength: Math.max(1024, Math.floor(baseCtx / 2)),
-          gpuLayers: Math.max(8, baseGpu - 4),
-          flashAttention: true,
-          reason: `halve ctx + drop 4 gpu layers (from user: ctx=${baseCtx} gpu=${baseGpu})`
-        },
-        // attempt 1 -> attempt 2: quarter ctx, drop 8 gpu layers
-        {
-          contextLength: Math.max(1024, Math.floor(baseCtx / 4)),
-          gpuLayers: Math.max(8, baseGpu - 8),
-          flashAttention: true,
-          reason: 'quarter ctx + drop 8 gpu layers'
-        },
-        // attempt 2 -> attempt 3: same, disable flash attention
-        {
-          contextLength: Math.max(1024, Math.floor(baseCtx / 4)),
-          gpuLayers: Math.max(8, baseGpu - 8),
-          flashAttention: false,
-          reason: 'same conservative ctx/gpu WITHOUT flash attention'
-        },
-        // attempt 3 -> attempt 4: minimum viable
-        {
-          contextLength: 2048,
-          gpuLayers: Math.max(4, Math.floor(baseGpu / 2)),
-          flashAttention: false,
-          reason: 'minimum viable: ctx=2048, gpu halved, no flash'
-        }
-      ];
-      
-      if (isMemoryError && attempt < fallbacks.length) {
-        const next = fallbacks[attempt];
-        console.warn(`[V2ModelService] OOM at attempt ${attempt}. ${next.reason} (NOT persisted - your saved config is kept)`);
-        return await this.loadModel(fileName, {
-          ...cfg,
-          contextLength: next.contextLength,
-          gpuLayers: next.gpuLayers,
-          flashAttention: next.flashAttention,
-          _retryAttempt: attempt + 1
-        });
-      }
-
-      // Surface friendly error after all attempts
-      let msg = err.message;
-      if (isMemoryError) {
-        msg = `Your GPU can't fit this model even with conservative settings (tried ${attempt} fallbacks). Free VRAM: check your GPU. Options: (1) Close other GPU programs (browsers, games), (2) Use a smaller model like Llama-3.2-3B-Q4 (~2GB), (3) Try Edit Params with Context=2048 and GPU layers=10.`;
-      }
-      throw new Error(`Load failed: ${msg}`);
+      throw new Error(`Load failed: ${err.message}`);
     }
   }
 
@@ -834,7 +728,6 @@ class V2ModelService {
 
       // Reuse the same session across chats so we don't burn through sequences.
       if (!entry.session) {
-        // Build system prompt + tool definitions from the orchestrator.
         const orchestrator = this.orchestrator;
         let systemPrompt, functions;
         if (orchestrator) {
@@ -848,24 +741,40 @@ class V2ModelService {
         } else {
           systemPrompt = await this.buildPoseidonSystemPrompt();
         }
-        
-        // Pick the right chat wrapper - model-agnostic.
-        // LlamaChatSession accepts chatWrapper:'auto' which uses the model's
-        // GGUF metadata + tokenizer to pick the right template. Works for
-        // any modern model (Qwen, Llama, Mistral, DeepSeek, Gemma, etc).
-        // We pass 'auto' as the default and let node-llama-cpp do the work.
-        const sequence = entry.context.getSequence();
-        const sessionOpts = {
+
+        // Auto-slim system prompt when context is tight.
+        // Rule of thumb: system prompt should not exceed 60% of total ctx,
+        // leaving 40% for conversation. ~4 chars per token.
+        const ctxTokens   = entry.config?.contextLength || V2ModelService.MIN_VIABLE_CTX;
+        const promptTokens = Math.ceil(systemPrompt.length / 4);
+        const budgetTokens = Math.floor(ctxTokens * 0.6);
+        if (promptTokens > budgetTokens) {
+          const maxChars  = budgetTokens * 4;
+          const original  = systemPrompt.length;
+          // Hard truncate: keep first section (absolute rules) + truncation notice
+          const notice    = `
+
+[System prompt truncated from ${original} to ${maxChars} chars to fit ctx=${ctxTokens}]`;
+          systemPrompt    = systemPrompt.slice(0, maxChars - notice.length) + notice;
+          console.warn(`[V2ModelService] System prompt slimmed: ${original} → ${systemPrompt.length} chars (ctx=${ctxTokens})`);
+          // Drop function-calling if ctx is critically small
+          if (ctxTokens < 3500) {
+            console.warn(`[V2ModelService] ctx=${ctxTokens} < 3500 — disabling function-calling to save space`);
+            functions = undefined;
+          }
+        }
+
+        const sequence   = entry.context.getSequence();
+        entry.session    = new llamaCpp.LlamaChatSession({
           contextSequence: sequence,
           systemPrompt,
           chatWrapper: 'auto'
-        };
-        entry.session = new llamaCpp.LlamaChatSession(sessionOpts);
-        entry._functions = functions;
-        entry._currentSequence = sequence;
-        entry.sessionTurns = 0;
-        const detectedWrapper = entry.session.chatWrapper?.constructor?.name || 'unknown';
-        console.log(`[V2ModelService] Created fresh chat session for ${this.poseidonModelId} (${detectedWrapper}, system prompt reloaded from brain.json${functions ? `, ${Object.keys(functions).length} functions exposed` : ''})`);
+        });
+        entry._functions         = functions;
+        entry._currentSequence   = sequence;
+        entry.sessionTurns       = 0;
+        const wrapper = entry.session.chatWrapper?.constructor?.name || 'unknown';
+        console.log(`[V2ModelService] Session created for ${this.poseidonModelId} (${wrapper}, ctx=${ctxTokens}, prompt=${promptTokens}tok${functions ? `, ${Object.keys(functions).length} tools` : ', no tools (ctx too small)'})`);
       }
       const session = entry.session;
 
