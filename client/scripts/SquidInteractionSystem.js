@@ -116,19 +116,28 @@ class SquidInteractionSystem {
       }
     }
     
-    // Handle dragging squid
+    // Handle dragging squid — set position directly (no lerp lag), clamp to canvas
     if (this.draggedSquid) {
-      this.draggedSquid.targetX = pos.x - this.dragOffset.x;
-      this.draggedSquid.targetY = pos.y - this.dragOffset.y;
+      const squid  = this.draggedSquid;
+      const canvas = this.aquarium.canvas;
+      const sz     = 40 * (squid.baseSize || 1);
+      const margin = sz + 4;
+      const rawX   = pos.x - this.dragOffset.x;
+      const rawY   = pos.y - this.dragOffset.y;
+      const clampX = Math.max(margin, Math.min(canvas.width  - margin, rawX));
+      const clampY = Math.max(margin, Math.min(canvas.height - margin, rawY));
+      // Set position directly — no lerp, cursor tracks squid 1:1
+      squid.x       = clampX;
+      squid.y       = clampY;
+      squid.targetX = clampX;
+      squid.targetY = clampY;
       this.aquarium.canvas.style.cursor = 'grabbing';
       
       // Live highlight HTML temple card we're hovering over
       if (typeof ProjectsPanel !== 'undefined') {
         document.querySelectorAll('.temple-card.squid-drop-target').forEach(c => c.classList.remove('squid-drop-target'));
         const card = ProjectsPanel.findCardAtPoint(e.pageX, e.pageY);
-        if (card) {
-          ProjectsPanel.highlightDropTarget(card.projectName, true);
-        }
+        if (card) ProjectsPanel.highlightDropTarget(card.projectName, true);
       }
       return;
     }
@@ -519,46 +528,49 @@ class SquidInteractionSystem {
     squid._celebratingUntil = Date.now() + 3000;
 
     const startX = squid.x, startY = squid.y;
-    const startTime = Date.now();
-    const duration = 2800;
+    const t0      = Date.now();
+    const dur     = 2600;
 
     const step = () => {
-      const t = (Date.now() - startTime) / duration;
+      const t = (Date.now() - t0) / dur;
       if (t >= 1) {
         squid.targetX = startX; squid.targetY = startY;
         squid.jumpHeight = 0; squid.isJumping = false;
         squid._celebratingUntil = 0;
         return;
       }
-      // 4 high bounces with progressively smaller amplitude
-      const bounceCount = 4;
-      const jumpPhase = (t * bounceCount) % 1;
-      const decay = 1 - t * 0.6;
-      squid.jumpHeight = Math.sin(jumpPhase * Math.PI) * 45 * decay;
+      // 5 bounces, each one a bit lower
+      const phase = (t * 5) % 1;
+      const decay = Math.pow(1 - t, 0.6);
+      squid.jumpHeight = Math.sin(phase * Math.PI) * 55 * decay;
       squid.isJumping  = true;
-      // Wide figure-8 sway
-      squid.x = startX + Math.sin(t * Math.PI * 4) * 18;
+      // Tight spin-sway: body stays near start, quick left-right
+      squid.x       = startX + Math.sin(t * Math.PI * 8) * 12;
       squid.targetX = squid.x;
       requestAnimationFrame(step);
     };
     requestAnimationFrame(step);
 
-    // Confetti burst — colorful star/diamond particles
-    const colors = ['#FF6B9D','#FFD700','#06FFA5','#4FACFE','#FF4757','#A855F7','#FFA500','#00E5FF'];
+    // Big confetti burst — 30 particles in a full 360° explosion
+    const colors = ['#FF6B9D','#FFD700','#06FFA5','#4FACFE','#FF4757','#A855F7','#FFA500','#00E5FF','#FF69B4','#7DF9FF'];
     if (!squid._confetti) squid._confetti = [];
-    for (let i = 0; i < 18; i++) {
-      const angle = (i / 18) * Math.PI * 2 + Math.random() * 0.5;
-      const spd   = 2.5 + Math.random() * 3;
+    const N = 30;
+    for (let i = 0; i < N; i++) {
+      // Fan upward: bias angle toward top hemisphere for visual drama
+      const baseAngle = (i / N) * Math.PI * 2;
+      const angle  = baseAngle + (Math.random() - 0.5) * 0.4;
+      const spd    = 3.5 + Math.random() * 4.5;   // faster burst
       squid._confetti.push({
-        x: 0, y: -20,
+        x:  (Math.random() - 0.5) * 20,  // spread slightly around body center
+        y: -10 - Math.random() * 15,      // start just above body top
         vx: Math.cos(angle) * spd,
-        vy: Math.sin(angle) * spd - 3,
+        vy: Math.sin(angle) * spd - 4.5, // extra upward kick
         color: colors[i % colors.length],
-        shape: i % 3,  // 0=star 1=circle 2=diamond
-        life: 1.0,
-        size: 4 + Math.random() * 4,
+        shape: i % 3,
+        life: 1.0 + Math.random() * 0.3, // stagger fade-out
+        size: 5 + Math.random() * 5,
         rot: Math.random() * Math.PI * 2,
-        rotSpeed: (Math.random() - 0.5) * 0.2
+        rotSpeed: (Math.random() - 0.5) * 0.3
       });
     }
   }

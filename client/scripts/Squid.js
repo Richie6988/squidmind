@@ -863,10 +863,12 @@ class Squid {
   }
 
   _drawConfetti(ctx, p) {
+    // ctx is already translated to squid center (draw() did ctx.translate(this.x, this.y))
+    // p.x / p.y are offsets from squid center in canvas-local space
     ctx.save();
     ctx.globalAlpha = Math.max(0, p.life);
     ctx.fillStyle = p.color;
-    ctx.translate(this.x + p.x, this.y + p.y - this.jumpHeight);
+    ctx.translate(p.x, p.y);
     ctx.rotate(p.rot);
     const s = p.size;
     if (p.shape === 0) {
