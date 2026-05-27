@@ -142,12 +142,23 @@ class ImageGenerationService {
    */
   static detectModelType(fileName) {
     const lower = (fileName || '').toLowerCase();
+
+    // Known image-pipeline components (encoders, VAEs, diffusion models)
     const imageMarkers = [
+      // Diffusion models
       'stable-diffusion', 'stablediffusion', 'sd-', 'sd_',
       'flux', 'sdxl', 'sd1', 'sd2', 'sd3',
       'dreamshaper', 'animagine', 'realistic', 'anything-v',
       'waifu-diffusion', 'deliberate', 'openjourney',
       'image-gen', 'txt2img', 't2i',
+      // Encoder/decoder components — NEVER text LLMs
+      't5xxl', 't5-xxl', 't5_xxl',          // T5 text encoder for FLUX/SD3
+      'clip_l', 'clip-l', 'clip_g', 'clip-g', // CLIP encoders
+      'vae', 'ae.safetensors',               // VAEs
+      'unet', 'u-net',                       // UNet diffusion
+      'controlnet', 'control_net',           // ControlNet
+      'lora', 'locon', 'lycoris',            // LoRA adapters
+      'esrgan', 'upscal',                    // upscalers
     ];
     if (imageMarkers.some(m => lower.includes(m))) return 'image';
     return 'text';

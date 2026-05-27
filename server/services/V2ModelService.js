@@ -15,6 +15,11 @@ const fs = require('fs').promises;
 const fsSync = require('fs');
 
 class V2ModelService {
+  // Minimum context tokens needed for the Poseidon system prompt + tools + 1 turn.
+  // Derived from poseidon_brain.json size (~2800 tokens) + safety margin.
+  // Any model with trainCtx < this is an encoder / non-chat model.
+  static MIN_VIABLE_CTX = 4096;
+
   constructor(registryManager, modelsDir) {
     this.rm = registryManager;
     this.modelsDir = modelsDir;
@@ -459,10 +464,23 @@ class V2ModelService {
       model = await llama.loadModel(modelOpts);
       const trainCtx = model.trainContextSize;
       console.log(`  Model loaded. Train context size: ${trainCtx}`);
-      
-      // Refine our context estimate: never exceed the model's own training ctx
+
+      // Hard reject: if trainCtx is below minimum viable, this model can't
+      // handle the Poseidon system prompt. Unload immediately and throw.
+      if (trainCtx < V2ModelService.MIN_VIABLE_CTX) {
+        try { await model.dispose(); } catch {}
+        model = null;
+        throw new Error(
+          `Model train context (${trainCtx} tokens) is below minimum viable (${V2ModelService.MIN_VIABLE_CTX}). ` +
+          `This is not a text-generation LLM — it appears to be an encoder (T5, CLIP, VAE, etc.). ` +
+          `Use it with an image generation pipeline, not as a chat model. ` +
+          `Tag it as model_type: "image" in the library.`
+        );
+      }
+
+      // Refine: never exceed the model's own training ctx
       if (config.contextLength > trainCtx) {
-        console.warn(`  ctx ${config.contextLength} > trainCtx ${trainCtx}, clamping`);
+        console.warn(`  ctx ${config.contextLength} > trainCtx ${trainCtx}, clamping to ${trainCtx}`);
         config.contextLength = trainCtx;
       }
 
@@ -653,9 +671,31 @@ class V2ModelService {
   async setPoseidonModel(modelId) {
     this.rm.invalidateCache();
     const reg = await this.rm.read('models/model_registry.json');
-    if (!reg.models[modelId]) {
+    const entry = reg.models[modelId];
+    if (!entry) {
       throw new Error(`Model ${modelId} is not in library. Import it first.`);
     }
+
+    // Block non-text models (T5, CLIP, VAE, diffusion encoders, etc.)
+    const mtype = entry.config?.model_type || entry.model_type || 'text';
+    if (mtype === 'image') {
+      throw new Error(
+        `Cannot assign "${entry.file_name}" to Poseidon: it is tagged as an IMAGE model (encoder/diffusion). ` +
+        `Only text-generation LLMs work as Poseidon. Change the model type in the library if this is wrong.`
+      );
+    }
+
+    // Block models whose train context is too small to fit the system prompt.
+    // We detect this by loading metadata only (no full model load).
+    // Heuristic: file_size_gb < 0.8 GB with no known large-vocab text LLMs
+    // under that size → likely an encoder.
+    if (entry.file_size_gb && entry.file_size_gb < 0.8) {
+      throw new Error(
+        `Cannot assign "${entry.file_name}" to Poseidon: too small (${entry.file_size_gb} GB). ` +
+        `Text LLMs need at least ~1 GB. This looks like an encoder component (T5, CLIP, etc.).`
+      );
+    }
+
     this.poseidonModelId = modelId;
 
     const brain = await this.rm.getPoseidonBrain();
@@ -949,14 +989,24 @@ class V2ModelService {
         }).catch(() => {});
       }
     } catch (err) {
-      // If we get a sequence-related error, FULLY clean up session AND sequence
-      if (/no sequences|sequence|context/i.test(err.message)) {
+      // Catch all session/context/prompt errors and reset session state fully
+      const isSessionErr = /no sequences|sequence|context|too long|compress|prompt|system message/i.test(err.message);
+      if (isSessionErr) {
         console.warn(`[V2ModelService] Session error, resetting fully:`, err.message);
         try { if (entry.session?.dispose) await entry.session.dispose(); } catch {}
         try { if (entry._currentSequence?.dispose) entry._currentSequence.dispose(); } catch {}
         entry.session = null;
         entry._currentSequence = null;
         entry.sessionTurns = 0;
+        // Surface a friendly error if it's a context-too-small problem
+        if (/too long|compress|system message/i.test(err.message)) {
+          const ctx = entry.config?.contextLength || '?';
+          throw new Error(
+            `Model context (${ctx} tokens) is too small for the Poseidon system prompt. ` +
+            `Minimum recommended: ${V2ModelService.MIN_VIABLE_CTX} tokens. ` +
+            `Try a larger model or increase contextLength in model params.`
+          );
+        }
       }
       throw err;
     } finally {

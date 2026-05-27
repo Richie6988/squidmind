@@ -205,16 +205,21 @@ const ModelLoader = {
     
     let runtimeSection = '';
     if (m.runtime && m.runtime.loaded_at) {
+      const ctxStr = m.runtime_config?.contextLength ? ` | ctx=${m.runtime_config.contextLength}` : '';
       runtimeSection = `
         <div class="model-runtime">
           loaded ${this._timeAgo(m.runtime.loaded_at)} | last used ${this._timeAgo(m.runtime.last_used_at)}
-          | ${m.runtime.total_requests} requests | ${m.runtime.total_tokens_generated} tokens
+          | ${m.runtime.total_requests} requests | ${m.runtime.total_tokens_generated} tokens${ctxStr}
         </div>`;
     }
     
     let warningSection = '';
     if (isInvalid) {
       warningSection = `<div class="model-warning">File is not a valid .gguf (wrong magic bytes). It's likely a placeholder or corrupted. Delete it and use Browse Files or Download HF.</div>`;
+    } else if (mtype === 'image' && m.is_poseidon) {
+      warningSection = `<div class="model-warning">⚠ This model is tagged as IMAGE (encoder/diffusion component). It cannot be used as a chat model. Remove it from Poseidon and assign a text LLM instead.</div>`;
+    } else if (mtype === 'text' && m.imported && m.file_size_gb && m.file_size_gb < 0.8) {
+      warningSection = `<div class="model-warning">⚠ Very small model (${m.file_size_gb} GB) — likely an encoder component (T5, CLIP, VAE), not a text LLM. Consider tagging as Image Model.</div>`;
     }
     
     return `
