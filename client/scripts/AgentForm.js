@@ -427,8 +427,9 @@ const AgentForm = {
   _drawAccessoryPreview(canvas, key, value) {
     const ctx = canvas.getContext('2d');
     ctx.imageSmoothingEnabled = false;
-    ctx.fillStyle = '#0a2540';
+    ctx.fillStyle = '#0d1b2a';
     ctx.fillRect(0, 0, 48, 48);
+
     if (value === 'none' || !value) {
       ctx.fillStyle = '#3B4252';
       ctx.font = '10px monospace';
@@ -436,80 +437,88 @@ const AgentForm = {
       ctx.fillText('none', 24, 28);
       return;
     }
-    if (typeof SquidAccessories === 'undefined') return;
-    ctx.save();
-    ctx.translate(24, 28);
+    if (typeof Squid === 'undefined' || typeof SquidAccessories === 'undefined') return;
+
+    // Render a real mini squid with only this accessory applied
+    const app = this.brain?.appearance || {};
+    const baseAcc = {};  // only show this one accessory on the tile
+    baseAcc[key] = value;
+
+    const tempData = {
+      id: '__tile__',
+      name: '',
+      appearance: {
+        ...app,
+        accessories: baseAcc,
+        // keep body color but no other accessories
+      },
+      accessories: baseAcc,
+      status: 'idle',
+      x: 24,
+      y: 30,
+    };
+
     try {
-      const size = 28;
-      if (key === 'hat') SquidAccessories.drawHat(ctx, value, size);
-      else if (key === 'glasses') SquidAccessories.drawGlasses(ctx, value, size);
-      else if (key === 'eyes') {
-        // Eyes need a faux face to look reasonable
-        ctx.translate(0, 6);
-        SquidAccessories.drawEyes(ctx, value, size);
-      }
-      else if (key === 'outfit') {
-        ctx.translate(0, 8);
-        SquidAccessories.drawOutfit(ctx, value, size);
-      }
-    } catch (e) {
-      ctx.fillStyle = '#888';
-      ctx.font = '8px monospace';
-      ctx.textAlign = 'center';
-      ctx.fillText('?', 0, 4);
-    }
-    ctx.restore();
+      const sq = new Squid(tempData);
+      sq.animFrame    = 0;
+      sq.bobOffset    = 0;
+      sq.isSleeping   = false;
+      sq.isHovered    = false;
+      sq.alpha        = 1;
+      sq.insideTemple = null;
+      sq.jumpHeight   = 0;
+      sq.heartParticles = [];
+      sq.baseSize     = 0.42;   // tiny to fit 48px tile
+      sq.draw(ctx);
+    } catch {}
   },
 
   _updateAppearancePreview() {
     const canvas = this.modal?.querySelector('#af-preview-canvas');
     if (!canvas) return;
+    if (typeof Squid === 'undefined') return;
+
     const ctx = canvas.getContext('2d');
     ctx.imageSmoothingEnabled = false;
+
+    // Dark background
     ctx.fillStyle = '#0a2540';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
-    
-    // Build temporary squid-like object for drawing
+
+    // Build a real Squid instance from current brain appearance
     const app = this.brain.appearance || {};
-    const acc = app.accessories || {};
-    const sizeScale = app.size_scale ?? 1.0;
-    const size = 36 * sizeScale;
-    const primary = app.primary_color || '#FF6B9D';
-    const accent = app.secondary_color || '#C44569';
-    
-    ctx.save();
-    ctx.translate(canvas.width / 2, canvas.height / 2 + 5);
-    
-    // Body
-    ctx.fillStyle = primary;
-    ctx.fillRect(-size * 0.4, -size * 0.5, size * 0.8, size * 0.6);
-    // Belly
-    ctx.fillStyle = '#FFC4D6';
-    ctx.fillRect(-size * 0.3, -size * 0.1, size * 0.6, size * 0.2);
-    // Tentacles
-    for (let i = -2; i <= 2; i++) {
-      ctx.fillStyle = i % 2 === 0 ? primary : accent;
-      ctx.fillRect(i * size * 0.18 - size * 0.05, size * 0.1, size * 0.12, size * 0.4);
+    const tempData = {
+      id: '__preview__',
+      name: this.brain.display_name || 'Preview',
+      appearance: { ...app },
+      accessories: app.accessories || null,
+      // Idle state so no sleeping overlay
+      status: 'idle',
+      // Position at canvas center
+      x: canvas.width / 2,
+      y: canvas.height / 2 + 10,
+    };
+
+    try {
+      const tempSquid = new Squid(tempData);
+      // Freeze animation frame at a neutral pose (no bob/wiggle)
+      tempSquid.animFrame    = 0;
+      tempSquid.bobOffset    = 0;
+      tempSquid.isSleeping   = false;
+      tempSquid.isHovered    = false;
+      tempSquid.alpha        = 1;
+      tempSquid.insideTemple = null;
+      tempSquid.jumpHeight   = 0;
+      tempSquid.heartParticles = [];
+      // Scale up: Squid.draw uses 40*baseSize — increase baseSize for preview
+      const previewScale = 1.8;
+      tempSquid.baseSize   = tempSquid.getSizeMultiplier() * previewScale;
+
+      // draw() translates to (this.x, this.y) already
+      tempSquid.draw(ctx);
+    } catch (e) {
+      console.warn('[AgentForm] Preview draw failed:', e);
     }
-    // Eyes default
-    ctx.fillStyle = 'white';
-    ctx.fillRect(-size * 0.2, -size * 0.3, size * 0.15, size * 0.15);
-    ctx.fillRect(size * 0.05, -size * 0.3, size * 0.15, size * 0.15);
-    ctx.fillStyle = 'black';
-    ctx.fillRect(-size * 0.15, -size * 0.27, size * 0.08, size * 0.08);
-    ctx.fillRect(size * 0.1, -size * 0.27, size * 0.08, size * 0.08);
-    
-    // Apply accessories
-    if (typeof SquidAccessories !== 'undefined') {
-      try {
-        if (acc.eyes && acc.eyes !== 'round') SquidAccessories.drawEyes(ctx, acc.eyes, size);
-        if (acc.outfit && acc.outfit !== 'none') SquidAccessories.drawOutfit(ctx, acc.outfit, size);
-        if (acc.hat && acc.hat !== 'none') SquidAccessories.drawHat(ctx, acc.hat, size);
-        if (acc.glasses && acc.glasses !== 'none') SquidAccessories.drawGlasses(ctx, acc.glasses, size);
-      } catch {}
-    }
-    
-    ctx.restore();
   },
 
   // ===== TOOLS GRID =====
