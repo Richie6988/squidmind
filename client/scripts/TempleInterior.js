@@ -82,6 +82,13 @@ const TempleInterior = {
           <button class="btn-assign" onclick="TempleInterior.showSquidAssigner()">
             ➕ Assign Squids
           </button>
+          <div id="squid-assign-inline" style="display:none; margin-top:6px; display:none;">
+            <select id="temple-squid-select" style="width:100%; padding:6px; background:#0d1b2a; border:1px solid #4facfe; color:#f1faee; font-family:'Courier New',monospace; font-size:10px; border-radius:3px; margin-bottom:4px;"></select>
+            <div style="display:flex; gap:6px;">
+              <button class="btn-primary" style="flex:1; font-size:9px; padding:5px;" onclick="TempleInterior.confirmAssign()">✔ Assign</button>
+              <button class="btn-secondary" style="font-size:9px; padding:5px;" onclick="document.getElementById('squid-assign-inline').style.display='none'">✕</button>
+            </div>
+          </div>
           
           <hr class="section-divider">
           
@@ -240,7 +247,7 @@ const TempleInterior = {
         ${assignedSquids.map(squid => `
           <span class="squid-action-item">
             <span class="squid-action-name">${this._escape(squid.name)}</span>
-            <button class="btn-config-squid" onclick="TempleInterior.configureSquid('${this._escape(squid.id)}')">Edit</button>
+            <button class="btn-config-squid" onclick="window.AgentForm?.open('${this._escape(squid.id)}')">Edit</button>
             <button class="btn-config-squid btn-danger" onclick="TempleInterior.unassignSquid('${this._escape(squid.id)}')">↩ Aquarium</button>
           </span>
         `).join('')}
@@ -311,93 +318,111 @@ const TempleInterior = {
     let vy = (Math.random() - 0.5) * 0.8;
     let frame = Math.floor(Math.random() * 300);
 
+    // Stride timing — walk cycle period in frames
+    const stride = 22;
+
     const loop = () => {
       frame++;
 
-      // Random walk physics
-      vx += (Math.random() - 0.5) * 0.25;
-      vy += (Math.random() - 0.5) * 0.15;
+      // Smooth random walk: small nudges, strong speed cap, gentle deceleration
+      vx += (Math.random() - 0.5) * 0.18;
+      vy += (Math.random() - 0.5) * 0.10;
+      vx *= 0.995; vy *= 0.995; // gentle drag
       const spd = Math.sqrt(vx * vx + vy * vy);
-      if (spd > 1.5) { vx *= 1.5 / spd; vy *= 1.5 / spd; }
+      const maxSpd = 1.3;
+      if (spd > maxSpd) { vx *= maxSpd / spd; vy *= maxSpd / spd; }
+      // Ensure minimum speed so squid doesn't freeze
+      if (spd < 0.3) { vx += (Math.random() - 0.5) * 0.5; vy += (Math.random() - 0.5) * 0.3; }
       px += vx; py += vy;
-      if (px < margin)         { px = margin;         vx =  Math.abs(vx); }
-      if (px > arenaW - margin){ px = arenaW - margin; vx = -Math.abs(vx); }
-      if (py < margin)         { py = margin;         vy =  Math.abs(vy); }
-      if (py > arenaH - margin){ py = arenaH - margin; vy = -Math.abs(vy); }
+      if (px < margin)         { px = margin;         vx =  Math.abs(vx) * 0.8; }
+      if (px > arenaW - margin){ px = arenaW - margin; vx = -Math.abs(vx) * 0.8; }
+      if (py < margin)         { py = margin;         vy =  Math.abs(vy) * 0.8; }
+      if (py > arenaH - margin){ py = arenaH - margin; vy = -Math.abs(vy) * 0.8; }
 
-      // Move the div (offset so canvas center = px,py)
+      // Move the wrapper div
       walkerDiv.style.left = (px - CW / 2) + 'px';
       walkerDiv.style.top  = (py - CH / 2) + 'px';
 
       const facingRight = vx >= 0;
+      const walkPhase   = (frame / stride) * Math.PI * 2;
+      const bodyBob     = Math.sin(walkPhase * 2) * 1.8; // bob twice per stride
 
-      // Draw squid CENTERED in its small canvas
+      // Draw squid centered in canvas
       ctx.clearRect(0, 0, CW, CH);
       ctx.save();
-      ctx.translate(CW / 2, CH / 2 - 4);
+      ctx.translate(CW / 2, CH / 2 - 2 + bodyBob);
       if (!facingRight) ctx.scale(-1, 1);
 
-      // --- Body (same style as Squid.js drawBody) ---
-      const grad = ctx.createRadialGradient(0, -size * 0.3, 0, 0, 0, size);
-      grad.addColorStop(0,   brighten(primary, 1.2));
+      // --- Mantle cap (pointy top, like a real squid) ---
+      ctx.fillStyle   = darken(primary, 0.85);
+      ctx.strokeStyle = '#1a1a1a';
+      ctx.lineWidth   = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(-size * 0.55, -size * 0.35);
+      ctx.quadraticCurveTo(0, -size * 1.35, size * 0.55, -size * 0.35);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+
+      // --- Body (slightly oval, gradient) ---
+      const grad = ctx.createRadialGradient(-size * 0.15, -size * 0.2, 0, 0, 0, size);
+      grad.addColorStop(0,   brighten(primary, 1.25));
       grad.addColorStop(0.5, primary);
-      grad.addColorStop(1,   darken(primary, 0.8));
+      grad.addColorStop(1,   darken(primary, 0.75));
       ctx.fillStyle   = grad;
       ctx.strokeStyle = '#1a1a1a';
       ctx.lineWidth   = 2;
       ctx.beginPath();
-      ctx.arc(0, 0, size, 0, Math.PI * 2);
+      ctx.ellipse(0, 0, size * 0.82, size, 0, 0, Math.PI * 2);
       ctx.fill();
       ctx.stroke();
 
-      // Belly highlight
-      ctx.fillStyle = 'rgba(255,255,255,0.25)';
+      // Belly shine
+      ctx.fillStyle = 'rgba(255,255,255,0.22)';
       ctx.beginPath();
-      ctx.ellipse(-size * 0.1, 0, size * 0.5, size * 0.6, 0, 0, Math.PI * 2);
+      ctx.ellipse(-size * 0.2, -size * 0.15, size * 0.4, size * 0.55, -0.3, 0, Math.PI * 2);
       ctx.fill();
 
-      // Accent spots
-      ctx.strokeStyle = '#1a1a1a';
-      ctx.lineWidth   = 1.5;
-      ctx.fillStyle   = accent;
-      [[-size*0.35, -size*0.2, size*0.14], [size*0.3, size*0.1, size*0.11]].forEach(([x, y, r]) => {
-        ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-      });
-
-      // --- Eyes (pixel-art style) ---
+      // --- Eyes: pixel squares, pupils shift toward movement direction ---
+      const pupilShift = facingRight ? 2 : -2; // always 0 here since we flipped ctx
       ctx.fillStyle = 'white';
-      ctx.fillRect(-size * 0.38, -size * 0.38, size * 0.22, size * 0.22);
-      ctx.fillRect( size * 0.16, -size * 0.38, size * 0.22, size * 0.22);
-      ctx.fillStyle = '#1a1a1a';
-      ctx.fillRect(-size * 0.3,  -size * 0.3,  size * 0.11, size * 0.11);
-      ctx.fillRect( size * 0.24, -size * 0.3,  size * 0.11, size * 0.11);
+      ctx.fillRect(-size * 0.42, -size * 0.25, size * 0.24, size * 0.22);
+      ctx.fillRect( size * 0.18, -size * 0.25, size * 0.24, size * 0.22);
+      ctx.fillStyle = '#111';
+      ctx.fillRect(-size * 0.34 + 1, -size * 0.21, size * 0.12, size * 0.12);
+      ctx.fillRect( size * 0.26 + 1, -size * 0.21, size * 0.12, size * 0.12);
 
-      // --- Walking tentacles (legs swinging, not circular) ---
-      ctx.strokeStyle = primary;
-      ctx.lineWidth   = 2.5;
-      ctx.lineCap     = 'round';
-      const legCount  = 6;
-      for (let i = 0; i < legCount; i++) {
-        const lx    = (i - (legCount - 1) / 2) * (size * 2.0 / (legCount - 1));
-        const swing = Math.sin(frame * 0.13 + i * (Math.PI * 2 / legCount)) * 7;
+      // --- Tentacles: alternating pairs walk stride ---
+      ctx.lineCap = 'round';
+      for (let i = 0; i < 6; i++) {
+        const lx = (i - 2.5) * (size * 0.38);
+        // Even legs (0,2,4) vs odd (1,3,5) are half-phase apart → natural stride
+        const phase  = walkPhase + (i % 2 === 0 ? 0 : Math.PI);
+        const swing  = Math.sin(phase) * 6;          // fwd/back swing
+        const lift   = Math.max(0, Math.sin(phase)) * 3; // lift when swinging forward
+        const thick  = i % 2 === 0 ? 2.5 : 2.0;
+        ctx.strokeStyle = i % 3 === 0 ? accent : primary;
+        ctx.lineWidth   = thick;
         ctx.beginPath();
-        ctx.moveTo(lx, size * 0.65);
-        ctx.quadraticCurveTo(lx + swing * 0.5, size * 1.1, lx + swing, size * 1.65);
+        ctx.moveTo(lx, size * 0.72);
+        ctx.quadraticCurveTo(
+          lx + swing * 0.45, size * 1.1 - lift,
+          lx + swing * 0.8,  size * 1.6  - lift * 0.6
+        );
         ctx.stroke();
       }
 
-      // --- Accessories (hat, glasses, outfit) ---
+      // --- Accessories ---
       if (typeof SquidAccessories !== 'undefined') {
         try {
-          if (acc.eyes   && acc.eyes   !== 'round') SquidAccessories.drawEyes(ctx, acc.eyes, size);
-          if (acc.outfit && acc.outfit !== 'none')  SquidAccessories.drawOutfit(ctx, acc.outfit, size);
-          if (acc.hat    && acc.hat    !== 'none')   SquidAccessories.drawHat(ctx, acc.hat, size);
-          if (acc.glasses && acc.glasses !== 'none') SquidAccessories.drawGlasses(ctx, acc.glasses, size);
+          if (acc.eyes    && acc.eyes    !== 'round') SquidAccessories.drawEyes(ctx, acc.eyes, size);
+          if (acc.outfit  && acc.outfit  !== 'none')  SquidAccessories.drawOutfit(ctx, acc.outfit, size);
+          if (acc.hat     && acc.hat     !== 'none')  SquidAccessories.drawHat(ctx, acc.hat, size);
+          if (acc.glasses && acc.glasses !== 'none')  SquidAccessories.drawGlasses(ctx, acc.glasses, size);
         } catch {}
       }
 
       ctx.restore();
-
       TempleInterior._rafMap[squid.id] = requestAnimationFrame(loop);
     };
 
@@ -613,98 +638,51 @@ const TempleInterior = {
    * Includes name search input.
    */
   async showSquidAssigner() {
-    console.log('[SQUID] Opening squid assigner. Current temple:', this.currentTemple?.name);
-    
-    // Source 1: aquarium canvas squids (already loaded)
-    const canvasSquids = (window.aquarium?.squids || []);
-    console.log(`[SQUID assigner] Canvas has ${canvasSquids.length} squids`);
-    
+    // Collect all squids (canvas + registry)
+    const canvasSquids = window.aquarium?.squids || [];
     let allSquids = canvasSquids.map(s => ({
-      id: s.id,
-      agent_id: s.agent_id || s.id,
+      id: s.agent_id || s.id,
       name: s.name,
       specialty: s.specialty || s.role || 'general',
-      currentProject: s.currentProject || s.insideTemple || null,
-      status: s.status || 'idle'
+      currentProject: s.currentProject || s.insideTemple || null
     }));
-    
-    // Source 2: V2 agent registry (backup / source of truth - use raw fetch
-    // so we don't depend on ApiV2 wrapper having loaded)
     try {
-      const res = await fetch('/api/v2/agents');
+      const res  = await fetch('/api/v2/agents');
       const data = await res.json();
       const regAgents = Object.values(data?.registry?.agents || {});
-      console.log(`[SQUID assigner] Registry has ${regAgents.length} agents`);
-      
-      // Merge - keep canvas squids, add any registry-only ones
-      const seenIds = new Set(allSquids.map(s => s.id || s.agent_id));
-      for (const a of regAgents) {
-        const aid = a.agent_id;
-        if (!seenIds.has(aid)) {
-          allSquids.push({
-            id: aid,
-            agent_id: aid,
-            name: a.display_name || aid,
-            specialty: a.specialization || 'general',
-            currentProject: a.current_project || null,
-            status: a.status || 'sleeping'
-          });
+      const seen = new Set(allSquids.map(s => s.id));
+      regAgents.forEach(a => {
+        if (!seen.has(a.agent_id)) {
+          allSquids.push({ id: a.agent_id, name: a.display_name || a.agent_id,
+            specialty: a.specialization || 'general', currentProject: null });
         }
-      }
-    } catch (err) {
-      console.warn('[SQUID assigner] V2 registry load failed:', err.message);
-    }
-    
-    console.log(`[SQUID assigner] Final list: ${allSquids.length} squids`);
-    
-    const modal = document.createElement('div');
-    modal.className = 'modal squid-assigner-modal';
-    modal.innerHTML = `
-      <div class="modal-content" style="width:90vw; max-width:520px;">
-        <div class="modal-header">
-          <h2>Assign Squid to ${this._escape(this.currentTemple.name)}</h2>
-          <button class="btn-close" onclick="this.closest('.modal').remove()">x</button>
-        </div>
-        <div class="modal-body" style="padding:16px;">
-          <p class="hint" style="font-size:9px; color:var(--text-secondary); margin-bottom:12px;">
-            ${allSquids.length} squid${allSquids.length === 1 ? '' : 's'} available. Status shows current assignment.
-          </p>
-          <div class="squid-pick-list" id="squid-pick-list">
-            ${allSquids.length === 0
-              ? '<p style="color:#f1faee;font-size:10px;padding:8px;">No squids exist. Create one first.</p>'
-              : allSquids.map(s => {
-                  const isHere = s.currentProject === this.currentTemple.name;
-                  const elsewhere = s.currentProject && !isHere;
-                  let badge = '';
-                  if (isHere) badge = '<span class="pick-badge here">here</span>';
-                  else if (elsewhere) badge = `<span class="pick-badge busy">${this._escape(s.currentProject)}</span>`;
-                  return `<div class="squid-pick-item ${isHere ? 'disabled' : ''}" data-squid-id="${this._escape(s.id)}" onclick="TempleInterior._pickSquid(this)">
-                    <span class="pick-name">${this._escape(s.name)}</span>
-                    <span class="pick-role">${this._escape(s.specialty || 'general')}</span>
-                    ${badge}
-                  </div>`;
-                }).join('')
-            }
-          </div>
-        </div>
-        <div style="display:flex; gap:8px; justify-content:flex-end; padding:12px 16px; border-top:1px solid var(--border);">
-          <button class="btn-secondary" onclick="this.closest('.modal').remove()">Cancel</button>
-          <button class="btn-primary" id="squid-assign-confirm">Assign</button>
-        </div>
-      </div>
-    `;
-    document.body.appendChild(modal);
-    
-    // _pickSquid highlights the selection; confirm reads it
-    TempleInterior._selectedPickId = null;
-    modal.querySelector('#squid-assign-confirm').addEventListener('click', () => {
-      const squidId = TempleInterior._selectedPickId;
-      if (!squidId) { alert('Pick a squid first'); return; }
-      this.assignSquid(squidId);
-      modal.remove();
-    });
+      });
+    } catch {}
+
+    // Populate the hidden select
+    const sel = document.getElementById('temple-squid-select');
+    if (!sel) return;
+    sel.innerHTML = '<option value="">-- pick a squid --</option>' +
+      allSquids.map(s => {
+        const isHere = s.currentProject === this.currentTemple?.name;
+        const label  = s.name + ' (' + s.specialty + ')' + (isHere ? ' ✓ here' : s.currentProject ? ' @ ' + s.currentProject : '');
+        return `<option value="${this._escape(s.id)}" ${isHere ? 'disabled' : ''}>${label}</option>`;
+      }).join('');
+
+    // Show the inline panel
+    const panel = document.getElementById('squid-assign-inline');
+    if (panel) panel.style.display = 'block';
+    sel.focus();
   },
-  
+
+  confirmAssign() {
+    const sel = document.getElementById('temple-squid-select');
+    const id  = sel?.value;
+    if (!id) { alert('Pick a squid first'); return; }
+    document.getElementById('squid-assign-inline').style.display = 'none';
+    this.assignSquid(id);
+  },
+
   _pickSquid(el) {
     if (el.classList.contains('disabled')) return;
     document.querySelectorAll('.squid-pick-item.selected').forEach(e => e.classList.remove('selected'));
