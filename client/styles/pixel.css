@@ -3230,86 +3230,146 @@ button .pixel-icon {
 
 /* ========== TASK QUEUE UI ========== */
 
+/* ── Task Queue ───────────────────────────────────────────── */
 .task-queue-item {
-  background: rgba(255, 255, 255, 0.04);
+  display: flex;
+  align-items: stretch;
+  background: rgba(255,255,255,0.04);
   border-left: 3px solid var(--accent);
-  padding: 6px 8px;
-  margin: 4px 0;
-  font-size: 9px;
+  margin: 3px 0;
+  border-radius: 2px;
+  transition: background 0.1s;
+  cursor: default;
 }
 
-.task-queue-row1 {
+.task-queue-item:hover { background: rgba(255,255,255,0.07); }
+
+.task-queue-item.tq-dragging {
+  opacity: 0.45;
+  border-left-color: var(--text-secondary);
+}
+
+.task-queue-item.tq-drag-over {
+  border-left-color: #FFD700;
+  background: rgba(255,215,0,0.08);
+}
+
+.tq-drag-handle {
   display: flex;
-  gap: 6px;
   align-items: center;
+  padding: 0 5px;
+  font-size: 14px;
+  color: var(--text-secondary);
+  cursor: grab;
+  user-select: none;
+  opacity: 0.4;
+}
+.tq-drag-handle:hover { opacity: 1; }
+.tq-drag-handle:active { cursor: grabbing; }
+
+.tq-body {
+  flex: 1;
+  padding: 5px 6px 5px 2px;
+  min-width: 0;
+}
+
+.tq-row1 {
+  display: flex;
+  align-items: center;
+  gap: 5px;
   margin-bottom: 3px;
 }
 
-.task-queue-priority {
-  background: var(--ocean-mid);
-  border: 1px solid var(--border);
-  padding: 1px 4px;
+.tq-rank {
   font-size: 8px;
-  color: var(--accent);
+  color: var(--text-secondary);
   flex: 0 0 auto;
+  min-width: 16px;
 }
 
-.task-queue-title {
+.tq-title {
   flex: 1;
-  color: var(--text);
+  font-size: 9px;
+  color: var(--text-primary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.task-queue-row2 {
+.tq-cancel {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 9px;
+  padding: 0 2px;
+  line-height: 1;
+  flex: 0 0 auto;
+  opacity: 0.5;
+}
+.tq-cancel:hover { color: var(--danger); opacity: 1; }
+
+.tq-row2 {
   display: flex;
-  gap: 4px;
   align-items: center;
+  gap: 5px;
 }
 
-.task-queue-status {
+.tq-status {
   font-size: 8px;
   padding: 1px 4px;
   background: var(--ocean-deep);
   border: 1px solid var(--border);
   color: var(--text-secondary);
-}
-
-.task-queue-status.status-in_progress { color: var(--accent); border-color: var(--accent); }
-.task-queue-status.status-planned { color: var(--text-secondary); }
-.task-queue-status.status-queued { color: #FFD700; border-color: #FFD700; }
-.task-queue-status.status-blocked { color: var(--danger); border-color: var(--danger); }
-
-.task-queue-assignee {
-  font-size: 8px;
-  color: var(--text-secondary);
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  flex: 0 0 auto;
   white-space: nowrap;
 }
 
-.task-queue-btn {
-  background: var(--ocean-mid);
-  border: 1px solid var(--border);
-  color: var(--text);
+.tq-status.status-in_progress { color: var(--accent);   border-color: var(--accent); }
+.tq-status.status-queued      { color: #FFD700;          border-color: #FFD700; }
+.tq-status.status-blocked     { color: var(--danger);    border-color: var(--danger); }
+.tq-status.status-planned     { color: var(--text-secondary); }
+
+.tq-assignee {
+  flex: 1;
+  background: none;
+  border: 1px solid transparent;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 7px;
   cursor: pointer;
+  padding: 1px 4px;
+  border-radius: 2px;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: all 0.1s;
+}
+.tq-assigned   { color: var(--success); border-color: rgba(6,255,165,0.3); }
+.tq-unassigned { color: var(--text-secondary); border-style: dashed; }
+.tq-assignee:hover { background: rgba(255,255,255,0.08); border-color: var(--accent); color: var(--accent); }
+
+/* Assign picker dropdown */
+.tq-assign-picker {
+  background: var(--ocean-deep);
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  min-width: 200px;
+  max-height: 220px;
+  overflow-y: auto;
+  box-shadow: 0 6px 24px rgba(0,0,0,0.6);
+}
+
+.tq-pick-row {
+  padding: 7px 12px;
+  font-family: 'Courier New', monospace;
   font-size: 9px;
-  padding: 1px 6px;
-  font-family: monospace;
-  flex: 0 0 auto;
+  color: var(--text-primary);
+  cursor: pointer;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
 }
-
-.task-queue-btn:hover {
-  background: var(--accent);
-  color: black;
-}
-
-.task-queue-cancel:hover {
-  background: var(--danger);
-  color: white;
-}
+.tq-pick-row:hover { background: rgba(79,172,254,0.15); color: var(--accent); }
+.tq-pick-row:first-child { color: var(--text-secondary); font-style: italic; }
 
 /* ========== TEMPLE SQUID ASSIGNER (with search) ========== */
 
