@@ -5408,3 +5408,109 @@ option {
   font-family: 'Courier New', monospace;
   font-size: 8px; color: #475569;
 }
+
+/* ── PoseidonChat: Timestamps ──────────────────────────────────────────────── */
+.pc-ts {
+  font-family: 'Courier New', monospace;
+  font-size: 8px;
+  color: #334155;
+  margin-top: 4px;
+  text-align: right;
+  padding-right: 4px;
+}
+.pc-ts-ai {
+  text-align: left;
+  padding-left: 40px;  /* align under bubble (past avatar) */
+}
+
+/* ── PoseidonChat: Markdown ────────────────────────────────────────────────── */
+.pc-text-final { line-height: 1.65; }
+
+.pc-md-p {
+  margin: 0 0 8px;
+  line-height: 1.65;
+}
+.pc-md-p:last-child { margin-bottom: 0; }
+
+.pc-md-h {
+  font-family: 'Press Start 2P', monospace;
+  color: #4facfe;
+  margin: 12px 0 6px;
+  line-height: 1.4;
+}
+h2.pc-md-h { font-size: 10px; }
+h3.pc-md-h { font-size: 9px; color: #60a5fa; }
+h4.pc-md-h { font-size: 8px; color: #94a3b8; }
+
+.pc-bubble-ai strong { color: #e2e8f0; }
+.pc-bubble-ai em     { color: #a5b4fc; font-style: italic; }
+
+.pc-code-inline {
+  background: rgba(79,172,254,0.1);
+  border: 1px solid rgba(79,172,254,0.2);
+  border-radius: 3px;
+  padding: 1px 5px;
+  font-family: 'Courier New', monospace;
+  font-size: 10px;
+  color: #7dd3fc;
+  white-space: nowrap;
+}
+
+.pc-code-block {
+  background: #020810;
+  border: 1px solid rgba(79,172,254,0.15);
+  border-radius: 6px;
+  padding: 12px 14px;
+  margin: 8px 0;
+  overflow-x: auto;
+}
+.pc-code-block code {
+  font-family: 'Courier New', monospace;
+  font-size: 10px;
+  color: #a5f3fc;
+  line-height: 1.6;
+  white-space: pre;
+  display: block;
+}
+
+.pc-md-quote {
+  border-left: 3px solid rgba(79,172,254,0.4);
+  margin: 6px 0;
+  padding: 4px 10px;
+  color: #64748b;
+  font-style: italic;
+}
+
+.pc-md-ul {
+  margin: 4px 0 8px 0;
+  padding-left: 16px;
+  list-style: none;
+}
+.pc-md-ul li {
+  position: relative;
+  padding-left: 12px;
+  margin: 3px 0;
+  font-size: 11px;
+  line-height: 1.6;
+}
+.pc-md-ul li::before {
+  content: '▸';
+  position: absolute;
+  left: 0;
+  color: #4facfe;
+  font-size: 9px;
+  top: 2px;
+}
+
+.pc-md-hr {
+  border: none;
+  border-top: 1px solid rgba(255,255,255,0.08);
+  margin: 10px 0;
+}
+
+.pc-md-link {
+  color: #4facfe;
+  text-decoration: underline;
+  text-decoration-color: rgba(79,172,254,0.35);
+}
+.pc-md-link:hover { color: #7dd3fc; }

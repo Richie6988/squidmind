@@ -129,11 +129,14 @@ const PoseidonChat = {
       </div>`;
       return;
     }
-    msgs.innerHTML = this.history.map((t, i) =>
-      t.role === 'user'
-        ? `<div class="pc-msg pc-msg-user"><div class="pc-bubble-user">${this._esc(t.content)}</div></div>`
-        : `<div class="pc-msg pc-msg-ai" id="pc-msg-${i}"><div class="pc-ai-row"><div class="pc-ai-dot">🔱</div><div class="pc-bubble-ai">${this._esc(t.content)}</div></div></div>`
-    ).join('');
+    msgs.innerHTML = this.history.map((t, i) => {
+      const ts = t.ts ? `<div class="pc-ts${t.role==='assistant'?' pc-ts-ai':''}">${this._fmtTs(new Date(t.ts))}</div>` : '';
+      if (t.role === 'user') {
+        return `<div class="pc-msg pc-msg-user"><div class="pc-bubble-user">${this._esc(t.content)}</div>${ts}</div>`;
+      } else {
+        return `<div class="pc-msg pc-msg-ai" id="pc-msg-${i}"><div class="pc-ai-row"><div class="pc-ai-dot">🔱</div><div class="pc-bubble-ai pc-text-final">${this._md(t.content)}</div></div>${ts}</div>`;
+      }
+    }).join('');
     msgs.scrollTop = msgs.scrollHeight;
   },
 
@@ -145,23 +148,25 @@ const PoseidonChat = {
     if (!msg || this.currentRequest) return;
     ta.value = ''; ta.style.height = 'auto';
 
-    this.history.push({ role: 'user', content: msg });
+    const msgTs = new Date();
+    this.history.push({ role: 'user', content: msg, ts: msgTs });
     const aiIdx = this.history.length;
-    this.history.push({ role: 'assistant', content: '' });
+    const aiTs = new Date();
+    this.history.push({ role: 'assistant', content: '', ts: aiTs });
 
     // Add user bubble
     const msgs = this.modal.querySelector('#pc-messages');
     msgs.querySelector('.pc-welcome')?.remove();
     const userEl = document.createElement('div');
     userEl.className = 'pc-msg pc-msg-user';
-    userEl.innerHTML = `<div class="pc-bubble-user">${this._esc(msg)}</div>`;
+    userEl.innerHTML = `<div class="pc-bubble-user">${this._esc(msg)}</div><div class="pc-ts">${this._fmtTs(msgTs)}</div>`;
     msgs.appendChild(userEl);
 
     // Add AI placeholder
     const aiEl = document.createElement('div');
     aiEl.className = 'pc-msg pc-msg-ai';
     aiEl.id = `pc-msg-${aiIdx}`;
-    aiEl.innerHTML = `<div class="pc-ai-row"><div class="pc-ai-dot">🔱</div><div class="pc-bubble-ai" id="pc-content-${aiIdx}"></div></div>`;
+    aiEl.innerHTML = `<div class="pc-ai-row"><div class="pc-ai-dot">🔱</div><div class="pc-bubble-ai" id="pc-content-${aiIdx}"></div></div><div class="pc-ts pc-ts-ai" id="pc-ts-${aiIdx}"></div>`;
     msgs.appendChild(aiEl);
     msgs.scrollTop = msgs.scrollHeight;
 
@@ -264,6 +269,9 @@ const PoseidonChat = {
       clearTimers();
       this._setStatus('Ready', 'idle');
       this.history[aiIdx].content = fullText || '(no response)';
+      // Stamp the AI message with finish time
+      const tsEl = aiEl.querySelector(`#pc-ts-${aiIdx}`);
+      if (tsEl) tsEl.textContent = this._fmtTs(new Date());
 
     } catch (err) {
       clearTimers();
@@ -296,7 +304,7 @@ const PoseidonChat = {
       if (p.turn !== undefined) this._updateTurnCounter(p.turn, p.wipe_threshold);
       return;
     }
-    if (type === 'thinking_start') { onFirstToken(); this._startThink(el); return; }
+    if (type === 'thinking_start') { onFirstToken(); el.querySelector('.pc-loader')?.remove(); this._startThink(el); return; }
     if (type === 'thinking')       { this._appendThink(el, p.text || ''); return; }
     if (type === 'thinking_end')   { this._endThink(el); return; }
     if (type === 'tool_call') {
@@ -318,7 +326,9 @@ const PoseidonChat = {
         node.className = 'pc-text-final';
         el.appendChild(node);
       }
-      node.textContent += p.text;
+      // Store raw text, render as markdown
+      node.dataset.raw = (node.dataset.raw || '') + p.text;
+      node.innerHTML = this._md(node.dataset.raw);
     }
   },
 
@@ -406,6 +416,78 @@ const PoseidonChat = {
     if (/Model file.*missing/i.test(msg)) return 'Model file missing — re-import from Models panel.';
     if (/context.*too small/i.test(msg)) return msg;
     return msg;
+  },
+
+  _fmtTs(d) {
+    if (!d) return '';
+    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  },
+
+  // Lightweight markdown → HTML renderer
+  // Handles: code blocks, inline code, headers, bold, italic, links, lists, blockquotes, hr, br
+  _md(raw) {
+    if (!raw) return '';
+    let s = String(raw);
+
+    // Escape HTML first (for non-code parts) — we'll unescape code specially
+    const escMap = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' };
+    const safeEsc = t => t.replace(/[&<>"]/g, c => escMap[c]);
+
+    // Extract and protect fenced code blocks ``` ... ```
+    const codeBlocks = [];
+    s = s.replace(/```(\w*)[\n]?([\s\S]*?)```/g, (_, lang, code) => {
+      const idx = codeBlocks.length;
+      codeBlocks.push(`<pre class="pc-code-block"><code class="pc-code-lang-${lang || 'text'}">${safeEsc(code.trim())}</code></pre>`);
+      return ` CODE${idx} `;
+    });
+
+    // Escape remaining HTML
+    s = safeEsc(s);
+
+    // Inline code `...`
+    s = s.replace(/`([^`]+)`/g, '<code class="pc-code-inline">$1</code>');
+
+    // Headers
+    s = s.replace(/^#{3}\s+(.+)$/gm, '<h4 class="pc-md-h">$1</h4>');
+    s = s.replace(/^#{2}\s+(.+)$/gm, '<h3 class="pc-md-h">$1</h3>');
+    s = s.replace(/^#{1}\s+(.+)$/gm, '<h2 class="pc-md-h">$1</h2>');
+
+    // Bold + italic
+    s = s.replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>');
+    s = s.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+    s = s.replace(/\*(.+?)\*/g,     '<em>$1</em>');
+    s = s.replace(/_(.+?)_/g,       '<em>$1</em>');
+
+    // Links [text](url)
+    s = s.replace(/\[([^\]]+)\]\((https?:\/\/[^\)]+)\)/g, '<a class="pc-md-link" href="$2" target="_blank">$1</a>');
+
+    // Blockquote
+    s = s.replace(/^&gt;\s+(.+)$/gm, '<blockquote class="pc-md-quote">$1</blockquote>');
+
+    // HR
+    s = s.replace(/^[-*_]{3,}$/gm, '<hr class="pc-md-hr">');
+
+    // Unordered list items
+    s = s.replace(/^[\*\-]\s+(.+)$/gm, '<li>$1</li>');
+    s = s.replace(/(<li>[\s\S]*?<\/li>)+/g, m => `<ul class="pc-md-ul">${m}</ul>`);
+
+    // Numbered list items
+    s = s.replace(/^\d+\.\s+(.+)$/gm, '<li>$1</li>');
+
+    // Paragraphs: double newline → <p>, single newline → <br>
+    s = s.replace(/\n\n+/g, '</p><p class="pc-md-p">');
+    s = '<p class="pc-md-p">' + s + '</p>';
+    s = s.replace(/\n/g, '<br>');
+
+    // Restore code blocks
+    s = s.replace(/ CODE(\d+) /g, (_, i) => codeBlocks[+i]);
+
+    // Clean empty paragraphs
+    s = s.replace(/<p class="pc-md-p"><\/p>/g, '');
+    s = s.replace(/<p class="pc-md-p">(<(?:h[2-4]|ul|blockquote|hr|pre))/g, '$1');
+    s = s.replace(/(<\/(?:h[2-4]|ul|blockquote|pre)>)<\/p>/g, '$1');
+
+    return s;
   },
 
   _esc(s) {
