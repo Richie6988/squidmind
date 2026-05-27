@@ -13,6 +13,12 @@ const TempleInterior = {
   open(temple) {
     this.currentTemple = temple;
     console.log('[TEMPLE] Opening temple:', temple.name);
+
+    // Cancel any running squid walk animations from previous temple
+    if (TempleInterior._rafMap) {
+      Object.values(TempleInterior._rafMap).forEach(id => cancelAnimationFrame(id));
+      TempleInterior._rafMap = {};
+    }
     
     // Create or get interior container
     let interior = document.getElementById('temple-interior');
@@ -208,8 +214,8 @@ const TempleInterior = {
     }
     
     container.innerHTML = assignedSquids.map((squid, idx) => `
-      <div class="agent-avatar walking" data-squid-id="${this._escape(squid.id)}" style="animation-delay: ${idx * 0.3}s">
-        <canvas class="avatar-squid-canvas" data-squid-id="${this._escape(squid.id)}" width="56" height="64"></canvas>
+      <div class="agent-avatar walking" data-squid-id="${this._escape(squid.id)}">
+        <canvas class="avatar-squid-canvas" data-squid-id="${this._escape(squid.id)}" width="120" height="72"></canvas>
         <div class="avatar-name">${this._escape(squid.name)}</div>
         <div class="avatar-specialty">${this._escape(squid.specialty || squid.role || 'general')}</div>
         <div class="avatar-status">${this._escape(squid.status || 'idle')}</div>
@@ -220,63 +226,127 @@ const TempleInterior = {
       </div>
     `).join('');
     
-    // Draw each squid's pixel-art portrait on its canvas
+    // Start animated walking squid on each canvas
     setTimeout(() => {
       assignedSquids.forEach(squid => {
         const c = container.querySelector(`canvas[data-squid-id="${squid.id}"]`);
-        if (c) this._drawSquidSprite(c, squid);
+        if (c) this._animateTempleSquid(c, squid);
       });
     }, 50);
   },
   
   /**
-   * Draw a small squid pixel-art portrait on a canvas with the agent's actual
-   * appearance (color + accessories from V2 brain.appearance).
+   * Animate a walking squid on a temple canvas using the same visual style as Squid.js.
+   * The squid walks left/right, flips direction, tentacles swing like legs.
    */
-  _drawSquidSprite(canvas, squid) {
+  _animateTempleSquid(canvas, squid) {
+    // Cancel any existing animation for this squid
+    if (!TempleInterior._rafMap) TempleInterior._rafMap = {};
+    if (TempleInterior._rafMap[squid.id]) {
+      cancelAnimationFrame(TempleInterior._rafMap[squid.id]);
+      delete TempleInterior._rafMap[squid.id];
+    }
+
     const ctx = canvas.getContext('2d');
     ctx.imageSmoothingEnabled = false;
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    
-    const app = squid.appearance || {};
-    const acc = app.accessories || {};
-    const primary = app.primary_color || squid.appearance?.body_color || '#FF6B9D';
-    const accent = app.secondary_color || squid.appearance?.accent_color || '#C44569';
-    
-    ctx.save();
-    ctx.translate(canvas.width / 2, canvas.height / 2 + 4);
-    const size = 24;
-    
-    // Body
-    ctx.fillStyle = primary;
-    ctx.fillRect(-size * 0.4, -size * 0.5, size * 0.8, size * 0.6);
-    // Belly highlight
-    ctx.fillStyle = '#FFC4D6';
-    ctx.fillRect(-size * 0.3, -size * 0.1, size * 0.6, size * 0.2);
-    // Tentacles
-    for (let i = -2; i <= 2; i++) {
-      ctx.fillStyle = i % 2 === 0 ? primary : accent;
-      ctx.fillRect(i * size * 0.18 - size * 0.05, size * 0.1, size * 0.12, size * 0.4);
-    }
-    // Eyes default
-    ctx.fillStyle = 'white';
-    ctx.fillRect(-size * 0.2, -size * 0.3, size * 0.15, size * 0.15);
-    ctx.fillRect(size * 0.05, -size * 0.3, size * 0.15, size * 0.15);
-    ctx.fillStyle = 'black';
-    ctx.fillRect(-size * 0.15, -size * 0.27, size * 0.08, size * 0.08);
-    ctx.fillRect(size * 0.1, -size * 0.27, size * 0.08, size * 0.08);
-    
-    // Accessories (if available)
-    if (typeof SquidAccessories !== 'undefined') {
-      try {
-        if (acc.eyes && acc.eyes !== 'round') SquidAccessories.drawEyes(ctx, acc.eyes, size);
-        if (acc.outfit && acc.outfit !== 'none') SquidAccessories.drawOutfit(ctx, acc.outfit, size);
-        if (acc.hat && acc.hat !== 'none') SquidAccessories.drawHat(ctx, acc.hat, size);
-        if (acc.glasses && acc.glasses !== 'none') SquidAccessories.drawGlasses(ctx, acc.glasses, size);
-      } catch {}
-    }
-    
-    ctx.restore();
+
+    const W = canvas.width;   // 120
+    const H = canvas.height;  // 72
+    const size = 15;          // body radius
+
+    const app     = squid.appearance || {};
+    const acc     = app.accessories  || {};
+    const primary = app.primary_color  || app.body_color   || '#FF6B9D';
+    const accent  = app.secondary_color || app.accent_color || '#C44569';
+
+    // Inline color helpers (no Squid instance dependency)
+    const darken  = (hex, f) => { try { const r=parseInt(hex.slice(1,3),16),g=parseInt(hex.slice(3,5),16),b=parseInt(hex.slice(5,7),16); return `rgb(${Math.floor(r*f)},${Math.floor(g*f)},${Math.floor(b*f)})`; } catch { return hex; } };
+    const brighten = (hex, f) => { try { const r=Math.min(255,parseInt(hex.slice(1,3),16)*f),g=Math.min(255,parseInt(hex.slice(3,5),16)*f),b=Math.min(255,parseInt(hex.slice(5,7),16)*f); return `rgb(${Math.floor(r)},${Math.floor(g)},${Math.floor(b)})`; } catch { return hex; } };
+
+    const minX   = size + 6;
+    const maxX   = W - size - 6;
+    const groundY = H - size - 10;  // Y center of squid body
+    let frame = Math.random() * 200; // stagger squids
+
+    const loop = () => {
+      frame++;
+      ctx.clearRect(0, 0, W, H);
+
+      // Walk position: sine oscillation
+      const t = frame * 0.022;
+      const walkX  = minX + (maxX - minX) * (0.5 + 0.5 * Math.sin(t));
+      const bob    = Math.sin(frame * 0.09) * 2.5;
+      const facingRight = Math.cos(t) >= 0;
+
+      ctx.save();
+      ctx.translate(walkX, groundY + bob);
+      if (!facingRight) ctx.scale(-1, 1); // flip sprite
+
+      // --- Body (same style as Squid.js drawBody) ---
+      const grad = ctx.createRadialGradient(0, -size * 0.3, 0, 0, 0, size);
+      grad.addColorStop(0,   brighten(primary, 1.2));
+      grad.addColorStop(0.5, primary);
+      grad.addColorStop(1,   darken(primary, 0.8));
+      ctx.fillStyle   = grad;
+      ctx.strokeStyle = '#1a1a1a';
+      ctx.lineWidth   = 2;
+      ctx.beginPath();
+      ctx.arc(0, 0, size, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+
+      // Belly highlight
+      ctx.fillStyle = 'rgba(255,255,255,0.25)';
+      ctx.beginPath();
+      ctx.ellipse(-size * 0.1, 0, size * 0.5, size * 0.6, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Accent spots
+      ctx.strokeStyle = '#1a1a1a';
+      ctx.lineWidth   = 1.5;
+      ctx.fillStyle   = accent;
+      [[-size*0.35, -size*0.2, size*0.14], [size*0.3, size*0.1, size*0.11]].forEach(([x, y, r]) => {
+        ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      });
+
+      // --- Eyes (pixel-art style) ---
+      ctx.fillStyle = 'white';
+      ctx.fillRect(-size * 0.38, -size * 0.38, size * 0.22, size * 0.22);
+      ctx.fillRect( size * 0.16, -size * 0.38, size * 0.22, size * 0.22);
+      ctx.fillStyle = '#1a1a1a';
+      ctx.fillRect(-size * 0.3,  -size * 0.3,  size * 0.11, size * 0.11);
+      ctx.fillRect( size * 0.24, -size * 0.3,  size * 0.11, size * 0.11);
+
+      // --- Walking tentacles (legs swinging, not circular) ---
+      ctx.strokeStyle = primary;
+      ctx.lineWidth   = 2.5;
+      ctx.lineCap     = 'round';
+      const legCount  = 6;
+      for (let i = 0; i < legCount; i++) {
+        const lx    = (i - (legCount - 1) / 2) * (size * 2.0 / (legCount - 1));
+        const swing = Math.sin(frame * 0.13 + i * (Math.PI * 2 / legCount)) * 7;
+        ctx.beginPath();
+        ctx.moveTo(lx, size * 0.65);
+        ctx.quadraticCurveTo(lx + swing * 0.5, size * 1.1, lx + swing, size * 1.65);
+        ctx.stroke();
+      }
+
+      // --- Accessories (hat, glasses, outfit) ---
+      if (typeof SquidAccessories !== 'undefined') {
+        try {
+          if (acc.eyes   && acc.eyes   !== 'round') SquidAccessories.drawEyes(ctx, acc.eyes, size);
+          if (acc.outfit && acc.outfit !== 'none')  SquidAccessories.drawOutfit(ctx, acc.outfit, size);
+          if (acc.hat    && acc.hat    !== 'none')   SquidAccessories.drawHat(ctx, acc.hat, size);
+          if (acc.glasses && acc.glasses !== 'none') SquidAccessories.drawGlasses(ctx, acc.glasses, size);
+        } catch {}
+      }
+
+      ctx.restore();
+
+      TempleInterior._rafMap[squid.id] = requestAnimationFrame(loop);
+    };
+
+    TempleInterior._rafMap[squid.id] = requestAnimationFrame(loop);
   },
   
   /**

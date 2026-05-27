@@ -4382,17 +4382,10 @@ button .pixel-icon {
 }
 
 .avatar-squid-canvas {
-  width: 56px;
-  height: 64px;
+  width: 120px;
+  height: 72px;
   image-rendering: pixelated;
-  animation: squidWalkBob 1.4s ease-in-out infinite;
-}
-
-@keyframes squidWalkBob {
-  0%, 100% { transform: translateY(0) translateX(0); }
-  25% { transform: translateY(-3px) translateX(-2px); }
-  50% { transform: translateY(0) translateX(0); }
-  75% { transform: translateY(-3px) translateX(2px); }
+  display: block;
 }
 
 .avatar-name {
