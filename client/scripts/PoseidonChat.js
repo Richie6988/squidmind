@@ -173,14 +173,43 @@ const PoseidonChat = {
 
     // Loading indicator
     let firstToken = false;
-    contentEl.innerHTML = `<div class="pc-typing"><span></span><span></span><span></span></div>`;
-    this._setStatus('Contacting model...', 'loading');
+    const startMs = Date.now();
 
-    const timers = [
-      setTimeout(() => { if (!firstToken) this._setStatus('Loading model into memory...', 'loading'); }, 3000),
-      setTimeout(() => { if (!firstToken) this._setStatus('Still loading (large model)...', 'loading'); }, 20000),
+    // Animated loader card inside the bubble
+    contentEl.innerHTML = `<div class="pc-loader" id="pc-loader-active">
+      <div class="pc-loader-ring"></div>
+      <div class="pc-loader-text">
+        <span class="pc-loader-msg" id="pc-loader-msg">Connecting to Poseidon…</span>
+        <span class="pc-loader-elapsed" id="pc-loader-elapsed">0s</span>
+      </div>
+    </div>`;
+    this._setStatus('Connecting...', 'loading');
+
+    // Elapsed timer
+    const elapsedTimer = setInterval(() => {
+      const el = contentEl.querySelector('#pc-loader-elapsed');
+      if (el) el.textContent = Math.floor((Date.now() - startMs) / 1000) + 's';
+    }, 1000);
+
+    // Progressive status messages
+    const statusSeq = [
+      [800,  'Sending to model…'],
+      [3000, 'Loading model into VRAM…'],
+      [12000,'Still loading — large model, please wait…'],
+      [40000,'Taking longer than usual. Model may be loading from disk…'],
     ];
-    const clearTimers = () => timers.forEach(clearTimeout);
+    const timers = statusSeq.map(([delay, msg]) =>
+      setTimeout(() => {
+        if (firstToken) return;
+        const el = contentEl.querySelector('#pc-loader-msg');
+        if (el) el.textContent = msg;
+        this._setStatus(msg, 'loading');
+      }, delay)
+    );
+    const clearTimers = () => {
+      timers.forEach(clearTimeout);
+      clearInterval(elapsedTimer);
+    };
 
     let fullText = '';
 
@@ -222,8 +251,8 @@ const PoseidonChat = {
               if (!firstToken) {
                 firstToken = true;
                 clearTimers();
-                contentEl.querySelector('.pc-typing')?.remove();
-                this._setStatus('Generating...', 'generating');
+                contentEl.querySelector('.pc-loader')?.remove();
+                this._setStatus('Generating…', 'generating');
               }
               fullText += (evType === 'message' || evType === 'text') ? (p.text || '') : '';
             });

@@ -76,7 +76,7 @@ const ModelLoader = {
               <p style="font-size:9px; color:var(--text-secondary); margin-bottom:6px;">Or paste the full path directly:</p>
               <div style="display:flex; gap:6px;">
                 <input id="ml-browse-path" type="text" placeholder="/home/user/models/mymodel.gguf or C:\Models\model.gguf"
-                  style="flex:1; background:var(--ocean-mid); border:1px solid var(--border); color:var(--text-primary); font-size:9px; padding:6px; border-radius:3px;">
+                  style="flex:1;">
                 <button class="btn-primary" onclick="ModelLoader._importFromPathInput()">Import</button>
               </div>
             </div>
