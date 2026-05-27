@@ -250,7 +250,7 @@ ui.createNewProject = async function() {
   const colorInside = document.getElementById('new-project-color-inside').value;
   
   if (!name) {
-    alert('Project name is required!');
+    await SquidModal.alert('Project name is required!');
     return;
   }
   
@@ -271,7 +271,7 @@ ui.createNewProject = async function() {
     const data = await response.json();
     
     if (data.success) {
-      alert(`[OK] Project "${name}" created successfully!`);
+      await SquidModal.alert(`[OK] Project "${name}" created successfully!`);
       this.closeNewProjectModal();
       
       // Refresh canvas temples (legacy)
@@ -288,11 +288,11 @@ ui.createNewProject = async function() {
       document.getElementById('new-project-name').value = '';
       document.getElementById('new-project-vision').value = '';
     } else {
-      alert('Failed to create project: ' + data.error);
+      await SquidModal.alert('Failed to create project: ' + data.error);
     }
   } catch (error) {
     console.error('[ERROR] Create project error:', error);
-    alert('Error creating project: ' + error.message);
+    await SquidModal.alert('Error creating project: ' + error.message);
   }
 };
 
@@ -305,7 +305,7 @@ ui.openSquidDetailModal = function(squid) {
   if (typeof AgentForm !== 'undefined' && squid?.id) {
     AgentForm.open(squid.id).catch(err => {
       console.error('AgentForm.open failed:', err);
-      alert('Could not open agent: ' + err.message);
+      await SquidModal.alert('Could not open agent: ' + err.message);
     });
     return;
   }
@@ -317,7 +317,7 @@ console.log('[OK] UI module with modals loaded');
 // Old file browser removed - use ModelLoader.open() for V2 library workflow
 ui.openFileBrowser = function() {
   if (typeof ModelLoader !== 'undefined') ModelLoader.open();
-  else alert('ModelLoader not loaded yet');
+  else await SquidModal.alert('ModelLoader not loaded yet');
 };
 console.log('[OK] ui.openFileBrowser redirects to ModelLoader');
 

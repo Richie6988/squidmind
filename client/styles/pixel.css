@@ -69,7 +69,7 @@ h1 {
 #api-status {
   color: var(--success);
   font-size: 14px;
-  animation: pulse 2s infinite;
+  /* No animation - clean dot */
 }
 
 @keyframes pulse {
@@ -945,6 +945,7 @@ input[type="color"]::-webkit-color-swatch {
 }
 
 .stat-item {
+  cursor: help;
   display: flex;
   justify-content: space-between;
   padding: 8px;
@@ -1395,6 +1396,7 @@ input[type="color"]::-webkit-color-swatch {
 
 /* System Monitor stat bars */
 .stat-item {
+  cursor: help;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -2725,6 +2727,7 @@ input[type="color"]::-webkit-color-swatch {
 }
 
 .stat-item {
+  cursor: help;
   margin: 6px 0;
 }
 
@@ -3072,6 +3075,10 @@ button .pixel-icon {
 
 
 /* ========== AGENT FORM (USER-FRIENDLY, NO JSON) ========== */
+
+.agent-form-modal {
+  z-index: 20000 !important;  /* above temple-interior (9999) */
+}
 
 .agent-form-modal .agent-form-content {
   width: 90vw;
@@ -4637,3 +4644,29 @@ option {
 
 .pick-badge.here  { background: rgba(6,255,165,0.2); color: #06ffa5; }
 .pick-badge.busy  { background: rgba(255,165,0,0.2); color: #ffa500; }
+
+/* ===== SquidModal: styled alert/confirm replacing browser dialogs ===== */
+.squid-modal-box {
+  background: var(--ocean-deep, #0d1b2a);
+  border: 2px solid var(--accent, #4facfe);
+  border-radius: 6px;
+  padding: 24px;
+  min-width: 280px;
+  max-width: 420px;
+  box-shadow: 0 8px 40px rgba(0,0,0,0.7), 0 0 24px rgba(79,172,254,0.2);
+  font-family: 'Press Start 2P', monospace;
+}
+
+.squid-modal-msg {
+  font-size: 10px;
+  color: var(--text-primary, #f1faee);
+  line-height: 1.7;
+  margin: 0 0 20px;
+  white-space: pre-wrap;
+}
+
+.squid-modal-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}

@@ -116,11 +116,12 @@ const Scheduler = {
   
   _renderList() {
     const el = this.modal.querySelector('#scheduler-list');
+    // Show active schedules as a compact list without section header
     if (this.schedules.length === 0) {
-      el.innerHTML = '<p style="font-size:9px; color:var(--text-secondary);">No scheduled tasks yet.</p>';
+      el.innerHTML = '';
       return;
     }
-    el.innerHTML = '<h3 style="font-size:11px; color:var(--accent); margin-bottom:10px;">Active Schedules</h3>' + this.schedules.map(t => `
+    el.innerHTML = this.schedules.map(t => `
       <div class="task-queue-item">
         <div class="task-queue-row1">
           <strong>${this._esc(t.title)}</strong>
@@ -194,7 +195,7 @@ const Scheduler = {
   },
   
   async cancel(taskId) {
-    if (!confirm('Remove this scheduled task?')) return;
+    if (!await SquidModal.confirm('Remove this scheduled task?')) return;
     try {
       await window.ApiV2._fetch('/field', {
         method: 'PATCH',
@@ -206,7 +207,7 @@ const Scheduler = {
         })
       });
       await this._refresh();
-    } catch (err) { alert('Cancel failed: ' + err.message); }
+    } catch (err) { await SquidModal.alert('Cancel failed: ' + err.message); }
   },
   
   close() { if (this.modal) this.modal.classList.add('hidden'); },

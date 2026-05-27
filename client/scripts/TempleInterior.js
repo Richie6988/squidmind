@@ -688,10 +688,10 @@ const TempleInterior = {
     setTimeout(() => document.addEventListener('click', onOutside, true), 100);
   },
 
-  confirmAssign() {
+  async confirmAssign() {
     const sel = document.getElementById('temple-squid-select');
     const id  = sel?.value;
-    if (!id) { alert('Pick a squid first'); return; }
+    if (!id) { await SquidModal.alert('Pick a squid first'); return; }
     document.getElementById('squid-assign-inline').style.display = 'none';
     this.assignSquid(id);
   },
@@ -904,7 +904,7 @@ const TempleInterior = {
    */
   saveFile() {
     if (!this.currentFile) {
-      alert('No file open');
+      await SquidModal.alert('No file open');
       return;
     }
     
@@ -912,7 +912,7 @@ const TempleInterior = {
     console.log('💾 Saving file:', this.currentFile.filename);
     
     // TODO: Implement save endpoint
-    alert('Save functionality coming soon!\nFile: ' + this.currentFile.filename);
+    await SquidModal.alert('Save functionality coming soon!\nFile: ' + this.currentFile.filename);
   },
   
   /**
@@ -948,7 +948,7 @@ const TempleInterior = {
   async unassignSquid(squidId) {
     console.log('[SQUID] Sending', squidId, 'back to aquarium from', this.currentTemple?.name);
     
-    if (!confirm('Send this squid back to the aquarium? They will leave this temple.')) return;
+    if (!await SquidModal.confirm('Send this squid back to the aquarium? They will leave this temple.')) return;
     
     // Update canvas squid (if present)
     const squid = window.aquarium?.squids.find(s => s.id === squidId);
@@ -1023,11 +1023,11 @@ const TempleInterior = {
     console.log('➕ REALLY assigning squid:', squidId, 'to', this.currentTemple.name);
     
     const squid = window.aquarium?.squids.find(s => s.id === squidId);
-    if (!squid) { alert('Squid not found!'); return; }
+    if (!squid) { await SquidModal.alert('Squid not found!'); return; }
     
     const projectId   = this.currentTemple.project_id;
     const projectName = this.currentTemple.name;
-    if (!projectId) { alert('No project_id on this temple.'); return; }
+    if (!projectId) { await SquidModal.alert('No project_id on this temple.'); return; }
     
     try {
       // Read current assigned_agents from project registry
@@ -1063,16 +1063,16 @@ const TempleInterior = {
       if (typeof ProjectsPanel !== 'undefined') ProjectsPanel.refresh();
     } catch (err) {
       console.error('Failed to assign squid:', err);
-      alert('[ERROR] ' + err.message);
+      await SquidModal.alert('[ERROR] ' + err.message);
     }
   },
   
   /**
    * Save squid configuration
    */
-  saveSquidConfig(squidId) {
+  async saveSquidConfig(squidId) {
     console.log('💾 Saving squid config:', squidId);
-    alert('Configuration saved!');
+    await SquidModal.alert('Configuration saved!');
     document.querySelector('.squid-config-modal')?.remove();
   },
   
@@ -1086,12 +1086,12 @@ const TempleInterior = {
     const preview = document.getElementById('cron-preview')?.textContent;
     
     if (!name || !desc) {
-      alert('Please fill in task name and description');
+      await SquidModal.alert('Please fill in task name and description');
       return;
     }
     
     if (!expression || expression === '') {
-      alert('Invalid cron expression');
+      await SquidModal.alert('Invalid cron expression');
       return;
     }
     
@@ -1103,7 +1103,7 @@ const TempleInterior = {
     const projectName = this.currentTemple.name;
     
     if (!projectId) {
-      alert(`Cannot save: no project_id on temple "${projectName}". Try closing and re-opening the temple.`);
+      await SquidModal.alert(`Cannot save: no project_id on temple "${projectName}". Try closing and re-opening the temple.`);
       console.warn('[TempleInterior] saveCronTask: missing project_id', this.currentTemple);
       return;
     }
@@ -1127,14 +1127,14 @@ const TempleInterior = {
       });
       
       console.log('[OK] Cron task saved:', res);
-      alert(`[OK] Task "${name}" created and scheduled: ${preview}`);
+      await SquidModal.alert(`[OK] Task "${name}" created and scheduled: ${preview}`);
       
       // Refresh the temple's task display
       this.populateCronTasks(this.currentTemple);
       this.closeCronBuilder();
     } catch (err) {
       console.error('[TempleInterior] saveCronTask failed:', err);
-      alert(`Failed to save task: ${err.message}`);
+      await SquidModal.alert(`Failed to save task: ${err.message}`);
     }
   }
 };
@@ -1169,11 +1169,11 @@ TempleInterior.openProjectMemory = async function() {
       
       console.log('[OK] Loaded real project_memory.json');
     } else {
-      alert('Failed to load memory: ' + data.error);
+      await SquidModal.alert('Failed to load memory: ' + data.error);
     }
   } catch (error) {
     console.error('Error loading memory:', error);
-    alert('Error loading memory: ' + error.message);
+    await SquidModal.alert('Error loading memory: ' + error.message);
   }
 };
 
@@ -1208,18 +1208,18 @@ TempleInterior.customizeColors = function() {
     if (data.success) {
       // Update local temple
       this.currentTemple.colors = { outside: outsideColor, inside: insideColor };
-      alert(`[OK] Temple colors updated!\n\nOutside: ${outsideColor}\nInside: ${insideColor}`);
+      await SquidModal.alert(`[OK] Temple colors updated!\n\nOutside: ${outsideColor}\nInside: ${insideColor}`);
       
       // Refresh aquarium to show new colors
       if (window.aquarium && window.aquarium.loadTemples) {
         window.aquarium.loadTemples();
       }
     } else {
-      alert('[ERROR] Failed to update colors: ' + data.error);
+      await SquidModal.alert('[ERROR] Failed to update colors: ' + data.error);
     }
   })
   .catch(error => {
-    alert('[ERROR] Error: ' + error.message);
+    await SquidModal.alert('[ERROR] Error: ' + error.message);
   });
 };
 

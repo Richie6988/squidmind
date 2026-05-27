@@ -92,22 +92,22 @@
         <div class="monitor-section">
           <h3>Resources</h3>
           <div id="monitor-system-stats">
-            <div class="stat-item">
-              <span class="stat-label">CPU</span>
+            <div class="stat-item" title="CPU — Central Processing Unit. Shows what % of your processor is being used by all running programs.">
+              <span class="stat-label">CPU ❓</span>
               <div class="stat-bar">
                 <div id="monitor-cpu-bar" class="stat-fill"></div>
               </div>
               <span id="monitor-cpu-value" class="stat-value">--</span>
             </div>
-            <div class="stat-item">
-              <span class="stat-label">RAM</span>
+            <div class="stat-item" title="RAM — Random Access Memory. Your system's working memory. High usage can slow down the server.">
+              <span class="stat-label">RAM ❓</span>
               <div class="stat-bar">
                 <div id="monitor-mem-bar" class="stat-fill"></div>
               </div>
               <span id="monitor-mem-value" class="stat-value">--</span>
             </div>
-            <div class="stat-item">
-              <span class="stat-label">VRAM</span>
+            <div class="stat-item" title="VRAM — Video RAM. Memory on your GPU, used to hold AI model weights. Too full = model won't load.">
+              <span class="stat-label">VRAM ❓</span>
               <div class="stat-bar">
                 <div id="monitor-vram-bar" class="stat-fill"></div>
               </div>
@@ -137,9 +137,7 @@
           <div id="task-queue" style="max-height: 280px; overflow-y: auto;">
             <p class="hint" style="font-size: 9px; color: var(--text-secondary);">Loading...</p>
           </div>
-          <button class="btn-secondary" onclick="TaskQueueUI.addTask()" style="width: 100%; margin-top: 8px; font-size: 9px;">
-            + Add Task
-          </button>
+
         </div>
         
         <!-- Scheduler (create recurring tasks without Poseidon) -->
@@ -196,6 +194,7 @@
   </div>
 
   <!-- Scripts - ui.js MUST load FIRST! -->
+  <script src="scripts/SquidModal.js"></script>
   <script src="scripts/ui.js"></script>
   <script src="scripts/api.js"></script>
   <script src="scripts/api_v2.js"></script>

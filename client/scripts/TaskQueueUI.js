@@ -110,7 +110,7 @@ const TaskQueueUI = {
     document.body.appendChild(dialog);
     dialog.querySelector('#tq-create').addEventListener('click', async () => {
       const title = dialog.querySelector('#tq-title').value.trim();
-      if (!title) { alert('Title is required'); return; }
+      if (!title) { await SquidModal.alert('Title is required'); return; }
       try {
         await window.ApiV2.tasks.create({
           title,
@@ -125,13 +125,13 @@ const TaskQueueUI = {
         dialog.remove();
         this._render();
       } catch (err) {
-        alert('Failed to create task: ' + err.message);
+        await SquidModal.alert('Failed to create task: ' + err.message);
       }
     });
   },
 
   async cancelTask(taskId) {
-    if (!confirm(`Cancel task ${taskId}?`)) return;
+    if (!await SquidModal.confirm(`Cancel task ${taskId}?`)) return;
     try {
       const tasks = (await window.ApiV2.tasks.list()).registry.tasks;
       const task = tasks[taskId];
@@ -161,7 +161,7 @@ const TaskQueueUI = {
       }
       this._render();
     } catch (err) {
-      alert('Failed to cancel: ' + err.message);
+      await SquidModal.alert('Failed to cancel: ' + err.message);
     }
   },
 
@@ -205,7 +205,7 @@ const TaskQueueUI = {
       
       this._render();
     } catch (err) {
-      alert('Failed: ' + err.message);
+      await SquidModal.alert('Failed: ' + err.message);
     }
   },
 

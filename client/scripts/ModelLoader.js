@@ -412,32 +412,32 @@ const ModelLoader = {
       await window.ApiV2._fetch(`/models/${modelId}/assign-poseidon`, { method: 'POST' });
       await this._refresh();
     } catch (err) {
-      alert('Assignment failed: ' + err.message);
+      await SquidModal.alert('Assignment failed: ' + err.message);
     }
   },
   
   async unload(modelId) {
-    if (!confirm(`Unload ${modelId} from memory? (will auto-reload on next request)`)) return;
+    if (!await SquidModal.confirm(`Unload ${modelId} from memory? (will auto-reload on next request)`)) return;
     try {
       await window.ApiV2._fetch(`/models/${modelId}/unload`, { method: 'POST' });
       await this._refresh();
     } catch (err) {
-      alert('Unload failed: ' + err.message);
+      await SquidModal.alert('Unload failed: ' + err.message);
     }
   },
   
   async remove(modelId) {
-    if (!confirm(`Remove ${modelId} from library? (file on disk is kept)`)) return;
+    if (!await SquidModal.confirm(`Remove ${modelId} from library? (file on disk is kept)`)) return;
     try {
       await window.ApiV2._fetch(`/models/${modelId}`, { method: 'DELETE' });
       await this._refresh();
     } catch (err) {
-      alert('Remove failed: ' + err.message);
+      await SquidModal.alert('Remove failed: ' + err.message);
     }
   },
   
   async removeFile(fileName) {
-    if (!confirm(`DELETE the file ${fileName} from disk? This cannot be undone.`)) return;
+    if (!await SquidModal.confirm(`DELETE the file ${fileName} from disk? This cannot be undone.`)) return;
     try {
       await window.ApiV2._fetch('/models/delete-file', {
         method: 'POST',
@@ -445,7 +445,7 @@ const ModelLoader = {
       });
       await this._refresh();
     } catch (err) {
-      alert('Delete failed: ' + err.message);
+      await SquidModal.alert('Delete failed: ' + err.message);
     }
   },
   
@@ -523,11 +523,11 @@ const ModelLoader = {
           offloadKqvToGpu: false, randomSeed: true, autoUnloadIdleMinutes: 15
         })
       });
-      alert(`Added "${sourcePath.split('/').pop()}" to library. Switch to Library tab.`);
+      await SquidModal.alert(`Added "${sourcePath.split('/').pop()}" to library. Switch to Library tab.`);
       await this._refresh();
       this._switchTab('library');
     } catch (err) {
-      alert('Import failed: ' + err.message);
+      await SquidModal.alert('Import failed: ' + err.message);
     }
   },
   
@@ -538,7 +538,7 @@ const ModelLoader = {
   async _startDownload() {
     const url = this.modal.querySelector('#ml-dl-url').value.trim();
     const fileName = this.modal.querySelector('#ml-dl-name').value.trim() || null;
-    if (!url) { alert('URL required'); return; }
+    if (!url) { await SquidModal.alert('URL required'); return; }
     
     try {
       const res = await window.ApiV2._fetch('/models/download', {
@@ -554,7 +554,7 @@ const ModelLoader = {
         this._downloadPollInterval = setInterval(() => this._refreshDownloads(), 1500);
       }
     } catch (err) {
-      alert('Download failed: ' + err.message);
+      await SquidModal.alert('Download failed: ' + err.message);
     }
   },
   

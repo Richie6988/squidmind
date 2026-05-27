@@ -69,12 +69,13 @@ const ControlTowerLive = {
   },
   
   _renderSquad(registry) {
-    const meta = registry.metadata || {};
     const agents = registry.agents || {};
-    const total = meta.total_ever_created || Object.keys(agents).length;
-    const active = meta.total_active || 0;
-    const sleeping = meta.total_sleeping || 0;
-    const working = Object.values(agents).filter(a => a.current_task_id).length;
+    const agentList = Object.values(agents);
+    // Count from actual registry entries (not stale metadata counters)
+    const total    = agentList.length;
+    const active   = agentList.filter(a => a.status === 'active').length;
+    const sleeping = agentList.filter(a => a.status === 'sleeping').length;
+    const working  = agentList.filter(a => a.current_task_id).length;
     
     const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
     set('monitor-total-squids', total);

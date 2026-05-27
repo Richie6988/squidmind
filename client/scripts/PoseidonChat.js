@@ -270,14 +270,14 @@ const PoseidonChat = {
   },
   
   async resetConversation() {
-    if (!confirm('Clear conversation history? (Keeps model loaded)')) return;
+    if (!await SquidModal.confirm('Clear conversation history? (Keeps model loaded)')) return;
     try {
       await fetch('/api/v2/poseidon/reset-session', { method: 'POST' });
       this.history = [];
       const messagesEl = this.modal.querySelector('#poseidon-chat-messages');
       if (messagesEl) messagesEl.innerHTML = '<div class="poseidon-msg system">Conversation reset.</div>';
     } catch (err) {
-      alert('Reset failed: ' + err.message);
+      await SquidModal.alert('Reset failed: ' + err.message);
     }
   },
   
