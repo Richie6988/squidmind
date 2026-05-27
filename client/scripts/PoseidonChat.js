@@ -217,14 +217,22 @@ const PoseidonChat = {
             } else if (eventType === 'tool_result') {
               this._appendToolResult(textEl, payload.name, payload.ok, payload.summary, payload.duration_ms);
               this.modal.querySelector('#poseidon-chat-messages').scrollTop = 999999;
-            } else {
-              // text chunk - clear loading indicator on first token
+            } else if (eventType === 'thinking_start') {
+              if (!firstTokenReceived) { firstTokenReceived = true; clearStatusTimers(); }
+              this._startThinkingBlock(textEl);
+              this.modal.querySelector('#poseidon-chat-messages').scrollTop = 999999;
+            } else if (eventType === 'thinking') {
               if (payload.text) {
-                if (!firstTokenReceived) {
-                  firstTokenReceived = true;
-                  clearStatusTimers();
-                  // Don't wipe existing tool-call bubbles - just append text after them
-                }
+                this._appendThinkingChunk(textEl, payload.text);
+                this.modal.querySelector('#poseidon-chat-messages').scrollTop = 999999;
+              }
+            } else if (eventType === 'thinking_end') {
+              this._endThinkingBlock(textEl);
+              this.modal.querySelector('#poseidon-chat-messages').scrollTop = 999999;
+            } else {
+              // text chunk
+              if (payload.text) {
+                if (!firstTokenReceived) { firstTokenReceived = true; clearStatusTimers(); }
                 fullText += payload.text;
                 let textNode = textEl.querySelector('.chat-text-final');
                 if (!textNode) {
@@ -361,6 +369,47 @@ const PoseidonChat = {
     }
   },
   
+  // ── Thinking block (LM Studio style) ─────────────────────────────────────
+
+  _startThinkingBlock(textEl) {
+    // Remove any existing block (fresh turn)
+    textEl.querySelector('.chat-think-block')?.remove();
+    const block = document.createElement('div');
+    block.className = 'chat-think-block chat-think-streaming';
+    block.innerHTML = `
+      <button class="chat-think-toggle" onclick="this.closest('.chat-think-block').classList.toggle('chat-think-collapsed')">
+        <span class="chat-think-icon">🧠</span>
+        <span class="chat-think-label">Thinking<span class="chat-think-dots"><span>.</span><span>.</span><span>.</span></span></span>
+        <span class="chat-think-chevron">▾</span>
+      </button>
+      <div class="chat-think-body"></div>
+    `;
+    textEl.insertBefore(block, textEl.querySelector('.chat-text-final') || null);
+    this._thinkText = '';
+  },
+
+  _appendThinkingChunk(textEl, chunk) {
+    const body = textEl.querySelector('.chat-think-body');
+    if (!body) return;
+    this._thinkText = (this._thinkText || '') + chunk;
+    body.textContent = this._thinkText;
+  },
+
+  _endThinkingBlock(textEl) {
+    const block = textEl.querySelector('.chat-think-block');
+    if (!block) return;
+    // Stop streaming animation
+    block.classList.remove('chat-think-streaming');
+    // Update label with token count estimate
+    const chars = (this._thinkText || '').length;
+    const toks  = Math.round(chars / 4);
+    const label = block.querySelector('.chat-think-label');
+    if (label) label.innerHTML = `Thought for ~${toks} tokens <span class="chat-think-chevron-inline">▾</span>`;
+    // Auto-collapse after a short delay so user sees it existed
+    setTimeout(() => block.classList.add('chat-think-collapsed'), 800);
+    this._thinkText = '';
+  },
+
   _escape(s) {
     if (!s) return '';
     return String(s).replace(/[<>&"]/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' })[c]);

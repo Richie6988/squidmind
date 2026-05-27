@@ -252,7 +252,6 @@ function buildPoseidonChatRoute(v2ModelService) {
           toolCallCount++;
           res.write(`event: tool_call\ndata: ${JSON.stringify({ name: ev.name, args: ev.args })}\n\n`);
         } else if (ev.type === 'tool_result') {
-          // Truncate result for SSE (model gets the full thing internally)
           const summary = ev.result?.message
             || (ev.result?.ok ? (Object.keys(ev.result).length > 2 ? 'success' : ev.result.ok) : (ev.result?.error || 'failed'));
           res.write(`event: tool_result\ndata: ${JSON.stringify({
@@ -261,6 +260,12 @@ function buildPoseidonChatRoute(v2ModelService) {
             summary: typeof summary === 'string' ? summary.slice(0, 300) : String(summary).slice(0, 300),
             duration_ms: ev.duration_ms
           })}\n\n`);
+        } else if (ev.type === 'thinking_start') {
+          res.write(`event: thinking_start\ndata: {}\n\n`);
+        } else if (ev.type === 'thinking') {
+          res.write(`event: thinking\ndata: ${JSON.stringify({ text: ev.chunk })}\n\n`);
+        } else if (ev.type === 'thinking_end') {
+          res.write(`event: thinking_end\ndata: {}\n\n`);
         }
       }
       res.write(`event: end\ndata: ${JSON.stringify({

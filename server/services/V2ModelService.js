@@ -742,15 +742,6 @@ class V2ModelService {
           systemPrompt = await this.buildPoseidonSystemPrompt();
         }
 
-        // Qwen3 models default to "thinking mode" which outputs <think>...</think>
-        // blocks before every response — wastes tokens and confuses the UI.
-        // Prepend /no_think to disable it. The streaming filter below is a backup.
-        const modelFileName = (entry?.file_name || '').toLowerCase();
-        if (/qwen3|qwen-3/.test(modelFileName)) {
-          systemPrompt = '/no_think\n\n' + systemPrompt;
-          console.log(`[V2ModelService] Qwen3 detected — prepended /no_think to disable thinking mode`);
-        }
-
         // Auto-slim system prompt when context is tight.
         // Rule of thumb: system prompt should not exceed 60% of total ctx,
         // leaving 40% for conversation. ~4 chars per token.
@@ -830,38 +821,56 @@ class V2ModelService {
       } catch {}
       const maxTokens = brainParams.max_tokens_per_response || 4096;
 
+      // State machine for <think>...</think> parsing across streaming chunks.
+      // State is stored on the entry so it survives between poll cycles.
+      entry._thinkBuf   = '';     // inter-chunk buffer
+      entry._inThink    = false;  // are we currently inside a <think> block?
+
       const promptOpts = {
         onTextChunk: (chunk) => {
-          // Filter Qwen3 <think>...</think> blocks from streaming output.
-          // The thinking content is internal reasoning — don't emit it to the client.
-          // We buffer across chunks to handle split tags.
-          if (!entry._thinkBuf) entry._thinkBuf = '';
-          entry._thinkBuf += chunk;
-          // Drain anything before <think> or after </think>
-          let buf = entry._thinkBuf;
-          while (true) {
-            const tOpen  = buf.indexOf('<think>');
-            const tClose = buf.indexOf('</think>');
-            if (tOpen === -1 && tClose === -1) {
-              // No think tags in buffer — emit all of it
-              if (buf.length > 0) { events.push({ type: 'text', chunk: buf }); buf = ''; }
-              break;
-            }
-            if (tOpen > 0) {
-              // Emit text BEFORE the <think> tag
-              events.push({ type: 'text', chunk: buf.slice(0, tOpen) });
-              buf = buf.slice(tOpen);
-            }
-            if (tClose !== -1) {
-              // Skip from <think> through </think>
-              const endIdx = buf.indexOf('</think>') + '</think>'.length;
-              buf = buf.slice(endIdx).trimStart();  // trim leading newline after </think>
+          let buf = entry._thinkBuf + chunk;
+          entry._thinkBuf = '';
+        entry._inThink  = false;
+          while (buf.length > 0) {
+            if (entry._inThink) {
+              const closeIdx = buf.indexOf('</think>');
+              if (closeIdx === -1) {
+                // Still inside think block — buffer everything (tag might be split)
+                // But emit what we have as thinking if it's getting long
+                if (buf.length > 50) {
+                  events.push({ type: 'thinking', chunk: buf.slice(0, -15) });
+                  entry._thinkBuf = buf.slice(-15);
+                } else {
+                  entry._thinkBuf = buf;
+                }
+                buf = '';
+              } else {
+                // End of think block found
+                if (closeIdx > 0) events.push({ type: 'thinking', chunk: buf.slice(0, closeIdx) });
+                events.push({ type: 'thinking_end' });
+                entry._inThink = false;
+                buf = buf.slice(closeIdx + '</think>'.length).replace(/^\n/, '');
+              }
             } else {
-              // <think> found but no closing tag yet — buffer until next chunk
-              break;
+              const openIdx = buf.indexOf('<think>');
+              if (openIdx === -1) {
+                // Pure text — check for partial opening tag at end
+                const partial = ['<think>', '<think', '<thin', '<thi', '<th', '<t', '<'].find(p => buf.endsWith(p));
+                if (partial) {
+                  if (buf.length > partial.length) events.push({ type: 'text', chunk: buf.slice(0, -partial.length) });
+                  entry._thinkBuf = partial;
+                } else {
+                  events.push({ type: 'text', chunk: buf });
+                }
+                buf = '';
+              } else {
+                if (openIdx > 0) events.push({ type: 'text', chunk: buf.slice(0, openIdx) });
+                events.push({ type: 'thinking_start' });
+                entry._inThink = true;
+                buf = buf.slice(openIdx + '<think>'.length);
+              }
             }
           }
-          entry._thinkBuf = buf;
         },
         maxTokens
       };
@@ -905,11 +914,14 @@ class V2ModelService {
         }
       }
       
-      // Flush any remaining buffered text after think-filter
+      // Flush remaining buffer
       if (entry._thinkBuf && entry._thinkBuf.trim().length > 0) {
-        events.push({ type: 'text', chunk: entry._thinkBuf.trim() });
+        const t = entry._inThink ? 'thinking' : 'text';
+        events.push({ type: t, chunk: entry._thinkBuf.trim() });
+        if (entry._inThink) events.push({ type: 'thinking_end' });
       }
       entry._thinkBuf = '';
+      entry._inThink  = false;
 
       // Successfully completed a turn
       entry.sessionTurns++;
