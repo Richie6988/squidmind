@@ -293,15 +293,29 @@ class V2ModelService {
    */
   async ensureLoaded(modelId) {
     if (this.loaded.has(modelId)) return { already_loaded: true, model_id: modelId };
-    
+
+    // Dedup: if a load is already in progress for this modelId (e.g. pre-load fired
+    // by setPoseidonModel raced with auto-load from chatWithPoseidon), wait for the
+    // existing promise instead of starting a second concurrent load.
+    if (!this._loadingPromises) this._loadingPromises = new Map();
+    if (this._loadingPromises.has(modelId)) {
+      console.log(`[V2ModelService] Joining existing load for ${modelId} (dedup)`);
+      return this._loadingPromises.get(modelId);
+    }
+
     this.rm.invalidateCache();
     const reg = await this.rm.read('models/model_registry.json');
     const entry = reg.models[modelId];
     if (!entry) throw new Error(`Model ${modelId} not in library. Import it first.`);
     if (entry.status === 'missing') throw new Error(`Model file is missing: ${entry.file_path}`);
-    
-    // Use stored config
-    return await this.loadModel(entry.file_name, entry.config || {});
+
+    const promise = this.loadModel(entry.file_name, entry.config || {});
+    this._loadingPromises.set(modelId, promise);
+    try {
+      return await promise;
+    } finally {
+      this._loadingPromises.delete(modelId);
+    }
   }
 
   // === LOAD ===
@@ -451,7 +465,7 @@ class V2ModelService {
             contextSize:    tryCtx,
             batchSize:      config.batchSize,
             threads:        config.cpuThreads,
-            sequences:      4,
+            sequences:      1,   // single-user chat — 4 was wasting 4× KV cache VRAM
             flashAttention: config.flashAttention
           });
           config.contextLength = context.contextSize;
