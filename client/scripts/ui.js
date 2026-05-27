@@ -139,50 +139,136 @@ console.log('[OK] UI exported to window');
 
 // Describe cron in human terms
 
-ui.openLogsModal = function() {
+// ══════════════════════════════════════════════════════════
+// LOGS PANEL
+// ══════════════════════════════════════════════════════════
+
+ui._allLogs    = [];   // raw entries from server
+ui._logFilter  = 'all';
+
+ui.openLogsModal = async function() {
   const modal = document.getElementById('logs-modal');
-  if (modal) {
-    modal.classList.remove('hidden');
-    loadLogs();
+  if (!modal) return;
+  modal.classList.remove('hidden');
+  document.getElementById('lm-list').innerHTML = '<div class="lm-empty">Loading...</div>';
+  try {
+    const data = await window.ApiV2._fetch('/logs?limit=200');
+    // newest first
+    ui._allLogs = (data.entries || []).slice().reverse();
+    ui.filterLogs();
+  } catch (e) {
+    document.getElementById('lm-list').innerHTML =
+      `<div class="lm-empty lm-empty-err">Failed: ${ui._esc(e.message)}</div>`;
   }
 };
 
-async function loadLogs() {
-  try {
-    const agentFilter = document.getElementById('log-agent-filter').value;
-    const statusFilter = document.getElementById('log-status-filter').value;
-    
-    const filters = {};
-    if (agentFilter) filters.agent_id = agentFilter;
-    if (statusFilter) filters.status = statusFilter;
-    
-    const response = await api.getLogs(filters);
-    
-    if (response.success) {
-      const logList = document.getElementById('log-list');
-      logList.innerHTML = '';
-      
-      if (response.logs.length === 0) {
-        logList.innerHTML = '<p style="text-align: center; color: var(--text-secondary);">No logs found</p>';
-        return;
-      }
-      
-      response.logs.forEach(log => {
-        const entry = document.createElement('div');
-        entry.className = `log-entry ${log.status}`;
-        entry.innerHTML = `
-          <div class="log-timestamp">${new Date(log.timestamp).toLocaleString()}</div>
-          <div class="log-agent">${log.agent_name} (${log.agent_id})</div>
-          <div class="log-message">${log.output || log.error || 'No output'}</div>
-          ${log.duration_ms ? `<div style="font-size: 8px; color: var(--text-secondary); margin-top: 4px;">Duration: ${log.duration_ms}ms</div>` : ''}
-        `;
-        logList.appendChild(entry);
-      });
+ui.setLogFilter = function(btn, cat) {
+  document.querySelectorAll('.lm-tab').forEach(t => t.classList.remove('active'));
+  btn.classList.add('active');
+  ui._logFilter = cat;
+  ui.filterLogs();
+};
+
+ui.filterLogs = function() {
+  const search = (document.getElementById('lm-search')?.value || '').toLowerCase();
+  const cat    = ui._logFilter;
+
+  const catMatches = (e) => {
+    const et = e.event_type || '';
+    const at = e.actor?.type || '';
+    if (cat === 'all')      return true;
+    if (cat === 'system')   return at === 'system' || et.startsWith('system_') || et === 'registry_repaired';
+    if (cat === 'poseidon') return et.startsWith('poseidon_') || et === 'user_input'
+                                   || et === 'model_loaded' || et === 'model_unloaded' || et === 'model_overloaded';
+    if (cat === 'agent')    return et.startsWith('agent_') || at === 'agent';
+    if (cat === 'project')  return et.startsWith('project_') || et.startsWith('task_');
+    return true;
+  };
+
+  const filtered = ui._allLogs.filter(e => {
+    if (!catMatches(e)) return false;
+    if (search) {
+      const hay = [e.event_type, e.action, e.actor?.id, e.subject?.id].join(' ').toLowerCase();
+      if (!hay.includes(search)) return false;
     }
-  } catch (error) {
-    console.error('Failed to load logs:', error);
+    return true;
+  });
+
+  const countEl = document.getElementById('lm-count');
+  if (countEl) countEl.textContent = filtered.length;
+
+  const list = document.getElementById('lm-list');
+  if (!list) return;
+  if (filtered.length === 0) {
+    list.innerHTML = '<div class="lm-empty">No matching entries</div>';
+    return;
   }
-}
+
+  list.innerHTML = filtered.map(e => ui._renderLogEntry(e)).join('');
+};
+
+ui._renderLogEntry = function(e) {
+  const ts   = new Date(e.timestamp);
+  const time = ts.toLocaleTimeString('fr-FR', { hour:'2-digit', minute:'2-digit', second:'2-digit' });
+  const date = ts.toLocaleDateString('fr-FR', { day:'2-digit', month:'2-digit' });
+  const et   = e.event_type || 'unknown';
+  const sev  = e.severity   || 'info';
+
+  // Icon + colour per event type
+  const MAP = {
+    system_startup:       ['⚡','lm-ev-system'],
+    system_shutdown:      ['⏹','lm-ev-system'],
+    model_loaded:         ['📦','lm-ev-model'],
+    model_unloaded:       ['🗑','lm-ev-model'],
+    model_overloaded:     ['💥','lm-ev-err'],
+    agent_created:        ['🦑','lm-ev-agent'],
+    agent_woken:          ['👁','lm-ev-agent'],
+    agent_slept:          ['💤','lm-ev-agent'],
+    agent_archived:       ['📦','lm-ev-agent'],
+    task_created:         ['✦','lm-ev-task'],
+    task_assigned:        ['→','lm-ev-task'],
+    task_started:         ['▶','lm-ev-task'],
+    task_completed:       ['✓','lm-ev-ok'],
+    task_failed:          ['✗','lm-ev-err'],
+    task_cancelled:       ['⊘','lm-ev-warn'],
+    task_chunk_completed: ['◈','lm-ev-task'],
+    project_created:      ['📁','lm-ev-proj'],
+    project_updated:      ['✏','lm-ev-proj'],
+    project_archived:     ['📦','lm-ev-proj'],
+    user_input:           ['💬','lm-ev-poseidon'],
+    poseidon_decision:    ['🔱','lm-ev-poseidon'],
+    tool_invoked:         ['⚙','lm-ev-tool'],
+    tool_failed:          ['⚠','lm-ev-err'],
+    json_update:          ['📝','lm-ev-system'],
+    registry_repaired:    ['🔧','lm-ev-warn'],
+    checkpoint_created:   ['💾','lm-ev-system'],
+  };
+  const [icon, cls] = MAP[et] || ['◉', sev === 'error' ? 'lm-ev-err' : 'lm-ev-system'];
+  const sevCls = sev === 'error' ? 'lm-sev-err' : sev === 'warning' ? 'lm-sev-warn' : '';
+  const actor  = e.actor?.id  !== 'poseidon_main' ? (e.actor?.id || '') : '';
+  const subj   = e.subject?.id || '';
+
+  return `<div class="lm-entry ${sevCls}">
+    <div class="lm-entry-left">
+      <span class="lm-ev-icon ${cls}">${icon}</span>
+    </div>
+    <div class="lm-entry-body">
+      <div class="lm-entry-top">
+        <span class="lm-ev-type">${ui._esc(et)}</span>
+        ${actor ? `<span class="lm-ev-actor">${ui._esc(actor)}</span>` : ''}
+        ${subj  ? `<span class="lm-ev-subj">→ ${ui._esc(subj)}</span>` : ''}
+      </div>
+      <div class="lm-action">${ui._esc(e.action || '')}</div>
+    </div>
+    <div class="lm-entry-right">
+      <span class="lm-time">${time}</span>
+      <span class="lm-date">${date}</span>
+    </div>
+  </div>`;
+};
+
+// legacy shim kept for safety
+async function loadLogs() { ui.openLogsModal(); }
 // Squid Interaction Functions
 ui.selectedSquid = null;
 

@@ -175,25 +175,37 @@
 
   <!-- Scripts - ui.js MUST load FIRST! -->
   <!-- LOGS MODAL -->
+  <!-- LOGS MODAL -->
   <div id="logs-modal" class="modal hidden">
-    <div class="modal-content logs-modal-content">
-      <div class="modal-header">
-        <h2>📋 Execution Logs</h2>
-        <button class="btn-close" onclick="document.getElementById('logs-modal').classList.add('hidden')">✕</button>
-      </div>
-      <div class="modal-body" style="padding:16px;">
-        <div class="log-filters" style="display:flex;gap:8px;margin-bottom:12px;">
-          <select id="log-agent-filter" style="flex:1;background:var(--ocean-mid);border:1px solid var(--border);color:var(--text-primary);font-size:9px;padding:5px;">
-            <option value="">All Squids</option>
-          </select>
-          <select id="log-status-filter" style="flex:1;background:var(--ocean-mid);border:1px solid var(--border);color:var(--text-primary);font-size:9px;padding:5px;">
-            <option value="">All Statuses</option>
-            <option value="success">Success</option>
-            <option value="error">Error</option>
-          </select>
-          <button class="btn-secondary" onclick="loadLogs()" style="font-size:9px;padding:5px 10px;">↻ Refresh</button>
+    <div class="lm-modal">
+      <!-- Header -->
+      <div class="lm-header">
+        <div class="lm-title">
+          <span class="lm-icon">◈</span>
+          <span>SYSTEM LOGS</span>
+          <span class="lm-count" id="lm-count">—</span>
         </div>
-        <div id="log-list" class="log-list"></div>
+        <div class="lm-header-right">
+          <button class="lm-refresh" onclick="ui.openLogsModal()" title="Refresh">↺</button>
+          <button class="lm-close" onclick="document.getElementById('logs-modal').classList.add('hidden')">✕</button>
+        </div>
+      </div>
+
+      <!-- Filter tabs -->
+      <div class="lm-filters">
+        <button class="lm-tab active" data-cat="all"     onclick="ui.setLogFilter(this,'all')">All</button>
+        <button class="lm-tab"        data-cat="system"  onclick="ui.setLogFilter(this,'system')">⚙ System</button>
+        <button class="lm-tab"        data-cat="poseidon"onclick="ui.setLogFilter(this,'poseidon')">🔱 Poseidon</button>
+        <button class="lm-tab"        data-cat="agent"   onclick="ui.setLogFilter(this,'agent')">🦑 Agents</button>
+        <button class="lm-tab"        data-cat="project" onclick="ui.setLogFilter(this,'project')">📁 Projects</button>
+        <div class="lm-filter-spacer"></div>
+        <input class="lm-search" id="lm-search" type="text" placeholder="Search logs..."
+               oninput="ui.filterLogs()">
+      </div>
+
+      <!-- Log list -->
+      <div class="lm-list" id="lm-list">
+        <div class="lm-empty">Loading...</div>
       </div>
     </div>
   </div>
