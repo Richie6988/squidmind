@@ -303,7 +303,7 @@ ui.currentSquidForEdit = null;
 ui.openSquidDetailModal = function(squid) {
   // V2: always redirect to AgentForm (the proper modal). Old #squid-detail-modal is deprecated.
   if (typeof AgentForm !== 'undefined' && squid?.id) {
-    AgentForm.open(squid.id).catch(err => {
+    AgentForm.open(squid.id).catch(async err => {
       console.error('AgentForm.open failed:', err);
       await SquidModal.alert('Could not open agent: ' + err.message);
     });
@@ -315,7 +315,7 @@ console.log('[OK] UI module with modals loaded');
 
 // ==================== MODEL BROWSER (V2) ====================
 // Old file browser removed - use ModelLoader.open() for V2 library workflow
-ui.openFileBrowser = function() {
+ui.openFileBrowser = async function() {
   if (typeof ModelLoader !== 'undefined') ModelLoader.open();
   else await SquidModal.alert('ModelLoader not loaded yet');
 };

@@ -3957,11 +3957,7 @@ button .pixel-icon {
   background: var(--ocean-deep);
 }
 
-.projects-search-icon {
-  color: var(--text-secondary);
-  font-family: 'Press Start 2P';
-  font-size: 9px;
-}
+
 
 .projects-search-input {
   flex: 1;
