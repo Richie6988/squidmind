@@ -263,24 +263,36 @@ const TempleInterior = {
     const darken  = (hex, f) => { try { const r=parseInt(hex.slice(1,3),16),g=parseInt(hex.slice(3,5),16),b=parseInt(hex.slice(5,7),16); return `rgb(${Math.floor(r*f)},${Math.floor(g*f)},${Math.floor(b*f)})`; } catch { return hex; } };
     const brighten = (hex, f) => { try { const r=Math.min(255,parseInt(hex.slice(1,3),16)*f),g=Math.min(255,parseInt(hex.slice(3,5),16)*f),b=Math.min(255,parseInt(hex.slice(5,7),16)*f); return `rgb(${Math.floor(r)},${Math.floor(g)},${Math.floor(b)})`; } catch { return hex; } };
 
-    const minX   = size + 6;
-    const maxX   = W - size - 6;
-    const groundY = H - size - 10;  // Y center of squid body
-    let frame = Math.random() * 200; // stagger squids
+    const margin = size + 6;
+    // 2D random walk state
+    let px = margin + Math.random() * (W - margin * 2);
+    let py = margin + Math.random() * (H - margin * 2);
+    let vx = (Math.random() - 0.5) * 1.2;
+    let vy = (Math.random() - 0.5) * 0.6;
+    let frame = Math.random() * 200; // stagger tentacle phase
 
     const loop = () => {
       frame++;
       ctx.clearRect(0, 0, W, H);
 
-      // Walk position: sine oscillation
-      const t = frame * 0.022;
-      const walkX  = minX + (maxX - minX) * (0.5 + 0.5 * Math.sin(t));
-      const bob    = Math.sin(frame * 0.09) * 2.5;
-      const facingRight = Math.cos(t) >= 0;
+      // Random walk: nudge velocity + speed cap + wall bounce
+      vx += (Math.random() - 0.5) * 0.25;
+      vy += (Math.random() - 0.5) * 0.15;
+      const spd = Math.sqrt(vx * vx + vy * vy);
+      const maxSpd = 1.4;
+      if (spd > maxSpd) { vx *= maxSpd / spd; vy *= maxSpd / spd; }
+      px += vx; py += vy;
+      // Bounce off canvas edges
+      if (px < margin)     { px = margin;     vx = Math.abs(vx); }
+      if (px > W - margin) { px = W - margin; vx = -Math.abs(vx); }
+      if (py < margin)     { py = margin;     vy = Math.abs(vy); }
+      if (py > H - margin) { py = H - margin; vy = -Math.abs(vy); }
+
+      const facingRight = vx >= 0;
 
       ctx.save();
-      ctx.translate(walkX, groundY + bob);
-      if (!facingRight) ctx.scale(-1, 1); // flip sprite
+      ctx.translate(px, py);
+      if (!facingRight) ctx.scale(-1, 1); // flip when moving left
 
       // --- Body (same style as Squid.js drawBody) ---
       const grad = ctx.createRadialGradient(0, -size * 0.3, 0, 0, 0, size);

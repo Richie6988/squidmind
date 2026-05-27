@@ -4373,12 +4373,8 @@ button .pixel-icon {
   display: inline-flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
-  padding: 8px;
-  background: var(--ocean-mid);
-  border: 1px solid var(--border);
+  gap: 2px;
   margin: 4px;
-  min-width: 110px;
 }
 
 .avatar-squid-canvas {
@@ -4508,3 +4504,9 @@ button .pixel-icon {
 }
 .chat-text-final { padding-top: 4px; }
 
+
+/* Fix select option visibility on all browsers */
+option {
+  background: var(--ocean-deep, #0d1b2a);
+  color: var(--text-primary, #f1faee);
+}
