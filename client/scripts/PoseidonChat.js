@@ -73,6 +73,7 @@ const PoseidonChat = {
 
     const ta   = this.modal.querySelector('#pc-input');
     const send = this.modal.querySelector('#pc-send');
+    const msgs = this.modal.querySelector('#pc-messages');
     ta.addEventListener('keydown', e => {
       if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); this._send(); }
     });
@@ -81,6 +82,12 @@ const PoseidonChat = {
       ta.style.height = Math.min(ta.scrollHeight, 140) + 'px';
     });
     send.addEventListener('click', () => this._send());
+    // Track user scroll intent — stop auto-scroll if they scrolled up
+    msgs.addEventListener('scroll', () => {
+      const atBottom = msgs.scrollHeight - msgs.scrollTop - msgs.clientHeight < 80;
+      this._autoScroll = atBottom;
+    });
+    this._autoScroll = true;
 
     this._renderHistory();
   },
@@ -137,7 +144,7 @@ const PoseidonChat = {
         return `<div class="pc-msg pc-msg-ai" id="pc-msg-${i}"><div class="pc-ai-row"><div class="pc-ai-dot">🔱</div><div class="pc-bubble-ai pc-text-final">${this._md(t.content)}</div></div>${ts}</div>`;
       }
     }).join('');
-    msgs.scrollTop = msgs.scrollHeight;
+    this._scrollToBottom(msgs);
   },
 
   // ── Send / Stream ─────────────────────────────────────────────────────────
@@ -149,6 +156,7 @@ const PoseidonChat = {
     ta.value = ''; ta.style.height = 'auto';
 
     const msgTs = new Date();
+    this._autoScroll = true;  // new message → snap to bottom
     this.history.push({ role: 'user', content: msg, ts: msgTs });
     const aiIdx = this.history.length;
     const aiTs = new Date();
@@ -159,7 +167,8 @@ const PoseidonChat = {
     msgs.querySelector('.pc-welcome')?.remove();
     const userEl = document.createElement('div');
     userEl.className = 'pc-msg pc-msg-user';
-    userEl.innerHTML = `<div class="pc-bubble-user">${this._esc(msg)}</div><div class="pc-ts">${this._fmtTs(msgTs)}</div>`;
+    userEl.innerHTML = `<div class="pc-bubble-user">${this._esc(msg)}</div>
+      <div class="pc-ts">${this._fmtTs(msgTs)}</div>`;
     msgs.appendChild(userEl);
 
     // Add AI placeholder
@@ -168,7 +177,7 @@ const PoseidonChat = {
     aiEl.id = `pc-msg-${aiIdx}`;
     aiEl.innerHTML = `<div class="pc-ai-row"><div class="pc-ai-dot">🔱</div><div class="pc-bubble-ai" id="pc-content-${aiIdx}"></div></div><div class="pc-ts pc-ts-ai" id="pc-ts-${aiIdx}"></div>`;
     msgs.appendChild(aiEl);
-    msgs.scrollTop = msgs.scrollHeight;
+    this._scrollToBottom(msgs);
 
     const contentEl = aiEl.querySelector(`#pc-content-${aiIdx}`);
     const sendBtn   = this.modal.querySelector('#pc-send');
@@ -263,7 +272,7 @@ const PoseidonChat = {
             });
           } catch {}
         }
-        msgs.scrollTop = msgs.scrollHeight;
+        this._scrollToBottom(msgs);
       }
 
       clearTimers();
@@ -420,7 +429,13 @@ const PoseidonChat = {
 
   _fmtTs(d) {
     if (!d) return '';
-    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const dt = d instanceof Date ? d : new Date(d);
+    const dd  = String(dt.getDate()).padStart(2,'0');
+    const mm  = String(dt.getMonth()+1).padStart(2,'0');
+    const yy  = dt.getFullYear();
+    const hh  = String(dt.getHours()).padStart(2,'0');
+    const min = String(dt.getMinutes()).padStart(2,'0');
+    return `${dd}/${mm}/${yy} ${hh}:${min}`;
   },
 
   // Lightweight markdown → HTML renderer
@@ -467,6 +482,15 @@ const PoseidonChat = {
     // HR
     s = s.replace(/^[-*_]{3,}$/gm, '<hr class="pc-md-hr">');
 
+    // Tables
+    s = s.replace(/((\|[^\n]+\|\n)(\|[-: |]+\|\n)((?:\|[^\n]+\|\n?)*))/g, (_all, _a, header, _sep, body) => {
+      const cells = r => r.replace(/^\s*\|\s*|\s*\|\s*$/g,'').split(/\s*\|\s*/);
+      const th = cells(header).map(c => `<th class="pc-md-th">${c}</th>`).join('');
+      const trs = body.trim().split('\n').filter(Boolean)
+        .map(r => '<tr>' + cells(r).map(c => `<td class="pc-md-td">${c}</td>`).join('') + '</tr>').join('');
+      return `<div class="pc-md-table-wrap"><table class="pc-md-table"><thead><tr>${th}</tr></thead><tbody>${trs}</tbody></table></div>`;
+    });;
+
     // Unordered list items
     s = s.replace(/^[\*\-]\s+(.+)$/gm, '<li>$1</li>');
     s = s.replace(/(<li>[\s\S]*?<\/li>)+/g, m => `<ul class="pc-md-ul">${m}</ul>`);
@@ -488,6 +512,13 @@ const PoseidonChat = {
     s = s.replace(/(<\/(?:h[2-4]|ul|blockquote|pre)>)<\/p>/g, '$1');
 
     return s;
+  },
+
+  _scrollToBottom(el) {
+    if (this._autoScroll !== false) {
+      el = el || this.modal?.querySelector('#pc-messages');
+      if (el) el.scrollTop = el.scrollHeight;
+    }
   },
 
   _esc(s) {

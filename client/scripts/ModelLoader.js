@@ -225,14 +225,13 @@ const ModelLoader = {
     return `
       <div class="model-library-card ${m.is_poseidon ? 'is-poseidon' : ''} ${isInvalid ? 'is-invalid' : ''}">
         <div class="model-card-header">
-          <strong>${this._escape(m.file_name)}</strong>
-          <span class="model-id-pill">${m.model_id}</span>
+          <strong title="${this._escape(m.file_name)}">${this._escape(m.file_name)}</strong>
           <span class="model-size-pill">${sizeStr}</span>
           ${statusBadge}
         </div>
-        ${warningSection}
-        ${paramsSection}
-        ${runtimeSection}
+        <div class="model-card-body">
+          ${warningSection}${paramsSection}${runtimeSection}
+        </div>
         <div class="model-card-actions">${actions}</div>
       </div>
     `;

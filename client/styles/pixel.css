@@ -5080,9 +5080,12 @@ option {
   font-size: 11px;
   line-height: 1.7;
   color: #cbd5e1;
-  white-space: pre-wrap;
   word-break: break-word;
-  min-width: 40px;
+  min-width: 60px;
+}
+/* pre-wrap only on final rendered text, not the bubble wrapper */
+.pc-bubble-ai .pc-text-final {
+  white-space: pre-wrap;
 }
 
 /* Typing indicator */
@@ -5514,3 +5517,134 @@ h4.pc-md-h { font-size: 8px; color: #94a3b8; }
   text-decoration-color: rgba(79,172,254,0.35);
 }
 .pc-md-link:hover { color: #7dd3fc; }
+
+/* ── Model Library Cards — redesign ───────────────────────────────────────── */
+.model-library-card {
+  background: var(--ui-surface);
+  border: 1px solid var(--ui-border);
+  border-radius: 8px;
+  margin-bottom: 10px;
+  overflow: hidden;
+  transition: border-color 0.15s;
+}
+.model-library-card:hover { border-color: rgba(79,172,254,0.2); }
+.model-library-card.is-poseidon { border-color: rgba(79,172,254,0.4); }
+.model-library-card.is-invalid  { border-color: rgba(239,68,68,0.3); }
+
+.model-card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px 8px;
+  background: rgba(255,255,255,0.02);
+  border-bottom: 1px solid var(--ui-border);
+  flex-wrap: wrap;
+}
+.model-card-header strong {
+  font-family: 'Courier New', monospace;
+  font-size: 11px;
+  color: #e2e8f0;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.model-card-body {
+  padding: 10px 14px 6px;
+}
+.model-card-actions {
+  padding: 8px 14px 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+/* Pills */
+.model-id-pill, .model-size-pill,
+.model-poseidon-pill, .model-loaded-pill,
+.model-missing-pill, .model-notimport-pill,
+.model-texttype-pill, .model-imgtype-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 7px;
+  border-radius: 10px;
+  font-family: 'Courier New', monospace;
+  font-size: 8px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.model-id-pill       { background: rgba(255,255,255,0.05); color: #64748b; border: 1px solid rgba(255,255,255,0.08); }
+.model-size-pill      { background: rgba(255,255,255,0.04); color: #94a3b8; border: 1px solid rgba(255,255,255,0.06); }
+.model-poseidon-pill  { background: rgba(79,172,254,0.15); color: #4facfe; border: 1px solid rgba(79,172,254,0.3); }
+.model-loaded-pill    { background: rgba(6,255,165,0.1);  color: #06ffa5; border: 1px solid rgba(6,255,165,0.25); }
+.model-missing-pill   { background: rgba(239,68,68,0.1);  color: #f87171; border: 1px solid rgba(239,68,68,0.25); }
+.model-notimport-pill { background: rgba(100,116,139,0.1);color: #64748b; border: 1px solid rgba(100,116,139,0.2); }
+.model-texttype-pill  { background: rgba(168,85,247,0.1); color: #c084fc; border: 1px solid rgba(168,85,247,0.25); }
+.model-imgtype-pill   { background: rgba(251,191,36,0.1); color: #fbbf24; border: 1px solid rgba(251,191,36,0.25); }
+
+/* Params grid */
+.model-params {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px 16px;
+  margin-bottom: 6px;
+}
+.model-params-row {
+  font-family: 'Courier New', monospace;
+  font-size: 9px;
+  color: #64748b;
+}
+.model-params-row strong { color: #94a3b8; }
+
+/* Runtime info */
+.model-runtime {
+  font-family: 'Courier New', monospace;
+  font-size: 8px;
+  color: #4facfe;
+  background: rgba(79,172,254,0.05);
+  border: 1px solid rgba(79,172,254,0.12);
+  border-radius: 4px;
+  padding: 4px 8px;
+  margin-bottom: 6px;
+}
+.model-warning {
+  font-family: 'Courier New', monospace;
+  font-size: 9px;
+  color: #fbbf24;
+  background: rgba(245,158,11,0.07);
+  border: 1px solid rgba(245,158,11,0.2);
+  border-radius: 4px;
+  padding: 5px 9px;
+  margin-bottom: 6px;
+}
+
+/* ── Markdown: Tables ──────────────────────────────────────────────────────── */
+.pc-md-table-wrap {
+  overflow-x: auto;
+  margin: 8px 0;
+  border-radius: 6px;
+  border: 1px solid rgba(79,172,254,0.15);
+}
+.pc-md-table {
+  border-collapse: collapse;
+  width: 100%;
+  font-family: 'Courier New', monospace;
+  font-size: 10px;
+}
+.pc-md-table th.pc-md-th {
+  background: rgba(79,172,254,0.1);
+  color: #4facfe;
+  padding: 6px 12px;
+  text-align: left;
+  border-bottom: 1px solid rgba(79,172,254,0.2);
+  font-weight: bold;
+  white-space: nowrap;
+}
+.pc-md-table td.pc-md-td {
+  padding: 5px 12px;
+  color: #cbd5e1;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+.pc-md-table tr:last-child td { border-bottom: none; }
+.pc-md-table tr:hover td { background: rgba(255,255,255,0.025); }

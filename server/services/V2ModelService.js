@@ -906,20 +906,26 @@ class V2ModelService {
         ]);
         while (lastIdx < events.length) {
           const ev = events[lastIdx++];
+          // Any token output (text, thinking, tools) resets the idle clock
+          lastChunkAt = Date.now();
           if (ev.type === 'text') {
             entry.totalTokensGenerated += Math.ceil(ev.chunk.length / 4);
-            lastChunkAt = Date.now();
-            yield ev;
-          } else {
-            // Tool-related events count as activity (model is doing work)
-            lastChunkAt = Date.now();
-            yield ev;
           }
+          yield ev;
         }
         if (isDone) break;
         const idleMs = Date.now() - lastChunkAt;
-        if (idleMs > IDLE_TIMEOUT_MS) {
-          console.warn(`[V2ModelService] generation idle timeout (${Math.round(idleMs/1000)}s with no new tokens)`);
+        // Don't timeout while model is actively thinking (think block open)
+        const isThinking = entry._inThink === true;
+        if (!isThinking && idleMs > IDLE_TIMEOUT_MS) {
+          console.warn(`[V2ModelService] generation idle timeout (${Math.round(idleMs/1000)}s) — resetting session`);
+          // Reset session so next message reloads cleanly (user won't notice)
+          try { if (entry.session?.dispose) await entry.session.dispose(); } catch {}
+          entry.session = null;
+          entry._currentSequence = null;
+          entry.sessionTurns = 0;
+          entry._thinkBuf = '';
+          entry._inThink  = false;
           break;
         }
         if (Date.now() - start > ABSOLUTE_MAX_MS) {
