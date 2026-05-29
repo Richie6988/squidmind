@@ -308,7 +308,7 @@ const PoseidonChat = {
                       'write_file','edit_file','github_commit','github_pull'];
 
     if (type === 'error')          { throw new Error(p.error); }
-    if (type === 'start')          { this._mutatedThisTurn = false; onFirstToken(); return; }
+    if (type === 'start')          { this._mutatedThisTurn = false; return; }
     if (type === 'end') {
       if (p.turn !== undefined) this._updateTurnCounter(p.turn, p.wipe_threshold);
       return;

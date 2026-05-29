@@ -63,7 +63,7 @@ const TaskQueueUI = {
     const status = t.lifecycle?.status || '?';
     const assignee = t.assignment?.assigned_to || null;
     const agentName = assignee
-      ? (this.agents.find(a => a.agent_id === assignee)?.display_name || assignee)
+      ? (this.agents.find(a => a.agent_id === assignee)?.display_name || t.assignment?.assigned_name || assignee)
       : '+ assign';
 
     el.innerHTML = `

@@ -932,16 +932,30 @@ Never describe a bash command you could call instead.`;
       const taskId = `task_${String(nextId).padStart(4, '0')}`;
       
       reg.tasks = reg.tasks || {};
+      // Resolve agent name for display
+      let agentName = null;
+      if (assigned_agent_id) {
+        try {
+          const agentReg = await this.rm.read('agents/agent_registry.json');
+          agentName = agentReg.agents?.[assigned_agent_id]?.display_name || assigned_agent_id;
+        } catch {}
+      }
+
       reg.tasks[taskId] = {
         task_id: taskId,
         title,
         description: description || '',
         project_name: project || null,
-        assigned_to: assigned_agent_id || null,
-        status: assigned_agent_id ? 'assigned' : 'open',
         priority: priority || 'medium',
         created_at: new Date().toISOString(),
-        created_by: 'poseidon_main'
+        created_by: 'poseidon_main',
+        lifecycle: {
+          status: assigned_agent_id ? 'planned' : 'open'
+        },
+        assignment: {
+          assigned_to: assigned_agent_id || null,
+          assigned_name: agentName
+        }
       };
       reg.metadata = reg.metadata || {};
       reg.metadata.next_id = nextId + 1;
@@ -957,7 +971,7 @@ Never describe a bash command you could call instead.`;
         context: { project, assigned_to: assigned_agent_id, priority }
       });
       
-      return { ok: true, task_id: taskId, title, message: `Created task ${taskId}: "${title}"${assigned_agent_id ? ` assigned to ${assigned_agent_id}` : ''}.` };
+      return { ok: true, task_id: taskId, title, message: `Created task ${taskId}: "${title}"${assigned_agent_id ? ` assigned to ${agentName || assigned_agent_id}` : ''}.` };
     } catch (err) {
       return { ok: false, error: err.message };
     }
