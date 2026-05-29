@@ -168,31 +168,33 @@ const SquidAccessories = {
   },
 
   _headphones(ctx, c) {
-    // Gaming headphones — size derived entirely from c (= size/8).
-    // At size=40, c=5: HW=4c=20px each side, cup width=2c=10px.
+    // Gaming headphones — cups sit on the SIDES of the head at eye level.
+    // Head radius ≈ 4c. Cups are at x = ±(4c outer) and y = -1..+2 (ear zone).
     const R = '#DC2626', RD = '#991B1B', BK = '#1F2937', G = '#06FFA5';
-    const HW = 4.2;  // half-width in cells from center to outer edge of cup
-    // Headband (spans full width)
-    this._rb(ctx, -HW - 0.8, -4.5, (HW + 0.8) * 2, 0.9, BK, '#000', c);
-    this._r(ctx,  -HW - 0.5, -4.3, (HW + 0.5) * 2 - 0.4, 0.35, '#374151', c);
-    // Left ear cup
-    this._rb(ctx, -HW - 1.1, -3.3, 2.2, 3.8, R, RD, c);
-    this._r(ctx,  -HW - 0.85,-3.0, 1.7, 3.2, RD, c);        // grille
-    this._r(ctx,  -HW - 0.6, -1.8, 1.2, 0.45, G, c);        // LED strip
+    const HW = 4.0;  // half-width: outer edge of cup from center
+    const CY = -1.8; // cup top Y (ear center ~y=0)
+    const CH = 3.6;  // cup height
+    // Headband arc over the top of the head
+    this._rb(ctx, -HW + 0.5, -5.2, (HW - 0.5) * 2, 0.85, BK, '#000', c);
+    this._r(ctx,  -HW + 0.7, -5.0, (HW - 0.7) * 2, 0.35, '#374151', c);
+    // Left ear cup (flush against head left side)
+    this._rb(ctx, -HW - 1.0, CY, 2.0, CH, R, RD, c);
+    this._r(ctx,  -HW - 0.75, CY + 0.3, 1.5, CH - 0.6, RD, c);   // grille
+    this._r(ctx,  -HW - 0.55, CY + 1.3, 1.1, 0.4, G, c);          // LED strip
     // Right ear cup
-    this._rb(ctx, HW - 1.1, -3.3, 2.2, 3.8, R, RD, c);
-    this._r(ctx,  HW - 0.85,-3.0, 1.7, 3.2, RD, c);
-    this._r(ctx,  HW - 0.6, -1.8, 1.2, 0.45, G, c);
-    // Padding foam rings on cups
-    this._r(ctx, -HW - 1.05, -3.25, 2.1, 0.3, '#450a0a', c);
-    this._r(ctx, -HW - 1.05,  0.2,  2.1, 0.3, '#450a0a', c);
-    this._r(ctx,  HW - 1.05, -3.25, 2.1, 0.3, '#450a0a', c);
-    this._r(ctx,  HW - 1.05,  0.2,  2.1, 0.3, '#450a0a', c);
-    // Mic boom arm
-    this._rb(ctx, -HW - 0.95, 0.6, 0.55, 1.7, BK, '#000', c);
+    this._rb(ctx, HW - 1.0, CY, 2.0, CH, R, RD, c);
+    this._r(ctx,  HW - 0.75, CY + 0.3, 1.5, CH - 0.6, RD, c);
+    this._r(ctx,  HW - 0.55, CY + 1.3, 1.1, 0.4, G, c);
+    // Foam padding rings
+    this._r(ctx, -HW - 0.95, CY,        1.9, 0.3, '#450a0a', c);
+    this._r(ctx, -HW - 0.95, CY + CH - 0.3, 1.9, 0.3, '#450a0a', c);
+    this._r(ctx,  HW - 0.95, CY,        1.9, 0.3, '#450a0a', c);
+    this._r(ctx,  HW - 0.95, CY + CH - 0.3, 1.9, 0.3, '#450a0a', c);
+    // Mic boom arm (left side, below cup)
+    this._rb(ctx, -HW - 0.85, CY + CH, 0.5, 1.6, BK, '#000', c);
     // Mic capsule
-    this._rb(ctx, -HW - 1.3,  2.0, 1.3,  0.85, G,  '#00b37a', c);
-    this._r(ctx,  -HW - 1.0,  2.1, 0.7,  0.4,  '#fff', c);  // highlight
+    this._rb(ctx, -HW - 1.2,  CY + CH + 1.4, 1.2, 0.8, G, '#00b37a', c);
+    this._r(ctx,  -HW - 0.95, CY + CH + 1.5, 0.65, 0.35, '#fff', c);
   },
 
   // ===================== GLASSES =====================
@@ -214,8 +216,9 @@ const SquidAccessories = {
   _roundGlasses(ctx, c, size) {
     // Round wire-frame glasses — 2 circular lenses framing the eyes
     // Eye centers at ±size*0.25. In cells: ±size*0.25 / (size/8) = ±2c
+    // Eye Y = 0. Glasses H=2.8c → top at -H/2 = -1.4c to center on eyes.
     const lx = -2.15, rx = 1.15; // left/right lens left edges
-    const ty = -1.55, H = 2.8, W = 2.6; // top y, height, width
+    const ty = -1.4, H = 2.8, W = 2.6; // top y centered on eye Y=0
     const FR = '#2a2a2a', LE = 'rgba(120,200,255,0.18)';
     // Lens fill (subtle tint)
     this._r(ctx, lx, ty, W, H, LE, c);
@@ -239,7 +242,7 @@ const SquidAccessories = {
 
   _sunglasses(ctx, c, size) {
     // Retro aviator shades — big lenses, golden frame
-    const lx=-2.4, rx=0.9, ty=-1.6, W=3, H=2.8;
+    const lx=-2.4, rx=0.9, ty=-1.4, W=3, H=2.8;
     const FR = '#B8860B', LE = 'rgba(0,0,0,0.82)', GL = 'rgba(255,255,200,0.12)';
     // Dark lenses
     this._r(ctx, lx, ty, W, H, LE, c);

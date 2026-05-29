@@ -244,6 +244,12 @@ const AgentForm = {
     ]);
 
     // ===== PERSONALITY =====
+    // ⚠️ Note: personality + skills are stored in the brain file but not yet injected
+    // into inference. They're metadata for future multi-agent routing.
+    const _warnEl = document.createElement('div');
+    _warnEl.style.cssText = 'background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.4);border-radius:4px;padding:8px 12px;margin:0 0 12px 0;font-size:10px;color:#fbbf24;line-height:1.5;';
+    _warnEl.innerHTML = '⚠️ <b>Note:</b> Personality traits and skills are stored in the brain file but not yet injected into model inference. They currently serve as metadata for future multi-agent routing features.';
+    body.appendChild(_warnEl);
     const per = brain.personality || {};
     const traits = per.traits || {};
     this._addSection(body, 'Personality', [
@@ -510,9 +516,12 @@ const AgentForm = {
       tempSquid.insideTemple = null;
       tempSquid.jumpHeight   = 0;
       tempSquid.heartParticles = [];
-      // Scale up: Squid.draw uses 40*baseSize — increase baseSize for preview
-      const previewScale = 1.8;
-      tempSquid.baseSize   = tempSquid.getSizeMultiplier() * previewScale;
+      // Scale to fill ~75% of canvas, centered with headroom for tentacles
+      const targetRadius  = canvas.width * 0.38;
+      const naturalRadius = 40 * tempSquid.getSizeMultiplier() * 0.5;
+      tempSquid.baseSize  = tempSquid.getSizeMultiplier() * (targetRadius / naturalRadius);
+      tempSquid.x = canvas.width  / 2;
+      tempSquid.y = canvas.height / 2 - canvas.height * 0.05;
 
       // draw() translates to (this.x, this.y) already
       tempSquid.draw(ctx);
@@ -526,67 +535,126 @@ const AgentForm = {
   _addToolsGrid(parent, allTools, allowedTools, brainFile) {
     const section = document.createElement('div');
     section.className = 'agent-form-section';
-    section.innerHTML = `<h3 class="agent-form-section-title">Tools (${allTools.length} available)</h3>`;
-    
+
+    const enabledCount = allowedTools.filter(t => allTools.find(a => a.name === t)).length;
+    section.innerHTML = `<h3 class="agent-form-section-title">🔧 Tools <span style="font-weight:400;color:var(--text-secondary);font-size:10px;">(${enabledCount} enabled / ${allTools.length} available)</span></h3>`;
+
     if (allTools.length === 0) {
-      section.innerHTML += '<p class="hint" style="font-size:9px;">No tools in registry. Restart server to sync built-in tools.</p>';
+      section.innerHTML += '<p class="hint" style="font-size:10px;color:var(--text-secondary);">No tools in registry. Restart server to sync built-in tools.</p>';
       parent.appendChild(section);
       return;
     }
-    
-    const desc = document.createElement('p');
-    desc.className = 'hint';
-    desc.style.cssText = 'font-size:9px; color:var(--text-secondary); margin:0 0 8px 0;';
-    desc.textContent = `Click tools to allow this agent to use them. Hover for description.`;
-    section.appendChild(desc);
-    
+
+    // Header bar with select-all / clear
+    const bar = document.createElement('div');
+    bar.style.cssText = 'display:flex;gap:8px;align-items:center;margin-bottom:12px;';
+    bar.innerHTML = `
+      <span style="font-size:10px;color:var(--text-secondary);flex:1;">Click a tool to enable/disable it. Hover for details.</span>
+      <button class="btn-secondary" style="font-size:9px;padding:2px 8px;" id="af-tools-all">Enable all</button>
+      <button class="btn-secondary" style="font-size:9px;padding:2px 8px;" id="af-tools-none">Clear all</button>
+    `;
+    section.appendChild(bar);
+
+    // Category icons & colors
+    const catMeta = {
+      ai:                  { emoji: '🤖', color: '#7c3aed' },
+      code:                { emoji: '💻', color: '#0ea5e9' },
+      custom:              { emoji: '⚡', color: '#f59e0b' },
+      filesystem:          { emoji: '📁', color: '#10b981' },
+      information_retrieval:{ emoji: '🔍', color: '#06b6d4' },
+      network:             { emoji: '🌐', color: '#3b82f6' },
+      shell:               { emoji: '⌨️', color: '#6b7280' },
+      version_control:     { emoji: '🔀', color: '#f97316' },
+      data:                { emoji: '📊', color: '#ec4899' },
+      system:              { emoji: '⚙️', color: '#94a3b8' },
+      general:             { emoji: '✳️', color: '#64748b' },
+    };
+
     // Group by category
     const byCategory = {};
     allTools.forEach(t => {
       const cat = t.category || 'general';
       (byCategory[cat] = byCategory[cat] || []).push(t);
     });
-    
+
     const allowedSet = new Set(allowedTools);
-    
+
+    const recount = () => {
+      const n = section.querySelectorAll('.af-tool-row.enabled').length;
+      const h = section.querySelector('h3');
+      if (h) h.innerHTML = `🔧 Tools <span style="font-weight:400;color:var(--text-secondary);font-size:10px;">(${n} enabled / ${allTools.length} available)</span>`;
+    };
+
+    const saveAllowed = () => {
+      const newAllowed = [...section.querySelectorAll('.af-tool-row.enabled')].map(r => r.dataset.tool);
+      this._markDirty(brainFile, 'capabilities.tools_allowed', newAllowed);
+      recount();
+    };
+
     Object.entries(byCategory).sort().forEach(([cat, tools]) => {
-      const catHeader = document.createElement('div');
-      catHeader.className = 'af-tools-cat-header';
-      catHeader.textContent = cat;
-      section.appendChild(catHeader);
-      
-      const grid = document.createElement('div');
-      grid.className = 'af-tools-grid';
+      const meta = catMeta[cat] || { emoji: '🔧', color: '#64748b' };
+
+      const catWrap = document.createElement('div');
+      catWrap.style.cssText = 'margin-bottom:14px;';
+
+      const catLabel = document.createElement('div');
+      catLabel.style.cssText = `display:flex;align-items:center;gap:6px;margin-bottom:6px;padding:4px 8px;
+        border-left:3px solid ${meta.color};background:rgba(255,255,255,0.03);border-radius:0 4px 4px 0;`;
+      const enabledInCat = tools.filter(t => allowedSet.has(t.name)).length;
+      catLabel.innerHTML = `
+        <span style="font-size:13px;">${meta.emoji}</span>
+        <span style="font-size:11px;font-weight:600;color:#e2e8f0;text-transform:capitalize;">${cat.replace(/_/g,' ')}</span>
+        <span style="font-size:9px;color:var(--text-secondary);margin-left:auto;">${enabledInCat}/${tools.length}</span>
+      `;
+      catWrap.appendChild(catLabel);
+
+      const list = document.createElement('div');
+      list.style.cssText = 'display:flex;flex-direction:column;gap:3px;';
+
       tools.forEach(tool => {
-        const tile = document.createElement('div');
-        tile.className = 'af-tool-tile' + (allowedSet.has(tool.name) ? ' selected' : '');
-        tile.dataset.tool = tool.name;
-        // Tooltip with description
-        const desc = tool.description || '(no description)';
-        const params = tool.parameters ? Object.keys(tool.parameters).join(', ') : '';
-        tile.title = `${tool.name}\n\n${desc}${params ? '\n\nParams: ' + params : ''}\nType: ${tool.type || 'local_function'}`;
-        // Icon based on category
-        const iconMap = {
-          filesystem: 'FS', network: 'NET', code: 'CODE', shell: 'SH',
-          data: 'DAT', search: 'SCH', system: 'SYS', general: '*', custom: '*'
-        };
-        const icon = iconMap[cat] || '*';
-        tile.innerHTML = `
-          <div class="af-tool-icon">${icon}</div>
-          <div class="af-tool-name">${this._escape(tool.name)}</div>
+        const row = document.createElement('div');
+        row.className = 'af-tool-row' + (allowedSet.has(tool.name) ? ' enabled' : '');
+        row.dataset.tool = tool.name;
+        const desc = (tool.description || '').slice(0, 90);
+        const paramCount = tool.parameters ? Object.keys(tool.parameters).length : 0;
+        row.innerHTML = `
+          <div class="af-tool-row-left">
+            <div class="af-tool-toggle"></div>
+            <div>
+              <div class="af-tool-row-name">${this._escape(tool.name)}</div>
+              <div class="af-tool-row-desc">${this._escape(desc)}${desc.length >= 90 ? '…' : ''}</div>
+            </div>
+          </div>
+          <div class="af-tool-row-meta">
+            ${paramCount ? `<span class="af-tool-badge">${paramCount} param${paramCount>1?'s':''}</span>` : ''}
+            <span class="af-tool-badge">${tool.type || 'fn'}</span>
+          </div>
         `;
-        tile.addEventListener('click', () => {
-          tile.classList.toggle('selected');
-          // Recompute current selected set
-          const newAllowed = Array.from(section.querySelectorAll('.af-tool-tile.selected'))
-            .map(t => t.dataset.tool);
-          this._markDirty(brainFile, 'capabilities.tools_allowed', newAllowed);
+        row.addEventListener('click', () => {
+          row.classList.toggle('enabled');
+          allowedSet[row.classList.contains('enabled') ? 'add' : 'delete'](tool.name);
+          // update cat counter
+          const enabled = list.querySelectorAll('.af-tool-row.enabled').length;
+          catLabel.querySelector('span:last-child').textContent = `${enabled}/${tools.length}`;
+          saveAllowed();
         });
-        grid.appendChild(tile);
+        list.appendChild(row);
       });
-      section.appendChild(grid);
+
+      catWrap.appendChild(list);
+      section.appendChild(catWrap);
     });
-    
+
+    // Select all / clear all handlers
+    bar.querySelector('#af-tools-all').addEventListener('click', () => {
+      section.querySelectorAll('.af-tool-row').forEach(r => { r.classList.add('enabled'); allowedSet.add(r.dataset.tool); });
+      saveAllowed();
+    });
+    bar.querySelector('#af-tools-none').addEventListener('click', () => {
+      section.querySelectorAll('.af-tool-row').forEach(r => { r.classList.remove('enabled'); allowedSet.delete(r.dataset.tool); });
+      saveAllowed();
+    });
+
     parent.appendChild(section);
   },
 

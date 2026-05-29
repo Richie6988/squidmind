@@ -4257,6 +4257,87 @@ button .pixel-icon {
   line-height: 1.2;
 }
 
+/* ── New tool rows (list style) ── */
+.af-tool-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 7px 10px;
+  background: var(--ocean-mid);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+  gap: 8px;
+}
+.af-tool-row:hover {
+  background: rgba(255,255,255,0.04);
+  border-color: var(--accent);
+}
+.af-tool-row.enabled {
+  background: rgba(6,255,165,0.07);
+  border-color: var(--success);
+}
+.af-tool-row-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.af-tool-toggle {
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--border);
+  border-radius: 3px;
+  flex-shrink: 0;
+  transition: all 0.12s;
+  background: transparent;
+}
+.af-tool-row.enabled .af-tool-toggle {
+  background: var(--success);
+  border-color: var(--success);
+  box-shadow: 0 0 6px rgba(6,255,165,0.4);
+}
+.af-tool-row.enabled .af-tool-toggle::after {
+  content: '✓';
+  display: block;
+  font-size: 9px;
+  color: #000;
+  line-height: 14px;
+  text-align: center;
+}
+.af-tool-row-name {
+  font-family: 'Courier New', monospace;
+  font-size: 11px;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.af-tool-row.enabled .af-tool-row-name {
+  color: var(--success);
+}
+.af-tool-row-desc {
+  font-size: 9px;
+  color: var(--text-secondary);
+  margin-top: 1px;
+  line-height: 1.3;
+}
+.af-tool-row-meta {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.af-tool-badge {
+  font-size: 8px;
+  padding: 1px 5px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
 .agent-form-multi {
   flex: 1;
   display: grid;
