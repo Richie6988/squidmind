@@ -132,6 +132,13 @@ app.use('/api/v2/agents', buildAgentRunRoutes(agentWorkerPool));
 // Expose pool to Poseidon orchestrator for dispatch_to_agent tool
 poseidonOrchestrator.setAgentWorkerPool(agentWorkerPool);
 
+// === BOT SERVICE (Telegram / Discord remote comms) ===
+const BotService = require('./services/BotService');
+const { buildCommsRoutes } = require('./routes/commsRoutes');
+const botService = new BotService(sharedRm, v2ModelService);
+app.use('/api/v2/comms', buildCommsRoutes(botService));
+// Start bots after server is listening (wired below in app.listen callback)
+
 app.use('/api/v2/models', buildModelRouter(v2ModelService));
 app.post('/api/v2/poseidon/chat', buildPoseidonChatRoute(v2ModelService));
 
@@ -442,6 +449,8 @@ async function start() {
     await toolRegistry.syncToRegistryFile(sharedRm);
     // Start server
     app.listen(PORT, () => {
+      // Start bots after port is bound
+      botService.start().catch(err => console.warn('[BotService] startup error:', err.message));
       console.log(`\n🌊 SquidMind is live at http://localhost:${PORT}`);
       console.log('📚 Active routes:');
       console.log('  /api/v2/*                   - Registry-backed routes (V2)');
