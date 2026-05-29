@@ -725,6 +725,7 @@ class SquidInteractionSystem {
         </div>
         <div class="agent-form-footer">
           <span id="t-status" class="agent-form-status"></span>
+          <button class="btn-danger" id="t-delete" style="margin-right:auto;">🗑 Delete project</button>
           <button class="btn-secondary" onclick="this.closest('.modal').remove()">Cancel</button>
           <button class="btn-primary" id="t-save">Apply</button>
         </div>
@@ -798,6 +799,44 @@ class SquidInteractionSystem {
         setTimeout(() => modal.remove(), 700);
       } catch (err) {
         status.textContent = 'Failed: ' + err.message;
+        status.className = 'agent-form-status error';
+      }
+    });
+
+    // ── Delete project ──────────────────────────────────────────────────
+    modal.querySelector('#t-delete').addEventListener('click', async () => {
+      const status = modal.querySelector('#t-status');
+      try {
+        // Get project_id from registry
+        const regRes = await window.ApiV2._fetch('/projects');
+        const project = Object.values(regRes.registry.projects).find(p => p.name === templeName);
+        if (!project) throw new Error('Project not found');
+
+        const agentCount = (project.assigned_agents || []).length;
+        const confirm = await SquidModal.confirm(
+          `Delete project "${templeName}"?
+
+` +
+          (agentCount > 0 ? `${agentCount} assigned agent${agentCount > 1 ? 's' : ''} will be freed.
+
+` : '') +
+          `This cannot be undone.`
+        );
+        if (!confirm) return;
+
+        status.textContent = 'Deleting...';
+        await window.ApiV2._fetch(`/projects/${project.project_id}`, { method: 'DELETE' });
+
+        status.textContent = `Deleted. ${agentCount} agent${agentCount !== 1 ? 's' : ''} freed.`;
+        status.className = 'agent-form-status success';
+
+        // Refresh UI
+        if (typeof ProjectsPanel !== 'undefined') await ProjectsPanel.refresh();
+        if (window.aquarium?.loadSquids) window.aquarium.loadSquids();
+
+        setTimeout(() => modal.remove(), 900);
+      } catch (err) {
+        status.textContent = 'Delete failed: ' + err.message;
         status.className = 'agent-form-status error';
       }
     });

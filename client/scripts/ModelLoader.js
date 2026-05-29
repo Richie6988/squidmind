@@ -545,7 +545,8 @@ const ModelLoader = {
   },
   
   async _browseGo(targetPath) {
-    const list = this.modal.querySelector('#ml-browse-list');
+    const list = this.modal?.querySelector('#ml-browse-list');
+    if (!list) return; // browse-list not present in this UI mode
     list.innerHTML = '<p class="hint" style="font-size:9px; padding:8px;">Loading...</p>';
     
     try {

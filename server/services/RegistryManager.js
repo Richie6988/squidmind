@@ -693,6 +693,56 @@ class RegistryManager {
     return { registry_entry: entry, memory };
   }
 
+  /**
+   * Delete a project: remove from registry, free all assigned agents, log.
+   * Does NOT delete task history — tasks keep their project_name for reference.
+   */
+  async deleteProject(projectId) {
+    this.invalidateCache();
+    const reg = await this.getProjectRegistry();
+    const entry = reg.projects?.[projectId];
+    if (!entry) throw new Error(`Project ${projectId} not found`);
+
+    const projectName = entry.name;
+    const assignedAgents = [...(entry.assigned_agents || [])];
+
+    // Remove project from registry
+    delete reg.projects[projectId];
+    await this.write('projects/project_registry.json', reg);
+
+    // Free all assigned agents: clear their assigned_projects list
+    if (assignedAgents.length > 0) {
+      try {
+        const agentReg = await this.read('agents/agent_registry.json');
+        let modified = false;
+        for (const agentId of assignedAgents) {
+          const agent = agentReg.agents?.[agentId];
+          if (!agent) continue;
+          agent.assigned_projects = (agent.assigned_projects || []).filter(id => id !== projectId);
+          // If agent was sleeping (idle), keep it sleeping. Only change if it was on this project.
+          if (agent.current_task_id && agent.status === 'active') {
+            // Don't touch actively running agents — Poseidon handles re-assignment
+          }
+          modified = true;
+        }
+        if (modified) await this.write('agents/agent_registry.json', agentReg);
+      } catch (err) {
+        console.warn('[deleteProject] could not free agents:', err.message);
+      }
+    }
+
+    await this.log({
+      event_type: 'project_archived',
+      severity: 'warning',
+      actor: { type: 'human', id: 'human_user' },
+      subject: { type: 'project', id: projectId },
+      action: `Deleted project "${projectName}" (${projectId}), freed ${assignedAgents.length} agent(s)`,
+      context: { freed_agents: assignedAgents }
+    });
+
+    return { project_id: projectId, name: projectName, freed_agents: assignedAgents };
+  }
+
   // ==================== TASKS ====================
 
   async getTasksRegistry() {
