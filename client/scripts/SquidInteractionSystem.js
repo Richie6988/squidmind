@@ -725,7 +725,7 @@ class SquidInteractionSystem {
         </div>
         <div class="agent-form-footer">
           <span id="t-status" class="agent-form-status"></span>
-          <button class="btn-danger" id="t-delete" style="margin-right:auto;">🗑 Delete project</button>
+          <button class="btn-secondary t-delete-discrete" id="t-delete">🗑</button>
           <button class="btn-secondary" onclick="this.closest('.modal').remove()">Cancel</button>
           <button class="btn-primary" id="t-save">Apply</button>
         </div>

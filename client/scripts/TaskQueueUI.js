@@ -82,7 +82,7 @@ const TaskQueueUI = {
       <div class="tq-body">
         <div class="tq-row1">
           <span class="tq-rank">#${idx + 1}</span>
-          <span class="tq-title">${this._esc(t.title)}</span>
+          <span class="tq-title tq-title-link" title="Click to view/edit details">${this._esc(t.title)}</span>
           ${canRun ? `<button class="tq-run-btn" onclick="TaskQueueUI.runTask('${t.task_id}')" title="Run this task now">▶</button>` : ''}
           <button class="tq-cancel" onclick="TaskQueueUI.cancelTask('${t.task_id}')" title="Cancel">✕</button>
         </div>
@@ -126,6 +126,12 @@ const TaskQueueUI = {
       el.classList.remove('tq-drag-over');
       if (!this._dragging || this._dragging === t.task_id) return;
       this._reorder(this._dragging, t.task_id);
+    });
+
+    // Click on title → open detail popup
+    el.querySelector('.tq-title')?.addEventListener('click', e => {
+      e.stopPropagation();
+      TaskQueueUI.openTaskDetail(t.task_id);
     });
 
     return el;
@@ -285,6 +291,116 @@ ${task.description}`
     } catch (err) {
       await SquidModal.alert('Failed to start task: ' + err.message);
     }
+  },
+
+  // ── Task detail popup ──────────────────────────────────────────────────────
+
+  async openTaskDetail(taskId) {
+    // Fetch fresh task data
+    let task;
+    try {
+      const r = await window.ApiV2.tasks.list();
+      task = r.registry.tasks?.[taskId];
+    } catch (err) {
+      return SquidModal.alert('Could not load task: ' + err.message);
+    }
+    if (!task) return SquidModal.alert('Task not found.');
+
+    const modal = document.createElement('div');
+    modal.className = 'modal tq-detail-modal';
+
+    const statusOptions = ['open','planned','in_progress','completed','failed','cancelled','archived']
+      .map(s => `<option value="${s}" ${(task.lifecycle?.status||'open')===s?'selected':''}>${s}</option>`).join('');
+    const priorityOptions = ['critical','high','medium','low']
+      .map(p => `<option value="${p}" ${(task.priority||'medium')===p?'selected':''}>${p}</option>`).join('');
+    const agentOptions = '<option value="">— unassigned —</option>' +
+      this.agents.map(a => `<option value="${a.agent_id}" ${task.assignment?.assigned_to===a.agent_id?'selected':''}>${this._esc(a.display_name)} (${a.agent_id})</option>`).join('');
+
+    modal.innerHTML = `
+      <div class="modal-content tq-detail-content">
+        <div class="modal-header">
+          <h2 class="tq-detail-id">${this._esc(task.task_id)}</h2>
+          <button class="btn-close" onclick="this.closest('.modal').remove()">x</button>
+        </div>
+        <div class="tq-detail-body">
+          <div class="tq-detail-field">
+            <label>Title</label>
+            <input id="tqd-title" type="text" value="${this._esc(task.title || '')}">
+          </div>
+          <div class="tq-detail-field">
+            <label>Description</label>
+            <textarea id="tqd-desc" rows="4">${this._esc(task.description || '')}</textarea>
+          </div>
+          <div class="tq-detail-row2">
+            <div class="tq-detail-field">
+              <label>Status</label>
+              <select id="tqd-status">${statusOptions}</select>
+            </div>
+            <div class="tq-detail-field">
+              <label>Priority</label>
+              <select id="tqd-priority">${priorityOptions}</select>
+            </div>
+            <div class="tq-detail-field">
+              <label>Assigned agent</label>
+              <select id="tqd-agent">${agentOptions}</select>
+            </div>
+          </div>
+          ${task.lifecycle?.started_at ? `<div class="tq-detail-meta">Started: ${new Date(task.lifecycle.started_at).toLocaleString()}</div>` : ''}
+          ${task.result_summary ? `<div class="tq-detail-field"><label>Last result</label><div class="tq-detail-result">${this._esc(task.result_summary)}</div></div>` : ''}
+          ${task.created_at ? `<div class="tq-detail-meta">Created: ${new Date(task.created_at).toLocaleString()} by ${this._esc(task.created_by||'?')}</div>` : ''}
+        </div>
+        <div class="agent-form-footer">
+          <span id="tqd-status-msg" class="agent-form-status"></span>
+          <button class="btn-secondary" onclick="this.closest('.modal').remove()">Close</button>
+          <button class="btn-primary" id="tqd-save">Save changes</button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(modal);
+    modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+
+    modal.querySelector('#tqd-save').addEventListener('click', async () => {
+      const msg = modal.querySelector('#tqd-status-msg');
+      const title    = modal.querySelector('#tqd-title').value.trim();
+      const desc     = modal.querySelector('#tqd-desc').value.trim();
+      const status   = modal.querySelector('#tqd-status').value;
+      const priority = modal.querySelector('#tqd-priority').value;
+      const agentId  = modal.querySelector('#tqd-agent').value || null;
+      const agentEntry = agentId ? this.agents.find(a => a.agent_id === agentId) : null;
+
+      msg.textContent = 'Saving...';
+      msg.className = 'agent-form-status';
+
+      const patches = [
+        { fieldPath: `tasks.${taskId}.title`,                     newValue: title },
+        { fieldPath: `tasks.${taskId}.description`,               newValue: desc },
+        { fieldPath: `tasks.${taskId}.lifecycle.status`,          newValue: status },
+        { fieldPath: `tasks.${taskId}.priority`,                  newValue: priority },
+        { fieldPath: `tasks.${taskId}.assignment.assigned_to`,    newValue: agentId },
+        { fieldPath: `tasks.${taskId}.assignment.assigned_name`,  newValue: agentEntry?.display_name || null },
+      ];
+
+      let failed = 0;
+      for (const p of patches) {
+        try {
+          await window.ApiV2._fetch('/field', {
+            method: 'PATCH',
+            body: JSON.stringify({ filePath: 'tasks/tasks_registry.json', ...p, reason: 'manual edit' })
+          });
+        } catch { failed++; }
+      }
+
+      if (failed) {
+        msg.textContent = `${failed} fields failed to save`;
+        msg.className = 'agent-form-status error';
+      } else {
+        msg.textContent = 'Saved';
+        msg.className = 'agent-form-status success';
+        await this._render();
+        setTimeout(() => modal.remove(), 600);
+      }
+    });
   },
 
   // ── Helpers ───────────────────────────────────────────────────────────────

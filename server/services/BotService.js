@@ -190,13 +190,17 @@ class BotService extends EventEmitter {
   }
 
   async stopTelegram() {
+    if (!this._tgPolling && !this._tgLoopRunning) return; // already stopped
     this._tgPolling = false;
+    this._tgLoopRunning = false;
     this._tgAbort?.abort?.();
     this._tgAbort = null;
     console.log('[BotService/Telegram] stopped');
   }
 
   async _tgLoop(token) {
+    if (this._tgLoopRunning) return; // prevent duplicate loops
+    this._tgLoopRunning = true;
     while (this._tgPolling) {
       try {
         const controller = new AbortController();
@@ -224,6 +228,7 @@ class BotService extends EventEmitter {
       }
     }
     this._tgPolling = false;
+    this._tgLoopRunning = false;
   }
 
   async _handleTgMessage(token, msg) {
@@ -513,6 +518,18 @@ class BotService extends EventEmitter {
   async _runPoseidon(text, conversationKey) {
     if (!this.modelService.poseidonModelId) {
       throw new Error('Poseidon has no model loaded. Assign a model in the Models library first.');
+    }
+
+    // Wait for Poseidon to be free (sequences:1 — only one chat at a time)
+    // Poll up to 120s before giving up
+    const maxWaitMs = 120_000;
+    const pollMs    = 1_000;
+    const deadline  = Date.now() + maxWaitMs;
+    while (true) {
+      const entry = this.modelService.loaded.get(this.modelService.poseidonModelId);
+      if (!entry?.generating) break;
+      if (Date.now() > deadline) throw new Error('Poseidon busy — timed out after 120s. Try again shortly.');
+      await new Promise(r => setTimeout(r, pollMs));
     }
 
     // Per-conversation history (last 6 turns to keep context lean)

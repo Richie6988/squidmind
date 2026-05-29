@@ -4211,6 +4211,9 @@ button .pixel-icon {
   background: #0a2540;
   border: 1px solid var(--border);
   image-rendering: pixelated;
+  display: block;
+  width: 220px;
+  height: 220px;
 }
 
 .af-accessory-grid {
@@ -5976,3 +5979,51 @@ h4.pc-md-h { font-size: 8px; color: #94a3b8; }
 .comms-history-time { float: right; font-size: 8px; }
 .comms-history-text { color: var(--text); line-height: 1.4; }
 .comms-history-reply { color: var(--text-secondary); font-size: 8px; margin-top: 3px; line-height: 1.4; }
+
+/* ── Discrete delete button in temple modal ── */
+.t-delete-discrete {
+  margin-right: auto;
+  font-size: 11px;
+  padding: 4px 8px;
+  opacity: 0.4;
+  border-color: var(--danger);
+  color: var(--danger);
+  background: transparent;
+  transition: opacity 0.15s;
+}
+.t-delete-discrete:hover {
+  opacity: 1;
+  background: rgba(230,57,70,0.1);
+}
+
+/* ── Task detail popup ── */
+.tq-title-link { cursor: pointer; text-decoration: underline dotted; text-underline-offset: 2px; }
+.tq-title-link:hover { color: var(--accent); }
+
+.tq-detail-modal { align-items: center; justify-content: center; }
+.tq-detail-content {
+  width: 90vw; max-width: 560px; max-height: 90vh;
+  display: flex; flex-direction: column; overflow: hidden;
+}
+.tq-detail-id { font-size: 10px; color: var(--accent); }
+.tq-detail-body { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+.tq-detail-field { display: flex; flex-direction: column; gap: 4px; }
+.tq-detail-field label {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 8px; color: var(--text-secondary);
+}
+.tq-detail-field input, .tq-detail-field textarea, .tq-detail-field select {
+  background: var(--ocean-deep); border: 1px solid var(--border);
+  color: var(--text); padding: 7px 10px; font-size: 10px;
+  font-family: monospace; border-radius: 3px; resize: vertical;
+}
+.tq-detail-field input:focus, .tq-detail-field textarea:focus, .tq-detail-field select:focus {
+  border-color: var(--accent); outline: none;
+}
+.tq-detail-row2 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+.tq-detail-meta { font-size: 8px; color: var(--text-secondary); }
+.tq-detail-result {
+  background: rgba(0,0,0,0.3); border: 1px solid var(--border);
+  border-radius: 3px; padding: 8px; font-size: 9px; color: var(--text-secondary);
+  line-height: 1.5; max-height: 80px; overflow-y: auto;
+}

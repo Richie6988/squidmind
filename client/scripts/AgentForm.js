@@ -357,7 +357,7 @@ const AgentForm = {
     previewRow.className = 'agent-form-row';
     previewRow.innerHTML = `
       <label>Live Preview</label>
-      <canvas id="af-preview-canvas" width="180" height="180" class="af-preview-canvas"></canvas>
+      <canvas id="af-preview-canvas" width="220" height="220" class="af-preview-canvas"></canvas>
     `;
     body.appendChild(previewRow);
 
@@ -515,14 +515,21 @@ const AgentForm = {
       tempSquid.insideTemple = null;
       tempSquid.jumpHeight   = 0;
       tempSquid.heartParticles = [];
-      // Body radius in px = 40 * baseSize. Cap to 36% of canvas regardless of size_scale.
-      const targetBodyPx = canvas.width * 0.36;
+      // Body radius = targetBodyPx px. Clip canvas so glow/shadow never overflow.
+      const targetBodyPx = canvas.width * 0.32;   // body radius in px
       tempSquid.baseSize = targetBodyPx / 40;
       tempSquid.x = canvas.width  / 2;
-      tempSquid.y = canvas.height / 2 - canvas.height * 0.12;
+      tempSquid.y = canvas.height / 2 - canvas.height * 0.08;
+
+      // Clip to canvas bounds so glow arcs don't bleed outside
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(0, 0, canvas.width, canvas.height);
+      ctx.clip();
 
       // draw() translates to (this.x, this.y) already
       tempSquid.draw(ctx);
+      ctx.restore();
     } catch (e) {
       console.warn('[AgentForm] Preview draw failed:', e);
     }
