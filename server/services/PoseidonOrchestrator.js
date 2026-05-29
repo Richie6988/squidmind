@@ -43,6 +43,11 @@ class PoseidonOrchestrator {
     });
   }
 
+  /** Called from server/index.js after pool is created */
+  setAgentWorkerPool(pool) {
+    this.agentWorkerPool = pool;
+  }
+
   async _llamaCpp() {
     if (!this._llamaCppPromise) {
       this._llamaCppPromise = import('node-llama-cpp');
@@ -171,6 +176,11 @@ class PoseidonOrchestrator {
       lines.push(`  read_my_brain('processes.git_workflow')`);
       lines.push(`  read_my_brain('processes.archive_project')`);
       lines.push(`Or read_my_brain('tools_catalog') to see all tools by category.`);
+      lines.push('');
+      lines.push('KEY TOOL: dispatch_to_agent(agent_id, task_message, task_id?)');
+      lines.push('  → Runs an agent autonomously in parallel. Use list_agents to pick the right one.');
+      lines.push('  → The agent uses its own model session, personality, skills, and tools_allowed.');
+      lines.push('  → Returns immediately; task runs in background and is logged.');
     }
     return lines.join('\n');
   }
@@ -712,6 +722,85 @@ Never describe a bash command you could call instead.`;
           required: ['model_id', 'prompt', 'project_id']
         },
         handler: async (params) => self.tools.generateImage(params)
+      }),
+
+      dispatch_to_agent: defineChatSessionFunction({
+        description: 'Dispatch a task to a specific agent. The agent will execute it autonomously using its own model session, personality, skills, and tools. Returns immediately with a job_id; results stream in the background. Use list_agents to pick the right agent_id.',
+        params: {
+          type: 'object',
+          properties: {
+            agent_id:    { type: 'string', description: 'Agent ID (e.g. "agent_001")' },
+            task_message:{ type: 'string', description: 'Clear task description for the agent. Be specific: include context, expected output format, and any constraints.' },
+            task_id:     { type: 'string', description: 'Optional task_id from tasks_registry to link this run to a tracked task' }
+          },
+          required: ['agent_id', 'task_message']
+        },
+        handler: async ({ agent_id, task_message, task_id }) => {
+          if (!self.agentWorkerPool) {
+            return { ok: false, error: 'AgentWorkerPool not initialized. Server may still be starting.' };
+          }
+          try {
+            // Mark task as in_progress if task_id provided
+            if (task_id) {
+              try {
+                const reg = await self.rm.read('tasks/tasks_registry.json');
+                if (reg.tasks?.[task_id]) {
+                  reg.tasks[task_id].lifecycle = reg.tasks[task_id].lifecycle || {};
+                  reg.tasks[task_id].lifecycle.status = 'in_progress';
+                  reg.tasks[task_id].lifecycle.started_at = new Date().toISOString();
+                  await self.rm.write('tasks/tasks_registry.json', reg);
+                }
+              } catch {}
+            }
+
+            // Fire-and-forget: run in background, log result
+            const gen = await self.agentWorkerPool.dispatch(agent_id, task_message);
+            let fullText = '';
+            let toolCalls = 0;
+            // Consume generator in background
+            (async () => {
+              try {
+                for await (const ev of gen) {
+                  if (ev.type === 'text') fullText += ev.chunk;
+                  if (ev.type === 'tool_call') toolCalls++;
+                  if (ev.type === 'error') {
+                    await self.rm.log({ event_type: 'agent_error', actor: { type: 'agent', id: agent_id },
+                      subject: { type: 'task', id: task_id || 'unknown' }, action: ev.error });
+                  }
+                }
+                // Mark task done
+                if (task_id) {
+                  try {
+                    const reg = await self.rm.read('tasks/tasks_registry.json');
+                    if (reg.tasks?.[task_id]) {
+                      reg.tasks[task_id].lifecycle.status   = 'completed';
+                      reg.tasks[task_id].lifecycle.completed_at = new Date().toISOString();
+                      reg.tasks[task_id].result_summary     = fullText.slice(0, 500);
+                      await self.rm.write('tasks/tasks_registry.json', reg);
+                    }
+                  } catch {}
+                }
+                await self.rm.log({ event_type: 'task_completed', actor: { type: 'agent', id: agent_id },
+                  subject: { type: 'task', id: task_id || 'adhoc' },
+                  action: `Agent \${agent_id} completed task (\${toolCalls} tool calls)`,
+                  context: { result_preview: fullText.slice(0, 200) }
+                });
+              } catch (bgErr) {
+                console.error('[dispatch_to_agent] background error:', bgErr.message);
+              }
+            })();
+
+            return {
+              ok: true,
+              agent_id,
+              task_id: task_id || null,
+              message: `Agent \${agent_id} is now running the task. Results will be logged. Monitor via /api/v2/agents/\${agent_id}/worker-status`,
+              stream_url: `/api/v2/agents/\${agent_id}/run`
+            };
+          } catch (err) {
+            return { ok: false, error: err.message };
+          }
+        }
       })
     };
   }

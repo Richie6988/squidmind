@@ -124,6 +124,14 @@ const poseidonOrchestrator = new PoseidonOrchestrator({
 });
 v2ModelService.setOrchestrator(poseidonOrchestrator);
 
+// === AGENT WORKER POOL ===
+const { AgentWorkerPool } = require('./services/AgentWorker');
+const { buildAgentRunRoutes } = require('./routes/agentRoutes');
+const agentWorkerPool = new AgentWorkerPool(sharedRm, v2ModelService, toolRegistry);
+app.use('/api/v2/agents', buildAgentRunRoutes(agentWorkerPool));
+// Expose pool to Poseidon orchestrator for dispatch_to_agent tool
+poseidonOrchestrator.setAgentWorkerPool(agentWorkerPool);
+
 app.use('/api/v2/models', buildModelRouter(v2ModelService));
 app.post('/api/v2/poseidon/chat', buildPoseidonChatRoute(v2ModelService));
 

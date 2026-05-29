@@ -244,12 +244,11 @@ const AgentForm = {
     ]);
 
     // ===== PERSONALITY =====
-    // ⚠️ Note: personality + skills are stored in the brain file but not yet injected
-    // into inference. They're metadata for future multi-agent routing.
-    const _warnEl = document.createElement('div');
-    _warnEl.style.cssText = 'background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.4);border-radius:4px;padding:8px 12px;margin:0 0 12px 0;font-size:10px;color:#fbbf24;line-height:1.5;';
-    _warnEl.innerHTML = '⚠️ <b>Note:</b> Personality traits and skills are stored in the brain file but not yet injected into model inference. They currently serve as metadata for future multi-agent routing features.';
-    body.appendChild(_warnEl);
+    // Personality + skills ARE now injected into the agent's system prompt at runtime
+    const _infoEl = document.createElement('div');
+    _infoEl.style.cssText = 'background:rgba(6,255,165,0.07);border:1px solid rgba(6,255,165,0.25);border-radius:4px;padding:8px 12px;margin:0 0 12px 0;font-size:10px;color:#06ffa5;line-height:1.5;';
+    _infoEl.innerHTML = '✅ <b>Live:</b> Personality traits, communication style, and skills are injected into this agent\u2019s system prompt when it runs a task via <code style="background:rgba(0,0,0,0.3);padding:1px 4px;border-radius:2px;">dispatch_to_agent</code>. Changes here take effect on the next task run.';
+    body.appendChild(_infoEl);
     const per = brain.personality || {};
     const traits = per.traits || {};
     this._addSection(body, 'Personality', [
