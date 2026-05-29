@@ -24,11 +24,8 @@ function buildCommsRoutes(botService) {
   // Body: { token?, allowed_chat_ids?, allowed_channel_ids?, allowed_user_ids?, enabled? }
   router.post('/:platform/config', async (req, res) => {
     const { platform } = req.params;
-    if (!['telegram', 'discord', 'signal'].includes(platform)) {
+    if (!['telegram', 'discord'].includes(platform)) {
       return res.status(400).json({ success: false, error: 'Unknown platform' });
-    }
-    if (platform === 'signal') {
-      return res.status(400).json({ success: false, error: 'Signal not yet supported' });
     }
     try {
       const safe = await botService.updatePlatformConfig(platform, req.body);

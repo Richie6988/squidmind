@@ -28,7 +28,6 @@ const TG_API_BASE     = 'https://api.telegram.org/bot';
 const DEFAULT_CONFIG = {
   telegram: { enabled: false, token: '', allowed_chat_ids: [], bot_username: '' },
   discord:  { enabled: false, token: '', allowed_channel_ids: [], allowed_user_ids: [], bot_username: '' },
-  signal:   { enabled: false, status: 'coming_soon' },
   history:  []   // last 50 messages across all channels
 };
 
@@ -161,11 +160,6 @@ class BotService extends EventEmitter {
         token:     maskToken(this.config?.discord?.token),
         allowed_channel_ids: this.config?.discord?.allowed_channel_ids || [],
         allowed_user_ids:    this.config?.discord?.allowed_user_ids || [],
-      },
-      signal: {
-        enabled: false,
-        status: 'coming_soon',
-        note: 'Signal integration requires signal-cli. Planned for a future release.'
       },
       history: this._history.slice(-20)
     };

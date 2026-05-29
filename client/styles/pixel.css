@@ -5940,33 +5940,7 @@ h4.pc-md-h { font-size: 8px; color: #94a3b8; }
 .comms-actions { display: flex; gap: 8px; margin-top: 4px; }
 .comms-error { font-size: 9px; color: var(--danger); margin-top: 6px; }
 
-/* ── Coming soon ── */
-.comms-coming-soon {
-  text-align: center;
-  padding: 30px 20px;
-}
-.comms-soon-icon { font-size: 40px; margin-bottom: 12px; }
-.comms-soon-title {
-  font-family: 'Press Start 2P', monospace;
-  font-size: 11px;
-  color: var(--text);
-  margin-bottom: 12px;
-}
-.comms-soon-text {
-  font-size: 10px;
-  color: var(--text-secondary);
-  line-height: 1.6;
-  margin-bottom: 10px;
-}
-.comms-soon-chips { display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; margin-top: 14px; }
-.comms-chip {
-  font-size: 8px;
-  padding: 3px 8px;
-  border: 1px solid #f59e0b;
-  color: #f59e0b;
-  border-radius: 3px;
-  background: rgba(245,158,11,0.08);
-}
+
 
 /* ── History ── */
 .comms-history-section {

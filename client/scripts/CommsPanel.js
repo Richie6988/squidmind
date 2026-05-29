@@ -1,7 +1,7 @@
 /**
  * CommsPanel — Remote communication setup modal.
  *
- * Three tabs: Telegram | Discord | Signal (coming soon)
+ * Two tabs: Telegram | Discord
  * Each tab: token input, allowed-ids config, connect/disconnect button,
  *           live status indicator, test button, message history.
  */
@@ -33,10 +33,6 @@ const CommsPanel = {
             <span class="comms-tab-icon">🎮</span> Discord
             <span class="comms-dot" id="dot-discord"></span>
           </button>
-          <button class="comms-tab" data-tab="signal" onclick="CommsPanel._switchTab('signal')">
-            <span class="comms-tab-icon">🔒</span> Signal
-            <span class="comms-dot comms-dot-soon" id="dot-signal"></span>
-          </button>
         </div>
         <div class="comms-body">
           <div id="comms-tab-telegram" class="comms-tab-pane active">
@@ -44,9 +40,6 @@ const CommsPanel = {
           </div>
           <div id="comms-tab-discord" class="comms-tab-pane" style="display:none">
             ${this._renderDiscordTab()}
-          </div>
-          <div id="comms-tab-signal" class="comms-tab-pane" style="display:none">
-            ${this._renderSignalTab()}
           </div>
         </div>
         <div class="comms-history-section">
@@ -173,28 +166,6 @@ const CommsPanel = {
     `;
   },
 
-  _renderSignalTab() {
-    return `
-      <div class="comms-coming-soon">
-        <div class="comms-soon-icon">🔒</div>
-        <h3 class="comms-soon-title">Signal — Coming Soon</h3>
-        <p class="comms-soon-text">
-          Signal integration requires <code>signal-cli</code> (a Java-based daemon) running alongside SquidMind.
-          It's more complex to set up but offers the highest level of end-to-end encryption.
-        </p>
-        <p class="comms-soon-text">
-          Planned for a future release. In the meantime, Telegram's secret chats or Discord with
-          channel permissions offer solid security for most use cases.
-        </p>
-        <div class="comms-soon-chips">
-          <span class="comms-chip">E2E Encryption</span>
-          <span class="comms-chip">Requires signal-cli</span>
-          <span class="comms-chip">Planned v2</span>
-        </div>
-      </div>
-    `;
-  },
-
   // ── Tab switching ───────────────────────────────────────────────────────────
 
   _switchTab(name) {
@@ -227,6 +198,7 @@ const CommsPanel = {
     const dotDs = this.modal.querySelector('#dot-discord');
     if (dotTg) dotTg.className = `comms-dot ${tg.connected ? 'comms-dot-on' : 'comms-dot-off'}`;
     if (dotDs) dotDs.className = `comms-dot ${ds.connected ? 'comms-dot-on' : 'comms-dot-off'}`;
+    // (Signal tab removed)
 
     // Telegram tab
     this._applyPlatformStatus('tg', tg);
