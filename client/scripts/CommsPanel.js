@@ -61,8 +61,11 @@ const CommsPanel = {
   },
 
   close() {
-    if (this.modal) this.modal.style.display = 'none';
     this._stopPolling();
+    if (this.modal) {
+      this.modal.remove();
+      this.modal = null;
+    }
   },
 
   // ── Tab HTML ────────────────────────────────────────────────────────────────

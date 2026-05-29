@@ -6027,3 +6027,36 @@ h4.pc-md-h { font-size: 8px; color: #94a3b8; }
   border-radius: 3px; padding: 8px; font-size: 9px; color: var(--text-secondary);
   line-height: 1.5; max-height: 80px; overflow-y: auto;
 }
+
+/* ── Task queue completed/results section ── */
+.tq-done-section { margin-top: 10px; border-top: 1px solid var(--border); padding-top: 8px; }
+.tq-done-header {
+  display: flex; align-items: center; justify-content: space-between;
+  font-family: 'Press Start 2P', monospace; font-size: 8px;
+  color: var(--text-secondary); margin-bottom: 6px;
+}
+.tq-done-toggle {
+  background: none; border: none; color: var(--text-secondary);
+  cursor: pointer; font-size: 11px; padding: 0 4px;
+}
+.tq-done-collapsed .tq-done-list { display: none; }
+.tq-done-collapsed .tq-done-toggle { transform: rotate(-90deg); }
+
+.tq-done-item {
+  background: rgba(6,255,165,0.04);
+  border: 1px solid rgba(6,255,165,0.15);
+  border-radius: 3px; padding: 7px 9px;
+  margin-bottom: 4px; cursor: pointer;
+  transition: background 0.12s;
+}
+.tq-done-item:hover { background: rgba(6,255,165,0.08); }
+.tq-done-row1 { display: flex; align-items: center; gap: 6px; margin-bottom: 2px; }
+.tq-done-icon { font-size: 10px; flex-shrink: 0; }
+.tq-done-title { font-size: 9px; color: var(--text); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tq-done-when { font-size: 8px; color: var(--text-secondary); flex-shrink: 0; }
+.tq-done-agent { font-size: 8px; color: var(--accent); margin-bottom: 3px; }
+.tq-done-summary { font-size: 8px; color: var(--text-secondary); line-height: 1.4; }
+
+/* result header in detail popup */
+.tq-detail-result-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+.tq-detail-result-header label { margin-bottom: 0; }

@@ -38,27 +38,68 @@ const TaskQueueUI = {
     const container = document.getElementById('task-queue');
     if (!container) return;
     try {
-      // Poll worker pool status (non-blocking)
-      window.ApiV2._fetch('/agents/pool/status')
-        .then(d => { this._workerStatuses = d.workers || {}; })
-        .catch(() => {});
+      // Await worker statuses so progress bars don't flicker/disappear between renders
+      try {
+        const ws = await window.ApiV2._fetch('/agents/pool/status');
+        this._workerStatuses = ws.workers || {};
+      } catch {}
 
       const r = await window.ApiV2.tasks.list();
       const tasks = r.registry.tasks || {};
-      this._tasks = Object.values(tasks)
+      const allTasks = Object.values(tasks);
+
+      // Active queue: not completed/failed/cancelled/archived
+      this._tasks = allTasks
         .filter(t => !['completed', 'failed', 'cancelled', 'archived'].includes(t.lifecycle?.status))
         .sort((a, b) => (b.priority?.computed_score || 0) - (a.priority?.computed_score || 0));
 
-      if (this._tasks.length === 0) {
+      // Completed tasks (last 10, most recent first) — for results view
+      const doneTasks = allTasks
+        .filter(t => ['completed', 'failed'].includes(t.lifecycle?.status))
+        .sort((a, b) => new Date(b.lifecycle?.completed_at || b.created_at || 0) - new Date(a.lifecycle?.completed_at || a.created_at || 0))
+        .slice(0, 10);
+
+      container.innerHTML = '';
+
+      if (this._tasks.length === 0 && doneTasks.length === 0) {
         container.innerHTML = '<p class="hint" style="font-size:9px;color:var(--text-secondary);">No tasks queued</p>';
         return;
       }
 
-      container.innerHTML = '';
       this._tasks.forEach((t, idx) => container.appendChild(this._makeItem(t, idx)));
+
+      // ── Completed / results section ──
+      if (doneTasks.length > 0) {
+        const sep = document.createElement('div');
+        sep.className = 'tq-done-section';
+        sep.innerHTML = `<div class="tq-done-header">
+          <span>✅ Recent results (${doneTasks.length})</span>
+          <button class="tq-done-toggle" onclick="this.closest('.tq-done-section').classList.toggle('tq-done-collapsed')">▾</button>
+        </div>
+        <div class="tq-done-list">${doneTasks.map(t => this._makeDoneItem(t)).join('')}</div>`;
+        container.appendChild(sep);
+      }
     } catch (err) {
       container.innerHTML = `<p class="hint" style="font-size:9px;color:var(--danger);">Failed: ${this._esc(err.message)}</p>`;
     }
+  },
+
+  _makeDoneItem(t) {
+    const ok      = t.lifecycle?.status === 'completed';
+    const icon    = ok ? '✅' : '❌';
+    const agent   = t.assignment?.assigned_name || t.assignment?.assigned_to || '—';
+    const when    = t.lifecycle?.completed_at ? this._elapsed(t.lifecycle.completed_at) : '';
+    const summary = t.result_summary ? this._esc(t.result_summary.slice(0, 120)) + (t.result_summary.length > 120 ? '…' : '') : '<em style="opacity:.5">No result saved</em>';
+    return `
+      <div class="tq-done-item" onclick="TaskQueueUI.openTaskDetail('${t.task_id}')">
+        <div class="tq-done-row1">
+          <span class="tq-done-icon">${icon}</span>
+          <span class="tq-done-title">${this._esc(t.title)}</span>
+          <span class="tq-done-when">${when}</span>
+        </div>
+        <div class="tq-done-agent">${this._esc(agent)}</div>
+        <div class="tq-done-summary">${summary}</div>
+      </div>`;
   },
 
   _makeItem(t, idx) {
@@ -346,7 +387,14 @@ ${task.description}`
             </div>
           </div>
           ${task.lifecycle?.started_at ? `<div class="tq-detail-meta">Started: ${new Date(task.lifecycle.started_at).toLocaleString()}</div>` : ''}
-          ${task.result_summary ? `<div class="tq-detail-field"><label>Last result</label><div class="tq-detail-result">${this._esc(task.result_summary)}</div></div>` : ''}
+          ${task.result_summary || task.result_file ? `
+          <div class="tq-detail-field">
+            <div class="tq-detail-result-header">
+              <label>Result</label>
+              ${task.result_file ? `<button class="btn-secondary" style="font-size:8px;padding:2px 8px;" id="tqd-load-result">📄 Load full result</button>` : ''}
+            </div>
+            <div class="tq-detail-result" id="tqd-result-box">${task.result_summary ? this._esc(task.result_summary) : '<em style="opacity:.5">Click to load full result</em>'}</div>
+          </div>` : ''}
           ${task.created_at ? `<div class="tq-detail-meta">Created: ${new Date(task.created_at).toLocaleString()} by ${this._esc(task.created_by||'?')}</div>` : ''}
         </div>
         <div class="agent-form-footer">
@@ -399,6 +447,31 @@ ${task.description}`
         msg.className = 'agent-form-status success';
         await this._render();
         setTimeout(() => modal.remove(), 600);
+      }
+    });
+
+    // Wire load-full-result button
+    modal.querySelector('#tqd-load-result')?.addEventListener('click', async () => {
+      const btn = modal.querySelector('#tqd-load-result');
+      const box = modal.querySelector('#tqd-result-box');
+      if (!btn || !box) return;
+      btn.textContent = 'Loading...';
+      btn.disabled = true;
+      try {
+        const data = await window.ApiV2._fetch(`/tasks/${taskId}/result`);
+        if (data.result) {
+          box.style.whiteSpace = 'pre-wrap';
+          box.style.maxHeight  = '300px';
+          box.textContent = data.result;
+          btn.textContent = '✅ Loaded';
+        } else {
+          box.textContent = 'No result file found.';
+          btn.textContent = '—';
+        }
+      } catch (err) {
+        box.textContent = 'Error loading result: ' + err.message;
+        btn.disabled = false;
+        btn.textContent = '📄 Retry';
       }
     });
   },

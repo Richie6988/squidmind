@@ -157,6 +157,19 @@ router.post('/tasks', async (req, res) => {
   } catch (err) { res.status(500).json({ success: false, error: err.message }); }
 });
 
+router.get('/tasks/:id/result', async (req, res) => {
+  try {
+    const fs   = require('fs').promises;
+    const path = require('path');
+    const filePath = path.join(rm.dataRoot, 'tasks', 'results', `${req.params.id}.txt`);
+    const text = await fs.readFile(filePath, 'utf8');
+    res.json({ success: true, task_id: req.params.id, result: text });
+  } catch (err) {
+    if (err.code === 'ENOENT') return res.json({ success: true, task_id: req.params.id, result: null });
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 router.post('/tasks/:id/close', async (req, res) => {
   try {
     rm.invalidateCache();

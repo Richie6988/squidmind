@@ -768,17 +768,36 @@ Never describe a bash command you could call instead.`;
                       subject: { type: 'task', id: task_id || 'unknown' }, action: ev.error });
                   }
                 }
-                // Mark task done
+                // Mark task done + save full result
                 if (task_id) {
                   try {
+                    const now = new Date().toISOString();
                     const reg = await self.rm.read('tasks/tasks_registry.json');
                     if (reg.tasks?.[task_id]) {
-                      reg.tasks[task_id].lifecycle.status   = 'completed';
-                      reg.tasks[task_id].lifecycle.completed_at = new Date().toISOString();
-                      reg.tasks[task_id].result_summary     = fullText.slice(0, 500);
+                      reg.tasks[task_id].lifecycle.status       = 'completed';
+                      reg.tasks[task_id].lifecycle.completed_at = now;
+                      reg.tasks[task_id].result_summary         = fullText.slice(0, 500);
+                      reg.tasks[task_id].result_file            = `tasks/results/${task_id}.txt`;
                       await self.rm.write('tasks/tasks_registry.json', reg);
                     }
-                  } catch {}
+                    // Write full result to dedicated file
+                    const fs = require('fs').promises;
+                    const path = require('path');
+                    const resultsDir = path.join(self.rm.dataRoot, 'tasks', 'results');
+                    await fs.mkdir(resultsDir, { recursive: true });
+                    const header = [
+                      `Task: ${task_id}`,
+                      `Title: ${reg.tasks?.[task_id]?.title || ''}`,
+                      `Agent: ${agent_id}`,
+                      `Completed: ${now}`,
+                      `Tool calls: ${toolCalls}`,
+                      '─'.repeat(60),
+                      ''
+                    ].join('\n');
+                    await fs.writeFile(path.join(resultsDir, `${task_id}.txt`), header + fullText, 'utf8');
+                  } catch (e) {
+                    console.warn('[dispatch_to_agent] result save error:', e.message);
+                  }
                 }
                 await self.rm.log({ event_type: 'task_completed', actor: { type: 'agent', id: agent_id },
                   subject: { type: 'task', id: task_id || 'adhoc' },
