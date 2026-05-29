@@ -181,6 +181,13 @@ class AgentWorker extends EventEmitter {
     const entry = this.modelService.loaded.get(modelId);
     if (!entry) throw new Error(`Model ${modelId} failed to load`);
 
+    // Wait for Poseidon (or another agent) to free the model before grabbing a sequence
+    const deadline = Date.now() + 180_000;
+    while (entry.generating) {
+      if (Date.now() > deadline) throw new Error(`Model ${modelId} still busy after 3min — aborting`);
+      await new Promise(r => setTimeout(r, 1500));
+    }
+
     const llamaCpp = await import('node-llama-cpp');
     const { defineChatSessionFunction } = llamaCpp;
 
@@ -204,14 +211,17 @@ class AgentWorker extends EventEmitter {
       (ev) => toolEvents.push(ev)
     );
 
-    this.sequence = entry.context.getSequence();
-    this.session  = new llamaCpp.LlamaChatSession({
-      contextSequence: this.sequence,
-      systemPrompt: trimmedPrompt,
-      chatWrapper: 'auto',
+    // Create a DEDICATED context so the agent doesn't compete with Poseidon's sequence slot
+    const { context: agentCtx, sequence, contextLength } = await this.modelService.createAgentContext(modelId);
+    this._agentContext = agentCtx;  // store for disposal
+    this.sequence      = sequence;
+    this.session = new llamaCpp.LlamaChatSession({
+      contextSequence: sequence,
+      systemPrompt:    trimmedPrompt,
+      chatWrapper:     'auto',
     });
 
-    console.log(`[AgentWorker] Session created for ${this.agentId} on model ${modelId} — ${toolsAllowed.length} tools, prompt ${Math.round(trimmedPrompt.length/4)} tok`);
+    console.log(`[AgentWorker] Session created for ${this.agentId} on model ${modelId} — ${toolsAllowed.length} tools, prompt ${Math.round(trimmedPrompt.length/4)} tok, ctx=${contextLength}`);
   }
 
   /**
@@ -330,9 +340,11 @@ class AgentWorker extends EventEmitter {
   /** Dispose session (frees context sequence) */
   async dispose() {
     try { await this.session?.dispose?.(); } catch {}
-    this.session  = null;
-    this.sequence = null;
-    this._functions = null;
+    try { await this._agentContext?.dispose?.(); } catch {}
+    this.session      = null;
+    this.sequence     = null;
+    this._agentContext = null;
+    this._functions   = null;
   }
 }
 

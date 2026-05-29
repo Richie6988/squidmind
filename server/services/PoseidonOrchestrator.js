@@ -740,11 +740,13 @@ Never describe a bash command you could call instead.`;
             return { ok: false, error: 'AgentWorkerPool not initialized. Server may still be starting.' };
           }
           try {
-            // Mark task as in_progress if task_id provided
+            // Mark task as in_progress if task_id provided; capture title for result header
+            let taskTitle = task_message.split('\n')[0].slice(0, 80);
             if (task_id) {
               try {
                 const reg = await self.rm.read('tasks/tasks_registry.json');
                 if (reg.tasks?.[task_id]) {
+                  taskTitle = reg.tasks[task_id].title || taskTitle;
                   reg.tasks[task_id].lifecycle = reg.tasks[task_id].lifecycle || {};
                   reg.tasks[task_id].lifecycle.status = 'in_progress';
                   reg.tasks[task_id].lifecycle.started_at = new Date().toISOString();
@@ -787,7 +789,7 @@ Never describe a bash command you could call instead.`;
                     await fs.mkdir(resultsDir, { recursive: true });
                     const header = [
                       `Task: ${task_id}`,
-                      `Title: ${reg.tasks?.[task_id]?.title || ''}`,
+                      `Title: ${taskTitle}`,
                       `Agent: ${agent_id}`,
                       `Completed: ${now}`,
                       `Tool calls: ${toolCalls}`,
@@ -1054,7 +1056,11 @@ Never describe a bash command you could call instead.`;
         title,
         description: description || '',
         project_name: project || null,
-        priority: priority || 'medium',
+        priority: {
+          label: priority || 'medium',
+          computed_score: priority === 'critical' ? 20 : priority === 'high' ? 15 : priority === 'low' ? 5 : 10,
+          score_history: []
+        },
         created_at: new Date().toISOString(),
         created_by: 'poseidon_main',
         lifecycle: {

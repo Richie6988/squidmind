@@ -6060,3 +6060,25 @@ h4.pc-md-h { font-size: 8px; color: #94a3b8; }
 /* result header in detail popup */
 .tq-detail-result-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
 .tq-detail-result-header label { margin-bottom: 0; }
+
+/* ── Task card status dots ── */
+.tq-dot { font-size: 8px; flex-shrink: 0; }
+.tq-dot-open    { color: rgba(255,255,255,0.25); }
+.tq-dot-planned { color: #60a5fa; }
+.tq-dot-running { color: var(--success); }
+.tq-dot-paused  { color: #f59e0b; }
+.tq-dot-pulse   { animation: tq-pulse 1.2s ease-in-out infinite; }
+
+.tq-status-label {
+  font-size: 8px;
+  color: var(--text-secondary);
+  font-family: 'Press Start 2P', monospace;
+  letter-spacing: 0.5px;
+}
+.tq-cron-badge {
+  font-size: 10px;
+  opacity: 0.5;
+  cursor: default;
+  flex-shrink: 0;
+}
+.tq-cron-badge:hover { opacity: 1; }

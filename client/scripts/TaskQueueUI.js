@@ -51,7 +51,7 @@ const TaskQueueUI = {
       // Active queue: not completed/failed/cancelled/archived
       this._tasks = allTasks
         .filter(t => !['completed', 'failed', 'cancelled', 'archived'].includes(t.lifecycle?.status))
-        .sort((a, b) => (b.priority?.computed_score || 0) - (a.priority?.computed_score || 0));
+        .sort((a, b) => (b.sort_order || 0) - (a.sort_order || 0));
 
       // Completed tasks (last 10, most recent first) — for results view
       const doneTasks = allTasks
@@ -117,24 +117,36 @@ const TaskQueueUI = {
     const workerStatus = assignee ? (this._workerStatuses[assignee]?.status || 'idle') : null;
     const isRunning   = status === 'in_progress' || workerStatus === 'running';
     const canRun      = assignee && ['planned', 'open', 'assigned'].includes(status);
+    const isCron      = !!t.cron_schedule;
+
+    // Status dot + label
+    const statusDot = {
+      'open':        { dot: '⬤', cls: 'tq-dot-open',     label: 'queued' },
+      'planned':     { dot: '⬤', cls: 'tq-dot-planned',   label: 'ready' },
+      'assigned':    { dot: '⬤', cls: 'tq-dot-planned',   label: 'assigned' },
+      'in_progress': { dot: '⬤', cls: 'tq-dot-running',   label: 'running' },
+      'paused':      { dot: '⬤', cls: 'tq-dot-paused',    label: 'paused' },
+    }[status] || { dot: '⬤', cls: 'tq-dot-open', label: status };
 
     el.innerHTML = `
       <div class="tq-drag-handle" title="Drag to reorder">⠿</div>
       <div class="tq-body">
         <div class="tq-row1">
           <span class="tq-rank">#${idx + 1}</span>
+          <span class="tq-dot ${statusDot.cls} ${isRunning ? 'tq-dot-pulse' : ''}" title="${statusDot.label}">⬤</span>
           <span class="tq-title tq-title-link" title="Click to view/edit details">${this._esc(t.title)}</span>
-          ${canRun ? `<button class="tq-run-btn" onclick="TaskQueueUI.runTask('${t.task_id}')" title="Run this task now">▶</button>` : ''}
+          ${isCron ? `<span class="tq-cron-badge" title="Scheduled: ${this._esc(t.cron_schedule)}">⏱</span>` : ''}
+          ${canRun ? `<button class="tq-run-btn" onclick="TaskQueueUI.runTask('${t.task_id}')" title="▶ Run now">▶</button>` : ''}
           <button class="tq-cancel" onclick="TaskQueueUI.cancelTask('${t.task_id}')" title="Cancel">✕</button>
         </div>
         <div class="tq-row2">
-          <span class="tq-status status-${status} ${isRunning ? 'tq-status-running' : ''}">${status}</span>
+          <span class="tq-status-label">${statusDot.label}</span>
           <button class="tq-assignee ${assignee ? 'tq-assigned' : 'tq-unassigned'}"
                   onclick="TaskQueueUI.openAssignPicker('${t.task_id}', this)"
                   title="Click to assign agent">${this._esc(agentName)}</button>
         </div>
         ${isRunning ? `<div class="tq-progress-bar"><div class="tq-progress-fill"></div></div>` : ''}
-        ${isRunning ? `<div class="tq-running-meta" id="tq-meta-${t.task_id}">⚡ Running${t.lifecycle?.started_at ? ' · started ' + TaskQueueUI._elapsed(t.lifecycle.started_at) : ''}</div>` : ''}
+        ${isRunning ? `<div class="tq-running-meta">⚡ Running${t.lifecycle?.started_at ? ' · ' + TaskQueueUI._elapsed(t.lifecycle.started_at) : ''}</div>` : ''}
       </div>
     `;
 
@@ -211,7 +223,7 @@ const TaskQueueUI = {
         method: 'PATCH',
         body: JSON.stringify({
           filePath: 'tasks/tasks_registry.json',
-          fieldPath: `tasks.${taskId}.priority.computed_score`,
+          fieldPath: `tasks.${taskId}.sort_order`,
           newValue: score,
           reason: 'reordered via drag-drop'
         })
@@ -352,15 +364,19 @@ ${task.description}`
 
     const statusOptions = ['open','planned','in_progress','completed','failed','cancelled','archived']
       .map(s => `<option value="${s}" ${(task.lifecycle?.status||'open')===s?'selected':''}>${s}</option>`).join('');
+    const currentPriority = typeof task.priority === 'object' ? (task.priority?.label || 'medium') : (task.priority || 'medium');
     const priorityOptions = ['critical','high','medium','low']
-      .map(p => `<option value="${p}" ${(task.priority||'medium')===p?'selected':''}>${p}</option>`).join('');
+      .map(p => `<option value="${p}" ${currentPriority===p?'selected':''}>${p}</option>`).join('');
     const agentOptions = '<option value="">— unassigned —</option>' +
       this.agents.map(a => `<option value="${a.agent_id}" ${task.assignment?.assigned_to===a.agent_id?'selected':''}>${this._esc(a.display_name)} (${a.agent_id})</option>`).join('');
 
     modal.innerHTML = `
       <div class="modal-content tq-detail-content">
         <div class="modal-header">
-          <h2 class="tq-detail-id">${this._esc(task.task_id)}</h2>
+          <div class="tq-detail-title-row">
+            <span class="tq-detail-status-badge status-${task.lifecycle?.status||'open'}">${task.lifecycle?.status||'open'}</span>
+            <span class="tq-detail-tid">${this._esc(task.task_id)}</span>
+          </div>
           <button class="btn-close" onclick="this.closest('.modal').remove()">x</button>
         </div>
         <div class="tq-detail-body">
@@ -371,6 +387,14 @@ ${task.description}`
           <div class="tq-detail-field">
             <label>Description</label>
             <textarea id="tqd-desc" rows="4">${this._esc(task.description || '')}</textarea>
+          </div>
+          <div class="tq-detail-field">
+            <label>Cron schedule <span style="font-size:7px;font-family:monospace;opacity:.6">(optional — e.g. 0 8 * * * for 8am daily)</span></label>
+            <div style="display:flex;gap:6px;align-items:center;">
+              <input id="tqd-cron" type="text" style="font-family:monospace;" placeholder="0 8 * * *" value="${this._esc(task.cron_schedule||'')}">
+              <a href="https://crontab.guru" target="_blank" style="font-size:8px;color:var(--accent);white-space:nowrap;text-decoration:none;" title="Open crontab.guru">🕐 help</a>
+            </div>
+            ${task.cron_schedule ? `<p class="comms-hint">Next run: ${TaskQueueUI._nextCron(task.cron_schedule)}</p>` : ''}
           </div>
           <div class="tq-detail-row2">
             <div class="tq-detail-field">
@@ -424,9 +448,11 @@ ${task.description}`
         { fieldPath: `tasks.${taskId}.title`,                     newValue: title },
         { fieldPath: `tasks.${taskId}.description`,               newValue: desc },
         { fieldPath: `tasks.${taskId}.lifecycle.status`,          newValue: status },
-        { fieldPath: `tasks.${taskId}.priority`,                  newValue: priority },
+        { fieldPath: `tasks.${taskId}.priority.label`,             newValue: priority },
+        { fieldPath: `tasks.${taskId}.sort_order`,    newValue: priority === 'critical' ? 20 : priority === 'high' ? 15 : priority === 'low' ? 5 : 10 },
         { fieldPath: `tasks.${taskId}.assignment.assigned_to`,    newValue: agentId },
         { fieldPath: `tasks.${taskId}.assignment.assigned_name`,  newValue: agentEntry?.display_name || null },
+        { fieldPath: `tasks.${taskId}.cron_schedule`,              newValue: modal.querySelector('#tqd-cron').value.trim() || null },
       ];
 
       let failed = 0;
@@ -484,6 +510,22 @@ ${task.description}`
     if (secs < 60) return `${secs}s ago`;
     if (secs < 3600) return `${Math.floor(secs/60)}m ago`;
     return `${Math.floor(secs/3600)}h ago`;
+  },
+
+  _nextCron(expr) {
+    // Very light human-readable description — no full parser needed
+    if (!expr) return '';
+    const parts = expr.trim().split(/\s+/);
+    if (parts.length !== 5) return expr;
+    const [min, hr, dom, mon, dow] = parts;
+    const days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+    if (dom === '*' && mon === '*') {
+      const timeStr = (min !== '*' && hr !== '*') ? `${hr.padStart(2,'0')}:${min.padStart(2,'0')}` : `${hr}:${min}`;
+      if (dow === '*') return `Every day at ${timeStr}`;
+      if (/^[0-6]$/.test(dow)) return `Every ${days[+dow]} at ${timeStr}`;
+      if (dow === '1-5') return `Weekdays at ${timeStr}`;
+    }
+    return expr; // fallback: show raw
   },
 
   // ── Cancel ──────────────────────────────────────────────────────────────────
