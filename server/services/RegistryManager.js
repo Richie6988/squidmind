@@ -133,7 +133,6 @@ class RegistryManager {
     '*.model_id',
     '*.created_at',
     '*.last_updated_at',
-    '*.priority.computed_score',
     '*.priority.score_history',
     '*.performance_summary.success_rate',
     '*.lifecycle.duration_seconds',

@@ -3392,6 +3392,56 @@ button .pixel-icon {
 .tq-status.status-blocked     { color: var(--danger);    border-color: var(--danger); }
 .tq-status.status-planned     { color: var(--text-secondary); }
 
+/* ── Run button ── */
+.tq-run-btn {
+  background: rgba(6,255,165,0.15);
+  border: 1px solid var(--success);
+  color: var(--success);
+  cursor: pointer;
+  font-size: 9px;
+  padding: 1px 6px;
+  line-height: 1.6;
+  flex: 0 0 auto;
+  border-radius: 2px;
+  transition: background 0.12s;
+}
+.tq-run-btn:hover { background: rgba(6,255,165,0.3); }
+
+/* ── Running state ── */
+.tq-status-running {
+  animation: tq-pulse 1.2s ease-in-out infinite;
+}
+@keyframes tq-pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.4; }
+}
+
+.tq-progress-bar {
+  height: 3px;
+  background: rgba(255,255,255,0.08);
+  border-radius: 2px;
+  margin: 5px 0 2px;
+  overflow: hidden;
+}
+.tq-progress-fill {
+  height: 100%;
+  width: 35%;
+  background: var(--accent);
+  border-radius: 2px;
+  animation: tq-progress 2s ease-in-out infinite;
+}
+@keyframes tq-progress {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(340%); }
+}
+
+.tq-running-meta {
+  font-size: 8px;
+  color: var(--accent);
+  margin-top: 2px;
+  opacity: 0.8;
+}
+
 .tq-assignee {
   flex: 1;
   background: none;

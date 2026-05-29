@@ -38,6 +38,33 @@ class V2ModelService {
    */
   setOrchestrator(orchestrator) {
     this.orchestrator = orchestrator;
+    // Restore last-used Poseidon model from brain (fire-and-forget)
+    this._restorePoseidonModel().catch(err =>
+      console.warn('[V2ModelService] Could not restore Poseidon model:', err.message)
+    );
+  }
+
+  /**
+   * On startup, read poseidon_brain.json and auto-assign the last-used model
+   * if it exists in the model registry. Does NOT load it into memory yet —
+   * that happens lazily on first chat (or eagerly via setPoseidonModel).
+   */
+  async _restorePoseidonModel() {
+    try {
+      const brain = await this.rm.getPoseidonBrain();
+      const savedId = brain?.current_state?.loaded_model_id;
+      if (!savedId) return;
+
+      const reg = await this.rm.read('models/model_registry.json').catch(() => ({ models: {} }));
+      if (!reg.models?.[savedId]) {
+        console.log(`[V2ModelService] Saved Poseidon model ${savedId} not in registry — skipping restore`);
+        return;
+      }
+      this.poseidonModelId = savedId;
+      console.log(`[V2ModelService] ✓ Restored Poseidon model from brain: ${savedId}`);
+    } catch (err) {
+      // non-fatal
+    }
   }
 
   // === LIB INITIALIZATION ===

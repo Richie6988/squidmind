@@ -515,12 +515,11 @@ const AgentForm = {
       tempSquid.insideTemple = null;
       tempSquid.jumpHeight   = 0;
       tempSquid.heartParticles = [];
-      // Scale to fill ~75% of canvas, centered with headroom for tentacles
-      const targetRadius  = canvas.width * 0.38;
-      const naturalRadius = 40 * tempSquid.getSizeMultiplier() * 0.5;
-      tempSquid.baseSize  = tempSquid.getSizeMultiplier() * (targetRadius / naturalRadius);
+      // Body radius in px = 40 * baseSize. Cap to 36% of canvas regardless of size_scale.
+      const targetBodyPx = canvas.width * 0.36;
+      tempSquid.baseSize = targetBodyPx / 40;
       tempSquid.x = canvas.width  / 2;
-      tempSquid.y = canvas.height / 2 - canvas.height * 0.05;
+      tempSquid.y = canvas.height / 2 - canvas.height * 0.12;
 
       // draw() translates to (this.x, this.y) already
       tempSquid.draw(ctx);

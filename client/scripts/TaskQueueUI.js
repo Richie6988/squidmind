@@ -8,6 +8,8 @@ const TaskQueueUI = {
   projects: [],
   _tasks: [],        // current ordered task list (managed locally for drag-drop)
   _dragging: null,   // task_id being dragged
+  _workerStatuses: {},   // agentId → { status, model_id }
+  _runTimers: {},        // taskId → { start, elapsed interval }
 
   async init() {
     await Promise.all([this._loadAgents(), this._loadProjects()]);
@@ -36,6 +38,11 @@ const TaskQueueUI = {
     const container = document.getElementById('task-queue');
     if (!container) return;
     try {
+      // Poll worker pool status (non-blocking)
+      window.ApiV2._fetch('/agents/pool/status')
+        .then(d => { this._workerStatuses = d.workers || {}; })
+        .catch(() => {});
+
       const r = await window.ApiV2.tasks.list();
       const tasks = r.registry.tasks || {};
       this._tasks = Object.values(tasks)
@@ -66,20 +73,27 @@ const TaskQueueUI = {
       ? (this.agents.find(a => a.agent_id === assignee)?.display_name || t.assignment?.assigned_name || assignee)
       : '+ assign';
 
+    const workerStatus = assignee ? (this._workerStatuses[assignee]?.status || 'idle') : null;
+    const isRunning   = status === 'in_progress' || workerStatus === 'running';
+    const canRun      = assignee && ['planned', 'open', 'assigned'].includes(status);
+
     el.innerHTML = `
       <div class="tq-drag-handle" title="Drag to reorder">⠿</div>
       <div class="tq-body">
         <div class="tq-row1">
           <span class="tq-rank">#${idx + 1}</span>
           <span class="tq-title">${this._esc(t.title)}</span>
+          ${canRun ? `<button class="tq-run-btn" onclick="TaskQueueUI.runTask('${t.task_id}')" title="Run this task now">▶</button>` : ''}
           <button class="tq-cancel" onclick="TaskQueueUI.cancelTask('${t.task_id}')" title="Cancel">✕</button>
         </div>
         <div class="tq-row2">
-          <span class="tq-status status-${status}">${status}</span>
+          <span class="tq-status status-${status} ${isRunning ? 'tq-status-running' : ''}">${status}</span>
           <button class="tq-assignee ${assignee ? 'tq-assigned' : 'tq-unassigned'}"
                   onclick="TaskQueueUI.openAssignPicker('${t.task_id}', this)"
                   title="Click to assign agent">${this._esc(agentName)}</button>
         </div>
+        ${isRunning ? `<div class="tq-progress-bar"><div class="tq-progress-fill"></div></div>` : ''}
+        ${isRunning ? `<div class="tq-running-meta" id="tq-meta-${t.task_id}">⚡ Running${t.lifecycle?.started_at ? ' · started ' + TaskQueueUI._elapsed(t.lifecycle.started_at) : ''}</div>` : ''}
       </div>
     `;
 
@@ -215,6 +229,72 @@ const TaskQueueUI = {
     } catch (err) {
       await SquidModal.alert('Assign failed: ' + err.message);
     }
+  },
+
+  // ── Run task directly ────────────────────────────────────────────────────────
+
+  async runTask(taskId) {
+    const task = this._tasks.find(t => t.task_id === taskId);
+    if (!task) return;
+    const agentId = task.assignment?.assigned_to;
+    if (!agentId) return await SquidModal.alert('Assign an agent first.');
+
+    // Build task message from title + description
+    const msg = task.description
+      ? `${task.title}
+
+${task.description}`
+      : task.title;
+
+    try {
+      // Mark in_progress immediately (optimistic)
+      await window.ApiV2._fetch('/field', {
+        method: 'PATCH',
+        body: JSON.stringify({
+          filePath: 'tasks/tasks_registry.json',
+          fieldPath: `tasks.${taskId}.lifecycle.status`,
+          newValue: 'in_progress',
+          reason: 'manually started from task queue'
+        })
+      });
+      await window.ApiV2._fetch('/field', {
+        method: 'PATCH',
+        body: JSON.stringify({
+          filePath: 'tasks/tasks_registry.json',
+          fieldPath: `tasks.${taskId}.lifecycle.started_at`,
+          newValue: new Date().toISOString(),
+          reason: 'task started'
+        })
+      });
+
+      // Fire POST to agent run endpoint (SSE, fire-and-forget here — results logged server-side)
+      fetch(`/api/v2/agents/${agentId}/run`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: msg, task_id: taskId })
+      }).then(res => {
+        if (!res.ok) console.warn('[TaskQueueUI] Agent run HTTP error:', res.status);
+        // Drain SSE stream (needed so server doesn't hang)
+        const reader = res.body?.getReader();
+        if (!reader) return;
+        const drain = () => reader.read().then(({ done }) => { if (!done) drain(); }).catch(() => {});
+        drain();
+      }).catch(err => console.warn('[TaskQueueUI] Agent run failed:', err));
+
+      await this._render();
+    } catch (err) {
+      await SquidModal.alert('Failed to start task: ' + err.message);
+    }
+  },
+
+  // ── Helpers ───────────────────────────────────────────────────────────────
+
+  _elapsed(isoStr) {
+    if (!isoStr) return '';
+    const secs = Math.floor((Date.now() - new Date(isoStr).getTime()) / 1000);
+    if (secs < 60) return `${secs}s ago`;
+    if (secs < 3600) return `${Math.floor(secs/60)}m ago`;
+    return `${Math.floor(secs/3600)}h ago`;
   },
 
   // ── Cancel ──────────────────────────────────────────────────────────────────
