@@ -52,33 +52,32 @@ const ModelLoader = {
           
           <!-- TAB: Browse computer -->
           <div id="ml-tab-browse" class="ml-tab-content" style="display:none;">
-            <p class="hint" style="font-size:9px; color:var(--text-secondary); margin-bottom:16px;">
-              Pick a .gguf file from your computer. The file stays where it is — only its path is registered.
-            </p>
-            <label class="ml-filepick-label" onclick="document.getElementById('ml-native-file-input').click()">
-              📂 Open File Explorer
-            </label>
-            <input id="ml-native-file-input" type="file" accept=".gguf" style="display:none;"
-              onchange="ModelLoader._onNativeFilePicked(this)">
-            <div id="ml-browse-picked" style="margin-top:16px; display:none;">
-              <div class="ml-picked-info">
-                <span id="ml-picked-name" style="color:var(--accent); font-weight:bold;"></span>
-                <span id="ml-picked-size" style="color:var(--text-secondary); font-size:9px; margin-left:8px;"></span>
-              </div>
-              <div style="margin-top:8px; font-size:9px; color:var(--text-secondary);">
-                <strong>Path:</strong> <span id="ml-picked-path" style="word-break:break-all;"></span>
-              </div>
-              <div style="margin-top:4px; font-size:8px; color:var(--text-secondary);">
-                Note: Browser security hides the full path. Paste the absolute path below if you need to import from a specific location.
-              </div>
+            <div class="ml-dir-info" id="ml-models-dir-info" style="background:rgba(6,255,165,0.06);border:1px solid rgba(6,255,165,0.2);border-radius:4px;padding:7px 10px;margin-bottom:12px;">
+              <span style="color:var(--text-secondary);font-size:9px;">📁 Models dir: </span>
+              <span id="ml-server-models-dir" style="color:var(--accent);font-size:9px;font-family:monospace;word-break:break-all;">loading...</span>
             </div>
-            <div style="margin-top:20px;">
-              <p style="font-size:9px; color:var(--text-secondary); margin-bottom:6px;">Or paste the full path directly:</p>
-              <div style="display:flex; gap:6px;">
-                <input id="ml-browse-path" type="text" placeholder="/home/user/models/mymodel.gguf or C:\Models\model.gguf"
-                  style="flex:1;">
-                <button class="btn-primary" onclick="ModelLoader._importFromPathInput()">Import</button>
-              </div>
+            <p class="hint" style="font-size:9px; color:var(--text-secondary); margin:0 0 8px;">
+              Paste the <strong>absolute path</strong> to any .gguf on this machine and click Import.
+            </p>
+            <div style="display:flex; gap:6px; margin-bottom:12px;">
+              <input id="ml-browse-path" type="text" placeholder="/home/user/models/mymodel.gguf"
+                style="flex:1; font-family:monospace; font-size:10px;"
+                onkeydown="if(event.key==='Enter') ModelLoader._importFromPathInput()">
+              <button class="btn-primary" onclick="ModelLoader._importFromPathInput()">Import</button>
+            </div>
+            <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
+              <label class="ml-filepick-label" onclick="document.getElementById('ml-native-file-input').click()" style="margin:0; font-size:9px; padding:5px 10px;">
+                📂 Autofill filename
+              </label>
+              <input id="ml-native-file-input" type="file" accept=".gguf" style="display:none;"
+                onchange="ModelLoader._onNativeFilePicked(this)">
+              <span style="font-size:8px;color:var(--text-secondary);">⚠ always verify the full path above</span>
+            </div>
+            <div id="ml-browse-picked" style="display:none; background:rgba(255,255,255,0.03); border:1px solid var(--border); border-radius:4px; padding:8px; font-size:9px;">
+              <span style="color:var(--accent);font-weight:bold;" id="ml-picked-name"></span>
+              <span style="color:var(--text-secondary);margin-left:8px;" id="ml-picked-size"></span>
+              <div style="margin-top:4px;color:var(--text-secondary);" id="ml-picked-dir-hint"></div>
+              <div style="margin-top:2px;color:var(--text-secondary);word-break:break-all;font-size:8px;" id="ml-picked-path"></div>
             </div>
           </div>
           
@@ -123,7 +122,13 @@ const ModelLoader = {
     this.modal.querySelector(`#ml-tab-${name}`).style.display = 'block';
     
     // Auto-load tab content
-    if (name === 'browse' && !this._browseCurrentPath) this._browseHome();
+    if (name === 'browse') {
+      // Load and display the server's models directory
+      window.ApiV2._fetch('/models/dir').then(data => {
+        const el = this.modal?.querySelector('#ml-server-models-dir');
+        if (el) el.textContent = data.dir;
+      }).catch(() => {});
+    }
     if (name === 'download') this._refreshDownloads();
   },
   
@@ -501,26 +506,30 @@ const ModelLoader = {
   async _onNativeFilePicked(input) {
     const file = input.files?.[0];
     if (!file) return;
-    const picked   = document.getElementById('ml-browse-picked');
+    const picked    = document.getElementById('ml-browse-picked');
     const pathInput = document.getElementById('ml-browse-path');
+
     document.getElementById('ml-picked-name').textContent = file.name;
     document.getElementById('ml-picked-size').textContent = (file.size / 1024 / 1024).toFixed(1) + ' MB';
     picked.style.display = 'block';
 
-    // Fetch the server's models directory and construct the likely full path.
-    // The user almost certainly browsed to the models dir to pick the file.
+    // Browser security: file.name only, no real path. Show instructions.
+    // Pre-fill with the filename so user can prepend the real directory.
     try {
       const data = await window.ApiV2._fetch('/models/dir');
-      const sep  = data.dir.includes('\\') ? '\\' : '/';
-      const fullPath = data.dir + sep + file.name;
-      pathInput.value = fullPath;
-      document.getElementById('ml-picked-path').textContent = fullPath;
+      // Show server models dir so user knows where to put/find the file
+      document.getElementById('ml-picked-path').textContent = data.dir;
+      document.getElementById('ml-picked-dir-hint').textContent =
+        `Server models dir: ${data.dir}`;
+      // Prefill the path input only if it's empty
+      if (!pathInput.value.trim()) {
+        pathInput.value = data.dir + '/' + file.name;
+      }
     } catch {
-      // Fallback: can't get server dir — user must paste manually
-      pathInput.placeholder = '/absolute/path/to/' + file.name;
       document.getElementById('ml-picked-path').textContent =
-        'Could not auto-detect path. Paste the absolute path in the field below.';
+        '(could not detect server path — paste full absolute path below)';
     }
+    pathInput.placeholder = '/absolute/path/to/' + file.name;
     pathInput.focus();
     pathInput.select();
   },
