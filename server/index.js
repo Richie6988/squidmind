@@ -22,12 +22,18 @@ const { repairAllRegistries } = require('./services/RegistryHealthCheck');
 
 // CRITICAL: validate/repair registries BEFORE any service touches them
 // Auto-detect data root: workspace/ (post-migration) or data/ (pre-migration)
+// workspace/ counts as ready only if it has an agent or model registry
+// (just having main/ from git is not enough)
 const _wsRoot   = path.join(__dirname, '../workspace');
 const _dataRoot = path.join(__dirname, '../data');
-const dataRoot  = require('fs').existsSync(path.join(_wsRoot, 'main'))   ? _wsRoot
-                : require('fs').existsSync(path.join(_dataRoot, 'main')) ? _dataRoot
-                : _wsRoot; // default
-console.log(`[SquidMind] Using data root: ${dataRoot}`);
+const _fsSync   = require('fs');
+const _wsMigrated = _fsSync.existsSync(path.join(_wsRoot, 'main', 'poseidon_brain.json'))
+                 || _fsSync.existsSync(path.join(_wsRoot, 'models', 'model_registry.json'))
+                 || _fsSync.existsSync(path.join(_wsRoot, 'agents', 'agent_registry.json'));
+const dataRoot  = _wsMigrated                                              ? _wsRoot
+                : _fsSync.existsSync(path.join(_dataRoot, 'main'))        ? _dataRoot
+                : _wsRoot;
+console.log(`[SquidMind] Data root: ${dataRoot} (${_wsMigrated ? 'workspace' : 'data — run node migrate.js to upgrade'})`);
 const healthReport = repairAllRegistries(dataRoot);
 if (healthReport.repaired.length > 0) {
   console.log(`[STARTUP] Repaired ${healthReport.repaired.length} registry file(s):`);
@@ -121,12 +127,14 @@ heartbeat.start();
 const V2ModelService = require('./services/V2ModelService');
 const PoseidonOrchestrator = require('./services/PoseidonOrchestrator');
 const { buildRouter: buildModelRouter, buildPoseidonChatRoute, buildAbortRoute } = require('./routes/modelRoutes');
-// Use workspace/models if it exists, fall back to data/models (pre-migration)
+// Use whichever models dir has actual .gguf files (or falls back to dataRoot/models)
 const _wsModels   = path.join(__dirname, '../workspace/models');
 const _dataModels = path.join(__dirname, '../data/models');
-const _modelsDir  = require('fs').existsSync(_wsModels) ? _wsModels
-                  : require('fs').existsSync(_dataModels) ? _dataModels
-                  : _wsModels; // default to workspace even if not yet created
+const _hasGguf = (dir) => { try { return _fsSync.readdirSync(dir).some(f => f.endsWith('.gguf')); } catch { return false; } };
+const _modelsDir  = _hasGguf(_wsModels)   ? _wsModels
+                  : _hasGguf(_dataModels) ? _dataModels
+                  : path.join(dataRoot, 'models'); // default under detected root
+console.log(`[SquidMind] Models dir: ${_modelsDir}`);
 const v2ModelService = new V2ModelService(sharedRm, _modelsDir);
 
 // Orchestrator: gives Poseidon its identity prompt + function-calling tools.
