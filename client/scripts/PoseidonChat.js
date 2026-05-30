@@ -65,6 +65,7 @@ const PoseidonChat = {
             <button class="pc-send" id="pc-send">
               <span id="pc-send-icon">▶</span>
             </button>
+            <button class="pc-stop-btn" id="pc-stop" title="Stop generation" style="display:none">&#9646;&#9646;</button>
           </div>
         </div>
       </div>
@@ -74,6 +75,12 @@ const PoseidonChat = {
     const ta   = this.modal.querySelector('#pc-input');
     const send = this.modal.querySelector('#pc-send');
     const msgs = this.modal.querySelector('#pc-messages');
+    const stopBtnEl = this.modal.querySelector('#pc-stop');
+    if (stopBtnEl) {
+      stopBtnEl.addEventListener('click', () => {
+        fetch('/api/v2/poseidon/abort', { method: 'POST' }).catch(() => {});
+      });
+    }
     ta.addEventListener('keydown', e => {
       if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); this._send(); }
     });
@@ -184,6 +191,8 @@ const PoseidonChat = {
     const sendIcon  = this.modal.querySelector('#pc-send-icon');
     sendBtn.disabled = true;
     sendIcon.textContent = '⏳';
+    const stopBtn = this.modal.querySelector('#pc-stop');
+    if (stopBtn) stopBtn.style.display = 'inline-flex';
 
     // Loading indicator
     let firstToken = false;
@@ -292,6 +301,7 @@ const PoseidonChat = {
       this.currentRequest = null;
       sendBtn.disabled = false;
       sendIcon.textContent = '▶';
+      if (stopBtn) stopBtn.style.display = 'none';
       if (this._mutatedThisTurn) {
         window.aquarium?.loadSquids?.();
         window.ProjectsPanel?.refresh?.();

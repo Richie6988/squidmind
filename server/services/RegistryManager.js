@@ -14,8 +14,21 @@ const fs = require('fs').promises;
 const path = require('path');
 
 class RegistryManager {
+  /**
+   * Convert a display name to a filesystem-safe slug.
+   * "News Runner" → "news_runner", "Projet Été" → "projet_ete"
+   */
+  static toSlug(name) {
+    return (name || 'unknown')
+      .toLowerCase()
+      .normalize('NFD').replace(/[̀-ͯ]/g, '')
+      .replace(/[^a-z0-9]+/g, '_')
+      .replace(/^_|_$/g, '')
+      .slice(0, 40) || 'item';
+  }
+
   constructor(dataRoot) {
-    this.dataRoot = dataRoot || path.join(__dirname, '../../data');
+    this.dataRoot = dataRoot || path.join(__dirname, '../../workspace');
     this.cache = new Map();
     this.dirty = new Set();
     this.writeLocks = new Map(); // path -> Promise chain (serializes writes per file)
@@ -209,6 +222,25 @@ class RegistryManager {
     // Check read-only
     if (this.isReadOnly(fieldPath)) {
       throw new Error(`Field is read-only: ${fieldPath}`);
+    }
+
+    // Route task fields to per-folder structure
+    // fieldPath like "tasks.task_0009.lifecycle.status" → update task_0009/details.json
+    if (filePath === 'tasks/tasks_registry.json') {
+      const parts = fieldPath.split('.');
+      if (parts[0] === 'tasks' && parts[1]?.startsWith('task_')) {
+        const taskId = parts[1];
+        const task   = await this._readTaskDetails(taskId);
+        if (!task) throw new Error(`Task ${taskId} not found`);
+        const subPath = parts.slice(2).join('.');
+        if (subPath) {
+          const oldVal = this.getValueAtPath(task, subPath);
+          if (JSON.stringify(oldVal) === JSON.stringify(newValue)) return { changed: false, message: 'No change' };
+          this.setValueAtPath(task, subPath, newValue);
+        }
+        await this._writeTaskDetails(taskId, task);
+        return { changed: true, taskId, field: subPath, newValue };
+      }
     }
 
     // Load file
@@ -409,8 +441,9 @@ class RegistryManager {
   async createAgent(agentData) {
     const registry = await this.getAgentRegistry();
     const agentId = await this.generateNextId('agents/agent_registry.json');
-    const idNum = agentId.split('_')[1];
-    const brainFile = `squid_brain_${idNum}.json`;
+    const idNum    = agentId.split('_')[1];
+    const nameSlug = RegistryManager.toSlug(agentData.display_name || agentData.name || 'agent');
+    const brainFile = `${nameSlug}_${idNum}.json`;
     const now = new Date().toISOString();
 
     // Support two payload shapes:
@@ -743,10 +776,62 @@ class RegistryManager {
     return { project_id: projectId, name: projectName, freed_agents: assignedAgents };
   }
 
-  // ==================== TASKS ====================
+  // ==================== TASKS (per-folder structure) ====================
+
+  /**
+   * Task folder: workspace/tasks/<task_id>/
+   *   details.json  — full task object
+   *   results/      — output files (output.txt, etc.)
+   *
+   * getTasksRegistry() rebuilds a virtual registry by scanning folders,
+   * keeping full backward compatibility with callers that expect { tasks: {} }.
+   */
+  _taskDir(taskId) {
+    return require('path').join(this.dataRoot, 'tasks', taskId);
+  }
+
+  async _readTaskDetails(taskId) {
+    const p = require('path').join(this._taskDir(taskId), 'details.json');
+    try { return JSON.parse(require('fs').readFileSync(p, 'utf8')); } catch { return null; }
+  }
+
+  async _writeTaskDetails(taskId, task) {
+    const fs   = require('fs').promises;
+    const dir  = this._taskDir(taskId);
+    await fs.mkdir(require('path').join(dir, 'results'), { recursive: true });
+    await fs.writeFile(require('path').join(dir, 'details.json'), JSON.stringify(task, null, 2), 'utf8');
+  }
 
   async getTasksRegistry() {
-    return await this.read('tasks/tasks_registry.json');
+    // Build virtual registry from per-folder structure
+    const fs   = require('fs');
+    const path = require('path');
+    const tasksRoot = path.join(this.dataRoot, 'tasks');
+
+    // Also read old flat registry if it still exists (migration transitional)
+    let flatReg = { metadata: { total_queued: 0, total_completed: 0, total_failed: 0, total_cancelled: 0 }, tasks: {} };
+    const flatPath = path.join(tasksRoot, 'tasks_registry.json');
+    if (fs.existsSync(flatPath)) {
+      try { flatReg = JSON.parse(fs.readFileSync(flatPath, 'utf8')); } catch {}
+    }
+
+    // Scan task subfolders
+    let entries = [];
+    try { entries = fs.readdirSync(tasksRoot, { withFileTypes: true }); } catch {}
+
+    for (const ent of entries) {
+      if (!ent.isDirectory()) continue;
+      const taskId = ent.name;
+      if (!taskId.startsWith('task_')) continue;
+      const detailPath = path.join(tasksRoot, taskId, 'details.json');
+      if (!fs.existsSync(detailPath)) continue;
+      try {
+        const task = JSON.parse(fs.readFileSync(detailPath, 'utf8'));
+        flatReg.tasks[taskId] = task;
+      } catch {}
+    }
+
+    return flatReg;
   }
 
   async createTask(taskData) {
@@ -800,17 +885,15 @@ class RegistryManager {
       logs_refs: []
     };
 
-    registry.tasks[taskId] = task;
-    registry.metadata.total_queued++;
-
-    await this.write('tasks/tasks_registry.json', registry);
+    // Write to per-folder structure
+    await this._writeTaskDetails(taskId, task);
 
     await this.log({
       event_type: 'task_created',
       actor: { type: 'poseidon', id: 'poseidon_main' },
       subject: { type: 'task', id: taskId },
       action: `Created task: ${taskData.title}`,
-      changes: [{ file: 'tasks/tasks_registry.json', operation: 'added_entry', key: taskId }]
+      changes: [{ file: `tasks/${taskId}/details.json`, operation: 'created' }]
     });
 
     return task;
@@ -850,8 +933,7 @@ class RegistryManager {
    * Close a task - replaces chunks with closure_comments
    */
   async closeTask(taskId, outcome, closureData) {
-    const registry = await this.getTasksRegistry();
-    const task = registry.tasks[taskId];
+    const task = await this._readTaskDetails(taskId);
     if (!task) throw new Error(`Task ${taskId} not found`);
 
     const now = new Date().toISOString();
@@ -891,7 +973,7 @@ class RegistryManager {
     else if (outcome === 'failed') registry.metadata.total_failed++;
     else if (outcome === 'cancelled') registry.metadata.total_cancelled++;
 
-    await this.write('tasks/tasks_registry.json', registry);
+    await this._writeTaskDetails(taskId, task);
 
     // Cascade updates
     await this.cascadeTaskClosure(task);
@@ -902,8 +984,8 @@ class RegistryManager {
       subject: { type: 'task', id: taskId },
       action: `Task ${outcome}: ${task.title}`,
       changes: [
-        { file: 'tasks/tasks_registry.json', field: `${taskId}.status`, to: outcome },
-        { file: 'tasks/tasks_registry.json', operation: 'chunks_replaced_with_closure_comments' }
+        { file: `tasks/${taskId}/details.json`, field: 'status', to: outcome },
+        { file: `tasks/${taskId}/details.json`, operation: 'chunks_replaced_with_closure_comments' }
       ]
     });
 

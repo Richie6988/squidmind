@@ -67,6 +67,16 @@ class V2ModelService {
     }
   }
 
+  /**
+   * Abort the current Poseidon generation mid-stream.
+   */
+  abortGeneration() {
+    const entry = this.poseidonModelId ? this.loaded.get(this.poseidonModelId) : null;
+    if (!entry || !entry.generating) return { ok: false, message: 'Nothing generating' };
+    entry._abortRequested = true;
+    return { ok: true, message: 'Abort requested' };
+  }
+
   // === LIB INITIALIZATION ===
 
   async _ensureLib() {
@@ -662,6 +672,7 @@ class V2ModelService {
   }
 
   getStatus() {
+    const wipeThreshold = this.contextWipeThreshold;
     return {
       loaded_count: this.loaded.size,
       loaded_models: Array.from(this.loaded.values()).map(e => ({
@@ -673,7 +684,10 @@ class V2ModelService {
         idle_minutes: Math.round((Date.now() - e.lastUsedAt) / 60000 * 10) / 10,
         total_tokens_generated: e.totalTokensGenerated,
         total_requests: e.totalRequests,
-        generating: e.generating
+        generating: e.generating,
+        session_turns: e.sessionTurns || 0,
+        wipe_after_turns: wipeThreshold,
+        context_pct: Math.round(((e.sessionTurns || 0) / wipeThreshold) * 100)
       })),
       poseidon_model_id: this.poseidonModelId
     };
@@ -941,6 +955,15 @@ class V2ModelService {
           yield ev;
         }
         if (isDone) break;
+
+        // Stop button: abort requested from UI
+        if (entry._abortRequested) {
+          entry._abortRequested = false;
+          console.log('[V2ModelService] Generation aborted by user');
+          yield { type: 'text', chunk: '\n\n_[Generation stopped by user]_' };
+          break;
+        }
+
         const idleMs = Date.now() - lastChunkAt;
         // Don't timeout while model is actively thinking (think block open)
         const isThinking = entry._inThink === true;
@@ -992,12 +1015,29 @@ class V2ModelService {
         }
       }).catch(() => {});
       
-      // AUTO-WIPE: after N exchanges, dispose session but keep model in memory.
-      // The next chat will rebuild the session fresh, re-reading the system
-      // prompt from poseidon_brain.json (so any brain updates take effect).
+      // AUTO-WIPE: before wiping, generate a summary so Poseidon knows
+      // where to continue on the next session.
       const wipeAfter = entry.config?.wipeContextAfterTurns ?? this.contextWipeThreshold;
       if (entry.sessionTurns >= wipeAfter) {
-        console.log(`[V2ModelService] Auto-wiping context after ${entry.sessionTurns} turns (model stays loaded)`);
+        console.log(`[V2ModelService] Auto-wiping context after ${entry.sessionTurns} turns — generating continuity summary...`);
+        try {
+          const summaryPrompt = 'In 5 bullet points, summarize the key decisions, actions taken, and what still needs to be done in our conversation. Be extremely concise — this will be your memory when we continue. Format: • point';
+          let summaryText = '';
+          const summaryResult = await session.prompt(summaryPrompt, { maxTokens: 300 });
+          summaryText = typeof summaryResult === 'string' ? summaryResult : '';
+          if (summaryText.trim()) {
+            const checkpoint = {
+              saved_at: new Date().toISOString(),
+              turns: entry.sessionTurns,
+              model_id: this.poseidonModelId,
+              summary: summaryText.trim()
+            };
+            await this.rm.write('main/context_checkpoint.json', checkpoint);
+            console.log(`[V2ModelService] Context checkpoint saved (${Math.round(summaryText.length/4)} tok summary)`);
+          }
+        } catch (e) {
+          console.warn('[V2ModelService] Could not save context checkpoint:', e.message);
+        }
         try { if (entry.session?.dispose) await entry.session.dispose(); } catch {}
         try { if (entry._currentSequence?.dispose) entry._currentSequence.dispose(); } catch {}
         entry.session = null;

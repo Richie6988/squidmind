@@ -6082,3 +6082,21 @@ h4.pc-md-h { font-size: 8px; color: #94a3b8; }
   flex-shrink: 0;
 }
 .tq-cron-badge:hover { opacity: 1; }
+
+/* ── Poseidon stop button ── */
+.pc-stop-btn {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: rgba(230,57,70,0.15);
+  border: 1px solid var(--danger);
+  color: var(--danger);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 0 10px;
+  border-radius: 3px;
+  height: 100%;
+  transition: background 0.12s;
+  flex-shrink: 0;
+}
+.pc-stop-btn:hover { background: rgba(230,57,70,0.35); }

@@ -10,7 +10,7 @@ const RegistryManager = require('../services/RegistryManager');
 
 function buildRouter(sharedRm) {
   const router = express.Router();
-  const rm = sharedRm || new RegistryManager(path.join(__dirname, '../../data'));
+  const rm = sharedRm || new RegistryManager(path.join(__dirname, '../../workspace'));
 
 // POSEIDON
 router.get('/poseidon', async (req, res) => {
@@ -161,7 +161,7 @@ router.get('/tasks/:id/result', async (req, res) => {
   try {
     const fs   = require('fs').promises;
     const path = require('path');
-    const filePath = path.join(rm.dataRoot, 'tasks', 'results', `${req.params.id}.txt`);
+    const filePath = path.join(rm.dataRoot, 'tasks', req.params.id, 'results', 'output.txt');
     const text = await fs.readFile(filePath, 'utf8');
     res.json({ success: true, task_id: req.params.id, result: text });
   } catch (err) {

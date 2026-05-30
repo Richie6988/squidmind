@@ -282,4 +282,11 @@ function buildPoseidonChatRoute(v2ModelService) {
   };
 }
 
-module.exports = { buildRouter, buildPoseidonChatRoute };
+function buildAbortRoute(v2ModelService) {
+  return (req, res) => {
+    const result = v2ModelService.abortGeneration();
+    res.json({ success: true, ...result });
+  };
+}
+
+module.exports = { buildRouter, buildPoseidonChatRoute, buildAbortRoute };

@@ -20,15 +20,17 @@ const ControlTowerLive = {
   async update() {
     try {
       // Parallel fetches
-      const [brainRes, agentsRes, libRes] = await Promise.allSettled([
+      const [brainRes, agentsRes, libRes, statusRes] = await Promise.allSettled([
         window.ApiV2._fetch('/poseidon'),
         window.ApiV2._fetch('/agents'),
-        window.ApiV2._fetch('/models/library')
+        window.ApiV2._fetch('/models/library'),
+        window.ApiV2._fetch('/models/status')
       ]);
       
       if (brainRes.status === 'fulfilled') this._renderResources(brainRes.value.brain);
       if (agentsRes.status === 'fulfilled') this._renderSquad(agentsRes.value.registry);
       if (libRes.status === 'fulfilled') this._renderModel(libRes.value);
+      if (statusRes.status === 'fulfilled') this._renderContextBar(statusRes.value);
     } catch (err) {
       // silent - endpoints might be temporarily unavailable
     }
@@ -96,6 +98,48 @@ const ControlTowerLive = {
     }
   },
   
+  _renderContextBar(statusData) {
+    const poseidonId = statusData?.poseidon_model_id;
+    if (!poseidonId) return;
+    const model = (statusData?.loaded_models || []).find(m => m.model_id === poseidonId);
+    if (!model) return;
+
+    const pct     = model.context_pct || 0;
+    const turns   = model.session_turns || 0;
+    const maxTurns = model.wipe_after_turns || 5;
+    const tokens  = model.total_tokens_generated || 0;
+
+    // Update or create context bar element
+    let barWrap = document.getElementById('ctx-bar-wrap');
+    if (!barWrap) {
+      const pill = document.getElementById('monitor-model-pill');
+      if (!pill) return;
+      barWrap = document.createElement('div');
+      barWrap.id = 'ctx-bar-wrap';
+      barWrap.style.cssText = 'margin-top:4px;';
+      barWrap.innerHTML = `
+        <div style="display:flex;justify-content:space-between;font-size:7px;color:var(--text-secondary);margin-bottom:2px;">
+          <span id="ctx-bar-label">Context</span>
+          <span id="ctx-bar-val"></span>
+        </div>
+        <div style="height:3px;background:rgba(255,255,255,0.1);border-radius:2px;overflow:hidden;">
+          <div id="ctx-bar-fill" style="height:100%;border-radius:2px;transition:width 0.5s,background 0.5s;"></div>
+        </div>
+        <div id="ctx-tokens" style="font-size:7px;color:var(--text-secondary);margin-top:2px;"></div>`;
+      pill.parentNode.insertBefore(barWrap, pill.nextSibling);
+    }
+
+    const fill  = document.getElementById('ctx-bar-fill');
+    const val   = document.getElementById('ctx-bar-val');
+    const tokEl = document.getElementById('ctx-tokens');
+    if (fill) {
+      fill.style.width = Math.min(100, pct) + '%';
+      fill.style.background = pct < 60 ? 'var(--success)' : pct < 85 ? '#FBBF24' : 'var(--danger)';
+    }
+    if (val) val.textContent = `${turns}/${maxTurns} turns (${pct}%)`;
+    if (tokEl) tokEl.textContent = `${(tokens/1000).toFixed(1)}k tokens total`;
+  },
+
   stop() {
     if (this.pollInterval) clearInterval(this.pollInterval);
   }

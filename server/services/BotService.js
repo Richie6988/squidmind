@@ -272,8 +272,8 @@ class BotService extends EventEmitter {
       for (const chunk of chunks) {
         await this._tgCall(token, 'sendMessage', {
           chat_id: chatId,
-          text: chunk,
-          parse_mode: 'Markdown'
+          text: chunk
+          // No parse_mode: avoids Telegram entity-parsing errors on special chars
         });
       }
       entry.reply = reply.slice(0, 300);
