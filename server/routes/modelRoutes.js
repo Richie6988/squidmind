@@ -37,25 +37,41 @@ function buildRouter(v2ModelService) {
       const { sourcePath, ...config } = req.body;
       if (!sourcePath) return res.status(400).json({ success: false, error: 'sourcePath required' });
 
-      const path = require('path');
-      const absPath = path.resolve(sourcePath);
+      const nodePath = require('path');
+      const fsSync   = require('fs');
 
-      // If the file is already inside modelsDir, import directly (no symlink needed)
-      // Otherwise symlink/copy it into modelsDir first
-      let fileName;
-      if (absPath.startsWith(path.resolve(v2ModelService.modelsDir))) {
-        fileName = path.basename(absPath);
-      } else {
-        const result = await fsBrowser.importFromPath(absPath, v2ModelService.modelsDir);
-        fileName = result.fileName;
+      // Resolve to absolute path (relative paths are resolved from process.cwd())
+      const absPath = nodePath.isAbsolute(sourcePath)
+        ? sourcePath
+        : nodePath.resolve(process.cwd(), sourcePath);
+
+      // Check existence first — give clear error with actual path tried
+      if (!fsSync.existsSync(absPath)) {
+        return res.status(400).json({
+          success: false,
+          error: `File not found: ${absPath}`,
+          hint: `Make sure the path is correct and the file exists. You entered: "${sourcePath}"`
+        });
       }
 
-      // importModel handles absolute paths: if not in modelsDir, use absPath directly
-      const imported = await v2ModelService.importModel(absPath, config);
-      res.json({ success: true, fileName, ...imported });
+      const resolvedModelsDir = nodePath.resolve(v2ModelService.modelsDir);
+
+      // If file is already inside modelsDir, import it directly without symlinking
+      if (absPath.startsWith(resolvedModelsDir)) {
+        const imported = await v2ModelService.importModel(absPath, config);
+        res.json({ success: true, fileName: nodePath.basename(absPath), ...imported });
+        return;
+      }
+
+      // Otherwise: symlink/copy into modelsDir, then register
+      const result = await fsBrowser.importFromPath(absPath, v2ModelService.modelsDir);
+      // Register using the SYMLINK path in modelsDir (not the original)
+      const symlinkPath = nodePath.join(v2ModelService.modelsDir, result.fileName);
+      const imported = await v2ModelService.importModel(symlinkPath, config);
+      res.json({ success: true, fileName: result.fileName, action: result.action, ...imported });
     } catch (err) {
       console.error('[import-from-path] error:', err.message);
-      res.status(400).json({ success: false, error: err.message, hint: 'Check: file exists, is a valid .gguf, and workspace/models dir is accessible' });
+      res.status(400).json({ success: false, error: err.message });
     }
   });
 
