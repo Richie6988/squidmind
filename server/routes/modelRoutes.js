@@ -54,7 +54,8 @@ function buildRouter(v2ModelService) {
       const imported = await v2ModelService.importModel(absPath, config);
       res.json({ success: true, fileName, ...imported });
     } catch (err) {
-      res.status(400).json({ success: false, error: err.message });
+      console.error('[import-from-path] error:', err.message);
+      res.status(400).json({ success: false, error: err.message, hint: 'Check: file exists, is a valid .gguf, and workspace/models dir is accessible' });
     }
   });
 

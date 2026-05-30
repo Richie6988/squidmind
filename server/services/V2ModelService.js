@@ -1143,9 +1143,24 @@ class V2ModelService {
 
   async _registryUpsert(modelId, partial) {
     this.rm.invalidateCache();
-    const reg = await this.rm.read('models/model_registry.json');
+    // Bootstrap registry if it doesn't exist yet (e.g. first import after workspace rename)
+    let reg;
+    try {
+      reg = await this.rm.read('models/model_registry.json');
+    } catch {
+      reg = {
+        schema_version: '2.0', schema_type: 'model_registry',
+        metadata: { total_available: 0, last_updated_at: new Date().toISOString() },
+        models: {}
+      };
+      // Ensure models dir exists
+      const path = require('path');
+      const fsP  = require('fs').promises;
+      await fsP.mkdir(path.join(this.rm.dataRoot, 'models'), { recursive: true });
+    }
     const existing = reg.models[modelId] || { model_id: modelId };
     reg.models[modelId] = this._deepMerge(existing, partial);
+    reg.metadata.total_available = Object.keys(reg.models).length;
     reg.last_updated_at = new Date().toISOString();
     await this.rm.write('models/model_registry.json', reg);
   }

@@ -3,6 +3,7 @@ const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
 const path = require('path');
+const fs   = require('fs').promises;
 const os = require('os');
 const Agent = require('./models/Agent');
 const toolRegistry = require('./services/ToolRegistry');
@@ -196,7 +197,6 @@ app.get('/api/agents/:id', async (req, res) => {
 
 // ==================== PROJECT ROUTES ====================
 
-const fs = require('fs').promises;
 
 // List all projects
 app.get('/api/projects', async (req, res) => {
@@ -445,6 +445,13 @@ app.use((req, res) => {
 async function start() {
   try {
     console.log('🦑 Starting SquidMind...');
+
+    // Ensure workspace directory structure exists (safe after data→workspace rename)
+    const WORKSPACE = path.join(__dirname, '../workspace');
+    for (const dir of ['models','agents','projects','tasks','logs','tools','main','main/skills']) {
+      await fs.mkdir(path.join(WORKSPACE, dir), { recursive: true }).catch(() => {});
+    }
+
     // Initialize tool registry (filesystem tools, etc.)
     await toolRegistry.init();
     // Mirror built-in tools to V2 tool_registry.json so AgentForm sees them
