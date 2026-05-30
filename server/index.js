@@ -21,7 +21,13 @@ const RegistryManager = require('./services/RegistryManager');
 const { repairAllRegistries } = require('./services/RegistryHealthCheck');
 
 // CRITICAL: validate/repair registries BEFORE any service touches them
-const dataRoot = path.join(__dirname, '../workspace');
+// Auto-detect data root: workspace/ (post-migration) or data/ (pre-migration)
+const _wsRoot   = path.join(__dirname, '../workspace');
+const _dataRoot = path.join(__dirname, '../data');
+const dataRoot  = require('fs').existsSync(path.join(_wsRoot, 'main'))   ? _wsRoot
+                : require('fs').existsSync(path.join(_dataRoot, 'main')) ? _dataRoot
+                : _wsRoot; // default
+console.log(`[SquidMind] Using data root: ${dataRoot}`);
 const healthReport = repairAllRegistries(dataRoot);
 if (healthReport.repaired.length > 0) {
   console.log(`[STARTUP] Repaired ${healthReport.repaired.length} registry file(s):`);
@@ -115,7 +121,13 @@ heartbeat.start();
 const V2ModelService = require('./services/V2ModelService');
 const PoseidonOrchestrator = require('./services/PoseidonOrchestrator');
 const { buildRouter: buildModelRouter, buildPoseidonChatRoute, buildAbortRoute } = require('./routes/modelRoutes');
-const v2ModelService = new V2ModelService(sharedRm, path.join(__dirname, '../workspace/models'));
+// Use workspace/models if it exists, fall back to data/models (pre-migration)
+const _wsModels   = path.join(__dirname, '../workspace/models');
+const _dataModels = path.join(__dirname, '../data/models');
+const _modelsDir  = require('fs').existsSync(_wsModels) ? _wsModels
+                  : require('fs').existsSync(_dataModels) ? _dataModels
+                  : _wsModels; // default to workspace even if not yet created
+const v2ModelService = new V2ModelService(sharedRm, _modelsDir);
 
 // Orchestrator: gives Poseidon its identity prompt + function-calling tools.
 // Set BEFORE first chat so the model sees its full toolset.
