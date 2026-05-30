@@ -18,7 +18,7 @@
     <div class="header-content">
       <h1>SquidMind</h1>
       <div class="header-nav">
-        <button class="btn-nav" onclick="AgentForm.openNew()">+ New Squid</button>
+        <button class="btn-nav" onclick="AgentForm.openNew()">+ New Agent</button>
 <button class="btn-nav" onclick="ModelLoader.open()">[MODELS] Models</button>
         <button class="btn-nav" onclick="ui.openLogsModal()">[LOGS] Logs</button>
         <button class="btn-nav comms-nav-btn" onclick="CommsPanel.open()" title="Remote comms (Telegram/Discord)">📡 Comms</button>
@@ -184,7 +184,6 @@
         <div class="lm-title">
           <span class="lm-icon">◈</span>
           <span>SYSTEM LOGS</span>
-          <span class="lm-count" id="lm-count">—</span>
         </div>
         <div class="lm-header-right">
           <button class="lm-refresh" onclick="ui.openLogsModal()" title="Refresh">↺</button>
@@ -192,16 +191,27 @@
         </div>
       </div>
 
-      <!-- Filter tabs -->
+      <!-- Filter tabs + severity + search -->
       <div class="lm-filters">
-        <button class="lm-tab active" data-cat="all"     onclick="ui.setLogFilter(this,'all')">All</button>
-        <button class="lm-tab"        data-cat="system"  onclick="ui.setLogFilter(this,'system')">⚙ System</button>
-        <button class="lm-tab"        data-cat="poseidon"onclick="ui.setLogFilter(this,'poseidon')">🔱 Poseidon</button>
-        <button class="lm-tab"        data-cat="agent"   onclick="ui.setLogFilter(this,'agent')">🦑 Agents</button>
-        <button class="lm-tab"        data-cat="project" onclick="ui.setLogFilter(this,'project')">📁 Projects</button>
-        <div class="lm-filter-spacer"></div>
-        <input class="lm-search" id="lm-search" type="text" placeholder="Search logs..."
-               oninput="ui.filterLogs()">
+        <div class="lm-filter-row">
+          <button class="lm-tab active" data-cat="all"      onclick="ui.setLogFilter(this,'all')">All</button>
+          <button class="lm-tab"        data-cat="poseidon" onclick="ui.setLogFilter(this,'poseidon')">🔱 Poseidon</button>
+          <button class="lm-tab"        data-cat="agent"    onclick="ui.setLogFilter(this,'agent')">🤖 Agents</button>
+          <button class="lm-tab"        data-cat="task"     onclick="ui.setLogFilter(this,'task')">✦ Tasks</button>
+          <button class="lm-tab"        data-cat="project"  onclick="ui.setLogFilter(this,'project')">📁 Projects</button>
+          <button class="lm-tab"        data-cat="model"    onclick="ui.setLogFilter(this,'model')">📦 Models</button>
+          <button class="lm-tab"        data-cat="error"    onclick="ui.setLogFilter(this,'error')">⚠ Errors</button>
+          <button class="lm-tab"        data-cat="system"   onclick="ui.setLogFilter(this,'system')">⚙ System</button>
+        </div>
+        <div class="lm-filter-row lm-filter-row2">
+          <input class="lm-search" id="lm-search" type="text" placeholder="Search action, actor, subject…"
+                 oninput="ui.filterLogs()">
+          <button class="lm-sev-btn" data-sev="" onclick="ui.setSevFilter(this,'')">All severity</button>
+          <button class="lm-sev-btn" data-sev="error" onclick="ui.setSevFilter(this,'error')">🔴 Errors</button>
+          <button class="lm-sev-btn" data-sev="warning" onclick="ui.setSevFilter(this,'warning')">🟡 Warnings</button>
+          <button class="lm-sev-btn lm-sev-active" data-sev="clear" style="display:none" onclick="ui.setSevFilter(this,'')">✕ Clear</button>
+          <span class="lm-count" id="lm-count">—</span>
+        </div>
       </div>
 
       <!-- Log list -->

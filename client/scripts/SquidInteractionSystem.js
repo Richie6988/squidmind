@@ -224,10 +224,10 @@ class SquidInteractionSystem {
     if (result && result.type === 'squid') {
       const squid = result.entity;
       
-      // Wake from sleep on interaction. Two flags can keep a squid sleeping:
+      // Wake from sleep on interaction. Two flags can keep an agent sleeping:
       // - isSleeping (set by update() after inactivity)
       // - status === 'sleeping' (seeded from registry)
-      // Clear BOTH so the squid actually starts swimming.
+      // Clear BOTH so the agent actually starts swimming.
       if (squid.isSleeping || squid.status === 'sleeping') {
         squid.isSleeping = false;
         if (squid.status === 'sleeping') squid.status = 'idle';
@@ -289,7 +289,7 @@ class SquidInteractionSystem {
   }
   
   /**
-   * Persist a squid-to-project assignment via V2 API.
+   * Persist an agent-to-project assignment via V2 API.
    * Updates project_registry.metadata.assigned_agents.
    */
   async _persistSquidAssignment(squid, projectId, projectName) {
@@ -516,7 +516,7 @@ class SquidInteractionSystem {
     
     // Squid has a legacy ID (squid_TIMESTAMP) - it's an old V1 agent
     console.warn('[SQUID] Legacy agent id, cannot edit:', agentId);
-    alert('This squid uses the old format and cannot be edited. Delete it and create a new one via "+ New Squid".');
+    alert('This squid uses the old format and cannot be edited. Delete it and create a new one via "+ New Agent".');
   }
 
   /**

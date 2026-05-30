@@ -169,33 +169,50 @@ ui.setLogFilter = function(btn, cat) {
   ui.filterLogs();
 };
 
+ui.setSevFilter = function(btn, sev) {
+  ui._sevFilter = sev;
+  document.querySelectorAll('.lm-sev-btn').forEach(b => b.classList.remove('lm-sev-active'));
+  if (sev) btn.classList.add('lm-sev-active');
+  ui.filterLogs();
+};
+ui._sevFilter = '';
+
 ui.filterLogs = function() {
   const search = (document.getElementById('lm-search')?.value || '').toLowerCase();
-  const cat    = ui._logFilter;
+  const cat    = ui._logFilter  || 'all';
+  const sev    = ui._sevFilter  || '';
 
   const catMatches = (e) => {
-    const et = e.event_type || '';
-    const at = e.actor?.type || '';
+    const et = (e.event_type || '').toLowerCase();
+    const at = (e.actor?.type || '').toLowerCase();
     if (cat === 'all')      return true;
-    if (cat === 'system')   return at === 'system' || et.startsWith('system_') || et === 'registry_repaired';
-    if (cat === 'poseidon') return et.startsWith('poseidon_') || et === 'user_input'
-                                   || et === 'model_loaded' || et === 'model_unloaded' || et === 'model_overloaded';
+    if (cat === 'poseidon') return et.startsWith('poseidon_') || et === 'user_input';
     if (cat === 'agent')    return et.startsWith('agent_') || at === 'agent';
-    if (cat === 'project')  return et.startsWith('project_') || et.startsWith('task_');
+    if (cat === 'task')     return et.startsWith('task_') || et === 'task_completed' || et === 'task_failed';
+    if (cat === 'project')  return et.startsWith('project_');
+    if (cat === 'model')    return et.startsWith('model_') || et.includes('model');
+    if (cat === 'error')    return e.severity === 'error' || e.severity === 'warning' || et.includes('fail') || et.includes('error');
+    if (cat === 'system')   return at === 'system' || et.startsWith('system_') || et === 'registry_repaired' || et === 'checkpoint_created';
     return true;
   };
 
-  const filtered = ui._allLogs.filter(e => {
+  const sevMatches = (e) => {
+    if (!sev) return true;
+    return (e.severity || 'info') === sev;
+  };
+
+  const filtered = (ui._allLogs || []).filter(e => {
     if (!catMatches(e)) return false;
+    if (!sevMatches(e)) return false;
     if (search) {
-      const hay = [e.event_type, e.action, e.actor?.id, e.subject?.id].join(' ').toLowerCase();
+      const hay = [e.event_type, e.action, e.actor?.id, e.subject?.id, e.actor?.type].join(' ').toLowerCase();
       if (!hay.includes(search)) return false;
     }
     return true;
   });
 
   const countEl = document.getElementById('lm-count');
-  if (countEl) countEl.textContent = filtered.length;
+  if (countEl) countEl.textContent = filtered.length + ' entries';
 
   const list = document.getElementById('lm-list');
   if (!list) return;
@@ -221,7 +238,7 @@ ui._renderLogEntry = function(e) {
     model_loaded:         ['📦','lm-ev-model'],
     model_unloaded:       ['🗑','lm-ev-model'],
     model_overloaded:     ['💥','lm-ev-err'],
-    agent_created:        ['🦑','lm-ev-agent'],
+    agent_created:        ['🤖','lm-ev-agent'],
     agent_woken:          ['👁','lm-ev-agent'],
     agent_slept:          ['💤','lm-ev-agent'],
     agent_archived:       ['📦','lm-ev-agent'],
@@ -248,7 +265,10 @@ ui._renderLogEntry = function(e) {
   const actor  = e.actor?.id  !== 'poseidon_main' ? (e.actor?.id || '') : '';
   const subj   = e.subject?.id || '';
 
-  return `<div class="lm-entry ${sevCls}">
+  const actionText = e.action || '';
+  const preview = actionText.length > 180 ? actionText.slice(0, 180) + '…' : actionText;
+
+  return `<div class="lm-entry ${sevCls}" title="${ui._esc(actionText)}">
     <div class="lm-entry-left">
       <span class="lm-ev-icon ${cls}">${icon}</span>
     </div>
@@ -257,12 +277,9 @@ ui._renderLogEntry = function(e) {
         <span class="lm-ev-type">${ui._esc(et)}</span>
         ${actor ? `<span class="lm-ev-actor">${ui._esc(actor)}</span>` : ''}
         ${subj  ? `<span class="lm-ev-subj">→ ${ui._esc(subj)}</span>` : ''}
+        <span class="lm-time lm-time-inline">${date} ${time}</span>
       </div>
-      <div class="lm-action">${ui._esc(e.action || '')}</div>
-    </div>
-    <div class="lm-entry-right">
-      <span class="lm-time">${time}</span>
-      <span class="lm-date">${date}</span>
+      <div class="lm-action">${ui._esc(preview)}</div>
     </div>
   </div>`;
 };

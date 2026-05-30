@@ -118,15 +118,26 @@ const TaskQueueUI = {
     const isRunning   = status === 'in_progress' || workerStatus === 'running';
     const canRun      = assignee && ['planned', 'open', 'assigned'].includes(status);
     const isCron      = !!t.cron_schedule;
+    const projectName = t.project_name || t.context?.project_id || null;
+
+    // Task type badge
+    let typeBadge = '';
+    if (isCron) {
+      typeBadge = `<span class="tq-type-badge tq-type-cron" title="Recurring: ${this._esc(t.cron_schedule)}">⏱ CRON</span>`;
+    } else if (projectName) {
+      typeBadge = `<span class="tq-type-badge tq-type-project" title="Part of project: ${this._esc(projectName)}">📁 ${this._esc(projectName)}</span>`;
+    } else {
+      typeBadge = `<span class="tq-type-badge tq-type-oneshot" title="One-time task">◈ ONE-TIME</span>`;
+    }
 
     // Status dot + label
     const statusDot = {
-      'open':        { dot: '⬤', cls: 'tq-dot-open',     label: 'queued' },
-      'planned':     { dot: '⬤', cls: 'tq-dot-planned',   label: 'ready' },
-      'assigned':    { dot: '⬤', cls: 'tq-dot-planned',   label: 'assigned' },
-      'in_progress': { dot: '⬤', cls: 'tq-dot-running',   label: 'running' },
-      'paused':      { dot: '⬤', cls: 'tq-dot-paused',    label: 'paused' },
-    }[status] || { dot: '⬤', cls: 'tq-dot-open', label: status };
+      'open':        { cls: 'tq-dot-open',    label: 'queued' },
+      'planned':     { cls: 'tq-dot-planned',  label: 'ready' },
+      'assigned':    { cls: 'tq-dot-planned',  label: 'assigned' },
+      'in_progress': { cls: 'tq-dot-running',  label: 'running' },
+      'paused':      { cls: 'tq-dot-paused',   label: 'paused' },
+    }[status] || { cls: 'tq-dot-open', label: status };
 
     el.innerHTML = `
       <div class="tq-drag-handle" title="Drag to reorder">⠿</div>
@@ -135,11 +146,11 @@ const TaskQueueUI = {
           <span class="tq-rank">#${idx + 1}</span>
           <span class="tq-dot ${statusDot.cls} ${isRunning ? 'tq-dot-pulse' : ''}" title="${statusDot.label}">⬤</span>
           <span class="tq-title tq-title-link" title="Click to view/edit details">${this._esc(t.title)}</span>
-          ${isCron ? `<span class="tq-cron-badge" title="Scheduled: ${this._esc(t.cron_schedule)}">⏱</span>` : ''}
           ${canRun ? `<button class="tq-run-btn" onclick="TaskQueueUI.runTask('${t.task_id}')" title="▶ Run now">▶</button>` : ''}
           <button class="tq-cancel" onclick="TaskQueueUI.cancelTask('${t.task_id}')" title="Cancel">✕</button>
         </div>
         <div class="tq-row2">
+          ${typeBadge}
           <span class="tq-status-label">${statusDot.label}</span>
           <button class="tq-assignee ${assignee ? 'tq-assigned' : 'tq-unassigned'}"
                   onclick="TaskQueueUI.openAssignPicker('${t.task_id}', this)"

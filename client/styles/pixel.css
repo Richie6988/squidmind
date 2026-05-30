@@ -2377,7 +2377,7 @@ input[type="color"]::-webkit-color-swatch {
 }
 
 /* TODO: Replace emojis with actual pixel sprites */
-.icon-squid::before { content: '🦑'; font-size: 14px; }
+.icon-squid::before { content: '🤖'; font-size: 14px; }
 .icon-models::before { content: '📦'; font-size: 14px; }
 .icon-teams::before { content: '👥'; font-size: 14px; }
 .icon-scheduler::before { content: '🎯'; font-size: 14px; }
@@ -5374,8 +5374,8 @@ option {
 #logs-modal.hidden { display: none; }
 
 .lm-modal {
-  width: min(860px, 96vw);
-  height: min(82vh, 820px);
+  width: min(980px, 98vw);
+  height: min(90vh, 900px);
   background: #070d18;
   border: 1px solid rgba(79,172,254,0.2);
   border-radius: 10px;
@@ -5428,7 +5428,7 @@ option {
   border: 1px solid transparent;
   color: #475569;
   font-family: 'Courier New', monospace;
-  font-size: 9px; padding: 4px 10px; border-radius: 4px;
+  font-size: 11px; padding: 5px 12px; border-radius: 4px;
   cursor: pointer; transition: all 0.15s; white-space: nowrap;
 }
 .lm-tab:hover  { background: rgba(255,255,255,0.05); color: #94a3b8; }
@@ -5441,8 +5441,8 @@ option {
   background: rgba(255,255,255,0.04);
   border: 1px solid rgba(255,255,255,0.1);
   color: #e2e8f0; font-family: 'Courier New', monospace;
-  font-size: 9px; padding: 4px 10px; border-radius: 4px;
-  width: 160px; outline: none; transition: border-color 0.15s;
+  font-size: 11px; padding: 5px 12px; border-radius: 4px;
+  width: 220px; outline: none; transition: border-color 0.15s;
 }
 .lm-search:focus { border-color: rgba(79,172,254,0.4); }
 .lm-search::placeholder { color: #334155; }
@@ -5467,8 +5467,8 @@ option {
 /* Log entry */
 .lm-entry {
   display: flex; align-items: flex-start; gap: 10px;
-  padding: 7px 14px;
-  border-bottom: 1px solid rgba(255,255,255,0.03);
+  padding: 9px 16px;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
   transition: background 0.1s;
 }
 .lm-entry:hover { background: rgba(255,255,255,0.025); }
@@ -5478,8 +5478,8 @@ option {
 .lm-entry-left { flex: 0 0 22px; padding-top: 1px; }
 .lm-ev-icon {
   display: inline-flex; align-items: center; justify-content: center;
-  width: 20px; height: 20px; border-radius: 4px;
-  font-size: 10px;
+  width: 24px; height: 24px; border-radius: 5px;
+  font-size: 12px;
 }
 
 /* Icon colour classes */
@@ -5498,22 +5498,22 @@ option {
 .lm-entry-top  { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 2px; }
 .lm-ev-type {
   font-family: 'Courier New', monospace;
-  font-size: 8px; color: #64748b;
+  font-size: 10px; color: #64748b;
   background: rgba(255,255,255,0.04);
   padding: 1px 5px; border-radius: 3px;
 }
-.lm-ev-actor { font-family: 'Courier New', monospace; font-size: 8px; color: #4facfe; }
-.lm-ev-subj  { font-family: 'Courier New', monospace; font-size: 8px; color: #475569; }
+.lm-ev-actor { font-family: 'Courier New', monospace; font-size: 10px; color: #4facfe; }
+.lm-ev-subj  { font-family: 'Courier New', monospace; font-size: 10px; color: #94a3b8; }
 .lm-action {
   font-family: 'Courier New', monospace;
-  font-size: 9px; color: #94a3b8;
+  font-size: 11px; color: #cbd5e1;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .lm-entry-right {
   flex: 0 0 auto; text-align: right;
   display: flex; flex-direction: column; align-items: flex-end; gap: 1px;
 }
-.lm-time { font-family: 'Courier New', monospace; font-size: 8px; color: #475569; }
+.lm-time { font-family: 'Courier New', monospace; font-size: 9px; color: #475569; }
 .lm-date { font-family: 'Courier New', monospace; font-size: 7px; color: #334155; }
 
 /* ── PoseidonChat: inline loader ─────────────────────────────────────────── */
@@ -6100,3 +6100,50 @@ h4.pc-md-h { font-size: 8px; color: #94a3b8; }
   flex-shrink: 0;
 }
 .pc-stop-btn:hover { background: rgba(230,57,70,0.35); }
+
+/* ── Logs panel upgrades ── */
+.lm-filters { flex-direction: column; gap: 0; padding: 0; }
+.lm-filter-row {
+  display: flex; align-items: center; gap: 4px; flex-wrap: wrap;
+  padding: 8px 12px;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+.lm-filter-row2 { background: rgba(0,0,0,0.15); }
+.lm-filter-row2 .lm-search { flex: 1; min-width: 140px; width: auto; }
+
+.lm-sev-btn {
+  background: none;
+  border: 1px solid rgba(255,255,255,0.1);
+  color: #64748b;
+  font-family: 'Courier New', monospace;
+  font-size: 10px; padding: 4px 10px; border-radius: 4px;
+  cursor: pointer; white-space: nowrap; transition: all 0.15s;
+}
+.lm-sev-btn:hover { border-color: rgba(255,255,255,0.2); color: #94a3b8; }
+.lm-sev-btn.lm-sev-active { background: rgba(239,68,68,0.15); border-color: #ef4444; color: #f87171; }
+
+.lm-count {
+  font-size: 10px; margin-left: auto; white-space: nowrap;
+}
+
+.lm-time-inline {
+  margin-left: auto; font-size: 9px;
+  color: #475569; font-family: 'Courier New', monospace;
+  white-space: nowrap; flex-shrink: 0;
+}
+/* Hide old separate right column */
+.lm-entry-right { display: none; }
+.lm-entry-top { flex-wrap: nowrap; }
+
+/* ── Task type badges ── */
+.tq-type-badge {
+  font-size: 8px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-family: 'Press Start 2P', monospace;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.tq-type-cron    { background: rgba(245,158,11,0.12); border: 1px solid rgba(245,158,11,0.4); color: #fbbf24; }
+.tq-type-project { background: rgba(79,172,254,0.1);  border: 1px solid rgba(79,172,254,0.35); color: #60a5fa; }
+.tq-type-oneshot { background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1); color: #64748b; }

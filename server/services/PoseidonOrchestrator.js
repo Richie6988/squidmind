@@ -7,7 +7,7 @@
  *
  * Three things this file owns:
  *   1. SYSTEM PROMPT - tells the model who it is + what it can do, with
- *      embedded process recipes (the user requested over-documentation).
+ *      embedded skill recipes (the user requested over-documentation).
  *   2. TOOL DEFINITIONS - turns each registry tool into a function the
  *      model can call via defineChatSessionFunction(). Includes JSON
  *      schema, description, and a handler that performs the action and
@@ -70,7 +70,7 @@ class PoseidonOrchestrator {
    *       ABSOLUTE_RULES (always - hard rules)
    *       FINE_TUNING_BRIEF (always - 1-2 lines of vibe + learned user context)
    *       TOOLS_POINTER (always - 1-line "you have N tools across M categories;
-   *                       call read_my_brain('processes.X') for recipes")
+   *                       call read_my_brain('skills.X') for recipes")
    *       CURRENT_STATE (always - live agent/project/task snapshot)
    *   - PROCESSES are NOT included by default. The model fetches the specific
    *     one it needs via the read_my_brain(section_path) tool. This is the
@@ -162,7 +162,7 @@ ${checkpoint.summary}
    * Just lists tool CATEGORIES from brain.tools_catalog. The model already
    * has full function signatures injected by node-llama-cpp's function-calling
    * protocol - we don't need to repeat them in the prompt.
-   * For the process recipes the model calls read_my_brain('processes.X').
+   * For the skill recipes the model calls read_my_brain('skills.X').
    */
   _sectionToolsPointer(brain) {
     const catalog = brain.tools_catalog || {};
@@ -184,8 +184,8 @@ ${checkpoint.summary}
       lines.push('');
       lines.push(`Full schemas are injected automatically.`);
       lines.push(`WORKSPACE: all data lives in workspace/ — projects, agents, tasks, logs.`);
-      lines.push(`  read_my_brain('processes')         → list all process recipes`);
-      lines.push(`  read_my_brain('processes.<name>')  → read a process step-by-step guide`);
+      lines.push(`  read_my_brain('skills')         → list all skill recipes`);
+      lines.push(`  read_my_brain('skills.<name>')  → read a process step-by-step guide`);
       lines.push(`  read_my_brain('projects')          → active projects + folders`);
       lines.push(`  read_my_brain('agents')            → all agents + brain file paths`);
       lines.push(`  read_my_brain('tasks')             → open tasks`);
@@ -365,7 +365,7 @@ Never describe a bash command you could call instead.`;
     lines.push('');
     lines.push(`## Agents (${agentList.length})`);
     if (agentList.length === 0) {
-      lines.push('(none yet - the user can create some via "+ New Squid", or you can with create_agent)');
+      lines.push('(none yet - the user can create some via "+ New Agent", or you can with create_agent)');
     } else {
       agentList.slice(0, 30).forEach(a => {
         lines.push(`- ${a.agent_id}: ${a.display_name} | ${a.specialization || 'general'} | ${a.status} | ${a.performance_summary?.tasks_completed || 0} tasks done`);
@@ -411,7 +411,7 @@ Never describe a bash command you could call instead.`;
 
     return {
       create_agent: defineChatSessionFunction({
-        description: 'Create a new squid agent (AI worker) with a fresh brain file. Returns the new agent_id.',
+        description: 'Create a new agent (AI worker) with a fresh brain file. Returns the new agent_id.',
         params: {
           type: 'object',
           properties: {
@@ -424,7 +424,7 @@ Never describe a bash command you could call instead.`;
               description: 'Agent specialization'
             },
             role: { type: 'string', description: 'One-line description of what this agent does' },
-            primary_color: { type: 'string', description: 'Hex color like #FF6B9D for the squid body' }
+            primary_color: { type: 'string', description: 'Hex color like #FF6B9D for the agent body' }
           },
           required: ['display_name', 'specialization']
         },
@@ -699,13 +699,13 @@ Never describe a bash command you could call instead.`;
       }),
       
       read_my_brain: defineChatSessionFunction({
-        description: 'Fetch a specific section of your own brain.json. Use this for process recipes (e.g. "processes.create_agent"), tool details ("tools_catalog"), or your full soul ("fine_tuning"). Returns just that section so you do not blow context.',
+        description: 'Fetch a specific section of your own brain.json. Use this for skill recipes (e.g. "skills.create_agent"), tool details ("tools_catalog"), or your full soul ("fine_tuning"). Returns just that section so you do not blow context.',
         params: {
           type: 'object',
           properties: {
             section_path: {
               type: 'string',
-              description: 'Dot-path inside brain.json. Examples: "processes.create_agent", "processes.research_flow", "fine_tuning", "absolute_rules", "tools_catalog", "user", "current_state".'
+              description: 'Dot-path inside brain.json. Examples: "skills.create_agent", "skills.research_flow", "fine_tuning", "absolute_rules", "tools_catalog", "user", "current_state".'
             }
           },
           required: ['section_path']
@@ -1271,7 +1271,7 @@ Never describe a bash command you could call instead.`;
    * we just expose pointers and the model fetches the chunk it needs.
    *
    * Examples:
-   *   "processes.create_agent"  -> { summary, when_to_use, steps, tools_used }
+   *   "skills.create_agent"  -> { summary, when_to_use, steps, tools_used }
    *   "fine_tuning"             -> { core_truths, boundaries, vibe, continuity }
    *   "tools_catalog"           -> { agent_management: [...], ... }
    *   "user"                    -> { name, role, preferences, context, ... }
@@ -1279,38 +1279,38 @@ Never describe a bash command you could call instead.`;
   async _readMyBrain({ section_path }) {
     try {
       if (!section_path || typeof section_path !== 'string') {
-        return { ok: false, error: 'section_path required (e.g. "processes.create_agent")' };
+        return { ok: false, error: 'section_path required (e.g. "skills.create_agent")' };
       }
 
       const fs   = require('fs');
       const path = require('path');
 
-      // ── Processes: read from workspace/main/processes/<name>.md ──────────
-      // section_path "processes.create_agent" → reads processes/create_agent.md
-      // section_path "processes" → lists available process files
-      if (section_path === 'processes' || section_path.startsWith('processes.')) {
-        const processesDir = path.join(this.rm.dataRoot, 'main', 'processes');
-        if (!fs.existsSync(processesDir)) fs.mkdirSync(processesDir, { recursive: true });
+      // ── Processes: read from workspace/main/skills/<name>.md ──────────
+      // section_path "skills.create_agent" → reads processes/create_agent.md
+      // section_path "skills" → lists available skill files
+      if (section_path === 'skills' || section_path.startsWith('skills.')) {
+        const skillsDir = path.join(this.rm.dataRoot, 'main', 'skills');
+        if (!fs.existsSync(skillsDir)) fs.mkdirSync(skillsDir, { recursive: true });
 
-        if (section_path === 'processes') {
+        if (section_path === 'skills') {
           // List available processes
-          const files = fs.readdirSync(processesDir).filter(f => f.endsWith('.md'));
+          const files = fs.readdirSync(skillsDir).filter(f => f.endsWith('.md'));
           return {
             ok: true,
             section_path,
             content: files.length
-              ? `Available processes:\n${files.map(f => '- ' + f.replace('.md','')).join('\n')}\n\nCall read_my_brain("processes.<name>") to read one.`
-              : 'No process files yet. They live in workspace/main/processes/*.md'
+              ? `Available skills:\n${files.map(f => '- ' + f.replace('.md','')).join('\n')}\n\nCall read_my_brain("skills.<name>") to read one.`
+              : 'No skill files yet. They live in workspace/main/skills/*.md'
           };
         }
 
-        const processName = section_path.slice('processes.'.length);
-        const filePath    = path.join(processesDir, `${processName}.md`);
+        const skillName = section_path.slice('skills.'.length);
+        const filePath    = path.join(skillsDir, `${skillName}.md`);
         if (!fs.existsSync(filePath)) {
-          const available = fs.readdirSync(processesDir).filter(f => f.endsWith('.md')).map(f => f.replace('.md',''));
+          const available = fs.readdirSync(skillsDir).filter(f => f.endsWith('.md')).map(f => f.replace('.md',''));
           return {
             ok: false,
-            error: `Process "${processName}" not found. Available: ${available.join(', ') || '(none)'}. Create ${processName}.md in workspace/main/processes/.`
+            error: `Process "${skillName}" not found. Available: ${available.join(', ') || '(none)'}. Create ${skillName}.md in workspace/main/skills/.`
           };
         }
         const content = fs.readFileSync(filePath, 'utf8');
@@ -1318,7 +1318,7 @@ Never describe a bash command you could call instead.`;
         return {
           ok: true,
           section_path,
-          source: `workspace/main/processes/${processName}.md`,
+          source: `workspace/main/skills/${skillName}.md`,
           char_count: content.length,
           truncated: content.length > MAX,
           content: content.length > MAX ? content.slice(0, MAX) + '\n... (truncated)' : content
@@ -1365,7 +1365,7 @@ Never describe a bash command you could call instead.`;
           const available = (node && typeof node === 'object') ? Object.keys(node) : [];
           return {
             ok: false,
-            error: `Path "${section_path}" not found. Stopped at "${traversed.join('.')||'(root)'}". Available: ${available.join(', ')||'(none)'}. Hint: processes are in workspace/main/processes/*.md`
+            error: `Path "${section_path}" not found. Stopped at "${traversed.join('.')||'(root)'}". Available: ${available.join(', ')||'(none)'}. Hint: processes are in workspace/main/skills/*.md`
           };
         }
       }

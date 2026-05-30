@@ -55,13 +55,13 @@ const AgentForm = {
     
     // Default brain template + registry entry for a new squid
     this.newSquidDraft = {
-      display_name: 'New Squid',
+      display_name: 'New Agent',
       specialization: 'general',
       status: 'sleeping'
     };
     this.brain = this._defaultBrainTemplate();
     this.registry = {
-      display_name: 'New Squid',
+      display_name: 'New Agent',
       specialization: 'general',
       status: 'sleeping',
       brain_file: '__pending__',  // server assigns real file name
@@ -166,7 +166,7 @@ const AgentForm = {
   _render() {
     const title = this.modal.querySelector('.agent-form-title');
     title.textContent = this.isCreating
-      ? 'Create New Squid'
+      ? 'Create New Agent'
       : `Edit Agent: ${this.registry.display_name || this.agentId}`;
     
     // Update save button text too
@@ -845,7 +845,7 @@ const AgentForm = {
       const result = await window.ApiV2._fetch('/agents', {
         method: 'POST',
         body: JSON.stringify({
-          display_name: this.registry.display_name || 'New Squid',
+          display_name: this.registry.display_name || 'New Agent',
           specialization: this.registry.specialization || 'general',
           status: this.registry.status || 'sleeping',
           brain: this.brain
