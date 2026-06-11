@@ -93,7 +93,7 @@ class PoseidonOrchestrator {
     // Inject context checkpoint if it exists (saved before last session wipe)
     let checkpointSection = '';
     try {
-      const checkpoint = await this.rm.read('main/context_checkpoint.json');
+      const checkpoint = await this.rm.read('BRAIN/dream_memory.json');
       if (checkpoint?.summary) {
         const age = checkpoint.saved_at ? Math.round((Date.now() - new Date(checkpoint.saved_at).getTime()) / 60000) : '?';
         checkpointSection = `# CONTINUITY (from ${age}min ago, turn ${checkpoint.turns||'?'})
@@ -1289,7 +1289,7 @@ Never describe a bash command you could call instead.`;
       // section_path "skills.create_agent" → reads processes/create_agent.md
       // section_path "skills" → lists available skill files
       if (section_path === 'skills' || section_path.startsWith('skills.')) {
-        const skillsDir = path.join(this.rm.dataRoot, 'main', 'skills');
+        const skillsDir = require('../aquarium').SKILLS;
         if (!fs.existsSync(skillsDir)) fs.mkdirSync(skillsDir, { recursive: true });
 
         if (section_path === 'skills') {

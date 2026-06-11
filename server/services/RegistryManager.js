@@ -13,6 +13,8 @@
 const fs = require('fs').promises;
 const path = require('path');
 
+const AQUARIUM = require('../aquarium');
+
 class RegistryManager {
   /**
    * Convert a display name to a filesystem-safe slug.
@@ -28,7 +30,7 @@ class RegistryManager {
   }
 
   constructor(dataRoot) {
-    this.dataRoot = dataRoot || path.join(__dirname, '../../workspace');
+    this.dataRoot = dataRoot || AQUARIUM.ROOT;
     this.cache = new Map();
     this.dirty = new Set();
     this.writeLocks = new Map(); // path -> Promise chain (serializes writes per file)
@@ -37,14 +39,15 @@ class RegistryManager {
   // ==================== CORE I/O ====================
 
   async read(relativePath) {
-    if (this.cache.has(relativePath)) {
-      return this.cache.get(relativePath);
+    const rp = AQUARIUM.resolve(relativePath);
+    if (this.cache.has(rp)) {
+      return JSON.parse(JSON.stringify(this.cache.get(rp)));
     }
-    const fullPath = path.join(this.dataRoot, relativePath);
+    const fullPath = path.join(this.dataRoot, rp);
     
     // Wait for any pending write on this file to settle before reading
-    if (this.writeLocks.has(relativePath)) {
-      try { await this.writeLocks.get(relativePath); } catch {}
+    if (this.writeLocks.has(rp)) {
+      try { await this.writeLocks.get(rp); } catch {}
     }
     
     // Retry on transient errors (ENOENT during rename, empty file, parse fail)
@@ -53,12 +56,12 @@ class RegistryManager {
       try {
         const content = await fs.readFile(fullPath, 'utf8');
         if (!content || content.trim() === '') {
-          lastErr = new Error(`Empty file: ${relativePath}`);
+          lastErr = new Error(`Empty file: ${rp}`);
           await new Promise(r => setTimeout(r, 40 * (attempt + 1)));
           continue;
         }
         const data = JSON.parse(content);
-        this.cache.set(relativePath, data);
+        this.cache.set(rp, data);
         return data;
       } catch (err) {
         lastErr = err;
@@ -67,39 +70,42 @@ class RegistryManager {
         }
       }
     }
-    throw new Error(`Failed to read ${relativePath} after 5 attempts: ${lastErr.message}`);
+    throw new Error(`Failed to read ${rp} after 5 attempts: ${lastErr?.message}`);
   }
 
   async write(relativePath, data) {
+    const rp = AQUARIUM.resolve(relativePath);
     // Chain writes to same file - never interleave them
-    const previousWrite = this.writeLocks.get(relativePath) || Promise.resolve();
+    const previousWrite = this.writeLocks.get(rp) || Promise.resolve();
     const writeOp = previousWrite.catch(() => {}).then(async () => {
-      const fullPath = path.join(this.dataRoot, relativePath);
+      const fullPath = path.join(this.dataRoot, rp);
       data.last_updated_at = new Date().toISOString();
       if (data.metadata) {
         data.metadata.last_updated_at = data.last_updated_at;
       }
+      // Ensure parent directory exists
+      await fs.mkdir(path.dirname(fullPath), { recursive: true });
       const tmpPath = fullPath + '.tmp.' + process.pid + '.' + Date.now() + '.' + Math.random().toString(36).slice(2, 8);
       const json = JSON.stringify(data, null, 2);
       await fs.writeFile(tmpPath, json, 'utf8');
       await fs.rename(tmpPath, fullPath);
-      this.cache.set(relativePath, data);
-      this.dirty.delete(relativePath);
+      this.cache.set(rp, data);
+      this.dirty.delete(rp);
     });
     
-    this.writeLocks.set(relativePath, writeOp);
+    this.writeLocks.set(rp, writeOp);
     try {
       await writeOp;
     } finally {
-      if (this.writeLocks.get(relativePath) === writeOp) {
-        this.writeLocks.delete(relativePath);
+      if (this.writeLocks.get(rp) === writeOp) {
+        this.writeLocks.delete(rp);
       }
     }
   }
 
   invalidateCache(relativePath) {
     if (relativePath) {
-      this.cache.delete(relativePath);
+      this.cache.delete(AQUARIUM.resolve(relativePath));
     } else {
       this.cache.clear();
     }

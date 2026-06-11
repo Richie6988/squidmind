@@ -20,7 +20,8 @@ const { execSync } = require('child_process');
 class FilesystemTools {
   constructor() {
     // Base working directory (sandboxed)
-    this.workDir = path.join(__dirname, '../../workspace');
+    const AQUARIUM = require('../aquarium');
+    this.workDir = AQUARIUM.ROOT;
     this.maxFileSize = 10 * 1024 * 1024; // 10MB max
     this.allowedExtensions = [
       '.js', '.ts', '.jsx', '.tsx',

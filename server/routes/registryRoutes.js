@@ -10,7 +10,8 @@ const RegistryManager = require('../services/RegistryManager');
 
 function buildRouter(sharedRm) {
   const router = express.Router();
-  const rm = sharedRm || new RegistryManager(path.join(__dirname, '../../workspace'));
+  const AQUARIUM = require('../aquarium');
+  const rm = sharedRm || new RegistryManager(AQUARIUM.ROOT);
 
 // POSEIDON
 router.get('/poseidon', async (req, res) => {

@@ -471,7 +471,8 @@ class OrchestratorTools {
       const projectFolder = project_id.toUpperCase().startsWith('PROJECT_')
         ? project_id.toUpperCase()
         : `PROJECT_${project_id.replace(/\D/g, '').padStart(3, '0')}`;
-      const outputDir  = path.join(this.workspaceRoot, 'data', 'projects', projectFolder, 'outputs');
+      const _aq = require('../aquarium');
+      const outputDir  = path.join(_aq.PROJECTS, projectFolder, 'output');
       const outputPath = path.join(outputDir, safeFilename);
 
       // Delegate to V2ModelService which knows the model file path

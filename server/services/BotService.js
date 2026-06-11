@@ -79,26 +79,21 @@ class BotService extends EventEmitter {
 
   async loadConfig() {
     try {
-      this.config = await this.rm.read('main/comms_config.json');
+      this.config = await this.rm.read('CHANNELS/comms_config.json');
       // Migrate missing keys
       for (const [k, v] of Object.entries(DEFAULT_CONFIG)) {
         if (!this.config[k]) this.config[k] = v;
       }
     } catch {
-      // File not found in current dataRoot — try the other root (data/ vs workspace/)
+      // File not found — try AQUARIUM.COMMS_CONFIG directly
       try {
-        const path = require('path');
-        const altRoot = this.rm.dataRoot.endsWith('workspace')
-          ? this.rm.dataRoot.replace('workspace', 'data')
-          : this.rm.dataRoot.replace('data', 'workspace');
-        const altPath = path.join(altRoot, 'main', 'comms_config.json');
-        const raw = require('fs').readFileSync(altPath, 'utf8');
+        const AQUARIUM = require('../aquarium');
+        const raw = require('fs').readFileSync(AQUARIUM.COMMS_CONFIG, 'utf8');
         this.config = JSON.parse(raw);
         for (const [k, v] of Object.entries(DEFAULT_CONFIG)) {
           if (!this.config[k]) this.config[k] = v;
         }
-        console.log('[BotService] Loaded comms config from alternate root:', altPath);
-        // Migrate it to current root
+        console.log('[BotService] Loaded comms config from AQUARIUM:', AQUARIUM.COMMS_CONFIG);
         await this._saveConfig();
       } catch {
         this.config = JSON.parse(JSON.stringify(DEFAULT_CONFIG));
@@ -111,7 +106,7 @@ class BotService extends EventEmitter {
 
   async _saveConfig() {
     const toSave = { ...this.config, history: this._history.slice(-this._MAX_HISTORY) };
-    await this.rm.write('main/comms_config.json', toSave);
+    await this.rm.write('CHANNELS/comms_config.json', toSave);
   }
 
   async updatePlatformConfig(platform, updates) {

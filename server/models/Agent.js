@@ -1,7 +1,8 @@
 const fs = require('fs').promises;
 const path = require('path');
 
-const AGENTS_DIR = path.join(__dirname, '../../workspace/agents');
+const AQUARIUM = require('../aquarium');
+const AGENTS_DIR = AQUARIUM.AGENTS;
 
 class Agent {
   constructor(data) {

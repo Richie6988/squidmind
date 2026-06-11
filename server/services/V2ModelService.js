@@ -1032,7 +1032,7 @@ class V2ModelService {
               model_id: this.poseidonModelId,
               summary: summaryText.trim()
             };
-            await this.rm.write('main/context_checkpoint.json', checkpoint);
+            await this.rm.write('BRAIN/dream_memory.json', checkpoint);
             console.log(`[V2ModelService] Context checkpoint saved (${Math.round(summaryText.length/4)} tok summary)`);
           }
         } catch (e) {

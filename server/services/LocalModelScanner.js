@@ -30,7 +30,7 @@ class LocalModelScanner {
       path.join(os.homedir(), 'LM Studio/models'),
       
       // SquidMind local
-      path.join(__dirname, '../../workspace/models'),
+      require('../aquarium').MODELS_DIR,
       
       // Common download locations
       path.join(os.homedir(), 'Downloads'),

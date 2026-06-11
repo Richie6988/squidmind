@@ -21,19 +21,9 @@ const RegistryManager = require('./services/RegistryManager');
 const { repairAllRegistries } = require('./services/RegistryHealthCheck');
 
 // CRITICAL: validate/repair registries BEFORE any service touches them
-// Auto-detect data root: workspace/ (post-migration) or data/ (pre-migration)
-// workspace/ counts as ready only if it has an agent or model registry
-// (just having main/ from git is not enough)
-const _wsRoot   = path.join(__dirname, '../workspace');
-const _dataRoot = path.join(__dirname, '../data');
-const _fsSync   = require('fs');
-const _wsMigrated = _fsSync.existsSync(path.join(_wsRoot, 'main', 'poseidon_brain.json'))
-                 || _fsSync.existsSync(path.join(_wsRoot, 'models', 'model_registry.json'))
-                 || _fsSync.existsSync(path.join(_wsRoot, 'agents', 'agent_registry.json'));
-const dataRoot  = _wsMigrated                                              ? _wsRoot
-                : _fsSync.existsSync(path.join(_dataRoot, 'main'))        ? _dataRoot
-                : _wsRoot;
-console.log(`[SquidMind] Data root: ${dataRoot} (${_wsMigrated ? 'workspace' : 'data — run node migrate.js to upgrade'})`);
+// Path detection is handled by server/aquarium.js — single source of truth
+const AQUARIUM = require('./aquarium');
+const dataRoot = AQUARIUM.ROOT;
 const healthReport = repairAllRegistries(dataRoot);
 if (healthReport.repaired.length > 0) {
   console.log(`[STARTUP] Repaired ${healthReport.repaired.length} registry file(s):`);
@@ -127,15 +117,7 @@ heartbeat.start();
 const V2ModelService = require('./services/V2ModelService');
 const PoseidonOrchestrator = require('./services/PoseidonOrchestrator');
 const { buildRouter: buildModelRouter, buildPoseidonChatRoute, buildAbortRoute } = require('./routes/modelRoutes');
-// Use whichever models dir has actual .gguf files (or falls back to dataRoot/models)
-const _wsModels   = path.join(__dirname, '../workspace/models');
-const _dataModels = path.join(__dirname, '../data/models');
-const _hasGguf = (dir) => { try { return _fsSync.readdirSync(dir).some(f => f.endsWith('.gguf')); } catch { return false; } };
-const _modelsDir  = _hasGguf(_wsModels)   ? _wsModels
-                  : _hasGguf(_dataModels) ? _dataModels
-                  : path.join(dataRoot, 'models'); // default under detected root
-console.log(`[SquidMind] Models dir: ${_modelsDir}`);
-const v2ModelService = new V2ModelService(sharedRm, _modelsDir);
+const v2ModelService = new V2ModelService(sharedRm, AQUARIUM.MODELS_DIR);
 
 // Orchestrator: gives Poseidon its identity prompt + function-calling tools.
 // Set BEFORE first chat so the model sees its full toolset.
@@ -221,7 +203,7 @@ app.get('/api/agents/:id', async (req, res) => {
 // List all projects
 app.get('/api/projects', async (req, res) => {
   try {
-    const projectsDir = path.join(__dirname, '../workspace/projects');
+    const projectsDir = AQUARIUM.PROJECTS;
     const folders = await fs.readdir(projectsDir);
     
     const projects = [];
@@ -276,7 +258,7 @@ app.post('/api/projects', async (req, res) => {
     const projectId = `project_${String(nextId).padStart(3, '0')}`;
     // Use slug of project name for folder — more intuitive than PROJECT_001
     const folderName = RegistryManager.toSlug(upperName);
-    const projectDir = path.join(__dirname, '../workspace/projects', folderName);
+    const projectDir = path.join(AQUARIUM.PROJECTS, folderName);
     
     // 2. Create folder + subfolders
     await fs.mkdir(projectDir, { recursive: true });
@@ -355,7 +337,7 @@ app.post('/api/projects', async (req, res) => {
 
 // Helper: map project name (e.g. "AQUARIUM") to folder (e.g. "PROJECT_001")
 async function resolveProjectFolder(name) {
-  const registryPath = path.join(__dirname, '../workspace/projects/project_registry.json');
+  const registryPath = AQUARIUM.PROJECT_REGISTRY;
   const data = JSON.parse(await fs.readFile(registryPath, 'utf8'));
   for (const [id, entry] of Object.entries(data.projects)) {
     if (entry.name === name.toUpperCase() || entry.folder === name.toUpperCase()) {
@@ -370,7 +352,7 @@ async function resolveProjectFolder(name) {
 app.get('/api/projects/:name/memory', async (req, res) => {
   try {
     const folder = await resolveProjectFolder(req.params.name);
-    const memoryPath = path.join(__dirname, '../workspace/projects', folder, 'project_memory.json');
+    const memoryPath = path.join(AQUARIUM.PROJECTS, folder, 'project_memory.json');
     const memoryData = await fs.readFile(memoryPath, 'utf8');
     const memory = JSON.parse(memoryData);
     res.json({ success: true, memory });
@@ -384,7 +366,7 @@ app.put('/api/projects/:name/colors', async (req, res) => {
   try {
     const { outside, inside } = req.body;
     const folder = await resolveProjectFolder(req.params.name);
-    const memoryPath = path.join(__dirname, '../workspace/projects', folder, 'project_memory.json');
+    const memoryPath = path.join(AQUARIUM.PROJECTS, folder, 'project_memory.json');
     
     const memoryData = await fs.readFile(memoryPath, 'utf8');
     const memory = JSON.parse(memoryData);
@@ -419,7 +401,7 @@ app.get('/api/logs', async (req, res) => {
 // ==================== SERVE FRONTEND ====================
 
 // Serve project output files (images, etc.) generated by agents
-const dataProjectsPath = path.join(__dirname, '../workspace/projects');
+const dataProjectsPath = AQUARIUM.PROJECTS;
 
 // GET /api/v2/projects/:projectId/outputs — list output files
 app.get('/api/v2/projects/:projectId/outputs', async (req, res) => {
@@ -466,10 +448,11 @@ async function start() {
   try {
     console.log('🦑 Starting SquidMind...');
 
-    // Ensure workspace directory structure exists (safe after data→workspace rename)
-    const WORKSPACE = path.join(__dirname, '../workspace');
-    for (const dir of ['models','agents','projects','tasks','logs','tools','main','main/skills']) {
-      await fs.mkdir(path.join(WORKSPACE, dir), { recursive: true }).catch(() => {});
+    // Ensure Aquarium directory structure exists
+    const _dirs = [AQUARIUM.MODELS, AQUARIUM.AGENTS, AQUARIUM.PROJECTS, AQUARIUM.TASKS,
+                   AQUARIUM.LOGS, AQUARIUM.TOOLS, AQUARIUM.SKILLS, AQUARIUM.BRAIN, AQUARIUM.CHANNELS];
+    for (const dir of _dirs) {
+      await fs.mkdir(dir, { recursive: true }).catch(() => {});
     }
 
     // Initialize tool registry (filesystem tools, etc.)
@@ -547,12 +530,12 @@ app.post('/api/files/browse', async (req, res) => {
 
 console.log('  POST   /api/files/browse   - File browser');
 
-const BRAIN_PATH = path.join(__dirname, '../workspace/brain.json');
+const BRAIN_PATH = AQUARIUM.POSEIDON_BRAIN;
 
 // Repair missing project JSONs
 app.post('/api/projects/:name/repair', async (req, res) => {
   try {
-    const projectDir = path.join(__dirname, '../workspace/projects', req.params.name.toUpperCase());
+    const projectDir = path.join(AQUARIUM.PROJECTS, req.params.name.toUpperCase());
     const memoryPath = path.join(projectDir, 'project_memory.json');
     
     // Check if project_memory.json exists
