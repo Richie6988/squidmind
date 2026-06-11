@@ -86,6 +86,15 @@ function findSourceRoot() {
 
 // ── Main migration ────────────────────────────────────────────────────────────
 
+// --fresh flag: wipe aquarium/ before migrating (clean slate)
+if (process.argv.includes('--fresh')) {
+  if (ex(AQ)) {
+    const { execSync } = require('child_process');
+    execSync(`rm -rf "${AQ}"`);
+    console.log('🗑  --fresh: wiped existing aquarium/');
+  }
+}
+
 console.log('\n🦑 Aquarium migration starting...\n');
 
 const SRC = findSourceRoot();
@@ -122,43 +131,47 @@ console.log('✅ Created aquarium/ structure');
   else console.log('ℹ️  CHANNELS: already exists');
 }
 
-// Step 5 — AGENTS (with slug rename)
+// Step 5 — AGENTS: always create Bobby as the single clean agent
 {
-  const srcAgentsDir = path.join(SRC, 'agents');
   const dstAgentsDir = path.join(AQ, 'AGENTS');
-  const regSrc = path.join(srcAgentsDir, 'agent_registry.json');
+  const dstRegistry  = path.join(dstAgentsDir, 'agent_registry.json');
+  mkdir(dstAgentsDir);
 
-  if (ex(regSrc)) {
-    const reg = rj(regSrc);
-    let changed = 0;
-    for (const [agentId, entry] of Object.entries(reg.agents || {})) {
-      const oldBrain = entry.brain_file;
-      if (!oldBrain) continue;
-      const idNum    = agentId.replace(/\D/g, '');
-      const slug     = toSlug(entry.display_name || entry.name || agentId);
-      const newBrain = `${slug}_${idNum}.json`;
-
-      // Copy brain file with new name
-      const oldPath = path.join(srcAgentsDir, oldBrain);
-      const newPath = path.join(dstAgentsDir, newBrain);
-      if (ex(oldPath) && !ex(newPath)) {
-        mkdir(dstAgentsDir);
-        fs.copyFileSync(oldPath, newPath);
-        console.log(`  🔁 Agent ${agentId}: ${oldBrain} → ${newBrain}`);
-      } else if (!ex(oldPath) && ex(path.join(srcAgentsDir, newBrain))) {
-        // Already renamed
-        const p = path.join(srcAgentsDir, newBrain);
-        if (!ex(newPath)) { mkdir(dstAgentsDir); fs.copyFileSync(p, newPath); }
-      }
-      entry.brain_file = newBrain;
-      changed++;
-    }
-    mkdir(dstAgentsDir);
-    wj(path.join(dstAgentsDir, 'agent_registry.json'), reg);
-    console.log(`✅ AGENTS: ${changed} agents migrated`);
+  // Only create Bobby if registry doesn't already exist (idempotent)
+  if (!ex(dstRegistry)) {
+    const bobby = {
+      schema_version: '2.0', schema_type: 'agent_brain',
+      identity: { agent_id: 'agent_001', display_name: 'Bobby', specialization: 'general',
+        role: 'Versatile general-purpose agent. Handles research, file tasks, coordination, and anything Poseidon delegates.' },
+      brain_config: {
+        system_prompt: "You are Bobby, a capable and autonomous AI agent working inside SquidMind. You are Poseidon's right hand — reliable, thorough, and direct. You complete tasks fully and report results clearly. You never pretend to have done something you haven't.",
+        model_binding: { preferred_model_id: null },
+        inference_params: { max_tokens_per_response: 2048, temperature: 0.7 }
+      },
+      personality: {
+        traits: { curiosity: 0.75, thoroughness: 0.85, creativity: 0.6, assertiveness: 0.65, empathy: 0.5 },
+        communication_style: 'professional', default_mood: 'focused'
+      },
+      capabilities: {
+        skills: { research: 0.8, file_management: 0.75, data_analysis: 0.7, code_review: 0.6, documentation: 0.8 },
+        tools_allowed: ['web_search','web_fetch','read_file','write_file','list_files','get_datetime','calculator','json_parse','json_stringify','get_file_info']
+      },
+      appearance: { primary_color: '#4facfe', accent_color: '#00f2fe', size_scale: 1.0,
+        accessories: { hat: 'cap', glasses: 'none', eyes: 'happy', outfit: 'none' } },
+      status: 'sleeping', assigned_projects: [],
+      created_at: new Date().toISOString(), created_by: 'system_init'
+    };
+    wj(path.join(dstAgentsDir, 'bobby_001.json'), bobby);
+    wj(dstRegistry, {
+      schema_version: '2.0', schema_type: 'agent_registry',
+      metadata: { total_agents: 1, last_updated_at: new Date().toISOString() },
+      agents: { agent_001: { agent_id: 'agent_001', display_name: 'Bobby', specialization: 'general',
+        status: 'sleeping', brain_file: 'bobby_001.json', assigned_projects: [],
+        created_at: new Date().toISOString() } }
+    });
+    console.log('✅ AGENTS: Bobby (agent_001) created fresh');
   } else {
-    mkdir(path.join(AQ, 'AGENTS'));
-    console.log('ℹ️  AGENTS: no registry found, created empty dir');
+    console.log('ℹ️  AGENTS: registry already exists, skipping');
   }
 }
 

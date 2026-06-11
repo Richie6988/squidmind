@@ -19,22 +19,22 @@ const SERVER_DIR = __dirname;
 const REPO_ROOT  = path.join(SERVER_DIR, '..');
 
 function detectRoot() {
-  const candidates = [
-    { dir: path.join(REPO_ROOT, 'aquarium'), marker: 'BRAIN/poseidon_brain.json' },
-    { dir: path.join(REPO_ROOT, 'aquarium'), marker: 'AGENTS/agent_registry.json' },
-    { dir: path.join(REPO_ROOT, 'aquarium'), marker: 'MODELS/model_registry.json' },
-    { dir: path.join(REPO_ROOT, 'workspace'), marker: 'main/poseidon_brain.json' },
-    { dir: path.join(REPO_ROOT, 'workspace'), marker: 'agents/agent_registry.json' },
-    { dir: path.join(REPO_ROOT, 'data'), marker: 'main/poseidon_brain.json' },
-    { dir: path.join(REPO_ROOT, 'data'), marker: 'agents/agent_registry.json' },
-  ];
+  const aqRoot = path.join(REPO_ROOT, 'aquarium');
 
-  for (const { dir, marker } of candidates) {
-    if (fs.existsSync(path.join(dir, marker))) return dir;
+  // aquarium/ always wins if it exists at all — never fall back to data/ or workspace/
+  if (fs.existsSync(aqRoot)) return aqRoot;
+
+  // Legacy fallback (pre-migration only): data/ or workspace/
+  for (const legacy of ['data', 'workspace']) {
+    const dir = path.join(REPO_ROOT, legacy);
+    if (fs.existsSync(path.join(dir, 'main', 'poseidon_brain.json')) ||
+        fs.existsSync(path.join(dir, 'agents', 'agent_registry.json'))) {
+      console.warn(`[Aquarium] ⚠️  Using legacy root ${legacy}/ — run: node migrate_aquarium.js`);
+      return dir;
+    }
   }
 
-  // Default to aquarium/ even if empty (will be populated on first run)
-  return path.join(REPO_ROOT, 'aquarium');
+  return aqRoot; // default
 }
 
 function detectModelsDir(root) {
