@@ -52,32 +52,26 @@ const ModelLoader = {
           
           <!-- TAB: Browse computer -->
           <div id="ml-tab-browse" class="ml-tab-content" style="display:none;">
-            <div class="ml-dir-info" id="ml-models-dir-info" style="background:rgba(6,255,165,0.06);border:1px solid rgba(6,255,165,0.2);border-radius:4px;padding:7px 10px;margin-bottom:12px;">
-              <span style="color:var(--text-secondary);font-size:9px;">📁 Models dir: </span>
-              <span id="ml-server-models-dir" style="color:var(--accent);font-size:9px;font-family:monospace;word-break:break-all;">loading...</span>
+            <!-- Address bar -->
+            <div class="ml-addr-bar">
+              <button class="ml-addr-btn" id="ml-browse-home" title="Home" onclick="ModelLoader._browseGo(null)">⌂</button>
+              <button class="ml-addr-btn" id="ml-browse-up" title="Up" onclick="ModelLoader._browseUp()" disabled>↑</button>
+              <input id="ml-browse-path" type="text" class="ml-addr-input" placeholder="/home/user/models"
+                onkeydown="if(event.key==='Enter') ModelLoader._browseGo(this.value)">
+              <button class="ml-addr-btn ml-addr-go" onclick="ModelLoader._browseGo(document.getElementById('ml-browse-path').value)">Go</button>
             </div>
-            <p class="hint" style="font-size:9px; color:var(--text-secondary); margin:0 0 8px;">
-              Paste the <strong>absolute path</strong> to any .gguf on this machine and click Import.
-            </p>
-            <div style="display:flex; gap:6px; margin-bottom:12px;">
-              <input id="ml-browse-path" type="text" placeholder="/home/user/models/mymodel.gguf"
-                style="flex:1; font-family:monospace; font-size:10px;"
-                onkeydown="if(event.key==='Enter') ModelLoader._importFromPathInput()">
-              <button class="btn-primary" onclick="ModelLoader._importFromPathInput()">Import</button>
+            <!-- File listing -->
+            <div id="ml-browse-list" class="ml-browse-list">
+              <p style="font-size:9px;color:var(--text-secondary);padding:12px;">Loading...</p>
             </div>
-            <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
-              <label class="ml-filepick-label" onclick="document.getElementById('ml-native-file-input').click()" style="margin:0; font-size:9px; padding:5px 10px;">
-                📂 Autofill filename
-              </label>
-              <input id="ml-native-file-input" type="file" accept=".gguf" style="display:none;"
-                onchange="ModelLoader._onNativeFilePicked(this)">
-              <span style="font-size:8px;color:var(--text-secondary);">⚠ always verify the full path above</span>
-            </div>
-            <div id="ml-browse-picked" style="display:none; background:rgba(255,255,255,0.03); border:1px solid var(--border); border-radius:4px; padding:8px; font-size:9px;">
-              <span style="color:var(--accent);font-weight:bold;" id="ml-picked-name"></span>
-              <span style="color:var(--text-secondary);margin-left:8px;" id="ml-picked-size"></span>
-              <div style="margin-top:4px;color:var(--text-secondary);" id="ml-picked-dir-hint"></div>
-              <div style="margin-top:2px;color:var(--text-secondary);word-break:break-all;font-size:8px;" id="ml-picked-path"></div>
+            <!-- Selected file bar -->
+            <div id="ml-browse-selected" class="ml-browse-selected" style="display:none;">
+              <span class="ml-sel-icon">📦</span>
+              <div class="ml-sel-info">
+                <span id="ml-sel-name" class="ml-sel-name"></span>
+                <span id="ml-sel-size" class="ml-sel-size"></span>
+              </div>
+              <button class="btn-primary" id="ml-sel-import" onclick="ModelLoader._importSelectedFile()">Import</button>
             </div>
           </div>
           
@@ -122,13 +116,7 @@ const ModelLoader = {
     this.modal.querySelector(`#ml-tab-${name}`).style.display = 'block';
     
     // Auto-load tab content
-    if (name === 'browse') {
-      // Load and display the server's models directory
-      window.ApiV2._fetch('/models/dir').then(data => {
-        const el = this.modal?.querySelector('#ml-server-models-dir');
-        if (el) el.textContent = data.dir;
-      }).catch(() => {});
-    }
+    if (name === 'browse') this._browseGo(this._browseCurrent || null);
     if (name === 'download') this._refreshDownloads();
   },
   
@@ -500,104 +488,93 @@ const ModelLoader = {
   
   // === FILESYSTEM BROWSER ===
   
-  _browseCurrentPath: null,
-  _browseData: null,
-  
-  async _onNativeFilePicked(input) {
-    const file = input.files?.[0];
-    if (!file) return;
-    const picked    = document.getElementById('ml-browse-picked');
-    const pathInput = document.getElementById('ml-browse-path');
+  _browseCurrent: null,
+  _browseParent:  null,
 
-    document.getElementById('ml-picked-name').textContent = file.name;
-    document.getElementById('ml-picked-size').textContent = (file.size / 1024 / 1024).toFixed(1) + ' MB';
-    picked.style.display = 'block';
-
-    // Browser security: file.name only, no real path. Show instructions.
-    // Pre-fill with the filename so user can prepend the real directory.
-    try {
-      const data = await window.ApiV2._fetch('/models/dir');
-      // Show server models dir so user knows where to put/find the file
-      document.getElementById('ml-picked-path').textContent = data.dir;
-      document.getElementById('ml-picked-dir-hint').textContent =
-        `Server models dir: ${data.dir}`;
-      // Prefill the path input only if it's empty
-      if (!pathInput.value.trim()) {
-        pathInput.value = data.dir + '/' + file.name;
-      }
-    } catch {
-      document.getElementById('ml-picked-path').textContent =
-        '(could not detect server path — paste full absolute path below)';
-    }
-    pathInput.placeholder = '/absolute/path/to/' + file.name;
-    pathInput.focus();
-    pathInput.select();
-  },
-
-  async _importFromPathInput() {
-    const p = document.getElementById('ml-browse-path')?.value?.trim();
-    if (!p) { await SquidModal.alert('Enter a file path first'); return; }
-    await this._importFromPath(p);
-  },
-
-  async _browseHome() { await this._browseGo(null); },
-  
   async _browseUp() {
-    if (this._browseData?.parent_path) {
-      await this._browseGo(this._browseData.parent_path);
-    }
+    if (this._browseParent) await this._browseGo(this._browseParent);
   },
-  
-  async _browseEnter() {
-    const p = this.modal.querySelector('#ml-browse-path').value.trim();
-    if (p) await this._browseGo(p);
-  },
-  
+
   async _browseGo(targetPath) {
     const list = this.modal?.querySelector('#ml-browse-list');
-    if (!list) return; // browse-list not present in this UI mode
-    list.innerHTML = '<p class="hint" style="font-size:9px; padding:8px;">Loading...</p>';
-    
+    if (!list) return;
+    list.innerHTML = '<div class="ml-browse-loading">Loading…</div>';
+
     try {
       const url = targetPath
         ? `/models/browse?path=${encodeURIComponent(targetPath)}`
         : '/models/browse';
       const data = await window.ApiV2._fetch(url);
-      this._browseCurrentPath = data.current_path;
-      this._browseData = data;
-      
-      this.modal.querySelector('#ml-browse-path').value = data.current_path;
-      this.modal.querySelector('#ml-browse-up').disabled = !data.parent_path;
-      
-      let html = `<p style="font-size:8px; color:var(--text-secondary); margin-bottom:6px;">
-        ${data.current_path} <span style="color:var(--accent);">(${data.dir_count} dirs, ${data.gguf_count} .gguf)</span>
-      </p>`;
-      
+
+      this._browseCurrent = data.current_path;
+      this._browseParent  = data.parent_path;
+
+      const pathInput = this.modal.querySelector('#ml-browse-path');
+      const upBtn     = this.modal.querySelector('#ml-browse-up');
+      if (pathInput) pathInput.value = data.current_path;
+      if (upBtn)     upBtn.disabled  = !data.parent_path;
+
+      // Hide selected bar when navigating
+      const selBar = this.modal.querySelector('#ml-browse-selected');
+      if (selBar) selBar.style.display = 'none';
+
+      // Breadcrumb parts
+      const parts = data.current_path.split('/').filter(Boolean);
+      let breadHtml = '<span class="ml-bread-sep">/</span>';
+      let accumulated = '';
+      for (const part of parts) {
+        accumulated += '/' + part;
+        const acc = accumulated;
+        breadHtml += `<span class="ml-bread-part" onclick="ModelLoader._browseGo('${this._escapePath(acc)}')">${this._escape(part)}</span><span class="ml-bread-sep">/</span>`;
+      }
+
+      let html = `<div class="ml-breadcrumb">${breadHtml}</div>`;
+      html += `<div class="ml-browse-meta">${data.dir_count} folder${data.dir_count!==1?'s':''} · ${data.gguf_count} .gguf file${data.gguf_count!==1?'s':''}</div>`;
+
       if (data.entries.length === 0) {
-        html += '<p class="hint" style="font-size:9px; padding:8px;">No subdirectories or .gguf files here. Use the path bar to navigate.</p>';
+        html += '<div class="ml-browse-empty">No folders or .gguf files here.</div>';
       } else {
         html += data.entries.map(e => {
           if (e.type === 'directory') {
             return `<div class="ml-browse-entry ml-dir" onclick="ModelLoader._browseGo('${this._escapePath(e.path)}')">
-              <span class="ml-entry-icon">DIR</span>
+              <span class="ml-entry-icon">📁</span>
               <span class="ml-entry-name">${this._escape(e.name)}</span>
+              <span class="ml-entry-arrow">›</span>
             </div>`;
           } else {
-            return `<div class="ml-browse-entry ml-file">
-              <span class="ml-entry-icon">GGUF</span>
+            return `<div class="ml-browse-entry ml-file" onclick="ModelLoader._selectFile('${this._escapePath(e.path)}', '${this._escape(e.name)}', '${e.size_gb}')">
+              <span class="ml-entry-icon">🧠</span>
               <span class="ml-entry-name">${this._escape(e.name)}</span>
               <span class="ml-entry-size">${e.size_gb} GB</span>
-              <button class="btn-primary" style="font-size:8px; padding:3px 8px;"
-                      onclick="ModelLoader._importFromPath('${this._escapePath(e.path)}')">Add to Library</button>
             </div>`;
           }
         }).join('');
       }
-      
+
       list.innerHTML = html;
     } catch (err) {
-      list.innerHTML = `<p style="color:var(--danger); font-size:10px; padding:8px;">Failed: ${this._escape(err.message)}</p>`;
+      list.innerHTML = `<div class="ml-browse-error">Error: ${this._escape(err.message)}</div>`;
     }
+  },
+
+  _selectFile(filePath, fileName, sizeGb) {
+    this._selectedFilePath = filePath;
+    // Highlight selected
+    this.modal.querySelectorAll('.ml-file').forEach(el => el.classList.remove('ml-file-selected'));
+    const clicked = [...this.modal.querySelectorAll('.ml-file')].find(el =>
+      el.querySelector('.ml-entry-name')?.textContent === fileName
+    );
+    if (clicked) clicked.classList.add('ml-file-selected');
+    // Show bottom bar
+    const bar = this.modal.querySelector('#ml-browse-selected');
+    this.modal.querySelector('#ml-sel-name').textContent = fileName;
+    this.modal.querySelector('#ml-sel-size').textContent = sizeGb + ' GB';
+    if (bar) bar.style.display = 'flex';
+  },
+
+  async _importSelectedFile() {
+    if (!this._selectedFilePath) return;
+    await this._importFromPath(this._selectedFilePath);
   },
   
   async _importFromPath(sourcePath) {
