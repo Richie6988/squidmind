@@ -283,22 +283,26 @@ console.log('✅ Created aquarium/ structure');
   const brainDst = path.join(AQ, 'BRAIN');
   mkdir(brainDst);
 
-  // poseidon_brain.json
-  const brainSrc = path.join(SRC, 'main', 'poseidon_brain.json');
+  // poseidon_brain.json: try SRC first, then server/seed/
   const brainDst2 = path.join(brainDst, 'poseidon_brain.json');
-  if (ex(brainSrc) && !ex(brainDst2)) {
-    fs.copyFileSync(brainSrc, brainDst2);
-    console.log('  ✅ BRAIN: poseidon_brain.json copied');
+  if (!ex(brainDst2)) {
+    const candidates = [
+      path.join(SRC, 'main', 'poseidon_brain.json'),
+      path.join(ROOT, 'data', 'main', 'poseidon_brain.json'),
+      path.join(ROOT, 'server', 'seed', 'poseidon_brain.json'),
+    ];
+    const found = candidates.find(ex);
+    if (found) { fs.copyFileSync(found, brainDst2); console.log(`  ✅ BRAIN: poseidon_brain.json from ${found}`); }
+    else console.warn('  ⚠️  BRAIN: poseidon_brain.json not found anywhere — server will bootstrap default');
   }
 
-  // context_checkpoint.json → dream_memory.json (the "dream" memory concept)
-  const checkSrc = path.join(SRC, 'main', 'context_checkpoint.json');
+  // dream_memory.json (was context_checkpoint.json)
   const dreamDst = path.join(brainDst, 'dream_memory.json');
-  if (ex(checkSrc) && !ex(dreamDst)) {
-    fs.copyFileSync(checkSrc, dreamDst);
-    console.log('  ✅ BRAIN: context_checkpoint.json → dream_memory.json');
-  } else if (!ex(dreamDst)) {
-    wj(dreamDst, { note: 'Populated by Poseidon before session wipes', summary: null, saved_at: null });
+  if (!ex(dreamDst)) {
+    const checkSrc = path.join(SRC, 'main', 'context_checkpoint.json');
+    if (ex(checkSrc)) fs.copyFileSync(checkSrc, dreamDst);
+    else wj(dreamDst, { note: 'Populated by Poseidon before session wipes', summary: null, saved_at: null });
+    console.log('  ✅ BRAIN: dream_memory.json ready');
   }
 
   console.log('✅ BRAIN: done');

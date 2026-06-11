@@ -157,19 +157,53 @@ const AQUARIUM = {
 };
 
 // Seed aquarium/SKILLS/ from server/skills/ if empty
-;(function seedSkills() {
-  const dst = path.join(AQ_ROOT, isAquarium ? 'SKILLS' : 'main/skills');
-  const src = path.join(SERVER_DIR, 'skills');
+;(function bootstrap() {
+  const SEED_DIR = path.join(SERVER_DIR, 'seed');
+  const SKILLS_SEED = path.join(SERVER_DIR, 'skills');
+
+  // Map: seed filename → aquarium destination path
+  const FILES = [
+    { seed: 'poseidon_brain.json',   dst: AQUARIUM.brain('poseidon_brain.json') },
+    { seed: 'agent_registry.json',   dst: AQUARIUM.agents('agent_registry.json') },
+    { seed: 'project_registry.json', dst: AQUARIUM.projects('project_registry.json') },
+    { seed: 'model_registry.json',   dst: AQUARIUM.models('model_registry.json') },
+    { seed: 'tool_registry.json',    dst: path.join(AQUARIUM.TOOLS, 'tool_registry.json') },
+    { seed: 'logs.json',             dst: AQUARIUM.logs('logs.json') },
+    { seed: 'comms_config.json',     dst: AQUARIUM.channels('comms_config.json') },
+  ];
+
+  let seeded = 0;
+  for (const { seed, dst } of FILES) {
+    if (!fs.existsSync(dst)) {
+      const srcPath = path.join(SEED_DIR, seed);
+      if (fs.existsSync(srcPath)) {
+        try {
+          fs.mkdirSync(path.dirname(dst), { recursive: true });
+          fs.copyFileSync(srcPath, dst);
+          seeded++;
+        } catch (e) {
+          console.warn(`[Aquarium] Could not seed ${seed}:`, e.message);
+        }
+      } else {
+        console.warn(`[Aquarium] Missing seed file: ${srcPath}`);
+      }
+    }
+  }
+  if (seeded > 0) console.log(`[Aquarium] Bootstrapped ${seeded} missing files from server/seed/`);
+
+  // Seed skills (only if SKILLS dir is empty)
   try {
-    fs.mkdirSync(dst, { recursive: true });
-    const existing = fs.readdirSync(dst).filter(f => f.endsWith('.json'));
-    if (existing.length === 0 && fs.existsSync(src)) {
-      for (const f of fs.readdirSync(src)) {
+    fs.mkdirSync(AQUARIUM.SKILLS, { recursive: true });
+    const existingSkills = fs.readdirSync(AQUARIUM.SKILLS).filter(f => f.endsWith('.json'));
+    if (existingSkills.length === 0 && fs.existsSync(SKILLS_SEED)) {
+      let n = 0;
+      for (const f of fs.readdirSync(SKILLS_SEED)) {
         if (f.endsWith('.json')) {
-          fs.copyFileSync(path.join(src, f), path.join(dst, f));
+          fs.copyFileSync(path.join(SKILLS_SEED, f), path.join(AQUARIUM.SKILLS, f));
+          n++;
         }
       }
-      console.log(`[Aquarium] Seeded ${fs.readdirSync(src).filter(f=>f.endsWith('.json')).length} skills from server/skills/`);
+      if (n > 0) console.log(`[Aquarium] Seeded ${n} skills from server/skills/`);
     }
   } catch {}
 })();

@@ -1,0 +1,16 @@
+{
+  "telegram": {
+    "enabled": false,
+    "token": "",
+    "allowed_chat_ids": [],
+    "bot_username": ""
+  },
+  "discord": {
+    "enabled": false,
+    "token": "",
+    "allowed_channel_ids": [],
+    "allowed_user_ids": [],
+    "bot_username": ""
+  },
+  "history": []
+}
