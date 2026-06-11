@@ -85,8 +85,25 @@ class BotService extends EventEmitter {
         if (!this.config[k]) this.config[k] = v;
       }
     } catch {
-      this.config = JSON.parse(JSON.stringify(DEFAULT_CONFIG));
-      await this._saveConfig();
+      // File not found in current dataRoot — try the other root (data/ vs workspace/)
+      try {
+        const path = require('path');
+        const altRoot = this.rm.dataRoot.endsWith('workspace')
+          ? this.rm.dataRoot.replace('workspace', 'data')
+          : this.rm.dataRoot.replace('data', 'workspace');
+        const altPath = path.join(altRoot, 'main', 'comms_config.json');
+        const raw = require('fs').readFileSync(altPath, 'utf8');
+        this.config = JSON.parse(raw);
+        for (const [k, v] of Object.entries(DEFAULT_CONFIG)) {
+          if (!this.config[k]) this.config[k] = v;
+        }
+        console.log('[BotService] Loaded comms config from alternate root:', altPath);
+        // Migrate it to current root
+        await this._saveConfig();
+      } catch {
+        this.config = JSON.parse(JSON.stringify(DEFAULT_CONFIG));
+        await this._saveConfig();
+      }
     }
     this._history = this.config.history || [];
     return this.config;
@@ -128,13 +145,11 @@ class BotService extends EventEmitter {
 
   async start() {
     await this.loadConfig();
-    if (this.config.telegram?.enabled && this.config.telegram?.token) {
-      this.startTelegram().catch(e => console.warn('[BotService] Telegram start failed:', e.message));
-    }
-    if (this.config.discord?.enabled && this.config.discord?.token) {
-      this.startDiscord().catch(e => console.warn('[BotService] Discord start failed:', e.message));
-    }
-    console.log('[BotService] started');
+    const tgEnabled = this.config.telegram?.enabled && this.config.telegram?.token;
+    const dsEnabled = this.config.discord?.enabled  && this.config.discord?.token;
+    console.log(`[BotService] started — Telegram: ${tgEnabled ? 'ON' : 'off'}, Discord: ${dsEnabled ? 'ON' : 'off'}`);
+    if (tgEnabled) this.startTelegram().catch(e => console.warn('[BotService] Telegram start failed:', e.message));
+    if (dsEnabled) this.startDiscord().catch(e => console.warn('[BotService] Discord start failed:', e.message));
   }
 
   async stop() {

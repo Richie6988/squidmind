@@ -14,7 +14,13 @@ const CommsPanel = {
   // ── Open ────────────────────────────────────────────────────────────────────
 
   async open() {
-    if (this.modal) { this.modal.style.display = 'flex'; this._startPolling(); return; }
+    if (this.modal) {
+      this.modal.classList.remove('hidden');
+      this.modal.style.display = '';
+      this._startPolling();
+      await this._loadStatus();
+      return;
+    }
 
     this.modal = document.createElement('div');
     this.modal.className = 'modal comms-modal';
@@ -63,8 +69,8 @@ const CommsPanel = {
   close() {
     this._stopPolling();
     if (this.modal) {
-      this.modal.remove();
-      this.modal = null;
+      this.modal.style.display = 'none';
+      // Keep in DOM so we can reopen cheaply — just hide it
     }
   },
 
