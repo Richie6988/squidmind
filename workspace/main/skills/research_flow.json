@@ -1,0 +1,49 @@
+{
+  "skill_id": "research_flow",
+  "name": "Research Flow",
+  "version": 1,
+  "summary": "Search the web and synthesize a concise, cited answer.",
+  "triggers": [
+    "search",
+    "find info",
+    "research",
+    "look up",
+    "what is",
+    "latest on"
+  ],
+  "steps": [
+    {
+      "order": 1,
+      "action": "web_search",
+      "params": {
+        "query": "focused 3-6 word query",
+        "num_results": 5
+      },
+      "note": "Start broad, then narrow if needed"
+    },
+    {
+      "order": 2,
+      "action": "evaluate",
+      "note": "Pick 1-3 most relevant URLs from titles + snippets"
+    },
+    {
+      "order": 3,
+      "action": "web_fetch",
+      "params": [
+        "best_url"
+      ],
+      "note": "Get full content of top result"
+    },
+    {
+      "order": 4,
+      "action": "synthesize",
+      "note": "Write tight answer, cite source URLs inline. No padding."
+    }
+  ],
+  "notes": [
+    "Keep queries short (3-6 words) and specific — long queries degrade results",
+    "If first search misses, refine query and retry once before giving up",
+    "Prefer primary sources: official docs, papers, gov sites > aggregators",
+    "Never reproduce copyrighted text verbatim — always paraphrase"
+  ]
+}

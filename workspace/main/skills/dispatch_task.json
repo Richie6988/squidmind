@@ -1,0 +1,49 @@
+{
+  "skill_id": "dispatch_task",
+  "name": "Dispatch Task to Agent",
+  "version": 1,
+  "summary": "Assign an open task to the best matching agent and run it in background.",
+  "triggers": [
+    "start task",
+    "run task",
+    "dispatch task",
+    "execute task",
+    "assign task"
+  ],
+  "steps": [
+    {
+      "order": 1,
+      "action": "list_tasks",
+      "params": {
+        "status": "open"
+      },
+      "note": "Find the task or confirm it exists"
+    },
+    {
+      "order": 2,
+      "action": "list_agents",
+      "note": "Pick best agent by specialization match"
+    },
+    {
+      "order": 3,
+      "action": "dispatch_to_agent",
+      "params": [
+        "agent_id",
+        "task_message",
+        "task_id"
+      ],
+      "note": "task_message must include: context, expected output format, constraints. task_id links to tracked task."
+    },
+    {
+      "order": 4,
+      "action": "report",
+      "note": "Tell user: 'Dispatched to <agent_name> — running in background. Monitor in task queue.'"
+    }
+  ],
+  "notes": [
+    "Agent uses its OWN dedicated model session + personality + tools_allowed",
+    "Results saved to aquarium/TASKS/<task_id>/results/output.txt",
+    "Task lifecycle: open → in_progress → completed",
+    "Returns immediately — task runs async, do not wait for result"
+  ]
+}

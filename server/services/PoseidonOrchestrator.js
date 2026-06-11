@@ -1287,41 +1287,58 @@ Never describe a bash command you could call instead.`;
 
       // ── Processes: read from workspace/main/skills/<name>.md ──────────
       // section_path "skills.create_agent" → reads processes/create_agent.md
-      // section_path "skills" → lists available skill files
+      // section_path "skills" → list or read JSON skill files
       if (section_path === 'skills' || section_path.startsWith('skills.')) {
         const skillsDir = require('../aquarium').SKILLS;
         if (!fs.existsSync(skillsDir)) fs.mkdirSync(skillsDir, { recursive: true });
 
         if (section_path === 'skills') {
-          // List available processes
-          const files = fs.readdirSync(skillsDir).filter(f => f.endsWith('.md'));
+          // List skills — return summaries only (context-efficient)
+          const files = fs.readdirSync(skillsDir).filter(f => f.endsWith('.json'));
+          if (!files.length) return { ok: true, section_path, content: 'No skills yet. Add .json files to aquarium/SKILLS/.' };
+          const summaries = files.map(f => {
+            try {
+              const s = JSON.parse(fs.readFileSync(path.join(skillsDir, f), 'utf8'));
+              return `- ${s.skill_id}: ${s.summary} [triggers: ${(s.triggers||[]).slice(0,3).join(', ')}]`;
+            } catch { return `- ${f.replace('.json','')}: (unreadable)`; }
+          });
           return {
-            ok: true,
-            section_path,
-            content: files.length
-              ? `Available skills:\n${files.map(f => '- ' + f.replace('.md','')).join('\n')}\n\nCall read_my_brain("skills.<name>") to read one.`
-              : 'No skill files yet. Add .md files to aquarium/SKILLS/.'
+            ok: true, section_path,
+            content: `${files.length} skills available:\n${summaries.join('\n')}\n\nCall read_my_brain("skills.<skill_id>") to get steps.`
           };
         }
 
         const skillName = section_path.slice('skills.'.length);
-        const filePath    = path.join(skillsDir, `${skillName}.md`);
+        const filePath  = path.join(skillsDir, `${skillName}.json`);
         if (!fs.existsSync(filePath)) {
-          const available = fs.readdirSync(skillsDir).filter(f => f.endsWith('.md')).map(f => f.replace('.md',''));
+          const available = fs.readdirSync(skillsDir).filter(f => f.endsWith('.json')).map(f => f.replace('.json',''));
           return {
             ok: false,
-            error: `Process "${skillName}" not found. Available: ${available.join(', ') || '(none)'}. Create ${skillName}.md in aquarium/SKILLS/.`
+            error: `Skill "${skillName}" not found. Available: ${available.join(', ') || '(none)'}.`
           };
         }
-        const content = fs.readFileSync(filePath, 'utf8');
-        const MAX = 6000;
+        const skill = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+        // Return structured content — steps + notes only (summary already known from list)
+        const stepsText = (skill.steps || [])
+          .map(s => `  ${s.order}. ${s.action}${s.note ? ' — ' + s.note : ''}${s.params ? ' (params: ' + JSON.stringify(s.params) + ')' : ''}`)
+          .join('\n');
+        const notesText = (skill.notes || []).map(n => `  • ${n}`).join('\n');
+        const content   = [
+          `Skill: ${skill.name} (v${skill.version||1})`,
+          `Summary: ${skill.summary}`,
+          `Triggers: ${(skill.triggers||[]).join(', ')}`,
+          '',
+          'Steps:',
+          stepsText,
+          '',
+          'Notes:',
+          notesText
+        ].join('\n');
         return {
-          ok: true,
-          section_path,
-          source: `aquarium/SKILLS/${skillName}.md`,
-          char_count: content.length,
-          truncated: content.length > MAX,
-          content: content.length > MAX ? content.slice(0, MAX) + '\n... (truncated)' : content
+          ok: true, section_path,
+          skill_id: skill.skill_id,
+          source: `aquarium/SKILLS/${skillName}.json`,
+          content
         };
       }
 
