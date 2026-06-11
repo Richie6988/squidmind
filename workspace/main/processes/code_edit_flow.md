@@ -13,6 +13,6 @@ User asks to modify, create, or review code files.
 6. `github_commit("type: clear message about what changed and why")`
 
 ## Notes
-- Workspace root = `workspace/` directory
+- Workspace root = `aquarium/` directory
 - Never write outside the workspace without explicit user instruction
 - Prefer surgical edits (`edit_file`) over full rewrites

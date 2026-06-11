@@ -11,5 +11,5 @@ User wants to archive / close a project.
 
 ## Notes
 - Archive is reversible (set status back to 'active' via update_field)
-- Project folder stays at `workspace/projects/<slug>/` — nothing is deleted
+- Project folder stays at `aquarium/PROJECTS/<slug>/` — nothing is deleted
 - Assigned agents are automatically freed

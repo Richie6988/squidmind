@@ -63,7 +63,7 @@ class PoseidonOrchestrator {
    * Build the system prompt SMALL by default.
    *
    * Strategy (the user's call: short context wins):
-   *   - data/main/poseidon_brain.json is the SINGLE SOURCE OF TRUTH.
+   *   - aquarium/BRAIN/poseidon_brain.json is the SINGLE SOURCE OF TRUTH.
    *     Identity, rules, soul, processes, tools_catalog all live there.
    *     Code reads from brain.json - it never embeds prompt text inline.
    *   - The initial system prompt is intentionally TIGHT (~2k chars):
@@ -183,7 +183,7 @@ ${checkpoint.summary}
       lines.push(catSummary.map(s => `- ${s}`).join('\n'));
       lines.push('');
       lines.push(`Full schemas are injected automatically.`);
-      lines.push(`WORKSPACE: all data lives in workspace/ — projects, agents, tasks, logs.`);
+      lines.push(`AQUARIUM: all data lives in aquarium/ — PROJECTS, AGENTS, TASKS, MODELS, LOGS, SKILLS, BRAIN, CHANNELS.`);
       lines.push(`  read_my_brain('skills')         → list all skill recipes`);
       lines.push(`  read_my_brain('skills.<name>')  → read a process step-by-step guide`);
       lines.push(`  read_my_brain('projects')          → active projects + folders`);
@@ -1180,7 +1180,7 @@ Never describe a bash command you could call instead.`;
 
   async _readFile({ path: relPath }) {
     try {
-      const workspace = path.join(this.rm.dataRoot, '..');
+      const workspace = path.join(require('../aquarium').ROOT, '..');
       const fullPath = path.resolve(workspace, relPath);
       // Security: keep inside workspace
       if (!fullPath.startsWith(workspace)) return { ok: false, error: 'Path outside workspace' };
@@ -1193,7 +1193,7 @@ Never describe a bash command you could call instead.`;
 
   async _writeFile({ path: relPath, content }) {
     try {
-      const workspace = path.join(this.rm.dataRoot, '..');
+      const workspace = path.join(require('../aquarium').ROOT, '..');
       const fullPath = path.resolve(workspace, relPath);
       if (!fullPath.startsWith(workspace)) return { ok: false, error: 'Path outside workspace' };
       await fs.mkdir(path.dirname(fullPath), { recursive: true });
@@ -1215,7 +1215,7 @@ Never describe a bash command you could call instead.`;
 
   async _listFiles({ path: relPath }) {
     try {
-      const workspace = path.join(this.rm.dataRoot, '..');
+      const workspace = path.join(require('../aquarium').ROOT, '..');
       const fullPath = path.resolve(workspace, relPath);
       if (!fullPath.startsWith(workspace)) return { ok: false, error: 'Path outside workspace' };
       const entries = await fs.readdir(fullPath, { withFileTypes: true });
@@ -1300,7 +1300,7 @@ Never describe a bash command you could call instead.`;
             section_path,
             content: files.length
               ? `Available skills:\n${files.map(f => '- ' + f.replace('.md','')).join('\n')}\n\nCall read_my_brain("skills.<name>") to read one.`
-              : 'No skill files yet. They live in workspace/main/skills/*.md'
+              : 'No skill files yet. Add .md files to aquarium/SKILLS/.'
           };
         }
 
@@ -1310,7 +1310,7 @@ Never describe a bash command you could call instead.`;
           const available = fs.readdirSync(skillsDir).filter(f => f.endsWith('.md')).map(f => f.replace('.md',''));
           return {
             ok: false,
-            error: `Process "${skillName}" not found. Available: ${available.join(', ') || '(none)'}. Create ${skillName}.md in workspace/main/skills/.`
+            error: `Process "${skillName}" not found. Available: ${available.join(', ') || '(none)'}. Create ${skillName}.md in aquarium/SKILLS/.`
           };
         }
         const content = fs.readFileSync(filePath, 'utf8');
@@ -1318,7 +1318,7 @@ Never describe a bash command you could call instead.`;
         return {
           ok: true,
           section_path,
-          source: `workspace/main/skills/${skillName}.md`,
+          source: `aquarium/SKILLS/${skillName}.md`,
           char_count: content.length,
           truncated: content.length > MAX,
           content: content.length > MAX ? content.slice(0, MAX) + '\n... (truncated)' : content
@@ -1333,13 +1333,13 @@ Never describe a bash command you could call instead.`;
         const reg = await this.rm.read('projects/project_registry.json').catch(() => ({ projects: {} }));
         const active = Object.values(reg.projects || {}).filter(p => p.status !== 'archived');
         return { ok: true, section_path, content: active.map(p =>
-          `${p.project_id}: ${p.name} | folder: workspace/projects/${p.folder} | agents: ${(p.assigned_agents||[]).join(',')||'none'}`
+          `${p.project_id}: ${p.name} | folder: aquarium/PROJECTS/${p.folder} | agents: ${(p.assigned_agents||[]).join(',')||'none'}`
         ).join('\n') || '(no active projects)' };
       }
       if (section_path === 'agents') {
         const reg = await this.rm.read('agents/agent_registry.json').catch(() => ({ agents: {} }));
         return { ok: true, section_path, content: Object.values(reg.agents || {}).map(a =>
-          `${a.agent_id}: ${a.display_name} | ${a.specialization} | ${a.status} | brain: workspace/agents/${a.brain_file}`
+          `${a.agent_id}: ${a.display_name} | ${a.specialization} | ${a.status} | brain: aquarium/AGENTS/${a.brain_file}`
         ).join('\n') || '(no agents)' };
       }
       if (section_path === 'tasks' || section_path === 'tasks.open') {
@@ -1365,7 +1365,7 @@ Never describe a bash command you could call instead.`;
           const available = (node && typeof node === 'object') ? Object.keys(node) : [];
           return {
             ok: false,
-            error: `Path "${section_path}" not found. Stopped at "${traversed.join('.')||'(root)'}". Available: ${available.join(', ')||'(none)'}. Hint: processes are in workspace/main/skills/*.md`
+            error: `Path "${section_path}" not found. Stopped at "${traversed.join('.')||'(root)'}". Available: ${available.join(', ')||'(none)'}. Hint: skills are in aquarium/SKILLS/*.md`
           };
         }
       }

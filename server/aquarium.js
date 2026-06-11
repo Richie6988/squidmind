@@ -59,54 +59,55 @@ const isAquarium = AQ_ROOT.endsWith('aquarium');
 // Maps logical names to physical paths under AQ_ROOT
 // Works for all three layouts: aquarium/, workspace/, data/
 
+// Maps legacy relative paths → Aquarium paths, and vice versa.
+// Works transparently regardless of which layout is active.
+const LEGACY_TO_AQ = [
+  // must be ordered: most specific first
+  ['main/context_checkpoint.json', 'BRAIN/dream_memory.json'],
+  ['main/poseidon_brain.json',     'BRAIN/poseidon_brain.json'],
+  ['main/comms_config.json',       'CHANNELS/comms_config.json'],
+  ['main/skills/',                 'SKILLS/'],
+  ['main/processes/',              'SKILLS/'],
+  ['main/',                        'BRAIN/'],
+  ['agents/',                      'AGENTS/'],
+  ['models/',                      'MODELS/'],
+  ['projects/',                    'PROJECTS/'],
+  ['tasks/',                       'TASKS/'],
+  ['logs/',                        'LOGS/'],
+  ['tools/',                       'TOOLS/'],
+];
+
+const AQ_TO_LEGACY = [
+  ['BRAIN/dream_memory.json',   'main/context_checkpoint.json'],
+  ['BRAIN/poseidon_brain.json', 'main/poseidon_brain.json'],
+  ['CHANNELS/',                 'main/'],
+  ['SKILLS/',                   'main/skills/'],
+  ['AGENTS/',                   'agents/'],
+  ['MODELS/',                   'models/'],
+  ['PROJECTS/',                 'projects/'],
+  ['TASKS/',                    'tasks/'],
+  ['LOGS/',                     'logs/'],
+  ['TOOLS/',                    'tools/'],
+  ['BRAIN/',                    'main/'],
+];
+
 function resolvePath(logical) {
   if (isAquarium) {
-    // New layout: aquarium/MODELS, aquarium/AGENTS, etc.
-    const MAP = {
-      'models':   'MODELS',
-      'agents':   'AGENTS',
-      'projects': 'PROJECTS',
-      'tasks':    'TASKS',
-      'logs':     'LOGS',
-      'tools':    'TOOLS',
-      'skills':   'SKILLS',
-      'brain':    'BRAIN',
-      'channels': 'CHANNELS',
-    };
-    // Map relative path strings used in rm.read/write
-    const seg = logical.split('/')[0].toLowerCase();
-    if (MAP[seg]) {
-      return logical.replace(new RegExp(`^${seg}/`, 'i'), MAP[seg] + '/');
+    // Already an aquarium path? pass through
+    if (/^(MODELS|AGENTS|PROJECTS|TASKS|LOGS|TOOLS|SKILLS|BRAIN|CHANNELS)[\/]/.test(logical)) {
+      return logical;
     }
-    // Handle legacy paths like 'main/poseidon_brain.json'
-    if (logical.startsWith('main/')) {
-      const file = logical.slice(5);
-      if (file === 'poseidon_brain.json' || file === 'dream_memory.json' || file === 'context_checkpoint.json') {
-        return 'BRAIN/' + (file === 'context_checkpoint.json' ? 'dream_memory.json' : file);
-      }
-      if (file === 'comms_config.json') return 'CHANNELS/comms_config.json';
-      if (file.startsWith('skills/') || file.startsWith('processes/')) {
-        return 'SKILLS/' + file.replace(/^(skills|processes)\//, '');
-      }
-      return 'BRAIN/' + file;
+    // Translate legacy → aquarium
+    for (const [from, to] of LEGACY_TO_AQ) {
+      if (logical.startsWith(from)) return logical.replace(from, to);
     }
     return logical;
   } else {
-    // Legacy layout: translate AQUARIUM paths back to old paths if needed
-    const REV_MAP = {
-      'MODELS/':   'models/',
-      'AGENTS/':   'agents/',
-      'PROJECTS/': 'projects/',
-      'TASKS/':    'tasks/',
-      'LOGS/':     'logs/',
-      'TOOLS/':    'tools/',
-      'SKILLS/':   'main/skills/',
-      'BRAIN/poseidon_brain.json': 'main/poseidon_brain.json',
-      'BRAIN/dream_memory.json':   'main/context_checkpoint.json',
-      'CHANNELS/': 'main/',
-    };
-    for (const [aqPfx, legPfx] of Object.entries(REV_MAP)) {
-      if (logical.startsWith(aqPfx)) return logical.replace(aqPfx, legPfx);
+    // Legacy layout: translate aquarium → legacy if needed
+    if (/^(MODELS|AGENTS|PROJECTS|TASKS|LOGS|TOOLS|SKILLS|BRAIN|CHANNELS)[\/]/.test(logical)) {
+      for (const [from, to] of AQ_TO_LEGACY) {
+        if (logical.startsWith(from)) return logical.replace(from, to);
+      }
     }
     return logical;
   }

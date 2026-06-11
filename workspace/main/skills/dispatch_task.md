@@ -14,5 +14,5 @@ User asks to start a task, run a cron job, or have an agent work on something.
 
 ## Notes
 - Agent uses its OWN model session + personality + tools_allowed
-- Results saved to `workspace/tasks/<task_id>/results/output.txt`
+- Results saved to `aquarium/TASKS/<task_id>/results/output.txt`
 - Task lifecycle: open → in_progress → completed

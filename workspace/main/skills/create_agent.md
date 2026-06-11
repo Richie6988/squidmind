@@ -16,5 +16,5 @@ devops | qa_tester | designer | researcher | ml_engineer | security
 documentation | general
 
 ## Notes
-- Brain file saved as: `workspace/agents/<slug>_<id>.json`
+- Brain file saved as: `aquarium/AGENTS/<slug>_<id>.json`
 - Agent starts in `sleeping` status — wake with `update_agent_field`
