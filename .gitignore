@@ -1,34 +1,43 @@
-# Dependencies
+# ── Dependencies ──────────────────────────────────────────────────────────────
 node_modules/
 package-lock.json
 
-# Environment
+# ── Environment & secrets ─────────────────────────────────────────────────────
 .env
 .env.local
+.env.*
+!.env.template
 
-# Data (optional: comment out if you want to commit agent configs)
-data/agents/*.json
-data/logs/*.jsonl
-data/tasks/*.json
-data/groups/*.json
+# ── Aquarium (runtime data — never commit) ────────────────────────────────────
+aquarium/
 
-# Keep directory structure
-!data/agents/.gitkeep
-!data/logs/.gitkeep
-!data/tasks/.gitkeep
-!data/groups/.gitkeep
+# ── Legacy data roots (also never commit) ────────────────────────────────────
+data/
+workspace/
 
-# System
+# ── Model files (huge, binary) ────────────────────────────────────────────────
+*.gguf
+*.bin
+*.safetensors
+*.pt
+*.pth
+*.ckpt
+
+# ── OS & IDE ──────────────────────────────────────────────────────────────────
 .DS_Store
 Thumbs.db
 *.log
-
-# IDE
 .vscode/
 .idea/
 *.swp
 *.swo
 
-# SquidMind: Never commit secrets
-data/secrets/
-data_backup/
+# ── Temp & build ─────────────────────────────────────────────────────────────
+*.tmp
+*.bak
+dist/
+build/
+-e 
+# Old migration scripts & backups
+migrate.js
+*.bak
