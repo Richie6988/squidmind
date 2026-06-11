@@ -19,22 +19,36 @@ const SERVER_DIR = __dirname;
 const REPO_ROOT  = path.join(SERVER_DIR, '..');
 
 function detectRoot() {
-  const aqRoot = path.join(REPO_ROOT, 'aquarium');
+  // A root is "real" if it has a non-empty poseidon_brain that isn't just the seed default.
+  // We check this by looking for at least one real registry file beyond the bare seed.
+  const hasRealData = (dir) => {
+    // Check for poseidon_brain in either layout
+    const hasBrain = fs.existsSync(path.join(dir, 'BRAIN', 'poseidon_brain.json'))
+                  || fs.existsSync(path.join(dir, 'main', 'poseidon_brain.json'));
+    if (!hasBrain) return false;
+    // Also require at least one other sign of real data (models or projects populated)
+    const hasModels   = fs.existsSync(path.join(dir, 'MODELS', 'model_registry.json'))
+                     || fs.existsSync(path.join(dir, 'models', 'model_registry.json'));
+    const hasProjects = fs.existsSync(path.join(dir, 'PROJECTS', 'project_registry.json'))
+                     || fs.existsSync(path.join(dir, 'projects', 'project_registry.json'));
+    return hasModels || hasProjects;
+  };
 
-  // aquarium/ always wins if it exists at all — never fall back to data/ or workspace/
-  if (fs.existsSync(aqRoot)) return aqRoot;
-
-  // Legacy fallback (pre-migration only): data/ or workspace/
-  for (const legacy of ['data', 'workspace']) {
-    const dir = path.join(REPO_ROOT, legacy);
-    if (fs.existsSync(path.join(dir, 'main', 'poseidon_brain.json')) ||
-        fs.existsSync(path.join(dir, 'agents', 'agent_registry.json'))) {
-      console.warn(`[Aquarium] ⚠️  Using legacy root ${legacy}/ — run: node migrate_aquarium.js`);
+  // Prefer whichever root has real data — aquarium > data > workspace
+  for (const name of ['aquarium', 'data', 'workspace']) {
+    const dir = path.join(REPO_ROOT, name);
+    if (hasRealData(dir)) {
+      if (name !== 'aquarium') {
+        console.warn(`[Aquarium] ⚠️  Using ${name}/ (has real data) — run: node migrate_aquarium.js --fresh to upgrade to aquarium/`);
+      }
       return dir;
     }
   }
 
-  return aqRoot; // default
+  // Nothing has real data — use aquarium/ (will be seeded)
+  const aqRoot = path.join(REPO_ROOT, 'aquarium');
+  fs.mkdirSync(aqRoot, { recursive: true });
+  return aqRoot;
 }
 
 function detectModelsDir(root) {
