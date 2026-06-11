@@ -1,0 +1,38 @@
+{
+  "skill_id": "git_workflow",
+  "name": "Git Workflow",
+  "version": 1,
+  "summary": "Commit and push changes to the repository cleanly.",
+  "triggers": [
+    "commit",
+    "push",
+    "save changes",
+    "git commit",
+    "git push"
+  ],
+  "steps": [
+    {
+      "order": 1,
+      "action": "github_diff",
+      "note": "Review what changed before committing"
+    },
+    {
+      "order": 2,
+      "action": "github_commit",
+      "params": [
+        "message"
+      ],
+      "note": "Message format: 'feat|fix|refactor|docs|style: short description'"
+    },
+    {
+      "order": 3,
+      "action": "github_push",
+      "note": "Push to main branch"
+    }
+  ],
+  "notes": [
+    "Always diff before commit — no blind commits",
+    "One logical change per commit",
+    "Commit message must describe WHAT changed and WHY"
+  ]
+}

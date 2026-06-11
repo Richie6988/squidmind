@@ -123,7 +123,9 @@ const AQUARIUM = {
   TASKS:    path.join(AQ_ROOT, isAquarium ? 'TASKS'    : 'tasks'),
   LOGS:     path.join(AQ_ROOT, isAquarium ? 'LOGS'     : 'logs'),
   TOOLS:    path.join(AQ_ROOT, isAquarium ? 'TOOLS'    : 'tools'),
+  // Skills: use aquarium/SKILLS/ at runtime; server/skills/ is the seeded source in the repo
   SKILLS:   path.join(AQ_ROOT, isAquarium ? 'SKILLS'   : 'main/skills'),
+  SKILLS_SEED: path.join(SERVER_DIR, 'skills'),
   BRAIN:    path.join(AQ_ROOT, isAquarium ? 'BRAIN'    : 'main'),
   CHANNELS: path.join(AQ_ROOT, isAquarium ? 'CHANNELS' : 'main'),
   MODELS_DIR: detectModelsDir(AQ_ROOT),
@@ -153,6 +155,24 @@ const AQUARIUM = {
   TOOL_REGISTRY:        path.join(AQ_ROOT, isAquarium ? 'TOOLS/tool_registry.json'     : 'tools/tool_registry.json'),
   LOGS_FILE:            path.join(AQ_ROOT, isAquarium ? 'LOGS/logs.json'               : 'logs/logs.json'),
 };
+
+// Seed aquarium/SKILLS/ from server/skills/ if empty
+;(function seedSkills() {
+  const dst = path.join(AQ_ROOT, isAquarium ? 'SKILLS' : 'main/skills');
+  const src = path.join(SERVER_DIR, 'skills');
+  try {
+    fs.mkdirSync(dst, { recursive: true });
+    const existing = fs.readdirSync(dst).filter(f => f.endsWith('.json'));
+    if (existing.length === 0 && fs.existsSync(src)) {
+      for (const f of fs.readdirSync(src)) {
+        if (f.endsWith('.json')) {
+          fs.copyFileSync(path.join(src, f), path.join(dst, f));
+        }
+      }
+      console.log(`[Aquarium] Seeded ${fs.readdirSync(src).filter(f=>f.endsWith('.json')).length} skills from server/skills/`);
+    }
+  } catch {}
+})();
 
 console.log(`[Aquarium] Root: ${AQ_ROOT} (${isAquarium ? 'aquarium layout' : 'legacy layout — run node migrate_aquarium.js'})`);
 console.log(`[Aquarium] Models: ${AQUARIUM.MODELS_DIR}`);
