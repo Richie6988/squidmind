@@ -9,7 +9,9 @@
 const fs = require('fs');
 const path = require('path');
 
-const DEFAULTS = {
+const AQUARIUM = require('../aquarium');
+
+const _RAW_DEFAULTS = {
   'main/poseidon_brain.json': () => ({
     schema_version: '2.0.0',
     schema_type: 'poseidon_brain',
@@ -213,6 +215,11 @@ const DEFAULTS = {
  * @param {string} dataRoot - absolute path to /data
  * @returns {object} report
  */
+// Resolve all paths for the current Aquarium layout
+const DEFAULTS = Object.fromEntries(
+  Object.entries(_RAW_DEFAULTS).map(([k, v]) => [AQUARIUM.resolve(k), v])
+);
+
 function repairAllRegistries(dataRoot) {
   const report = { repaired: [], valid: [], errors: [] };
   

@@ -177,7 +177,12 @@ console.log('✅ Created aquarium/ structure');
 
 // Step 6 — PROJECTS (with slug folder rename)
 {
-  const srcProjDir = path.join(SRC, 'projects');
+  // Search multiple locations for the project registry
+  const srcProjDir = [
+    path.join(SRC, 'projects'),
+    path.join(SRC_DATA, 'projects'),
+    path.join(SRC_WS, 'projects'),
+  ].find(d => ex(path.join(d, 'project_registry.json'))) || path.join(SRC, 'projects');
   const dstProjDir = path.join(AQ, 'PROJECTS');
   const regSrc     = path.join(srcProjDir, 'project_registry.json');
 
@@ -266,6 +271,7 @@ console.log('✅ Created aquarium/ structure');
 {
   // Try workspace/main/skills first, then data/main/skills, then workspace/main/processes
   const candidates = [
+    path.join(ROOT, 'server', 'skills'),             // versioned seed — always use
     path.join(ROOT, 'workspace', 'main', 'skills'),
     path.join(SRC, 'main', 'skills'),
     path.join(ROOT, 'workspace', 'main', 'processes'),
