@@ -183,6 +183,7 @@ const AQUARIUM = {
     { seed: 'model_registry.json',   dst: AQUARIUM.models('model_registry.json') },
     { seed: 'tool_registry.json',    dst: path.join(AQUARIUM.TOOLS, 'tool_registry.json') },
     { seed: 'logs.json',             dst: AQUARIUM.logs('logs.json') },
+    { seed: 'tasks_registry.json',   dst: AQUARIUM.tasks('tasks_registry.json') },
     { seed: 'comms_config.json',     dst: AQUARIUM.channels('comms_config.json') },
   ];
 

@@ -32,7 +32,7 @@ class TaskRunner {
     let reg;
     try {
       this.rm.invalidateCache();
-      reg = await this.rm.read('tasks/tasks_registry.json');
+      reg = await this.rm.getTasksRegistry().catch(() => this.rm.read('tasks/tasks_registry.json').catch(() => ({ tasks: {} })));
     } catch { return; }
 
     const tasks = Object.values(reg.tasks || {});

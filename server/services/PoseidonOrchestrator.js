@@ -1452,7 +1452,8 @@ Never describe a bash command you could call instead.`;
   async _listTasks({ status, project } = {}) {
     try {
       this.rm.invalidateCache();
-      const reg = await this.rm.read('tasks/tasks_registry.json');
+      // Use getTasksRegistry() which scans both flat file AND per-folder tasks
+      const reg = await this.rm.getTasksRegistry().catch(() => this.rm.read('tasks/tasks_registry.json').catch(() => ({ tasks: {} })));
       let tasks = Object.values(reg.tasks || {});
       if (status && status !== 'all') tasks = tasks.filter(t => (t.lifecycle?.status || t.status || 'open') === status);
       if (project) tasks = tasks.filter(t => (t.project_name || '').toUpperCase() === project.toUpperCase());
@@ -1856,7 +1857,7 @@ Never describe a bash command you could call instead.`;
       if (section_path === 'tasks' || section_path === 'tasks.open') {
         const reg = await this.rm.getTasksRegistry().catch(() => ({ tasks: {} }));
         const open = Object.values(reg.tasks || {})
-          .filter(t => !['completed','failed','cancelled','archived'].includes(t.lifecycle?.status))
+          .filter(t => !['completed','failed','cancelled','archived'].includes(t.lifecycle?.status || t.status || ''))
           .slice(0, 20);
         return { ok: true, section_path, content: open.map(t =>
           `${t.task_id}: ${t.title} | ${t.lifecycle?.status||'?'} | agent: ${t.assignment?.assigned_to||'unassigned'}`

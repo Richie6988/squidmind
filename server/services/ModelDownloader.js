@@ -59,12 +59,10 @@ class ModelDownloader {
     let fileName = suggestedFileName;
     if (!fileName) {
       const urlPath = new URL(url).pathname;
-      fileName = decodeURIComponent(path.basename(urlPath));
-      if (!fileName.toLowerCase().endsWith('.gguf')) {
-        // Try appending .gguf if filename has no extension
-        if (!fileName.includes('.')) fileName += '.gguf';
-      }
+      fileName = decodeURIComponent(path.basename(urlPath)); // basename strips gguf/ subdir
     }
+    // Strip any directory prefix that slipped through (e.g. "gguf/model.gguf" → "model.gguf")
+    fileName = path.basename(fileName);
     if (!fileName.toLowerCase().endsWith('.gguf')) {
       throw new Error(`Refusing to download non-.gguf file: ${fileName}`);
     }

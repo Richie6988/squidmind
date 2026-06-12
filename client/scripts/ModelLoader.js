@@ -77,26 +77,36 @@ const ModelLoader = {
           
           <!-- TAB: HuggingFace download -->
           <div id="ml-tab-download" class="ml-tab-content" style="display:none;">
-            <!-- Search row -->
+            <!-- Search + filter row -->
             <div class="ml-hf-search-row">
               <input id="ml-hf-query" class="ml-hf-input" type="text"
-                placeholder="Search models (qwen, mistral, llama…)"
+                placeholder="Search models…"
                 onkeydown="if(event.key==='Enter')ModelLoader._hfSearch()">
               <button class="ml-hf-search-btn" onclick="ModelLoader._hfSearch()">
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
               </button>
             </div>
-            <!-- Filter pills -->
+            <!-- Type filters -->
             <div class="ml-hf-pills" id="ml-hf-filters">
-              <button class="ml-hf-pill" onclick="ModelLoader._hfQuick(this,'')">🔥 Popular</button>
-              <button class="ml-hf-pill active" onclick="ModelLoader._hfQuick(this,'qwen')">💬 Qwen</button>
-              <button class="ml-hf-pill" onclick="ModelLoader._hfQuick(this,'mistral')">⚡ Mistral</button>
-              <button class="ml-hf-pill" onclick="ModelLoader._hfQuick(this,'llama')">🦙 Llama</button>
-              <button class="ml-hf-pill" onclick="ModelLoader._hfQuick(this,'code')">💻 Code</button>
-              <button class="ml-hf-pill" onclick="ModelLoader._hfQuick(this,'smol')">🌙 Dream</button>
-              <button class="ml-hf-pill" onclick="ModelLoader._hfQuick(this,'phi')">🔬 Phi</button>
+              <button class="ml-hf-pill active" onclick="ModelLoader._hfQuick(this,'','any')">🔥 All</button>
+              <button class="ml-hf-pill" onclick="ModelLoader._hfQuick(this,'','text-generation')">💬 Text</button>
+              <button class="ml-hf-pill" onclick="ModelLoader._hfQuick(this,'code','text-generation')">💻 Code</button>
+              <button class="ml-hf-pill" onclick="ModelLoader._hfQuick(this,'','text-to-image')">🖼 Image</button>
+              <button class="ml-hf-pill" onclick="ModelLoader._hfQuick(this,'','feature-extraction')">📐 Embed</button>
+              <button class="ml-hf-pill" onclick="ModelLoader._hfQuick(this,'tool_calling','any')">🔧 Tools</button>
+              <button class="ml-hf-pill" onclick="ModelLoader._hfQuick(this,'smol','any')">🌙 Dream</button>
             </div>
-            <!-- Results — model list -->
+            <!-- Size filter -->
+            <div class="ml-hf-size-row">
+              <span class="ml-hf-size-label">Size:</span>
+              <button class="ml-hf-size-pill active" data-min="" data-max="" onclick="ModelLoader._hfSizeFilter(this)">Any</button>
+              <button class="ml-hf-size-pill" data-min="" data-max="1.5" onclick="ModelLoader._hfSizeFilter(this)">≤1B</button>
+              <button class="ml-hf-size-pill" data-min="1.5" data-max="4" onclick="ModelLoader._hfSizeFilter(this)">1–3B</button>
+              <button class="ml-hf-size-pill" data-min="4" data-max="9" onclick="ModelLoader._hfSizeFilter(this)">4–8B</button>
+              <button class="ml-hf-size-pill" data-min="9" data-max="15" onclick="ModelLoader._hfSizeFilter(this)">9–14B</button>
+              <button class="ml-hf-size-pill" data-min="15" data-max="" onclick="ModelLoader._hfSizeFilter(this)">15B+</button>
+            </div>
+            <!-- Results -->
             <div id="ml-hf-results" class="ml-hf-results-list"></div>
             <!-- File picker panel -->
             <div id="ml-hf-files" class="ml-hf-file-panel" style="display:none;">
@@ -105,7 +115,7 @@ const ModelLoader = {
                 <span id="ml-hf-repo-name" class="ml-hf-repo-title"></span>
                 <button class="ml-hf-back-btn" onclick="ModelLoader._hfCloseFiles()">← Back</button>
               </div>
-              <div class="ml-hf-file-hint">Pick a quantization. <b>Q4_K_M</b> = best balance. <b>Q8</b> = highest quality. <b>Q2</b> = smallest.</div>
+              <div class="ml-hf-file-hint">Pick a quantization — <b>Q4_K_M</b> best balance · <b>Q8</b> highest quality · <b>Q2/IQ2</b> smallest</div>
               <div id="ml-hf-file-list" class="ml-hf-file-list"></div>
             </div>
             <!-- Active downloads -->
@@ -120,18 +130,20 @@ const ModelLoader = {
     if (!document.getElementById('ml-hf-css')) {
       const s = document.createElement('style'); s.id = 'ml-hf-css';
       s.textContent = `
-        /* ── HF Search ── */
-        .ml-hf-search-row{display:flex;gap:6px;margin-bottom:10px;}
+        .ml-hf-search-row{display:flex;gap:6px;margin-bottom:8px;}
         .ml-hf-input{flex:1;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:8px;color:#e2e8f0;font-size:10px;padding:6px 10px;outline:none;}
-        .ml-hf-input:focus{border-color:rgba(79,172,254,0.5);box-shadow:0 0 0 2px rgba(79,172,254,0.1);}
+        .ml-hf-input:focus{border-color:rgba(79,172,254,0.5);}
         .ml-hf-search-btn{background:rgba(79,172,254,0.15);border:1px solid rgba(79,172,254,0.35);color:#4facfe;border-radius:8px;padding:6px 10px;cursor:pointer;display:flex;align-items:center;transition:all .15s;}
         .ml-hf-search-btn:hover{background:rgba(79,172,254,0.28);}
-        .ml-hf-pills{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:10px;}
+        .ml-hf-pills{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:6px;}
         .ml-hf-pill{font-size:8px;padding:3px 9px;border-radius:10px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.03);color:#94a3b8;cursor:pointer;white-space:nowrap;transition:all .12s;}
         .ml-hf-pill.active,.ml-hf-pill:hover{background:rgba(79,172,254,0.18);color:#4facfe;border-color:rgba(79,172,254,0.4);}
-        /* ── Results list ── */
-        .ml-hf-results-list{max-height:200px;overflow-y:auto;display:flex;flex-direction:column;gap:2px;}
-        .ml-hf-row{display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:6px;cursor:pointer;border:1px solid transparent;transition:all .12s;}
+        .ml-hf-size-row{display:flex;align-items:center;gap:4px;margin-bottom:10px;flex-wrap:wrap;}
+        .ml-hf-size-label{font-size:8px;color:#475569;white-space:nowrap;}
+        .ml-hf-size-pill{font-size:8px;padding:2px 7px;border-radius:8px;border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.02);color:#64748b;cursor:pointer;transition:all .12s;white-space:nowrap;}
+        .ml-hf-size-pill.active,.ml-hf-size-pill:hover{background:rgba(167,139,250,0.15);color:#a78bfa;border-color:rgba(167,139,250,0.35);}
+        .ml-hf-results-list{max-height:195px;overflow-y:auto;display:flex;flex-direction:column;gap:2px;}
+        .ml-hf-row{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:6px;cursor:pointer;border:1px solid transparent;transition:all .12s;}
         .ml-hf-row:hover{background:rgba(79,172,254,0.07);border-color:rgba(79,172,254,0.15);}
         .ml-hf-role-badge{width:22px;height:22px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0;background:rgba(255,255,255,0.06);}
         .ml-hf-row-body{flex:1;min-width:0;}
@@ -141,18 +153,15 @@ const ModelLoader = {
         .ml-hf-size-hint{font-size:8px;color:#a78bfa;background:rgba(167,139,250,0.1);padding:1px 5px;border-radius:4px;white-space:nowrap;}
         .ml-hf-stat{font-size:8px;color:#64748b;}
         .ml-hf-src{font-size:8px;color:#4facfe;text-decoration:none;opacity:0.7;}
-        .ml-hf-src:hover{opacity:1;}
+        .ml-hf-src:hover{opacity:1;text-decoration:underline;}
         .ml-hf-open-btn{background:rgba(79,172,254,0.1);border:1px solid rgba(79,172,254,0.25);color:#4facfe;border-radius:5px;padding:3px 8px;cursor:pointer;font-size:12px;transition:all .12s;flex-shrink:0;}
         .ml-hf-open-btn:hover{background:rgba(79,172,254,0.25);}
-        /* ── File panel ── */
         .ml-hf-file-panel{display:none;flex-direction:column;gap:6px;margin-top:8px;padding:10px;background:rgba(0,0,0,0.25);border-radius:8px;border:1px solid rgba(255,255,255,0.07);}
         .ml-hf-file-header{display:flex;align-items:center;gap:6px;}
         .ml-hf-repo-link{color:#4facfe;font-size:10px;text-decoration:none;flex-shrink:0;}
         .ml-hf-repo-title{flex:1;font-size:9px;color:#94a3b8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
         .ml-hf-back-btn{background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);color:#94a3b8;border-radius:5px;padding:2px 8px;font-size:8px;cursor:pointer;}
-        .ml-hf-back-btn:hover{color:#e2e8f0;}
-        .ml-hf-file-hint{font-size:8px;color:#475569;padding:2px 0 4px;}
-        .ml-hf-file-hint b{color:#94a3b8;}
+        .ml-hf-file-hint{font-size:8px;color:#475569;padding:2px 0 4px;}.ml-hf-file-hint b{color:#94a3b8;}
         .ml-hf-file-list{display:flex;flex-direction:column;gap:3px;max-height:180px;overflow-y:auto;}
         .ml-hf-file-row{display:flex;align-items:center;justify-content:space-between;padding:6px 8px;border-radius:5px;border:1px solid rgba(255,255,255,0.06);background:rgba(255,255,255,0.02);transition:all .12s;}
         .ml-hf-file-row:hover{background:rgba(79,172,254,0.06);border-color:rgba(79,172,254,0.2);}
@@ -165,11 +174,10 @@ const ModelLoader = {
         .ml-hf-fsize{font-size:9px;color:#64748b;white-space:nowrap;min-width:45px;text-align:right;}
         .ml-hf-dl-btn{background:linear-gradient(135deg,#4facfe,#2563eb);border:none;color:#fff;border-radius:5px;padding:3px 8px;font-size:8px;cursor:pointer;white-space:nowrap;transition:all .12s;}
         .ml-hf-dl-btn:hover{transform:scale(1.04);box-shadow:0 2px 8px rgba(79,172,254,0.4);}
-        /* ── States ── */
         .ml-hf-loading{color:#64748b;font-size:9px;padding:12px 8px;text-align:center;}
         .ml-hf-empty{color:#64748b;font-size:9px;padding:12px 8px;text-align:center;line-height:1.6;}
         .ml-hf-error{color:#f87171;font-size:9px;padding:8px;}
-      `; document.head.appendChild(s);
+      `; document.head.appendChild(s);`; document.head.appendChild(s);
     }
     // Wire path input enter key
     const pathInput = this.modal.querySelector('#ml-browse-path');
@@ -676,8 +684,16 @@ const ModelLoader = {
   
   // ── HuggingFace Search & Browse ──────────────────────────────────────────
 
-  _hfCurrentQuery: '',
-  _hfCurrentRepo: null,
+  _hfCurrentQuery: '', _hfCurrentPipeline: 'any', _hfCurrentRepo: null,
+  _hfMinSize: '', _hfMaxSize: '',
+
+  _hfSizeFilter(btn) {
+    this.modal.querySelectorAll('.ml-hf-size-pill').forEach(p => p.classList.remove('active'));
+    btn.classList.add('active');
+    this._hfMinSize = btn.dataset.min || '';
+    this._hfMaxSize = btn.dataset.max || '';
+    this._hfSearch();
+  },
 
   async _hfSearch() {
     const q = this.modal.querySelector('#ml-hf-query')?.value.trim() || '';
@@ -686,74 +702,71 @@ const ModelLoader = {
     el.innerHTML = '<div class="ml-hf-loading">Searching HuggingFace…</div>';
     this._hfCloseFiles();
     try {
-      const data = await window.ApiV2._fetch('/models/hf-search?q=' + encodeURIComponent(q) + '&limit=24');
-      if (!data.models?.length) {
-        el.innerHTML = '<div class="ml-hf-empty">No results — try a different search.</div>'; return;
-      }
+      let url = '/models/hf-search?q=' + encodeURIComponent(q) + '&limit=24';
+      if (this._hfCurrentPipeline && this._hfCurrentPipeline !== 'any') url += '&pipeline=' + encodeURIComponent(this._hfCurrentPipeline);
+      if (this._hfMinSize) url += '&minSize=' + this._hfMinSize;
+      if (this._hfMaxSize) url += '&maxSize=' + this._hfMaxSize;
+      const data = await window.ApiV2._fetch(url);
+      if (!data.models?.length) { el.innerHTML = '<div class="ml-hf-empty">No results — try different filters.</div>'; return; }
       el.innerHTML = data.models.map(m => {
-        const roleIcon  = {chat:'💬',code:'💻',dream:'🌙',embed:'📐',reason:'🧠'}[m.role]||'🤖';
-        const roleClass = 'ml-hf-role-' + (m.role||'chat');
+        const icons = {chat:'💬',code:'💻',dream:'🌙',embed:'📐',reason:'🧠',image:'🖼',audio:'🎵'};
+        const roleIcon = icons[m.role] || '🤖';
         const dl = m.downloads > 1000000 ? (m.downloads/1000000).toFixed(1)+'M'
-                 : m.downloads > 1000    ? (m.downloads/1000).toFixed(0)+'k' : m.downloads;
-        const hint = m.size_hint ? `<span class="ml-hf-size-hint">${m.size_hint}</span>` : '';
+                 : m.downloads > 1000 ? (m.downloads/1000).toFixed(0)+'k' : m.downloads;
+        const sz = m.size_hint ? `<span class="ml-hf-size-hint">${m.size_hint}</span>` : '';
         const src_link = `https://huggingface.co/${m.id}`;
         return `<div class="ml-hf-row" onclick="ModelLoader._hfOpenRepo('${m.id}')">
-          <span class="ml-hf-role-badge ${roleClass}">${roleIcon}</span>
+          <span class="ml-hf-role-badge ml-hf-role-${m.role}">${roleIcon}</span>
           <div class="ml-hf-row-body">
-            <div class="ml-hf-row-top">
-              <span class="ml-hf-id">${m.id}</span>
-              ${hint}
-            </div>
+            <div class="ml-hf-row-top"><span class="ml-hf-id">${m.id}</span>${sz}</div>
             <div class="ml-hf-row-bottom">
-              <span class="ml-hf-stat">↓${dl}</span>
-              <span class="ml-hf-stat">♥${m.likes}</span>
+              <span class="ml-hf-stat">↓${dl}</span><span class="ml-hf-stat">♥${m.likes}</span>
               <a class="ml-hf-src" href="${src_link}" target="_blank" onclick="event.stopPropagation()">↗ HF</a>
             </div>
           </div>
           <button class="ml-hf-open-btn" title="Browse files">›</button>
         </div>`;
       }).join('');
-    } catch(e) {
-      el.innerHTML = '<div class="ml-hf-error">Error: ' + e.message + '</div>';
-    }
+    } catch(e) { el.innerHTML = '<div class="ml-hf-error">Error: ' + e.message + '</div>'; }
   },
 
-  _hfQuick(btn, q) {
+  _hfQuick(btn, q, pipeline) {
     this.modal.querySelectorAll('.ml-hf-pill').forEach(p => p.classList.remove('active'));
     btn.classList.add('active');
     this.modal.querySelector('#ml-hf-query').value = q;
+    this._hfCurrentPipeline = pipeline || 'any';
     this._hfSearch();
   },
 
   async _hfOpenRepo(repoId) {
     this._hfCurrentRepo = repoId;
-    const panel   = this.modal.querySelector('#ml-hf-files');
+    const panel = this.modal.querySelector('#ml-hf-files');
     const fileList = this.modal.querySelector('#ml-hf-file-list');
     this.modal.querySelector('#ml-hf-repo-name').textContent = repoId;
     const link = this.modal.querySelector('#ml-hf-repo-link');
-    if (link) { link.href = 'https://huggingface.co/' + repoId; }
+    if (link) link.href = 'https://huggingface.co/' + repoId;
     fileList.innerHTML = '<div class="ml-hf-loading">Loading files…</div>';
     panel.style.display = 'flex';
-    // Scroll file panel into view
     panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     try {
       const data = await window.ApiV2._fetch('/models/hf-files?repo=' + encodeURIComponent(repoId));
       if (!data.files?.length) {
-        const warn = data.warning || 'No .gguf files found.';
-        fileList.innerHTML = `<div class="ml-hf-empty">${warn}<br><a class="ml-hf-src" href="https://huggingface.co/${repoId}" target="_blank">Open on HuggingFace ↗</a></div>`;
+        fileList.innerHTML = `<div class="ml-hf-empty">${data.warning||'No .gguf files found.'}<br>
+          <a class="ml-hf-src" href="https://huggingface.co/${repoId}" target="_blank">Open on HuggingFace ↗</a></div>`;
         return;
       }
+      // Auto-select best quant (Q4_K_M recommended, else first file)
+      const best = data.files.find(f => f.recommended) || data.files[0];
       fileList.innerHTML = data.files.map(f => {
+        const isBest = f === best;
         const qColor = /Q8|Q6/.test(f.quant)?'#34d399':/Q[45]/.test(f.quant)?'#60a5fa':/Q[23]/.test(f.quant)?'#f59e0b':/IQ/.test(f.quant)?'#a78bfa':'#94a3b8';
-        const recBadge = f.recommended ? '<span class="ml-hf-rec">★ Best</span>' : '';
-        const sizeStr  = f.size_gb != null ? f.size_gb + ' GB' : '?';
-        // Escape for use in onclick
-        const safeUrl  = f.url.replace(/'/g,"\'");
+        const sizeStr = f.size_gb != null ? f.size_gb + ' GB' : '?';
+        const safeUrl = f.url.replace(/'/g,"\'");
         const safeName = f.name.replace(/'/g,"\'");
-        return `<div class="ml-hf-file-row ${f.recommended?'ml-hf-file-rec':''}" >
+        return `<div class="ml-hf-file-row${isBest?' ml-hf-file-rec':''}">
           <div class="ml-hf-file-left">
             <span class="ml-hf-quant" style="color:${qColor}">${f.quant}</span>
-            ${recBadge}
+            ${isBest?'<span class="ml-hf-rec">★ Best</span>':''}
             <span class="ml-hf-fname" title="${f.name}">${f.name}</span>
           </div>
           <div class="ml-hf-file-right">
@@ -762,9 +775,7 @@ const ModelLoader = {
           </div>
         </div>`;
       }).join('');
-    } catch(e) {
-      fileList.innerHTML = '<div class="ml-hf-error">' + e.message + '</div>';
-    }
+    } catch(e) { fileList.innerHTML = '<div class="ml-hf-error">' + e.message + '</div>'; }
   },
 
   _hfCloseFiles() {
@@ -778,14 +789,11 @@ const ModelLoader = {
       await window.ApiV2._fetch('/models/download', { method: 'POST', body: JSON.stringify({ url, fileName }) });
       this._hfCloseFiles();
       this._refreshDownloads();
-      if (!this._downloadPollInterval) {
-        this._downloadPollInterval = setInterval(() => this._refreshDownloads(), 1500);
-      }
-    } catch(e) {
-      await SquidModal.alert('Download failed: ' + e.message);
-    }
+      if (!this._downloadPollInterval) this._downloadPollInterval = setInterval(() => this._refreshDownloads(), 1500);
+    } catch(e) { await SquidModal.alert('Download failed: ' + e.message); }
   },
 
+  _downloadPollInterval: null,
   _downloadPollInterval: null,
   _downloadPollInterval: null,
   

@@ -101,27 +101,46 @@ function buildRouter(v2ModelService) {
   }
 
   // GET /api/v2/models/hf-search
+  // params: q, pipeline (text-generation|image-to-image|text-to-image|feature-extraction|any)
+  //         minSize (0.5|1|3|7|13|30), maxSize same, sort (downloads|likes|trending)
   router.get('/hf-search', async (req, res) => {
-    const { q = '', limit = 24, sort = 'downloads' } = req.query;
+    const { q = '', limit = 24, sort = 'downloads', pipeline = '', minSize = '', maxSize = '' } = req.query;
     try {
-      // Always search with gguf filter so we only get models with GGUF files
-      const qs = `search=${encodeURIComponent(q)}&filter=gguf&sort=${sort}&limit=${limit}&full=false`;
+      // Build filter: always gguf + optional pipeline tag
+      let filter = 'gguf';
+      if (pipeline && pipeline !== 'any') filter += ',' + pipeline;
+      const qs = `search=${encodeURIComponent(q)}&filter=${encodeURIComponent(filter)}&sort=${sort}&limit=${limit}&full=false`;
       const models = await hfFetch('models', qs);
       const annotated = (Array.isArray(models) ? models : []).map(m => {
         const id = m.modelId || m.id || '';
-        // Estimate size from tags if possible
-        let size_hint = null;
+        // Size from tags
+        let size_hint = null, size_b = null;
         const sizeTag = (m.tags || []).find(t => /^[0-9]+(.[0-9]+)?[bBmM]$/.test(t));
-        if (sizeTag) size_hint = sizeTag.toUpperCase();
-        // Role detection
+        if (sizeTag) {
+          size_hint = sizeTag.toUpperCase();
+          const n = parseFloat(sizeTag); const u = sizeTag.slice(-1).toLowerCase();
+          size_b = u === 'b' ? n : u === 'm' ? n / 1000 : null;
+        }
+        // Size filter
+        if (size_b !== null) {
+          if (minSize && size_b < parseFloat(minSize)) return null;
+          if (maxSize && size_b > parseFloat(maxSize)) return null;
+        }
+        // Role
         let role = 'chat';
         if (/smol|tiny|0\.5b|0\.4b|\b1b\b|1\.5b|135m|360m|500m|256m/i.test(id)) role = 'dream';
         else if (/code|coder|starcoder|deepseek.*coder|codellama/i.test(id)) role = 'code';
-        else if (/embed|nomic|e5-|bge-|rerank/i.test(id)) role = 'embed';
-        else if (/reason|think|qwq|o1|r1/i.test(id)) role = 'reason';
-        return { id, downloads: m.downloads || 0, likes: m.likes || 0, tags: m.tags || [],
-                 role, pipeline: m.pipeline_tag || '', size_hint, updated: m.lastModified || '' };
-      });
+        else if (/embed|nomic|e5-|bge-|rerank|minilm/i.test(id)) role = 'embed';
+        else if (/reason|think|qwq|o1-|r1\b/i.test(id)) role = 'reason';
+        const pt = m.pipeline_tag || '';
+        if (!role || role === 'chat') {
+          if (/image|text-to-image|image-to-image|vision/i.test(pt)) role = 'image';
+          else if (/audio|speech|tts|asr/i.test(pt)) role = 'audio';
+        }
+        const dl = m.downloads||0;
+        return { id, downloads: dl, likes: m.likes||0, tags: m.tags||[],
+                 role, pipeline: pt, size_hint, size_b, updated: m.lastModified||'' };
+      }).filter(Boolean);
       res.json({ success: true, models: annotated });
     } catch(e) { res.json({ success: false, error: e.message, models: [] }); }
   });
