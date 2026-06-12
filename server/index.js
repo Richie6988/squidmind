@@ -170,6 +170,7 @@ heartbeat.setModelService(v2ModelService);
 // Task auto-runner — fires on every heartbeat tick
 const TaskRunner = require('./services/TaskRunner');
 const taskRunner = new TaskRunner(sharedRm, v2ModelService, agentWorkerPool);
+heartbeat.setTaskRunner(taskRunner);
 
 const _originalTick = heartbeat.tick.bind(heartbeat);
 heartbeat.tick = async function() {

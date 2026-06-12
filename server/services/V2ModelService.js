@@ -675,6 +675,42 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
     return { success: true, model_id: modelId };
   }
 
+  /**
+   * createAgentContext — creates a DEDICATED context for an agent.
+   * Agents cannot share Poseidon's context (sequences:1 = only 1 sequence available).
+   * We create a smaller, separate context on the same model weights.
+   * This avoids "no sequences available" crashes when agents run concurrently.
+   */
+  async createAgentContext(modelId) {
+    const entry = this.loaded.get(modelId);
+    if (!entry || !entry.model) throw new Error(`Model ${modelId} not loaded`);
+
+    const targetCtx = Math.min(
+      entry.config?.contextLength || 4096,
+      8192   // agents get at most 8k ctx — saves VRAM, enough for task execution
+    );
+    const ctxSteps = [targetCtx, 4096, 2048].filter(v => v <= (entry.config?.contextLength || 4096));
+
+    let context = null;
+    for (const tryCtx of ctxSteps) {
+      try {
+        context = await entry.model.createContext({
+          contextSize:    tryCtx,
+          sequences:      1,
+          flashAttention: entry.config?.flashAttention
+        });
+        const sequence = context.getSequence();
+        console.log(`[V2ModelService] Agent context created on ${modelId}: ctx=${tryCtx}`);
+        return { context, sequence, contextLength: tryCtx };
+      } catch (e) {
+        const isOOM = /out of memory|VRAM|allocation|sequences/i.test(e.message);
+        if (!isOOM) throw e;
+        if (context) { try { await context.dispose(); } catch {} context = null; }
+      }
+    }
+    throw new Error(`Cannot create agent context on ${modelId}: all sizes failed (OOM)`);
+  }
+
   // === POSEIDON ASSIGNMENT ===
 
   async setPoseidonModel(modelId) {
@@ -881,6 +917,17 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
         'After responding to the user, call list_skills and check if any skills need updating based on ' +
         'what you have done this session. Do this silently after answering.\n\n' + userMessage;
       console.log('[V2ModelService] Skill audit reminder injected');
+    }
+
+    // Planner nudge: inject pending unassigned tasks notice
+    if (entry._pendingPlannerNudge) {
+      const nudge = entry._pendingPlannerNudge;
+      entry._pendingPlannerNudge = null;
+      // Only inject if this isn't already a task-related message
+      if (!/task|assign|dispatch|planner/i.test(userMessage)) {
+        userMessage = nudge + '\n\n[USER MESSAGE]\n' + userMessage;
+        console.log('[V2ModelService] Planner nudge injected into user message');
+      }
     }
 
     // After emergency reset: clear incoming history to prevent context overflow

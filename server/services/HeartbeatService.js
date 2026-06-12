@@ -20,12 +20,15 @@ class HeartbeatService {
     this.lastCpuTimes = null;
     this.wasOverloaded = false;
     this.modelService = null;          // wired in by index.js
+    this.taskRunner   = null;          // wired in by index.js
+    this._lastPlannerAt = 0;
     this.dreamIdleMinutes = 10;        // dream after N minutes of Poseidon idle
     this._lastDreamAt = 0;
     this.dreamCooldownMinutes = 30;    // min gap between dream cycles
   }
 
   setModelService(ms) { this.modelService = ms; }
+  setTaskRunner(tr)    { this.taskRunner = tr; }
 
   start() {
     if (this.timer) return;
@@ -100,8 +103,6 @@ class HeartbeatService {
     this.wasOverloaded = isOverloaded;
 
     // ── DREAM TRIGGER ──────────────────────────────────────────────────────
-    // If Poseidon model is loaded, not generating, and idle > dreamIdleMinutes,
-    // trigger a metacognition session (max once per dreamCooldownMinutes).
     if (this.modelService) {
       try {
         const status = this.modelService.getStatus();
@@ -118,6 +119,56 @@ class HeartbeatService {
         }
       } catch {}
     }
+
+    // ── PLANNER TICK ───────────────────────────────────────────────────────
+    // Every 30s: scan for planned tasks with no assigned agent → notify Poseidon
+    // This is the proactive agentic loop: Poseidon assigns or executes pending work
+    if (this.taskRunner && this.modelService) {
+      this._plannerTick().catch(e =>
+        console.warn('[Heartbeat] Planner tick error:', e.message)
+      );
+    }
+  }
+
+  async _plannerTick() {
+    // Don't run planner if Poseidon is busy or model not loaded
+    if (!this.modelService?.poseidonModelId) return;
+    const now = Date.now();
+    if (!this._lastPlannerAt) this._lastPlannerAt = 0;
+    if (now - this._lastPlannerAt < 30_000) return; // max once per 30s
+    this._lastPlannerAt = now;
+
+    try {
+      this.rm.invalidateCache();
+      const reg = await this.rm.getTasksRegistry();
+      const unassigned = Object.values(reg.tasks || {}).filter(t => {
+        const s = t.lifecycle?.status || t.status || 'open';
+        return (s === 'open' || s === 'planned') && !t.assignment?.assigned_to;
+      });
+
+      if (unassigned.length === 0) return;
+
+      // Inject a planning nudge into Poseidon's next response
+      // We do this via a synthetic background message if Poseidon is idle
+      const entry = this.modelService.loaded.get(this.modelService.poseidonModelId);
+      if (!entry || entry.generating || entry.dreaming) return;
+
+      const taskList = unassigned.slice(0, 5)
+        .map(t => `  - [${t.task_id}] ${t.title} (priority: ${t.priority?.label || 'medium'})`)
+        .join('\n');
+
+      console.log(`[Heartbeat] 📋 Planner: ${unassigned.length} unassigned tasks — injecting planning nudge`);
+
+      // Store pending planner message — picked up by next Poseidon chat turn
+      if (!entry._pendingPlannerNudge) {
+        entry._pendingPlannerNudge = [
+          `[BACKGROUND PLANNER — ${unassigned.length} unassigned task(s) waiting]`,
+          taskList,
+          'Review these tasks. For each: either assign to an agent with dispatch_to_agent, or handle directly.',
+          'If agents are not set up, handle the highest priority task yourself now.'
+        ].join('\n');
+      }
+    } catch {}
   }
 
   _measure() {

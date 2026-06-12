@@ -17,12 +17,12 @@ const EventEmitter = require('events');
 
 // ─── System prompt builder ──────────────────────────────────────────────────
 
-function buildAgentSystemPrompt(brain, agentEntry) {
+function buildAgentSystemPrompt(brain, agentEntry, skillSummaries = []) {
   const id    = agentEntry.agent_id;
   const name  = brain.identity?.display_name || agentEntry.display_name || id;
   const role  = brain.identity?.role         || agentEntry.specialization || 'general agent';
   const base  = brain.brain_config?.system_prompt
-    || `You are ${name}, an AI agent.`;
+    || `You are ${name}, an autonomous AI agent specializing in ${role}.`;
 
   const lines = [base, ''];
 
@@ -74,12 +74,23 @@ function buildAgentSystemPrompt(brain, agentEntry) {
     lines.push('');
   }
 
-  // ── Absolute rules ──
-  lines.push('# RULES');
+  // ── Agentic execution rules ──
+  lines.push('# EXECUTION RULES');
   lines.push('1. Never invent facts or fabricate file contents.');
   lines.push('2. Always report tool failures honestly.');
-  lines.push('3. Complete the assigned task; do not wander off-scope.');
-  lines.push('4. When done, finish with a short summary of what you accomplished.');
+  lines.push('3. Use your tools. Never describe what you would do — do it.');
+  lines.push('4. After EACH meaningful step: if you have an update_task tool, update task progress field.');
+  lines.push('5. File paths use aquarium layout: PROJECTS/<FOLDER>/input/ and PROJECTS/<FOLDER>/output/');
+  lines.push('6. Use list_files("PROJECTS") to discover project folders before reading/writing files.');
+  lines.push('7. When done: write a clear completion summary (what was done, what files were created/modified).');
+  lines.push('');
+
+  // ── Aquarium skills available ──
+  if (skillSummaries.length > 0) {
+    lines.push('# SKILL RECIPES (use these for known task types)');
+    skillSummaries.forEach(s => lines.push(`- ${s}`));
+    lines.push('');
+  }
 
   return lines.join('\n');
 }
@@ -191,16 +202,32 @@ class AgentWorker extends EventEmitter {
     const llamaCpp = await import('node-llama-cpp');
     const { defineChatSessionFunction } = llamaCpp;
 
-    const systemPrompt = buildAgentSystemPrompt(this.brain, this.agentEntry);
-
-    // Slim if needed
-    const ctxTokens   = entry.config?.contextLength || 4096;
-    const budgetChars = Math.floor(ctxTokens * 0.6) * 4;
-    const trimmedPrompt = systemPrompt.length > budgetChars
-      ? systemPrompt.slice(0, budgetChars) + '\n[prompt trimmed to fit context]'
-      : systemPrompt;
+    // Slim prompt built below after skills are loaded (see systemPromptWithSkills)
 
     // Build tool functions from tools_allowed
+    // Load aquarium skills for this agent's specialization
+    let skillSummaries = [];
+    try {
+      const fsSync = require('fs');
+      const pathM  = require('path');
+      const AQUARIUM = require('../aquarium');
+      if (fsSync.existsSync(AQUARIUM.SKILLS)) {
+        skillSummaries = fsSync.readdirSync(AQUARIUM.SKILLS)
+          .filter(f => f.endsWith('.json'))
+          .slice(0, 12)
+          .map(f => {
+            try {
+              const s = JSON.parse(fsSync.readFileSync(pathM.join(AQUARIUM.SKILLS, f), 'utf8'));
+              return `${s.skill_id}: ${s.summary || s.name} (triggers: ${(s.triggers || []).slice(0,2).join(', ')})`;
+            } catch { return null; }
+          })
+          .filter(Boolean);
+      }
+    } catch {}
+
+    // Rebuild system prompt with skills injected
+    const systemPromptWithSkills = buildAgentSystemPrompt(this.brain, this.agentEntry, skillSummaries);
+
     const toolsAllowed = this.brain.capabilities?.tools_allowed || [];
     const toolEvents = [];
     this._pendingToolEvents = toolEvents;
@@ -215,6 +242,12 @@ class AgentWorker extends EventEmitter {
     const { context: agentCtx, sequence, contextLength } = await this.modelService.createAgentContext(modelId);
     this._agentContext = agentCtx;  // store for disposal
     this.sequence      = sequence;
+    const ctxTokens   = entry.config?.contextLength || 8192;
+    const budgetChars = Math.floor(ctxTokens * 0.5) * 4;
+    const trimmedPrompt = systemPromptWithSkills.length > budgetChars
+      ? systemPromptWithSkills.slice(0, budgetChars) + '\n[prompt trimmed to fit context]'
+      : systemPromptWithSkills;
+
     this.session = new llamaCpp.LlamaChatSession({
       contextSequence: sequence,
       systemPrompt:    trimmedPrompt,

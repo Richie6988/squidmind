@@ -1183,17 +1183,17 @@ Never describe a bash command you could call instead.`;
             return { ok: false, error: 'AgentWorkerPool not initialized. Server may still be starting.' };
           }
           try {
-            // Mark task as in_progress if task_id provided; capture title for result header
+            // Mark task as in_progress using _writeTaskDetails (correct path)
             let taskTitle = task_message.split('\n')[0].slice(0, 80);
             if (task_id) {
               try {
-                const reg = await self.rm.read('tasks/tasks_registry.json');
-                if (reg.tasks?.[task_id]) {
-                  taskTitle = reg.tasks[task_id].title || taskTitle;
-                  reg.tasks[task_id].lifecycle = reg.tasks[task_id].lifecycle || {};
-                  reg.tasks[task_id].lifecycle.status = 'in_progress';
-                  reg.tasks[task_id].lifecycle.started_at = new Date().toISOString();
-                  await self.rm.write('tasks/tasks_registry.json', reg);
+                const taskObj = await self.rm._readTaskDetails(task_id);
+                if (taskObj) {
+                  taskTitle = taskObj.title || taskTitle;
+                  taskObj.lifecycle = { ...(taskObj.lifecycle || {}), status: 'in_progress', started_at: new Date().toISOString() };
+                  taskObj.status = 'in_progress';
+                  await self.rm._writeTaskDetails(task_id, taskObj);
+                  self.rm.invalidateCache();
                 }
               } catch {}
             }
@@ -1217,29 +1217,31 @@ Never describe a bash command you could call instead.`;
                 if (task_id) {
                   try {
                     const now = new Date().toISOString();
-                    const reg = await self.rm.read('tasks/tasks_registry.json');
-                    if (reg.tasks?.[task_id]) {
-                      reg.tasks[task_id].lifecycle.status       = 'completed';
-                      reg.tasks[task_id].lifecycle.completed_at = now;
-                      reg.tasks[task_id].result_summary         = fullText.slice(0, 500);
-                      reg.tasks[task_id].result_file            = `tasks/results/${task_id}.txt`;
-                      await self.rm.write('tasks/tasks_registry.json', reg);
+                    const taskObj2 = await self.rm._readTaskDetails(task_id);
+                    if (taskObj2) {
+                      taskObj2.lifecycle = { ...(taskObj2.lifecycle || {}), status: 'completed', completed_at: now };
+                      taskObj2.status = 'completed';
+                      taskObj2.result_summary = fullText.slice(0, 500);
+                      taskObj2.progress = 'completed — ' + fullText.slice(0, 100);
+                      await self.rm._writeTaskDetails(task_id, taskObj2);
+                      self.rm.invalidateCache();
                     }
-                    // Write full result to task's results/ folder
-                    const fs = require('fs').promises;
-                    const path = require('path');
-                    const taskResultsDir = path.join(self.rm.dataRoot, 'tasks', task_id, 'results');
-                    await fs.mkdir(taskResultsDir, { recursive: true });
-                    const header = [
+                    // Write full result to task's results/ folder (AQUARIUM.TASKS uppercase path)
+                    const fsp2 = require('fs').promises;
+                    const path2 = require('path');
+                    const AQUARIUM2 = require('../aquarium');
+                    const taskResultsDir = path2.join(AQUARIUM2.TASKS, task_id, 'results');
+                    await fsp2.mkdir(taskResultsDir, { recursive: true });
+                    const header2 = [
                       `Task: ${task_id}`,
                       `Title: ${taskTitle}`,
                       `Agent: ${agent_id}`,
-                      `Completed: ${now}`,
+                      `Completed: ${new Date().toISOString()}`,
                       `Tool calls: ${toolCalls}`,
                       '─'.repeat(60),
                       ''
                     ].join('\n');
-                    await fs.writeFile(path.join(taskResultsDir, 'output.txt'), header + fullText, 'utf8');
+                    await fsp2.writeFile(path2.join(taskResultsDir, 'output.txt'), header2 + fullText, 'utf8');
                   } catch (e) {
                     console.warn('[dispatch_to_agent] result save error:', e.message);
                   }
