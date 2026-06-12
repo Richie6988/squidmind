@@ -1,0 +1,17 @@
+{
+  "skill_id": "manage_agents",
+  "name": "Manage Agents (CRUD)",
+  "version": 1,
+  "summary": "Create, update, delete agents. Assign to projects. Check agent status.",
+  "triggers": ["create agent", "delete agent", "update agent", "assign agent", "agent personality", "agent color", "new agent"],
+  "steps": [
+    {"order": 1, "action": "list_agents", "note": "Get current agent list and IDs."},
+    {"order": 2, "action": "create_agent OR update_agent_field OR delete_agent", "note": "create_agent(display_name, specialization, role, primary_color). update_agent_field(agent_id, field_path, new_value) for any field. delete_agent(agent_id) is permanent."},
+    {"order": 3, "action": "assign_agent if needed", "note": "assign_agent(agent_id, project_name) to link agent to a project."}
+  ],
+  "notes": [
+    "agent_id format: agent_001, agent_002 etc",
+    "field_path examples: 'personality.communication_style', 'appearance.primary_color', 'identity.role'",
+    "Deleting an agent frees it from all projects automatically"
+  ]
+}

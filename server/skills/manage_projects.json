@@ -1,0 +1,17 @@
+{
+  "skill_id": "manage_projects",
+  "name": "Manage Projects (CRUD)",
+  "version": 1,
+  "summary": "Create, rename, archive, delete projects. Assign or unassign agents.",
+  "triggers": ["create project", "delete project", "rename project", "archive project", "assign agent to project", "remove agent from project"],
+  "steps": [
+    {"order": 1, "action": "list_projects", "note": "Get exact project names first."},
+    {"order": 2, "action": "choose tool", "note": "create_project(name,vision) | update_project(name,field,value) | archive_project(name) | delete_project(name) | assign_agent(agent_id,project_name) | unassign_agent(agent_id,project_name)"},
+    {"order": 3, "action": "confirm", "note": "delete_project is irreversible — confirm with user if not explicit. archive_project is always safe (reversible)."}
+  ],
+  "notes": [
+    "archive ≠ delete: archive hides from active view but is recoverable. Delete is permanent.",
+    "User says 'delete' → use delete_project. User says 'remove' or 'hide' → archive_project.",
+    "Renaming: update_project(current_name, 'name', new_name)"
+  ]
+}

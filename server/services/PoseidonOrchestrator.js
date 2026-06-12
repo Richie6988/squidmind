@@ -150,12 +150,24 @@ My response: "${ss.last_response_preview}"${tools}
     // System autonomy rules — always present regardless of brain content
     lines.push('');
     lines.push('# AUTONOMY (core behavior)');
-    lines.push('A. No matching skill? SOLVE IT with your tools NOW. Then call write_skill — this is mandatory, not optional. You are the only one who can improve your own skills.');
-    lines.push('B. Skill worked but you found a better path? Call write_skill with the same skill_id and bump version. Your improvement is permanent.');
-    lines.push('C. Never refuse with "I lack X" — execute the closest viable path. A partial result is better than nothing.');
-    lines.push('D. AUTO-CONTINUE: if # LAST SESSION or # LAST DREAM shows an unfinished task, resume immediately without waiting for the user.');
-    lines.push('E. SELF-IMPROVE (critical): after ANY task involving >2 tool retries, 404s, wrong URLs, or improvisation — you MUST call write_skill with the lesson. This is how you get better. Nobody else will do it for you.');
-    lines.push('F. SKILL VERSIONING: when you update a skill, increment its version field. Always write both aquarium/SKILLS/<id>.json AND check if a seed exists.');
+    lines.push('# SKILL-FIRST AUTONOMY — how you work');
+    lines.push('');
+    lines.push('BEFORE starting any non-trivial task:');
+    lines.push('  1. Call list_skills to check what you already know.');
+    lines.push('  2. If a matching skill exists: read it with read_my_brain("skills.<id>"), follow its steps.');
+    lines.push('  3. If NO matching skill: immediately call write_skill to draft the approach, THEN execute it.');
+    lines.push('     This is not optional. Writing the skill first forces you to think before acting.');
+    lines.push('');
+    lines.push('AFTER completing any task:');
+    lines.push('  4. If the skill had gaps or you improvised: update it with write_skill (same id, version auto-increments).');
+    lines.push('  5. If you retried >2 tools, hit 404s, or got confused: write_skill with the lesson — even if it hurts.');
+    lines.push('');
+    lines.push('ALWAYS:');
+    lines.push('  - Never refuse with "I lack X." Execute the closest viable path.');
+    lines.push('  - Auto-continue unfinished tasks from # LAST SESSION without waiting for "continue".');
+    lines.push('  - You are the sole author of your own skills. Nobody else will write them for you.');
+    lines.push('  - Use delete_skill to remove broken skills. Use update_project/update_task/assign_agent for CRUD — never improvise with wrong tools.');
+    lines.push('  - get_logs tells you what actually happened in past sessions — use it before complaining you dont know something.');
     return lines.join('\n');
   }
   
@@ -349,6 +361,13 @@ Never describe a bash command you could call instead.`;
 - create_project(name, vision)
 - archive_project(project_name)  → reversible, hides from active view
 - delete_project(project_name)   → PERMANENT, removes folder + registry entry. Use when user says "delete"
+- update_project(project_name, field, new_value) → rename, change vision or status
+- assign_agent(agent_id, project_name) / unassign_agent(agent_id, project_name)
+- update_task(task_id, field, new_value) → change status/priority/title/assignment
+- delete_task(task_id)           → remove task permanently
+- list_skills()                  → all skills with version + triggers
+- delete_skill(skill_id)         → remove an obsolete or broken skill
+- get_logs(limit?, event_type?, actor?) → recent activity log
 - list_projects()
 
 ## Task management
@@ -573,6 +592,103 @@ Never describe a bash command you could call instead.`;
           }
         },
         handler: async (params) => self._listTasks(params)
+      }),
+
+      update_task: defineChatSessionFunction({
+        description: 'Update a task field: title, description, status (open/in_progress/completed/cancelled), priority (low/medium/high/critical), or assigned_agent_id.',
+        params: {
+          type: 'object',
+          properties: {
+            task_id:   { type: 'string', description: 'e.g. task_0001' },
+            field:     { type: 'string', description: 'Field to update: title|description|status|priority|assigned_agent_id' },
+            new_value: { type: 'string', description: 'New value' }
+          },
+          required: ['task_id', 'field', 'new_value']
+        },
+        handler: async (p) => self._updateTask(p)
+      }),
+
+      delete_task: defineChatSessionFunction({
+        description: 'Permanently delete a task from the registry.',
+        params: {
+          type: 'object',
+          properties: {
+            task_id: { type: 'string', description: 'e.g. task_0001' }
+          },
+          required: ['task_id']
+        },
+        handler: async (p) => self._deleteTask(p)
+      }),
+
+      assign_agent: defineChatSessionFunction({
+        description: 'Assign an agent to a project (adds to assigned_agents list on both sides).',
+        params: {
+          type: 'object',
+          properties: {
+            agent_id:     { type: 'string' },
+            project_name: { type: 'string' }
+          },
+          required: ['agent_id', 'project_name']
+        },
+        handler: async (p) => self._assignAgent(p)
+      }),
+
+      unassign_agent: defineChatSessionFunction({
+        description: 'Remove an agent from a project.',
+        params: {
+          type: 'object',
+          properties: {
+            agent_id:     { type: 'string' },
+            project_name: { type: 'string' }
+          },
+          required: ['agent_id', 'project_name']
+        },
+        handler: async (p) => self._unassignAgent(p)
+      }),
+
+      update_project: defineChatSessionFunction({
+        description: 'Update a project field: name, vision, or status.',
+        params: {
+          type: 'object',
+          properties: {
+            project_name: { type: 'string', description: 'Current name of the project' },
+            field:        { type: 'string', description: 'Field: name|vision|status' },
+            new_value:    { type: 'string' }
+          },
+          required: ['project_name', 'field', 'new_value']
+        },
+        handler: async (p) => self._updateProject(p)
+      }),
+
+      list_skills: defineChatSessionFunction({
+        description: 'List all skills in aquarium/SKILLS/ with their summary, version, and triggers.',
+        params: { type: 'object', properties: {} },
+        handler: async () => self._listSkills()
+      }),
+
+      delete_skill: defineChatSessionFunction({
+        description: 'Delete a skill from aquarium/SKILLS/. Use when a skill is wrong or obsolete.',
+        params: {
+          type: 'object',
+          properties: {
+            skill_id: { type: 'string' }
+          },
+          required: ['skill_id']
+        },
+        handler: async (p) => self._deleteSkill(p)
+      }),
+
+      get_logs: defineChatSessionFunction({
+        description: 'Read recent log entries. Optionally filter by event_type or actor. Returns last N entries.',
+        params: {
+          type: 'object',
+          properties: {
+            limit:      { type: 'integer', description: 'Number of entries to return (default 20, max 50)' },
+            event_type: { type: 'string',  description: 'Filter by event type e.g. skill_created, task_created, user_input' },
+            actor:      { type: 'string',  description: 'Filter by actor id e.g. poseidon_main, human_user' }
+          }
+        },
+        handler: async (p) => self._getLogs(p)
       }),
 
       log_decision: defineChatSessionFunction({
@@ -834,9 +950,13 @@ Never describe a bash command you could call instead.`;
             const path = require('path');
             const AQUARIUM = require('../aquarium');
             await fs.mkdir(AQUARIUM.SKILLS, { recursive: true });
-            const skill = { skill_id, name, version: 1, summary, triggers: triggers||[], steps, notes: notes||[], created_by: 'poseidon', created_at: new Date().toISOString() };
             const filePath = path.join(AQUARIUM.SKILLS, `${skill_id}.json`);
+            let version = 1;
             const existed = require('fs').existsSync(filePath);
+            if (existed) {
+              try { version = (JSON.parse(require('fs').readFileSync(filePath,'utf8')).version || 1) + 1; } catch {}
+            }
+            const skill = { skill_id, name, version, summary, triggers: triggers||[], steps, notes: notes||[], created_by: 'poseidon', updated_at: new Date().toISOString() };
             await fs.writeFile(filePath, JSON.stringify(skill, null, 2), 'utf8');
             // Also update server/skills/ seed if it exists
             const seedPath = path.join(__dirname, '../skills', `${skill_id}.json`);
@@ -1346,6 +1466,158 @@ Never describe a bash command you could call instead.`;
     }
   }
 
+  async _updateTask({ task_id, field, new_value }) {
+    try {
+      this.rm.invalidateCache();
+      const reg = await this.rm.read('tasks/tasks_registry.json');
+      const task = reg.tasks?.[task_id];
+      if (!task) return { ok: false, error: `Task ${task_id} not found. Use list_tasks to check IDs.` };
+      // Handle nested fields
+      if (field === 'status')            task.lifecycle = { ...(task.lifecycle||{}), status: new_value };
+      else if (field === 'priority')     task.priority  = { ...(task.priority||{}), label: new_value };
+      else if (field === 'assigned_agent_id') task.assignment = { ...(task.assignment||{}), assigned_to: new_value };
+      else                               task[field] = new_value;
+      task.updated_at = new Date().toISOString();
+      await this.rm.write('tasks/tasks_registry.json', reg);
+      await this.rm.log({ event_type: 'task_updated', severity: 'info',
+        actor: { type: 'system', id: 'poseidon_main' },
+        subject: { type: 'task', id: task_id },
+        action: `Updated task ${task_id}: ${field} = ${new_value}` });
+      return { ok: true, task_id, message: `Task ${task_id} updated: ${field} → ${new_value}` };
+    } catch (e) { return { ok: false, error: e.message }; }
+  }
+
+  async _deleteTask({ task_id }) {
+    try {
+      this.rm.invalidateCache();
+      const reg = await this.rm.read('tasks/tasks_registry.json');
+      if (!reg.tasks?.[task_id]) return { ok: false, error: `Task ${task_id} not found.` };
+      const title = reg.tasks[task_id].title;
+      delete reg.tasks[task_id];
+      await this.rm.write('tasks/tasks_registry.json', reg);
+      await this.rm.log({ event_type: 'task_deleted', severity: 'info',
+        actor: { type: 'system', id: 'poseidon_main' },
+        subject: { type: 'task', id: task_id },
+        action: `Deleted task ${task_id}: "${title}"` });
+      return { ok: true, task_id, message: `Task ${task_id} "${title}" deleted.` };
+    } catch (e) { return { ok: false, error: e.message }; }
+  }
+
+  async _assignAgent({ agent_id, project_name }) {
+    try {
+      this.rm.invalidateCache();
+      const upperName = project_name.toUpperCase();
+      const [projReg, agentReg] = await Promise.all([
+        this.rm.read('projects/project_registry.json'),
+        this.rm.read('agents/agent_registry.json')
+      ]);
+      const proj  = Object.values(projReg.projects||{}).find(p => p.name === upperName);
+      const agent = agentReg.agents?.[agent_id];
+      if (!proj)  return { ok: false, error: `Project "${upperName}" not found.` };
+      if (!agent) return { ok: false, error: `Agent "${agent_id}" not found.` };
+      if (!proj.assigned_agents.includes(agent_id)) proj.assigned_agents.push(agent_id);
+      agent.assigned_projects = [...new Set([...(agent.assigned_projects||[]), proj.project_id])];
+      await Promise.all([
+        this.rm.write('projects/project_registry.json', projReg),
+        this.rm.write('agents/agent_registry.json', agentReg)
+      ]);
+      return { ok: true, message: `Agent ${agent.display_name||agent_id} assigned to project ${upperName}.` };
+    } catch (e) { return { ok: false, error: e.message }; }
+  }
+
+  async _unassignAgent({ agent_id, project_name }) {
+    try {
+      this.rm.invalidateCache();
+      const upperName = project_name.toUpperCase();
+      const [projReg, agentReg] = await Promise.all([
+        this.rm.read('projects/project_registry.json'),
+        this.rm.read('agents/agent_registry.json')
+      ]);
+      const proj  = Object.values(projReg.projects||{}).find(p => p.name === upperName);
+      const agent = agentReg.agents?.[agent_id];
+      if (!proj)  return { ok: false, error: `Project "${upperName}" not found.` };
+      if (!agent) return { ok: false, error: `Agent "${agent_id}" not found.` };
+      proj.assigned_agents = (proj.assigned_agents||[]).filter(id => id !== agent_id);
+      agent.assigned_projects = (agent.assigned_projects||[]).filter(id => id !== proj.project_id);
+      await Promise.all([
+        this.rm.write('projects/project_registry.json', projReg),
+        this.rm.write('agents/agent_registry.json', agentReg)
+      ]);
+      return { ok: true, message: `Agent ${agent.display_name||agent_id} unassigned from project ${upperName}.` };
+    } catch (e) { return { ok: false, error: e.message }; }
+  }
+
+  async _updateProject({ project_name, field, new_value }) {
+    try {
+      this.rm.invalidateCache();
+      const upperName = project_name.toUpperCase();
+      const reg = await this.rm.read('projects/project_registry.json');
+      const [pid, proj] = Object.entries(reg.projects||{}).find(([,p]) => p.name === upperName) || [];
+      if (!proj) return { ok: false, error: `Project "${upperName}" not found.` };
+      if (field === 'name') proj.name = new_value.toUpperCase();
+      else                  proj[field] = new_value;
+      proj.updated_at = new Date().toISOString();
+      await this.rm.write('projects/project_registry.json', reg);
+      await this.rm.log({ event_type: 'project_updated', severity: 'info',
+        actor: { type: 'system', id: 'poseidon_main' },
+        subject: { type: 'project', id: pid },
+        action: `Updated project ${upperName}: ${field} → ${new_value}` });
+      return { ok: true, message: `Project ${upperName} updated: ${field} → ${new_value}` };
+    } catch (e) { return { ok: false, error: e.message }; }
+  }
+
+  async _listSkills() {
+    try {
+      const AQUARIUM = require('../aquarium');
+      const fs = require('fs');
+      const path = require('path');
+      if (!fs.existsSync(AQUARIUM.SKILLS)) return { ok: true, count: 0, skills: [] };
+      const files = fs.readdirSync(AQUARIUM.SKILLS).filter(f => f.endsWith('.json'));
+      const skills = files.map(f => {
+        try {
+          const s = JSON.parse(fs.readFileSync(path.join(AQUARIUM.SKILLS, f), 'utf8'));
+          return { skill_id: s.skill_id, name: s.name, version: s.version||1, summary: s.summary,
+                   triggers: s.triggers||[], steps_count: (s.steps||[]).length, created_by: s.created_by||'unknown' };
+        } catch { return { skill_id: f.replace('.json',''), error: 'unreadable' }; }
+      });
+      return { ok: true, count: skills.length, skills };
+    } catch (e) { return { ok: false, error: e.message }; }
+  }
+
+  async _deleteSkill({ skill_id }) {
+    try {
+      const AQUARIUM = require('../aquarium');
+      const path = require('path');
+      const fsp = require('fs').promises;
+      const filePath = path.join(AQUARIUM.SKILLS, `${skill_id}.json`);
+      if (!require('fs').existsSync(filePath)) return { ok: false, error: `Skill "${skill_id}" not found.` };
+      await fsp.unlink(filePath);
+      // Also remove seed if exists
+      const seedPath = path.join(__dirname, '../skills', `${skill_id}.json`);
+      await fsp.unlink(seedPath).catch(() => {});
+      await this.rm.log({ event_type: 'skill_deleted', severity: 'info',
+        actor: { type: 'system', id: 'poseidon_main' },
+        subject: { type: 'skill', id: skill_id },
+        action: `Deleted skill "${skill_id}"` });
+      return { ok: true, message: `Skill "${skill_id}" deleted.` };
+    } catch (e) { return { ok: false, error: e.message }; }
+  }
+
+  async _getLogs({ limit = 20, event_type, actor } = {}) {
+    try {
+      const reg = await this.rm.read('LOGS/logs.json');
+      let entries = reg.entries || [];
+      if (event_type) entries = entries.filter(e => e.event_type === event_type);
+      if (actor)      entries = entries.filter(e => e.actor?.id === actor || e.actor?.type === actor);
+      const cap = Math.min(limit, 50);
+      const recent = entries.slice(-cap).reverse(); // newest first
+      return { ok: true, count: recent.length, entries: recent.map(e => ({
+        ts: e.timestamp, event: e.event_type, actor: e.actor?.id,
+        action: e.action, context_preview: e.context ? JSON.stringify(e.context).slice(0,100) : undefined
+      })) };
+    } catch (e) { return { ok: false, error: e.message }; }
+  }
+
   async _logDecision({ summary, reasoning, affected_entities }) {
     try {
       await this.rm.log({
@@ -1523,7 +1795,7 @@ Never describe a bash command you could call instead.`;
           const available = fs.readdirSync(skillsDir).filter(f => f.endsWith('.json')).map(f => f.replace('.json',''));
           return {
             ok: false,
-            error: `Skill "${skillName}" not found. Available: ${available.join(', ') || '(none)'}. AUTONOMY RULE: solve the task NOW with your tools (web_search, web_fetch, read_file...), then call write_skill("${skillName}", ...) to save your working method.`
+            error: `Skill "${skillName}" not found. Available skills: ${available.join(', ') || '(none)'}. SKILL-FIRST RULE: call write_skill("${skillName}", ...) RIGHT NOW to draft the approach, then execute. Do not skip the write_skill step.`
           };
         }
         const skill = JSON.parse(fs.readFileSync(filePath, 'utf8'));

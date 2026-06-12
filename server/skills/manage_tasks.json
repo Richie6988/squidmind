@@ -1,0 +1,17 @@
+{
+  "skill_id": "manage_tasks",
+  "name": "Manage Tasks (CRUD)",
+  "version": 1,
+  "summary": "Create, update, delete, and list tasks. Covers assignment and status changes.",
+  "triggers": ["create task", "delete task", "update task", "close task", "mark task", "assign task", "task status"],
+  "steps": [
+    {"order": 1, "action": "list_tasks", "note": "Always list first to get exact task_id. Never guess IDs."},
+    {"order": 2, "action": "update_task OR delete_task", "note": "update_task(task_id, field, new_value) for status/priority/title changes. delete_task(task_id) for removal. Field 'status' values: open|in_progress|completed|cancelled"},
+    {"order": 3, "action": "confirm", "note": "Report what changed to user."}
+  ],
+  "notes": [
+    "task_id format: task_0001, task_0002 etc — get from list_tasks",
+    "To mark done: update_task(task_id, 'status', 'completed')",
+    "To assign: update_task(task_id, 'assigned_agent_id', 'agent_001')"
+  ]
+}
