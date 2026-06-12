@@ -1195,7 +1195,51 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
         tool_calls_this_turn: toolNames
       }).catch(() => {});
 
-      // Session persists indefinitely — no proactive wipe
+      // ── PROACTIVE CONTEXT WIPE AT 75% ────────────────────────────────────
+      // When context is 75%+ full, save a continuity summary to dream_memory.json
+      // then wipe the session so the next turn starts fresh with the summary injected.
+      if (ctxPct >= 75 && !entry._checkpointPending) {
+        entry._checkpointPending = true;
+        console.log(`[V2ModelService] Context at ${ctxPct}% — saving continuity checkpoint and wiping session`);
+
+        // Build a compact summary for the next session
+        const openTasksSnap = (() => {
+          try {
+            const reg = this.rm.cache?.get?.('TASKS/tasks_registry.json');
+            const tasks = Object.values(reg?.tasks || {})
+              .filter(t => !['completed','failed','cancelled','archived'].includes(t.lifecycle?.status || t.status))
+              .slice(0, 8)
+              .map(t => `  [${t.task_id}] ${t.title} (${t.lifecycle?.status || t.status})${t.progress ? ' — ' + t.progress : ''}`);
+            return tasks.length ? tasks.join('\n') : '  (none)';
+          } catch { return '  (unknown)'; }
+        })();
+
+        const summary = [
+          `Context reached ${ctxPct}% (turn ${entry.sessionTurns}) — auto-checkpoint before overflow.`,
+          `Last user request: "${userMessage.slice(0, 200)}"`,
+          `Last response preview: "${fullResponse.slice(0, 300)}"`,
+          `Open tasks at checkpoint:\n${openTasksSnap}`,
+          `Resume: continue the last task exactly where left off. Check task progress fields for step tracking.`,
+        ].join('\n');
+
+        this.rm.write('BRAIN/dream_memory.json', {
+          type: 'checkpoint',
+          saved_at: new Date().toISOString(),
+          turns: entry.sessionTurns,
+          context_pct: ctxPct,
+          summary,
+          reflection: null
+        }).catch(() => {});
+
+        // Wipe session — next request will create a fresh one with the checkpoint injected
+        try { if (entry.session?.dispose) await entry.session.dispose(); } catch {}
+        entry.session = null;
+        entry._currentSequence = null;
+        entry.sessionTurns = 0;
+        entry._checkpointPending = false;
+        console.log('[V2ModelService] Session wiped after checkpoint — will resume from dream_memory on next turn');
+      }
+      // Session wipe done (or not needed)
     } catch (err) {
       // Catch all session/context/prompt errors and reset session state fully
       const isSessionErr = /no sequences|sequence|context|too long|compress|prompt|system message/i.test(err.message);

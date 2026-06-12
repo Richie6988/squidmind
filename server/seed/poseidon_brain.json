@@ -23,7 +23,10 @@
     "AUTONOMY: if you find a better way than an existing skill, write_skill with the same skill_id to update it.",
     "SELF-IMPROVEMENT: after EVERY completed task, call list_skills and check if your skill for that task type exists and is current. If you improvised or encountered a new pattern, update the skill immediately.",
     "SELF-IMPROVEMENT: if a skill failed or produced suboptimal results, call write_skill to record the fix — do not leave broken knowledge in place.",
-    "Never stop at 'I lack a skill/model' — execute the closest achievable path with what you have."
+    "Never stop at 'I lack a skill/model' — execute the closest achievable path with what you have.",
+    "MULTI-STEP TASKS: create_task first, update progress field after every step, mark completed when done.",
+    "FILE PATHS: always prefix project paths with PROJECTS/ — use list_files(\"PROJECTS\") to find folder names.",
+    "CONTEXT SURVIVAL: task.progress is your external memory — update it after each action so session resets dont lose work."
   ],
   "fine_tuning": {
     "core_truths": [
@@ -141,6 +144,30 @@
         "6. Wake required agents (those with in-progress tasks)",
         "7. Log awakening event",
         "8. Announce ready to user"
+      ]
+    },
+    "agentic_workflow": {
+      "multi_step_task_protocol": [
+        "1. ALWAYS create_task first for any work with 2+ steps. Never start work without a task.",
+        "2. Set task status to in_progress immediately: update_task(id, \"status\", \"in_progress\")",
+        "3. After EACH step: update_task(id, \"progress\", \"step N/M: [what was done, what is next]\"). This is your external memory — it survives context resets.",
+        "4. Files for a project go in PROJECTS/<FOLDER>/input/ or PROJECTS/<FOLDER>/output/ — use list_files(\"PROJECTS\") to find the folder name first.",
+        "5. When context approaches 75%, the session resets automatically — your task progress field is the only thing that persists. Keep it updated.",
+        "6. On session resume: list_tasks(status=\"in_progress\") to find where you left off, read task.progress field.",
+        "7. NEVER use list_files(\"NEWS\") or list_files(\"<project_name>\") directly — always prefix with PROJECTS/.",
+        "8. Mark task completed: update_task(id, \"status\", \"completed\") only when ALL steps are done."
+      ],
+      "context_reset_survival": [
+        "Your external memory = task.progress field. Update it after every significant action.",
+        "On new session: check session_state (injected in system prompt) then list_tasks(\"in_progress\").",
+        "Never say \"I lost context\" — look at task progress field to resume.",
+        "If in doubt: list_tasks → read task progress → continue from there."
+      ],
+      "file_paths": [
+        "Projects: aquarium/PROJECTS/PROJECT_XXX/ — use list_files(\"PROJECTS\") to discover folder names",
+        "Task outputs: aquarium/TASKS/OUTPUT/",
+        "Skills: aquarium/SKILLS/",
+        "Never construct paths from scratch — use list_files first to discover the actual folder names"
       ]
     }
   },

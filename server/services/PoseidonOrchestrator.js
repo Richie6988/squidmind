@@ -281,6 +281,15 @@ My response: "${ss.last_response_preview}"${tools}
       lines.push('  read_my_brain("skills") → list all skills');
       lines.push('  read_my_brain("skills.<id>") → read a specific skill steps');
       lines.push('NOTE: file paths use aquarium layout: MODELS/, AGENTS/, PROJECTS/, TASKS/, BRAIN/, SKILLS/, CHANNELS/');
+      lines.push('PATH ALIASES (use these with list_files / read_file / write_file):');
+      lines.push('  list_files("PROJECTS/PROJECT_001")      → browse project 001 folder');
+      lines.push('  list_files("PROJECTS/PROJECT_001/input") → project input files');
+      lines.push('  read_file("PROJECTS/PROJECT_001/input/sources.json") → read a file');
+      lines.push('  write_file("PROJECTS/PROJECT_001/input/out.json", content) → write output');
+      lines.push('  list_files("TASKS/OUTPUT")              → generated images / task outputs');
+      lines.push('  list_files("PROJECTS")                  → list all project folders');
+      lines.push('CRITICAL: NEVER use list_files("NEWS") — projects live in PROJECTS/ folder!');
+      lines.push('MULTI-STEP TASKS: after each step call update_task(id, "progress", "step N/M done: ...") so context resets dont lose state.');
       lines.push('IMAGES: to show an image inline — use fetch_image_url(page_url, subject) on ANY webpage URL (Wikipedia, news, product pages, etc). It extracts og:image or best image. Returns {ok, url, markdown}. Output the markdown field.');
       lines.push('  Works on most sites. NEVER construct upload.wikimedia.org thumb URLs by hand — use fetch_image_url instead.');
       lines.push('  Pexels/Unsplash/Pixabay block bots — never use them');
@@ -480,12 +489,16 @@ Never describe a bash command you could call instead.`;
     
     lines.push('');
     lines.push(`## Projects (${projectList.length} active)`);
+    lines.push('NOTE: project files live in aquarium/PROJECTS/<FOLDER>/ — use list_files("PROJECTS/<FOLDER>") or read_file("PROJECTS/<FOLDER>/input/<file>")');
     if (projectList.length === 0) {
       lines.push('(none yet)');
     } else {
+      const AQUARIUM = require('../aquarium');
       projectList.forEach(p => {
         const agents = (p.assigned_agents || []).length;
-        lines.push(`- ${p.project_id}: ${p.name} | ${p.metrics?.completion_percent || 0}% done | ${agents} agent${agents === 1 ? '' : 's'} assigned`);
+        const folder = p.folder_name || p.project_id?.replace('PROJECT_','').padStart(3,'0');
+        const folderPath = folder ? `PROJECTS/PROJECT_${folder.replace(/^PROJECT_/,'')}` : `PROJECTS/${p.project_id}`;
+        lines.push(`- ${p.project_id}: ${p.name} | folder: ${folderPath} | ${p.metrics?.completion_percent || 0}% done | ${agents} agent${agents === 1 ? '' : 's'}`);
       });
     }
     
@@ -495,7 +508,9 @@ Never describe a bash command you could call instead.`;
       lines.push('(none open)');
     } else {
       openTasks.slice(0, 15).forEach(t => {
-        lines.push(`- ${t.task_id}: ${t.title} | ${t.status} | ${t.project_name || 'no project'}${t.assigned_to ? ' | →' + t.assigned_to : ''}`);
+        const prog = t.progress ? ` | 📍 ${String(t.progress).slice(0,80)}` : '';
+        const note = t.notes ? ` | 📝 ${String(t.notes).slice(0,60)}` : '';
+        lines.push(`- ${t.task_id}: ${t.title} | ${t.lifecycle?.status || t.status} | ${t.project_name || 'no project'}${t.assigned_to ? ' | →' + t.assigned_to : ''}${prog}${note}`);
       });
     }
     
@@ -640,8 +655,10 @@ Never describe a bash command you could call instead.`;
         handler: async (params) => self._listTasks(params)
       }),
 
+      // NOTE: use field="progress" to log step-by-step progress (survives context resets)
+      // use field="notes" for persistent notes, field="status" for lifecycle changes
       update_task: defineChatSessionFunction({
-        description: 'Update a task field: title, description, status (open/in_progress/completed/cancelled), priority (low/medium/high/critical), or assigned_agent_id.',
+        description: 'Update a task field. Fields: status (planned/in_progress/completed/failed), priority (low/medium/high/critical), title, description, assigned_agent_id, progress (REQUIRED: log current step after each action in multi-step tasks — survives context resets), notes (persistent notes).',
         params: {
           type: 'object',
           properties: {
@@ -1615,16 +1632,21 @@ Never describe a bash command you could call instead.`;
   async _updateTask({ task_id, field, new_value }) {
     try {
       this.rm.invalidateCache();
-      const reg = await this.rm.read('tasks/tasks_registry.json');
-      const task = reg.tasks?.[task_id];
+      // Read directly from details.json (not flat registry — that path is stale)
+      const task = await this.rm._readTaskDetails(task_id);
       if (!task) return { ok: false, error: `Task ${task_id} not found. Use list_tasks to check IDs.` };
       // Handle nested fields
-      if (field === 'status')            { task.lifecycle = { ...(task.lifecycle||{}), status: new_value }; task.status = new_value; }
-      else if (field === 'priority')     task.priority  = { ...(task.priority||{}), label: new_value };
+      if (field === 'status') {
+        task.lifecycle = { ...(task.lifecycle||{}), status: new_value };
+        task.status = new_value;
+      } else if (field === 'priority')     task.priority  = { ...(task.priority||{}), label: new_value };
       else if (field === 'assigned_agent_id') task.assignment = { ...(task.assignment||{}), assigned_to: new_value };
-      else                               task[field] = new_value;
+      else if (field === 'notes')         task.notes = new_value;
+      else if (field === 'progress')      task.progress = new_value;  // free-form progress log
+      else                                task[field] = new_value;
       task.updated_at = new Date().toISOString();
-      await this.rm.write('tasks/tasks_registry.json', reg);
+      await this.rm._writeTaskDetails(task_id, task);
+      this.rm.invalidateCache();
       await this.rm.log({ event_type: 'task_updated', severity: 'info',
         actor: { type: 'system', id: 'poseidon_main' },
         subject: { type: 'task', id: task_id },
@@ -1842,13 +1864,55 @@ Never describe a bash command you could call instead.`;
 
   async _listFiles({ path: relPath }) {
     try {
-      const workspace = path.join(require('../aquarium').ROOT, '..');
-      const fullPath = path.resolve(workspace, relPath);
-      if (!fullPath.startsWith(workspace)) return { ok: false, error: 'Path outside workspace' };
-      const entries = await fs.readdir(fullPath, { withFileTypes: true });
+      const AQUARIUM = require('../aquarium');
+      const workspace = path.join(AQUARIUM.ROOT, '..');
+
+      // Resolve aquarium-aware aliases so the model can use natural paths:
+      //   "PROJECTS/NEWS"     → aquarium/PROJECTS/NEWS/ (exact name)
+      //   "PROJECTS/PROJECT_001" → aquarium/PROJECTS/PROJECT_001/
+      //   "NEWS"              → searched in PROJECTS/ folders by name
+      //   "TASKS/OUTPUT"      → aquarium/TASKS/OUTPUT/
+      let fullPath;
+      const upper = relPath.toUpperCase();
+      if (/^(PROJECTS|TASKS|MODELS|AGENTS|SKILLS|BRAIN|LOGS|CHANNELS)(\/|$)/.test(upper)) {
+        // Aquarium-relative path — resolve from AQUARIUM.ROOT
+        fullPath = path.join(AQUARIUM.ROOT, relPath);
+      } else {
+        // Try to find by project name in PROJECTS folder
+        const projDir = AQUARIUM.PROJECTS;
+        try {
+          const projectFolders = await fs.readdir(projDir);
+          const match = projectFolders.find(f =>
+            f.toUpperCase() === relPath.toUpperCase() ||
+            f.toUpperCase().includes(relPath.toUpperCase())
+          );
+          if (match) {
+            fullPath = path.join(projDir, match);
+          }
+        } catch {}
+        if (!fullPath) fullPath = path.resolve(workspace, relPath);
+      }
+
+      if (!fullPath.startsWith(workspace) && !fullPath.startsWith(AQUARIUM.ROOT)) {
+        return { ok: false, error: 'Path outside workspace' };
+      }
+      let entries;
+      try {
+        entries = await fs.readdir(fullPath, { withFileTypes: true });
+      } catch (e) {
+        // If not found, suggest the correct PROJECTS listing
+        if (e.code === 'ENOENT') {
+          try {
+            const projFolders = await fs.readdir(AQUARIUM.PROJECTS);
+            return { ok: false, error: `"${relPath}" not found. Available PROJECTS folders: ${projFolders.join(', ')}. Use list_files("PROJECTS/<folder>") to browse.` };
+          } catch {}
+        }
+        throw e;
+      }
       return {
         ok: true,
         path: relPath,
+        resolved: fullPath,
         entries: entries.map(e => ({ name: e.name, type: e.isDirectory() ? 'dir' : 'file' }))
       };
     } catch (err) {
