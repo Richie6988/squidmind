@@ -1,8 +1,8 @@
 {
   "skill_id": "find_image",
   "name": "Find Image Online",
-  "version": 2,
-  "summary": "Find and display an image inline using Wikipedia/Wikimedia. Extract the real upload URL from the page HTML.",
+  "version": 3,
+  "summary": "Display an image inline using the fetch_image_url tool on a Wikipedia page. One tool call, done.",
   "triggers": ["show image", "find image", "image of", "picture of", "photo of", "show me a", "display image"],
   "steps": [
     {
@@ -13,27 +13,20 @@
     },
     {
       "order": 2,
-      "action": "web_fetch",
-      "note": "Fetch the Wikipedia article page. The HTML will contain upload.wikimedia.org image URLs.",
-      "params": {"url": "https://en.wikipedia.org/wiki/<Subject>"}
+      "action": "fetch_image_url",
+      "note": "Call fetch_image_url(page_url=<wikipedia_url>, subject=<subject>). It returns {ok, url, markdown}. Output the markdown field directly — that renders the image inline.",
+      "params": {"page_url": "<wikipedia_url_from_step_1>", "subject": "<subject>"}
     },
     {
       "order": 3,
-      "action": "extract_url",
-      "note": "Scan fetched HTML for the FIRST URL matching: https://upload.wikimedia.org/wikipedia/commons/thumb/[a-f0-9]/[a-f0-9][a-f0-9]/<filename>/<width>px-<filename>. Use the thumbnail URL as-is — do NOT strip the /thumb/ path or the size suffix. These URLs work. URLs without /thumb/ often 404."
-    },
-    {
-      "order": 4,
       "action": "render",
-      "note": "Output exactly: ![<subject>](https://upload.wikimedia.org/...the-thumb-url...) — this renders inline. If no URL found, try web_search for 'site:upload.wikimedia.org <subject>'."
+      "note": "Output the markdown field from fetch_image_url exactly as-is: ![subject](url). Nothing else needed."
     }
   ],
   "notes": [
-    "CRITICAL: Use /thumb/ URLs from Wikipedia HTML — they always work. Direct /wikipedia/commons/ URLs without /thumb/ return 404.",
-    "Thumb URL pattern: https://upload.wikimedia.org/wikipedia/commons/thumb/X/XX/File.jpg/400px-File.jpg",
-    "NEVER fetch pexels.com, unsplash.com, pixabay.com, shutterstock.com — 403 bots",
-    "NEVER try to construct Wikimedia URLs manually — extract them from the fetched page HTML",
-    "Render as markdown: ![alt](url) — the chat client renders this inline",
-    "If Wikipedia has no image, try web_search for 'commons.wikimedia.org <subject>' then fetch that commons page"
+    "NEVER manually construct or fetch upload.wikimedia.org URLs — use fetch_image_url tool only",
+    "NEVER call web_fetch on upload.wikimedia.org — it returns 429/400",
+    "fetch_image_url handles redirect following, og:image extraction, and thumb URL parsing internally",
+    "If fetch_image_url fails, try the Wikimedia Commons page URL instead of the Wikipedia article"
   ]
 }

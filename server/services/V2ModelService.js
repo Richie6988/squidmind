@@ -817,6 +817,25 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
     entry.lastUsedAt = Date.now();
     entry.totalRequests++;
     entry._lastUserMessage = userMessage;
+
+    // ── AUTO-CONTINUE: enrich short "continue" messages with last session context ──
+    // If user sends a bare "continue"/"go"/"proceed" and session_state has an unfinished
+    // task, prepend the context so Poseidon resumes immediately.
+    const isContinueCmd = /^(continue|go ahead|proceed|keep going|resume|go on)\.?$/i.test(userMessage.trim());
+    if (isContinueCmd) {
+      try {
+        const ss = await this.rm.read('BRAIN/session_state.json');
+        if (ss?.last_user_message && !ss.emergency) {
+          const tools = ss.tool_calls_this_turn?.length ? ' (tools used: ' + ss.tool_calls_this_turn.join(', ') + ')' : '';
+          userMessage = '[RESUME PREVIOUS TASK]\n' +
+            'Your last exchange (turn ' + ss.turn + ', ' + ss.context_pct + '% ctx' + tools + '):\n' +
+            'User asked: "' + ss.last_user_message + '"\n' +
+            'Your last response: "' + ss.last_response_preview + '"\n' +
+            'The task appears incomplete. Pick up exactly where you left off and finish it.';
+          entry._lastUserMessage = userMessage;
+        }
+      } catch {}
+    }
     
     // Per-session turn counter (resets when session is wiped)
     entry.sessionTurns = (entry.sessionTurns || 0);

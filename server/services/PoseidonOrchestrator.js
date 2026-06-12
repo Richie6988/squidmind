@@ -229,9 +229,9 @@ My response: "${ss.last_response_preview}"${tools}
       lines.push('  read_my_brain("skills") → list all skills');
       lines.push('  read_my_brain("skills.<id>") → read a specific skill steps');
       lines.push('NOTE: file paths use aquarium layout: MODELS/, AGENTS/, PROJECTS/, TASKS/, BRAIN/, SKILLS/, CHANNELS/');
-      lines.push('IMAGES: to show an image inline, output markdown: ![description](https://direct-url-to-image.jpg)');
-      lines.push('  For web images: use read_my_brain("skills.find_image") for the correct strategy');
-      lines.push('  Wikipedia/Wikimedia URLs work. Pexels/Unsplash/Pixabay block bots — never use them');
+      lines.push('IMAGES: to show an image inline — use fetch_image_url(page_url, subject) on a Wikipedia article URL. It returns {ok, url, markdown}. Output the markdown field. Done.');
+      lines.push('  NEVER manually fetch upload.wikimedia.org URLs (429/400). NEVER construct thumb URLs by hand. Use fetch_image_url only.');
+      lines.push('  Pexels/Unsplash/Pixabay block bots — never use them');
     }
     return lines.join('\n');
   }
@@ -646,6 +646,70 @@ Never describe a bash command you could call instead.`;
         handler: async (params) => self.tools.webFetch(params)
       }),
       
+
+      fetch_image_url: defineChatSessionFunction({
+        description: 'Extract a working image URL from a Wikipedia or Wikimedia Commons page. Pass the page URL, get back a direct image URL to embed as markdown. ALWAYS use this instead of constructing or fetching upload.wikimedia.org URLs manually.',
+        params: {
+          type: 'object',
+          properties: {
+            page_url: { type: 'string', description: 'Full URL of a Wikipedia or Wikimedia Commons article' },
+            subject:  { type: 'string', description: 'Subject label for alt text e.g. "giraffe"' }
+          },
+          required: ['page_url']
+        },
+        handler: async ({ page_url, subject }) => {
+          try {
+            const https = require('https');
+            const http  = require('http');
+            const doFetch = (url, redirects = 5) => new Promise((resolve, reject) => {
+              if (!redirects) return reject(new Error('too many redirects'));
+              const mod = url.startsWith('https') ? https : http;
+              mod.get(url, {
+                headers: { 'User-Agent': 'Mozilla/5.0 SquidMind/1.0' },
+                timeout: 8000
+              }, (res) => {
+                if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+                  const next = res.headers.location.startsWith('http') ? res.headers.location : 'https://en.wikipedia.org' + res.headers.location;
+                  return doFetch(next, redirects - 1).then(resolve).catch(reject);
+                }
+                if (res.statusCode !== 200) { res.resume(); return reject(new Error('HTTP ' + res.statusCode)); }
+                let body = '';
+                res.on('data', d => { body += d; if (body.length > 300000) res.destroy(); });
+                res.on('end', () => resolve(body));
+              }).on('error', reject).on('timeout', function() { this.destroy(); reject(new Error('timeout')); });
+            });
+
+            const html = await doFetch(page_url);
+
+            // Strategy 1: og:image meta (Wikipedia always sets this to the lead image)
+            const ogM = html.match(/property="og:image"\s+content="([^"]+)"/i)
+                     || html.match(/content="([^"]+)"\s+property="og:image"/i);
+            if (ogM) {
+              const url = ogM[1].replace(/^\/\//, 'https://');
+              return { ok: true, url, markdown: '![' + (subject||'image') + '](' + url + ')', source: 'og:image' };
+            }
+
+            // Strategy 2: /thumb/ URL (always serveable)
+            const thM = html.match(/https:\/\/upload\.wikimedia\.org\/wikipedia\/commons\/thumb\/[a-f0-9]\/[a-f0-9]{2}\/[^"'\s)]+\.(?:jpg|jpeg|png|gif|webp)\/\d+px-[^"'\s)]+/i)
+                     || html.match(/\/\/upload\.wikimedia\.org\/wikipedia\/commons\/thumb\/[^"'\s)]+/i);
+            if (thM) {
+              const url = thM[0].replace(/^\/\//, 'https://');
+              return { ok: true, url, markdown: '![' + (subject||'image') + '](' + url + ')', source: 'thumb' };
+            }
+
+            // Strategy 3: any wikimedia image
+            const anyM = html.match(/https:\/\/upload\.wikimedia\.org\/[^"'\s)]+\.(?:jpg|jpeg|png|gif|webp)/i);
+            if (anyM) {
+              return { ok: true, url: anyM[0], markdown: '![' + (subject||'image') + '](' + anyM[0] + ')', source: 'direct' };
+            }
+
+            return { ok: false, error: 'No image URL found. Try the main Wikipedia article URL.' };
+          } catch (e) {
+            return { ok: false, error: e.message };
+          }
+        }
+      }),
+
       // ============ CODE EDITOR ============
       
       edit_file: defineChatSessionFunction({
