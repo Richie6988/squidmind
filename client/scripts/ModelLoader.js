@@ -77,29 +77,56 @@ const ModelLoader = {
           
           <!-- TAB: HuggingFace download -->
           <div id="ml-tab-download" class="ml-tab-content" style="display:none;">
-            <p class="hint" style="font-size:9px; color:var(--text-secondary); margin-bottom:12px;">
-              Download a .gguf model from HuggingFace or any direct URL.
-            </p>
-            <div class="agent-form-row">
-              <label>URL or repo/file</label>
-              <input id="ml-dl-url" type="text" placeholder="e.g. TheBloke/Llama-2-7B-GGUF/llama-2-7b.Q4_K_M.gguf or full https URL">
+            <!-- Search bar -->
+            <div style="display:flex;gap:6px;margin-bottom:8px;">
+              <input id="ml-hf-query" type="text" placeholder="Search HuggingFace (e.g. qwen, mistral, smol...)" style="flex:1;font-size:10px;" onkeydown="if(event.key==='Enter')ModelLoader._hfSearch()">
+              <button class="btn-secondary" style="font-size:9px;padding:4px 8px;" onclick="ModelLoader._hfSearch()">Search</button>
             </div>
-            <div class="agent-form-row">
-              <label>Save as (optional)</label>
-              <input id="ml-dl-name" type="text" placeholder="Leave blank to auto-detect">
+            <!-- Quick filters -->
+            <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:10px;" id="ml-hf-filters">
+              <button class="ml-hf-pill active" data-q="gguf chat" onclick="ModelLoader._hfQuick(this,'gguf chat')">💬 Chat</button>
+              <button class="ml-hf-pill" data-q="gguf code" onclick="ModelLoader._hfQuick(this,'gguf code')">💻 Code</button>
+              <button class="ml-hf-pill" data-q="smol gguf" onclick="ModelLoader._hfQuick(this,'smol gguf')">🌙 Dream (small)</button>
+              <button class="ml-hf-pill" data-q="gguf reasoning" onclick="ModelLoader._hfQuick(this,'gguf reasoning')">🧠 Reasoning</button>
+              <button class="ml-hf-pill" data-q="gguf multilingual french" onclick="ModelLoader._hfQuick(this,'gguf multilingual french')">🌍 French</button>
             </div>
-            <p class="hint" style="font-size:8px; color:var(--text-secondary);">
-              Shorthand: <code>org/repo/filename.gguf</code> resolves to HuggingFace's resolve/main URL.
-            </p>
-            <button class="btn-primary" onclick="ModelLoader._startDownload()">Start Download</button>
-            <div id="ml-downloads-list" style="margin-top:16px;"></div>
+            <!-- Results list -->
+            <div id="ml-hf-results" style="max-height:220px;overflow-y:auto;font-size:9px;"></div>
+            <!-- File picker (shown when a repo is selected) -->
+            <div id="ml-hf-files" style="display:none;margin-top:8px;border-top:1px solid var(--border);padding-top:8px;">
+              <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">
+                <span id="ml-hf-repo-name" style="font-size:9px;color:var(--accent);flex:1;"></span>
+                <button class="btn-secondary" style="font-size:8px;padding:2px 6px;" onclick="ModelLoader._hfCloseFiles()">✕ back</button>
+              </div>
+              <div id="ml-hf-file-list" style="max-height:160px;overflow-y:auto;"></div>
+            </div>
+            <!-- Active downloads -->
+            <div id="ml-downloads-list" style="margin-top:10px;"></div>
           </div>
           
         </div>
       </div>
     `;
     document.body.appendChild(this.modal);
-    
+    // Inject HF search styles if not already present
+    if (!document.getElementById('ml-hf-css')) {
+      const s = document.createElement('style'); s.id = 'ml-hf-css';
+      s.textContent = `
+        .ml-hf-pill{font-size:8px;padding:3px 8px;border-radius:10px;border:1px solid var(--border,#333);background:transparent;color:var(--text-secondary,#aaa);cursor:pointer;white-space:nowrap;}
+        .ml-hf-pill.active,.ml-hf-pill:hover{background:var(--accent,#4facfe);color:#fff;border-color:var(--accent,#4facfe);}
+        .ml-hf-row{display:flex;align-items:center;gap:6px;padding:5px 6px;border-radius:4px;cursor:pointer;border-bottom:1px solid rgba(255,255,255,0.05);}
+        .ml-hf-row:hover{background:rgba(255,255,255,0.06);}
+        .ml-hf-role-badge{font-size:8px;padding:1px 5px;border-radius:8px;white-space:nowrap;background:rgba(255,255,255,0.08);}
+        .ml-hf-role-dream{color:#a78bfa;}.ml-hf-role-code{color:#60a5fa;}.ml-hf-role-chat{color:#34d399;}.ml-hf-role-embed{color:#f59e0b;}
+        .ml-hf-id{flex:1;font-size:9px;color:var(--text-primary,#fff);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+        .ml-hf-meta{font-size:8px;color:var(--text-secondary,#aaa);white-space:nowrap;}
+        .ml-hf-file-row{display:flex;align-items:center;gap:6px;padding:4px 6px;border-radius:4px;cursor:pointer;border-bottom:1px solid rgba(255,255,255,0.05);}
+        .ml-hf-file-row:hover{background:rgba(255,255,255,0.06);}
+        .ml-hf-quant{font-size:9px;font-weight:700;min-width:36px;}
+        .ml-hf-fname{flex:1;font-size:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+        .ml-hf-fsize{font-size:8px;color:var(--text-secondary,#aaa);white-space:nowrap;}
+      `; document.head.appendChild(s);
+    }
     // Wire path input enter key
     const pathInput = this.modal.querySelector('#ml-browse-path');
     if (pathInput) {
@@ -117,7 +144,11 @@ const ModelLoader = {
     
     // Auto-load tab content
     if (name === 'browse') this._browseGo(this._browseCurrent || null);
-    if (name === 'download') this._refreshDownloads();
+    if (name === 'download') {
+      this._refreshDownloads();
+      // Auto-search on first open
+      if (!this._hfCurrentQuery) setTimeout(() => this._hfSearch(), 100);
+    }
   },
   
   async _refresh() {
@@ -599,6 +630,90 @@ const ModelLoader = {
   
   // === HUGGINGFACE DOWNLOAD ===
   
+  // ── HuggingFace Search & Browse ──────────────────────────────────────────
+
+  _hfCurrentQuery: '',
+
+  async _hfSearch() {
+    const q = this.modal.querySelector('#ml-hf-query')?.value.trim() || 'gguf chat';
+    this._hfCurrentQuery = q;
+    const resultsEl = this.modal.querySelector('#ml-hf-results');
+    resultsEl.innerHTML = '<div style="color:var(--text-secondary);padding:8px;font-size:9px;">Searching HuggingFace…</div>';
+    this._hfCloseFiles();
+    try {
+      const data = await window.ApiV2._fetch('/models/hf-search?q=' + encodeURIComponent(q) + '&limit=25');
+      if (!data.models?.length) {
+        resultsEl.innerHTML = '<div style="color:var(--text-secondary);padding:8px;font-size:9px;">No results for "' + q + '"</div>';
+        return;
+      }
+      resultsEl.innerHTML = data.models.map(m => {
+        const roleIcon = { chat:'💬', code:'💻', dream:'🌙', embed:'📐' }[m.role] || '🤖';
+        const roleLabel = { chat:'Chat', code:'Code', dream:'Dream', embed:'Embed' }[m.role] || m.role;
+        const dl = m.downloads > 1000 ? (m.downloads/1000).toFixed(0)+'k' : m.downloads;
+        return `<div class="ml-hf-row" onclick="ModelLoader._hfOpenRepo('${m.id}')">
+          <span class="ml-hf-role-badge ml-hf-role-${m.role}">${roleIcon} ${roleLabel}</span>
+          <span class="ml-hf-id">${m.id}</span>
+          <span class="ml-hf-meta">↓${dl} ♥${m.likes}</span>
+        </div>`;
+      }).join('');
+    } catch(e) {
+      resultsEl.innerHTML = '<div style="color:#f87171;padding:8px;font-size:9px;">Error: ' + e.message + '</div>';
+    }
+  },
+
+  _hfQuick(btn, q) {
+    this.modal.querySelectorAll('.ml-hf-pill').forEach(p => p.classList.remove('active'));
+    btn.classList.add('active');
+    this.modal.querySelector('#ml-hf-query').value = q;
+    this._hfSearch();
+  },
+
+  async _hfOpenRepo(repoId) {
+    const filesEl = this.modal.querySelector('#ml-hf-files');
+    const fileList = this.modal.querySelector('#ml-hf-file-list');
+    const repoName = this.modal.querySelector('#ml-hf-repo-name');
+    repoName.textContent = repoId;
+    fileList.innerHTML = '<div style="color:var(--text-secondary);font-size:9px;padding:4px;">Loading files…</div>';
+    filesEl.style.display = 'block';
+    try {
+      const data = await window.ApiV2._fetch('/models/hf-files?repo=' + encodeURIComponent(repoId));
+      if (!data.files?.length) {
+        fileList.innerHTML = '<div style="color:var(--text-secondary);font-size:9px;padding:4px;">No .gguf files found in this repo.</div>';
+        return;
+      }
+      fileList.innerHTML = data.files.map(f => {
+        const sizeStr = f.size_gb ? f.size_gb + ' GB' : '?';
+        const quantColor = /Q8|Q6/.test(f.quant) ? '#34d399' : /Q4/.test(f.quant) ? '#60a5fa' : /Q2|Q3/.test(f.quant) ? '#f59e0b' : '#a78bfa';
+        return `<div class="ml-hf-file-row" onclick="ModelLoader._hfStartDownload('${f.url}','${f.name}')">
+          <span class="ml-hf-quant" style="color:${quantColor};">${f.quant || 'GGUF'}</span>
+          <span class="ml-hf-fname">${f.name}</span>
+          <span class="ml-hf-fsize">${sizeStr}</span>
+          <button class="btn-primary" style="font-size:8px;padding:2px 6px;margin-left:4px;" onclick="event.stopPropagation();ModelLoader._hfStartDownload('${f.url}','${f.name}')">↓</button>
+        </div>`;
+      }).join('');
+    } catch(e) {
+      fileList.innerHTML = '<div style="color:#f87171;font-size:9px;padding:4px;">' + e.message + '</div>';
+    }
+  },
+
+  _hfCloseFiles() {
+    const el = this.modal?.querySelector('#ml-hf-files');
+    if (el) el.style.display = 'none';
+  },
+
+  async _hfStartDownload(url, fileName) {
+    try {
+      await window.ApiV2._fetch('/models/download', { method: 'POST', body: JSON.stringify({ url, fileName }) });
+      this._hfCloseFiles();
+      this._refreshDownloads();
+      if (!this._downloadPollInterval) {
+        this._downloadPollInterval = setInterval(() => this._refreshDownloads(), 1500);
+      }
+    } catch(e) {
+      await SquidModal.alert('Download failed: ' + e.message);
+    }
+  },
+
   _downloadPollInterval: null,
   
   async _startDownload() {

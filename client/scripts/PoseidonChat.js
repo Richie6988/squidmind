@@ -12,6 +12,50 @@ const PoseidonChat = {
   async open() {
     this._buildModal();
     await this._refreshStatus();
+    // Auto-continue: if last session had an incomplete task, resume it immediately
+    // without requiring any user input.
+    this._tryAutoContinue();
+  },
+
+  async _tryAutoContinue() {
+    try {
+      const ss = await window.ApiV2._fetch('/poseidon/session-state');
+      if (!ss?.last_user_message || ss.emergency) return;
+      // Only resume if the last message wasn't already a resume injection
+      if (ss.last_user_message.startsWith('[RESUME')) return;
+      // Only resume if session is fresh (we just opened the modal = new session likely)
+      const status = await window.ApiV2._fetch('/models/status');
+      const pm = status?.loaded_models?.find(m => m.model_id === status.poseidon_model_id);
+      if (!pm) return;  // no model loaded
+      if (pm.session_turns > 0) return;  // already mid-session, don't hijack
+      const ageMs = ss.saved_at ? Date.now() - new Date(ss.saved_at).getTime() : 0;
+      if (ageMs > 30 * 60 * 1000) return;  // stale (>30min) — don't resume
+      // Show a subtle indicator then auto-send
+      const tools = ss.tool_calls_this_turn?.length ? ' [' + ss.tool_calls_this_turn.join(', ') + ']' : '';
+      const resumeMsg = '[RESUME PREVIOUS TASK — turn ' + ss.turn + tools + ']\n' +
+        'User previously asked: "' + ss.last_user_message + '"\n' +
+        'Your last response: "' + ss.last_response_preview + '"\n' +
+        'The task was not completed. Resume and finish it now without re-introducing yourself.';
+      // Small delay so the modal renders first
+      setTimeout(() => this._sendRaw(resumeMsg), 600);
+    } catch {}
+  },
+
+  // Send a message programmatically (bypasses textarea)
+  _sendRaw(msg) {
+    if (this.currentRequest) return;
+    const ta = this.modal?.querySelector('#pc-input');
+    if (!ta) return;
+    // Show a subtle resume indicator
+    const msgs = this.modal?.querySelector('#pc-messages');
+    if (msgs) {
+      const el = document.createElement('div');
+      el.style.cssText = 'font-size:10px;color:var(--text-muted,#888);text-align:center;padding:4px 0;opacity:0.7;font-style:italic;';
+      el.textContent = '↩ Resuming previous task…';
+      msgs.appendChild(el);
+    }
+    ta.value = msg;
+    this._send();
   },
 
   // ── Build Modal ──────────────────────────────────────────────────────────

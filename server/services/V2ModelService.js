@@ -29,6 +29,7 @@ class V2ModelService {
     this.poseidonModelId = null;             // currently assigned to Poseidon
     this._libPromise = null;
     this.orchestrator = null;                // wired in by index.js after construction
+    this.dreamModelId  = null;                // optional small model for async metacognition
   }
   
   /**
@@ -728,7 +729,8 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
         context_pct: e.contextPct ?? 0,
         dreaming: e.dreaming || false
       })),
-      poseidon_model_id: this.poseidonModelId
+      poseidon_model_id: this.poseidonModelId,
+      dream_model_id: this.dreamModelId || null
     };
   }
 

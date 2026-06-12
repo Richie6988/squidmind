@@ -147,6 +147,14 @@ app.post('/api/v2/poseidon/chat', buildPoseidonChatRoute(v2ModelService));
 app.post('/api/v2/poseidon/abort', buildAbortRoute(v2ModelService));
 
 // Reset Poseidon chat session (clears history, keeps model loaded)
+// GET /api/v2/poseidon/session-state — read last session snapshot for auto-continue
+app.get('/api/v2/poseidon/session-state', async (req, res) => {
+  try {
+    const ss = await sharedRm.read('BRAIN/session_state.json');
+    res.json(ss || {});
+  } catch { res.json({}); }
+});
+
 app.post('/api/v2/poseidon/reset-session', async (req, res) => {
   try {
     const result = await v2ModelService.resetPoseidonSession();
