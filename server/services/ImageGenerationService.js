@@ -81,12 +81,16 @@ class ImageGenerationService {
    * @returns {Promise<{ ok: true, outputPath: string, bytes: number }|{ ok: false, error: string }>}
    */
   async generate({ modelPath, prompt, outputPath, width = 512, height = 512, steps = 20, cfg = 7, seed = -1, negativePrompt = '' }) {
-    // Flux models use cfg=1.0 and need far fewer steps (flow matching, not diffusion)
     const isFlux = /flux/i.test(path.basename(modelPath));
+
+    // Apply Flux-specific defaults only when user hasn't overridden them
+    // Flux = flow-matching model: cfg=1.0, steps=4 is optimal
+    // SD1.5/SDXL = diffusion: cfg=7, steps=20 is standard quality
     if (isFlux) {
-      if (cfg === 7)  cfg   = 1.0;   // Flux ignores CFG > 1 — override default
-      if (steps === 20) steps = 4;   // Flux works great at 4 steps
+      if (cfg   === 7)  cfg   = 1.0;  // Flux ignores CFG > 1
+      if (steps === 20) steps = 8;    // 8 steps = better quality than 4, still fast
     }
+
     const backend = await this.detectBackend();
 
     if (backend.type === 'none') {
@@ -139,9 +143,19 @@ class ImageGenerationService {
       // Use full CPU for Q4+ to avoid cublas OOM during inference
       const quantMatch = modelFile.match(/[_-](q\d)/i);
       const quantNum   = quantMatch ? parseInt(quantMatch[1].slice(1)) : 0;
-      const forceCPU   = quantNum >= 4;  // Q4 and above → CPU
+
+      // VRAM estimate: pixels * 4 bytes * ~16 (activations) → bytes → GB
+      // Flux attention at 512x512 needs ~1GB extra, 768x768 ~2.2GB, 1024x1024 ~4GB
+      const pixelCount    = width * height;
+      const vramEstimate  = (pixelCount * 4 * 16) / (1024 ** 3);  // rough GB
+      const VRAM_BUDGET   = 5.5;  // safe threshold for 8GB GPU with OS overhead
+      const resolutionOOM = vramEstimate > VRAM_BUDGET;
+
+      // Force CPU when: Q4+ quantization OR resolution too large for VRAM
+      const forceCPU = quantNum >= 4 || resolutionOOM;
       if (forceCPU) {
-        console.log('[ImageGen] Q' + quantNum + ' model → forcing CPU (avoids VRAM OOM)');
+        const reason = quantNum >= 4 ? `Q${quantNum} quant` : `${width}x${height} resolution (~${vramEstimate.toFixed(1)}GB est.)`;
+        console.log('[ImageGen] Forcing CPU:', reason, '(avoids VRAM OOM)');
       }
 
       if (isFluxModel) {
