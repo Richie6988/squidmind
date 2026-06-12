@@ -177,7 +177,7 @@ const ModelLoader = {
         .ml-hf-loading{color:#64748b;font-size:9px;padding:12px 8px;text-align:center;}
         .ml-hf-empty{color:#64748b;font-size:9px;padding:12px 8px;text-align:center;line-height:1.6;}
         .ml-hf-error{color:#f87171;font-size:9px;padding:8px;}
-      `; document.head.appendChild(s);`; document.head.appendChild(s);
+      `; document.head.appendChild(s);
     }
     // Wire path input enter key
     const pathInput = this.modal.querySelector('#ml-browse-path');

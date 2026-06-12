@@ -812,7 +812,8 @@ class RegistryManager {
     // Build virtual registry from per-folder structure
     const fs   = require('fs');
     const path = require('path');
-    const tasksRoot = path.join(this.dataRoot, 'tasks');
+    const AQUARIUM = require('../aquarium');
+    const tasksRoot = AQUARIUM.TASKS;  // always uppercase path (aquarium/TASKS)
 
     // Also read old flat registry if it still exists (migration transitional)
     let flatReg = { metadata: { total_queued: 0, total_completed: 0, total_failed: 0, total_cancelled: 0 }, tasks: {} };
