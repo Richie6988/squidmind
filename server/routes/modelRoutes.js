@@ -138,8 +138,19 @@ function buildRouter(v2ModelService) {
           else if (/audio|speech|tts|asr/i.test(pt)) role = 'audio';
         }
         const dl = m.downloads||0;
-        return { id, downloads: dl, likes: m.likes||0, tags: m.tags||[],
-                 role, pipeline: pt, size_hint, size_b, updated: m.lastModified||'' };
+        // Detect capabilities from tags
+        const tags = m.tags || [];
+        const caps = [];
+        if (/vision|vlm|image.*text|multimodal/i.test(tags.join(' ') + pt)) caps.push('👁 VLM');
+        if (/tool.call|function.call|tools/i.test(tags.join(' ')))          caps.push('🔧 Tools');
+        if (/instruct|chat/i.test(tags.join(' ') + id))                     caps.push('💬 Chat');
+        if (/code|coder/i.test(id + tags.join(' ')))                        caps.push('💻 Code');
+        if (/embed|retrieval|rerank/i.test(id + tags.join(' ')))            caps.push('📐 Embed');
+        if (/text.to.image|image.gen|flux|stable.diff|sdxl/i.test(id+pt))  caps.push('🖼 ImgGen');
+        if (/audio|speech|tts|asr|whisper/i.test(id + pt))                 caps.push('🎵 Audio');
+        if (/reason|think|qwq|r1\b/i.test(id))                             caps.push('🧠 Reason');
+        return { id, downloads: dl, likes: m.likes||0, tags,
+                 role, pipeline: pt, size_hint, size_b, updated: m.lastModified||'', caps };
       }).filter(Boolean);
       res.json({ success: true, models: annotated });
     } catch(e) { res.json({ success: false, error: e.message, models: [] }); }
@@ -195,7 +206,17 @@ function buildRouter(v2ModelService) {
         quant: detectQuant(f.rfilename),
         recommended: isRecommended(f.rfilename)
       }));
-      res.json({ success: true, repo, files: sortFiles(files), source: 'siblings' });
+      // Also return repo-level capabilities from metadata
+      const repoCaps = [];
+      const repoTags = (data.tags || []).join(' ');
+      const repoPipeline = data.pipeline_tag || '';
+      if (/vision|vlm|multimodal/i.test(repoTags + repoPipeline)) repoCaps.push('👁 VLM');
+      if (/tool.call|function.call/i.test(repoTags))               repoCaps.push('🔧 Tools');
+      if (/text.to.image|flux|sdxl/i.test(repoTags + repoPipeline)) repoCaps.push('🖼 ImgGen');
+      if (/instruct|chat/i.test(repoTags))                          repoCaps.push('💬 Chat');
+      if (/code/i.test(repoTags + repo))                            repoCaps.push('💻 Code');
+      res.json({ success: true, repo, files: sortFiles(files), source: 'siblings',
+                 pipeline: repoPipeline, caps: repoCaps, modelCard: data.cardData?.text?.slice(0,300) });
     } catch(e) { res.json({ success: false, error: e.message, files: [] }); }
   });
 
@@ -213,6 +234,33 @@ function buildRouter(v2ModelService) {
     const rank = f => f.recommended ? 0 : /Q8/.test(f.quant) ? 1 : /Q6/.test(f.quant) ? 2 : /Q5/.test(f.quant) ? 3 : /Q4/.test(f.quant) ? 4 : /Q3/.test(f.quant) ? 5 : /Q2/.test(f.quant) ? 6 : /IQ/.test(f.quant) ? 7 : 8;
     return files.sort((a, b) => rank(a) - rank(b) || (b.size - a.size));
   }
+
+  // POST /api/v2/models/generate-image — generate image from image-type GGUF
+  router.post('/generate-image', async (req, res) => {
+    const { modelId, prompt, negativePrompt = '', width = 512, height = 512, steps = 20, cfg = 7, seed = -1 } = req.body;
+    if (!modelId || !prompt) return res.status(400).json({ ok: false, error: 'modelId and prompt required' });
+    try {
+      const AQUARIUM = require('../aquarium');
+      const fsp2 = require('fs').promises;
+      const outDir = nodePath.join(AQUARIUM.ROOT, 'generated');
+      await fsp2.mkdir(outDir, { recursive: true });
+      const outFile = `gen_${Date.now()}.png`;
+      const outputPath = nodePath.join(outDir, outFile);
+      const result = await v2ModelService.generateImage({ modelId, prompt, negativePrompt, outputPath, width, height, steps, cfg, seed });
+      if (!result.ok) return res.json({ ok: false, error: result.error });
+      const fileName = nodePath.basename(result.outputPath || outputPath);
+      res.json({ ok: true, fileName, bytes: result.bytes });
+    } catch(e) { res.json({ ok: false, error: e.message }); }
+  });
+
+  // GET /api/v2/models/generated/:fileName — serve a generated image
+  router.get('/generated/:fileName', (req, res) => {
+    const AQUARIUM = require('../aquarium');
+    const safe = req.params.fileName.replace(/[^a-zA-Z0-9._-]/g, '');
+    const fpath = nodePath.join(AQUARIUM.ROOT, 'generated', safe);
+    if (!fpath.startsWith(AQUARIUM.ROOT)) return res.status(403).send('Forbidden');
+    res.sendFile(fpath, err => { if (err) res.status(404).json({ error: 'not found' }); });
+  });
 
   // POST /api/v2/models/download - download from HuggingFace or direct URL
     // POST /api/v2/models/download - download from HuggingFace or direct URL

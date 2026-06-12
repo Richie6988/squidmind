@@ -174,7 +174,8 @@ const ModelLoader = {
         .ml-hf-fsize{font-size:9px;color:#64748b;white-space:nowrap;min-width:45px;text-align:right;}
         .ml-hf-dl-btn{background:linear-gradient(135deg,#4facfe,#2563eb);border:none;color:#fff;border-radius:5px;padding:3px 8px;font-size:8px;cursor:pointer;white-space:nowrap;transition:all .12s;}
         .ml-hf-dl-btn:hover{transform:scale(1.04);box-shadow:0 2px 8px rgba(79,172,254,0.4);}
-        .ml-hf-loading{color:#64748b;font-size:9px;padding:12px 8px;text-align:center;}
+        .ml-hf-cap{font-size:7px;padding:1px 5px;border-radius:4px;background:rgba(99,102,241,0.15);color:#818cf8;border:1px solid rgba(99,102,241,0.25);white-space:nowrap;}
+                .ml-hf-loading{color:#64748b;font-size:9px;padding:12px 8px;text-align:center;}
         .ml-hf-empty{color:#64748b;font-size:9px;padding:12px 8px;text-align:center;line-height:1.6;}
         .ml-hf-error{color:#f87171;font-size:9px;padding:8px;}
       `; document.head.appendChild(s);
@@ -258,7 +259,10 @@ const ModelLoader = {
       const toggleLabel = curType === 'image' ? '→ Text Model' : '→ Image Model';
       const nextType    = curType === 'image' ? 'text' : 'image';
       actions = `
-        ${!m.is_poseidon ? `<button class="btn-secondary" onclick="ModelLoader.assignPoseidon('${m.model_id}')">Use as Poseidon</button>` : ''}
+        ${curType === 'image'
+          ? `<button class="btn-primary" onclick="ModelLoader.openImageGen('${m.model_id}')">🎨 Generate Image</button>`
+          : `${!m.is_poseidon ? `<button class="btn-secondary" onclick="ModelLoader.assignPoseidon('${m.model_id}')">Use as Poseidon</button>` : ''}`
+        }
         <button class="btn-secondary" onclick="ModelLoader.showImportDialog('${this._escape(m.file_name)}', '${m.model_id}')">Edit Params</button>
         <button class="btn-secondary" title="Toggle between text and image generation mode" onclick="ModelLoader.setModelType('${m.model_id}','${nextType}')">${toggleLabel}</button>
         ${m.is_loaded ? `<button class="btn-secondary" onclick="ModelLoader.unload('${m.model_id}')">Unload from Memory</button>` : ''}
@@ -715,12 +719,14 @@ const ModelLoader = {
                  : m.downloads > 1000 ? (m.downloads/1000).toFixed(0)+'k' : m.downloads;
         const sz = m.size_hint ? `<span class="ml-hf-size-hint">${m.size_hint}</span>` : '';
         const src_link = `https://huggingface.co/${m.id}`;
+        const capsHtml = (m.caps||[]).map(c => `<span class="ml-hf-cap">${c}</span>`).join('');
         return `<div class="ml-hf-row" onclick="ModelLoader._hfOpenRepo('${m.id}')">
           <span class="ml-hf-role-badge ml-hf-role-${m.role}">${roleIcon}</span>
           <div class="ml-hf-row-body">
             <div class="ml-hf-row-top"><span class="ml-hf-id">${m.id}</span>${sz}</div>
             <div class="ml-hf-row-bottom">
-              <span class="ml-hf-stat">↓${dl}</span><span class="ml-hf-stat">♥${m.likes}</span>
+              ${capsHtml}
+              <span class="ml-hf-stat">↓${dl}</span>
               <a class="ml-hf-src" href="${src_link}" target="_blank" onclick="event.stopPropagation()">↗ HF</a>
             </div>
           </div>
@@ -745,11 +751,27 @@ const ModelLoader = {
     this.modal.querySelector('#ml-hf-repo-name').textContent = repoId;
     const link = this.modal.querySelector('#ml-hf-repo-link');
     if (link) link.href = 'https://huggingface.co/' + repoId;
+    // Clear old caps
+    const oldCaps = this.modal.querySelector('#ml-hf-repo-caps');
+    if (oldCaps) oldCaps.remove();
     fileList.innerHTML = '<div class="ml-hf-loading">Loading files…</div>';
     panel.style.display = 'flex';
     panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     try {
       const data = await window.ApiV2._fetch('/models/hf-files?repo=' + encodeURIComponent(repoId));
+      // Show repo capabilities
+      if (data.caps?.length || data.pipeline) {
+        const capsDiv = document.createElement('div');
+        capsDiv.id = 'ml-hf-repo-caps';
+        capsDiv.style.cssText = 'display:flex;gap:4px;flex-wrap:wrap;padding:4px 0;';
+        const items = [...(data.caps||[])];
+        if (data.pipeline && !items.some(c => c.includes(data.pipeline))) {
+          items.unshift(`<span style="font-size:8px;color:#94a3b8">${data.pipeline}</span>`);
+        }
+        capsDiv.innerHTML = items.map(c => `<span class="ml-hf-cap">${c}</span>`).join('');
+        const hint = panel.querySelector('.ml-hf-file-hint');
+        if (hint) hint.insertAdjacentElement('beforebegin', capsDiv);
+      }
       if (!data.files?.length) {
         fileList.innerHTML = `<div class="ml-hf-empty">${data.warning||'No .gguf files found.'}<br>
           <a class="ml-hf-src" href="https://huggingface.co/${repoId}" target="_blank">Open on HuggingFace ↗</a></div>`;
@@ -892,6 +914,74 @@ const ModelLoader = {
     return p.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
   },
   
+  openImageGen(modelId) {
+    const m = this.library?.models?.find(m => m.model_id === modelId);
+    if (!m) return;
+    const dlg = document.createElement('div');
+    dlg.className = 'modal';
+    dlg.innerHTML = `
+      <div class="modal-content" style="width:480px;padding:20px;gap:10px;display:flex;flex-direction:column;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+          <strong style="color:#e2e8f0;font-size:12px;">🎨 Generate Image — ${this._escape(m.file_name)}</strong>
+          <button onclick="this.closest('.modal').remove()" style="background:none;border:none;color:#64748b;font-size:16px;cursor:pointer;">✕</button>
+        </div>
+        <div class="ml-imggen-note" style="font-size:9px;color:#f59e0b;background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.2);border-radius:6px;padding:8px;">
+          ⚠ Requires <strong>stable-diffusion.cpp</strong> with <code>sd</code> on PATH.<br>
+          Install: <a href="https://github.com/leejet/stable-diffusion.cpp" target="_blank" style="color:#4facfe;">github.com/leejet/stable-diffusion.cpp</a>
+        </div>
+        <textarea id="imggen-prompt" placeholder="Describe the image you want to generate…"
+          style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:8px;color:#e2e8f0;font-size:10px;padding:8px;resize:vertical;min-height:60px;font-family:inherit;"></textarea>
+        <input id="imggen-neg" type="text" placeholder="Negative prompt (optional)"
+          style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:8px;color:#e2e8f0;font-size:10px;padding:6px 10px;">
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <label style="font-size:9px;color:#64748b;display:flex;flex-direction:column;gap:3px;">Width<input id="imggen-w" type="number" value="512" min="64" max="2048" step="64" style="width:70px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:6px;color:#e2e8f0;font-size:10px;padding:4px 6px;"></label>
+          <label style="font-size:9px;color:#64748b;display:flex;flex-direction:column;gap:3px;">Height<input id="imggen-h" type="number" value="512" min="64" max="2048" step="64" style="width:70px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:6px;color:#e2e8f0;font-size:10px;padding:4px 6px;"></label>
+          <label style="font-size:9px;color:#64748b;display:flex;flex-direction:column;gap:3px;">Steps<input id="imggen-steps" type="number" value="20" min="1" max="100" style="width:55px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:6px;color:#e2e8f0;font-size:10px;padding:4px 6px;"></label>
+          <label style="font-size:9px;color:#64748b;display:flex;flex-direction:column;gap:3px;">CFG<input id="imggen-cfg" type="number" value="7" min="1" max="30" step="0.5" style="width:55px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:6px;color:#e2e8f0;font-size:10px;padding:4px 6px;"></label>
+        </div>
+        <div style="display:flex;gap:8px;justify-content:flex-end;">
+          <button onclick="this.closest('.modal').remove()" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);color:#94a3b8;border-radius:6px;padding:5px 12px;font-size:10px;cursor:pointer;">Cancel</button>
+          <button id="imggen-run" onclick="ModelLoader._runImageGen('${modelId}', this.closest('.modal'))"
+            style="background:linear-gradient(135deg,#4facfe,#2563eb);border:none;color:#fff;border-radius:6px;padding:5px 14px;font-size:10px;cursor:pointer;font-weight:600;">Generate ✨</button>
+        </div>
+        <div id="imggen-result" style="display:none;margin-top:8px;text-align:center;"></div>
+      </div>`;
+    document.body.appendChild(dlg);
+  },
+
+  async _runImageGen(modelId, dlg) {
+    const prompt  = dlg.querySelector('#imggen-prompt')?.value.trim();
+    const neg     = dlg.querySelector('#imggen-neg')?.value.trim() || '';
+    const width   = parseInt(dlg.querySelector('#imggen-w')?.value) || 512;
+    const height  = parseInt(dlg.querySelector('#imggen-h')?.value) || 512;
+    const steps   = parseInt(dlg.querySelector('#imggen-steps')?.value) || 20;
+    const cfg     = parseFloat(dlg.querySelector('#imggen-cfg')?.value) || 7;
+    if (!prompt) { alert('Enter a prompt first'); return; }
+    const runBtn  = dlg.querySelector('#imggen-run');
+    const result  = dlg.querySelector('#imggen-result');
+    runBtn.disabled = true; runBtn.textContent = 'Generating…';
+    result.style.display = 'none';
+    try {
+      const data = await window.ApiV2._fetch('/models/generate-image', {
+        method: 'POST',
+        body: JSON.stringify({ modelId, prompt, negativePrompt: neg, width, height, steps, cfg })
+      });
+      if (data.ok) {
+        result.style.display = 'block';
+        result.innerHTML = `<img src="/api/v2/models/generated/${encodeURIComponent(data.fileName)}" style="max-width:100%;border-radius:8px;margin-top:8px;"><br>
+          <a href="/api/v2/models/generated/${encodeURIComponent(data.fileName)}" download="${data.fileName}" style="font-size:9px;color:#4facfe;">↓ Download</a>`;
+      } else {
+        result.style.display = 'block';
+        result.innerHTML = `<div style="color:#f87171;font-size:9px;padding:8px;background:rgba(248,113,113,0.08);border-radius:6px;">${data.error}</div>`;
+      }
+    } catch(e) {
+      result.style.display = 'block';
+      result.innerHTML = `<div style="color:#f87171;font-size:9px;">${e.message}</div>`;
+    } finally {
+      runBtn.disabled = false; runBtn.textContent = 'Generate ✨';
+    }
+  },
+
   close() {
     if (this.modal) this.modal.classList.add('hidden');
     if (this._downloadPollInterval) {

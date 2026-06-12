@@ -450,25 +450,26 @@ document.addEventListener('mousedown', function(e) {
   if (e.target.closest('.header-nav') || 
       e.target.closest('.btn-new-project') ||
       e.target.closest('.btn-new-project-card') ||
-      e.target.closest('#right-panel') ||           // right panel is permanent
-      e.target.closest('.projects-container') ||    // projects container (incl temple cards)
-      e.target.closest('canvas')) {                 // clicking aquarium itself
+      e.target.closest('#right-panel') ||
+      e.target.closest('.projects-container') ||
+      e.target.closest('canvas')) {
     return;
   }
-  
-  // SPECIAL: clicking the modal backdrop (i.e. .modal itself, not its content) closes it
-  // Just hide (do not remove) so the module's cached ref stays valid
-  if (e.target.classList && e.target.classList.contains('modal')) {
-    e.target.classList.add('hidden');
-    return;
-  }
-  
-  // Skip if click is INSIDE any panel/modal/dropdown content - these manage themselves
+
+  // Skip if click is INSIDE any panel/modal/dropdown content
   if (e.target.closest('.panel') ||
       e.target.closest('.modal-content') ||
-      e.target.closest('.modal') ||                // covers all dynamically built modals
+      e.target.closest('.modal') ||
       e.target.closest('.context-menu') ||
       e.target.closest('[data-modal]')) {
+    // ONLY close if the exact target is the .modal backdrop (not a child element)
+    // This prevents accidental closes when clicking inside modal-content
+    if (e.target.classList && e.target.classList.contains('modal')) {
+      // Verify this is a true backdrop click: no modal-content ancestor
+      if (!e.target.querySelector(':scope > .modal-content')?.contains(e.target)) {
+        e.target.classList.add('hidden');
+      }
+    }
     return;
   }
   
