@@ -1383,7 +1383,6 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
     if (entry.model_type !== 'image') {
       return { ok: false, error: `Model ${modelId} is type '${entry.model_type || 'text'}', not an image model. Change model_type in the library.` };
     }
-    // Resolve model path — file_path may be absolute or relative, or only file_name available
     const path = require('path');
     let modelPath = entry.file_path;
     if (!modelPath || !require('fs').existsSync(modelPath)) {
@@ -1392,10 +1391,35 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
     if (!modelPath || !require('fs').existsSync(modelPath)) {
       return { ok: false, error: `Model file not found: ${entry.file_path || entry.file_name}. Re-scan the library.` };
     }
-    return this.imageGen.generate({
+
+    // Unload all LLM models from VRAM before image generation
+    // Image gen (especially Flux) needs all available RAM/VRAM — LLMs must be evicted first
+    const loadedIds = [...this.loaded.keys()];
+    if (loadedIds.length > 0) {
+      console.log(`[V2ModelService] Unloading ${loadedIds.length} LLM model(s) before image gen: ${loadedIds.join(', ')}`);
+      for (const id of loadedIds) {
+        try {
+          const e = this.loaded.get(id);
+          try { if (e?.session?.dispose)  await e.session.dispose();  } catch {}
+          try { if (e?.context?.dispose)  await e.context.dispose();  } catch {}
+          try { if (e?.model?.dispose)    await e.model.dispose();    } catch {}
+          this.loaded.delete(id);
+          console.log(`[V2ModelService] Evicted ${id} from VRAM`);
+        } catch (evictErr) {
+          console.warn(`[V2ModelService] Could not evict ${id}:`, evictErr.message);
+        }
+      }
+      // poseidonModelId will reload automatically on next chat request
+      this.poseidonModelId = null;
+    }
+
+    const result = await this.imageGen.generate({
       modelPath,
       prompt, outputPath, width, height, steps, cfg, seed, negativePrompt
     });
+
+    console.log(`[V2ModelService] Image generation ${result.ok ? 'completed' : 'failed'} — LLMs will reload on next chat request`);
+    return result;
   }
 
   async _registryUpsert(modelId, partial) {

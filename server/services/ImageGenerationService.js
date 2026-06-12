@@ -252,11 +252,8 @@ class ImageGenerationService {
         }
       });
 
-      // Timeout after 5 min
-      setTimeout(() => {
-        child.kill();
-        resolve({ ok: false, error: 'Image generation timed out after 5 minutes' });
-      }, 5 * 60 * 1000);
+      // No hard timeout — CPU generation (Flux Q4 etc.) can take 30-60 min
+      // The process will naturally exit when done or on error
     });
   }
 
