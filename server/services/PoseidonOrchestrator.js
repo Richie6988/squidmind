@@ -102,10 +102,26 @@ ${checkpoint.summary}
       }
     } catch {}
 
+    // Inject session_state (lightweight last-turn snapshot, updated every exchange)
+    // This survives server restarts without needing a full dream_memory checkpoint.
+    let sessionStateSection = '';
+    try {
+      const ss = await this.rm.read('BRAIN/session_state.json');
+      if (ss?.saved_at && !checkpointSection) {
+        const age = Math.round((Date.now() - new Date(ss.saved_at).getTime()) / 60000);
+        const tools = ss.tool_calls_this_turn?.length ? ` | tools: ${ss.tool_calls_this_turn.join(', ')}` : '';
+        sessionStateSection = `# LAST SESSION (${age}min ago, turn ${ss.turn}, ctx ${ss.context_pct}%)
+User said: "${ss.last_user_message}"
+My response: "${ss.last_response_preview}"${tools}
+(Resume from here — no need to re-read state unless unsure.)`;
+      }
+    } catch {}
+
     const sections = [
       this._sectionAbsoluteRules(brain),
       this._sectionFineTuningBrief(brain),
       ...(checkpointSection ? [checkpointSection] : []),
+      ...(sessionStateSection ? [sessionStateSection] : []),
       this._sectionToolsPointer(brain),
       this._sectionCurrentState(brain, agentReg, projectReg, taskReg)
     ];
@@ -998,7 +1014,7 @@ Never describe a bash command you could call instead.`;
       const nextId = reg.metadata.next_id || 1;
       const projectId = `project_${String(nextId).padStart(3, '0')}`;
       const folderName = `PROJECT_${String(nextId).padStart(3, '0')}`;
-      const projectDir = path.join(this.rm.dataRoot, 'projects', folderName);
+      const projectDir = require('../aquarium').projects(folderName);
       
       await fs.mkdir(projectDir, { recursive: true });
       await fs.mkdir(path.join(projectDir, 'input'), { recursive: true });

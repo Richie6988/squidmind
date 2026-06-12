@@ -1116,6 +1116,21 @@ class V2ModelService {
       entry.contextTotalTokens = ctxTotal;
       entry.contextPct         = ctxPct;
 
+      // ── SESSION STATE (lightweight continuity, updated every turn) ───────
+      // Written to BRAIN/session_state.json after every exchange so the next
+      // server restart can resume without re-reading everything.
+      const toolNames = events.filter(e => e.type === 'tool_call').map(e => e.name || '?');
+      this.rm.write('BRAIN/session_state.json', {
+        saved_at: new Date().toISOString(),
+        turn: entry.sessionTurns,
+        context_pct: ctxPct,
+        context_used: ctxUsed,
+        context_total: ctxTotal,
+        last_user_message: userMessage.slice(0, 500),
+        last_response_preview: fullResponse.slice(0, 300),
+        tool_calls_this_turn: toolNames
+      }).catch(() => {});
+
       const CHECKPOINT_PCT = 75;                                      // proactive threshold
       const hardTurnCap    = entry.config?.wipeContextAfterTurns ?? 25; // safety net only
       if (ctxPct >= CHECKPOINT_PCT || entry.sessionTurns >= hardTurnCap) {
