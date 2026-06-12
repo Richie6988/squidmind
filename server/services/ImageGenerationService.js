@@ -141,22 +141,25 @@ class ImageGenerationService {
         args.push('--vae-on-cpu');    // keep VAE on RAM (~335MB saved on VRAM)
 
         // Auto-locate companion files in same dir as model
-        const vaeCandidates   = ['ae.safetensors', 'ae.sft'];
-        const clipCandidates  = ['clip_l.safetensors', 'clip_l.sft'];
-        const t5Candidates    = [
-          't5-v1_1-xxl-encoder-Q4_K_M.gguf',   // quantized GGUF (~2.3GB, recommended)
-          't5-v1_1-xxl-encoder-Q8_0.gguf',
-          't5-v1_1-xxl-encoder-Q5_K_M.gguf',
-          't5-v1_1-xxl-encoder-Q6_K.gguf',
-          't5xxl_fp8_e4m3fn.safetensors',        // fp8 safetensors (~4.7GB)
-          't5xxl_fp16.safetensors',
-          't5xxl.safetensors',
-        ];
-
-        const findFile = (dir, names) => names.map(n => path2.join(dir, n)).find(p => fs2.existsSync(p));
-        const vae  = findFile(modelDir, vaeCandidates);
-        const clip = findFile(modelDir, clipCandidates);
-        const t5   = findFile(modelDir, t5Candidates);
+        // Scan directory and match by pattern — handles any filename variant
+        let dirFiles = [];
+        try { dirFiles = fs2.readdirSync(modelDir); } catch {}
+        const scanFind = (tests) => {
+          for (const t of tests) {
+            const f = dirFiles.find(name => t.test(name));
+            if (f) return path2.join(modelDir, f);
+          }
+          return null;
+        };
+        const vae  = scanFind([/^ae\.safetensors$/i, /^ae\.sft$/i]);
+        const clip = scanFind([/clip_l\.safetensors$/i, /clip_l\.sft$/i]);
+        const t5   = scanFind([/t5.*encoder.*\.gguf$/i, /t5xxl.*\.gguf$/i,
+                                /t5xxl_fp8/i, /t5xxl_fp16/i, /t5xxl\.safetensors$/i]);
+        console.log('[ImageGen] companion scan in ' + modelDir + ':',
+          dirFiles.filter(f => /ae|clip|t5/i.test(f)).join(', ') || 'none',
+          '| vae:', vae ? 'found' : 'MISSING',
+          '| clip:', clip ? 'found' : 'MISSING',
+          '| t5:', t5 ? path2.basename(t5) : 'MISSING');
 
         if (vae)  args.push('--vae',    vae);
         if (clip) args.push('--clip_l', clip);
