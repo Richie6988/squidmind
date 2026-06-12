@@ -1203,28 +1203,19 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
     if (!entry.model || !entry.context) return;
 
     entry.dreaming = true;
-    console.log('[V2ModelService] 💤 Poseidon dreaming — metacognition session starting');
+    console.log('[V2ModelService] 💤 Poseidon dreaming — metacognition on idle session');
 
     try {
       const llamaCpp = await this._getLlamaCpp();
-      const dreamSequence = entry.context.getSequence();
 
-      const dreamSession = new llamaCpp.LlamaChatSession({
-        contextSequence: dreamSequence,
-        systemPrompt: [
-          'You are Poseidon in metacognition mode — a background self-improvement process.',
-          'Your job: reflect on recent activity, identify gaps, and improve your own skills.',
-          'You have access to tools. Use them. Do NOT respond conversationally.',
-          'This session is NEVER shown to the user — it is pure self-improvement.',
-          'RULES:',
-          '1. Read recent logs with read_file to find failed tasks, retried tools, errors.',
-          '2. Read your current skills with read_file to know what already exists.',
-          '3. For each gap or lesson, call write_skill to create or improve a skill.',
-          '4. Write a compact reflection summary (max 150 words) at the very end.',
-          'Be brutally honest. Focus on what FAILED or was SLOW. Fix it.'
-        ].join('\n'),
-        chatWrapper: 'auto'
-      });
+      // Reuse the existing session — no new sequence needed (avoids "No sequences left").
+      // Dream only runs when Poseidon is idle (not generating), so the session is free.
+      if (!entry.session) {
+        console.log('[Dream] No active session — skipping (model not warmed up yet)');
+        entry.dreaming = false;
+        return;
+      }
+      const dreamSession = entry.session;
 
       // Give it access to write_skill + read_file only
       const AQUARIUM = require('../aquarium');
@@ -1332,8 +1323,7 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
         console.warn('[Dream] Session error:', e.message);
       }
 
-      try { if (dreamSession?.dispose) await dreamSession.dispose(); } catch {}
-      try { if (dreamSequence?.dispose) dreamSequence.dispose(); } catch {}
+      // Don't dispose dreamSession — it IS entry.session (shared)
 
       const dreamRecord = {
         saved_at: new Date().toISOString(),

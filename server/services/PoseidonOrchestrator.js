@@ -454,7 +454,6 @@ Never describe a bash command you could call instead.`;
     
     lines.push('');
     lines.push('## Session info');
-    lines.push(`- Context wipes every ${this.modelService?.contextWipeThreshold ?? 5} exchanges; your brain.json survives the wipe.`);
     lines.push(`- After multi-step work, call log_decision so next-life-you knows what happened.`);
     
     return lines.join('\n');
