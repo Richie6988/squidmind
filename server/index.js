@@ -156,7 +156,8 @@ app.post('/api/v2/poseidon/reset-session', async (req, res) => {
   }
 });
 
-// Hook V2ModelService TTL check into heartbeat
+// Hook V2ModelService TTL check + dream into heartbeat
+heartbeat.setModelService(v2ModelService);
 const _originalTick = heartbeat.tick.bind(heartbeat);
 heartbeat.tick = async function() {
   await _originalTick();

@@ -19,7 +19,13 @@ class HeartbeatService {
     this.timer = null;
     this.lastCpuTimes = null;
     this.wasOverloaded = false;
+    this.modelService = null;          // wired in by index.js
+    this.dreamIdleMinutes = 10;        // dream after N minutes of Poseidon idle
+    this._lastDreamAt = 0;
+    this.dreamCooldownMinutes = 30;    // min gap between dream cycles
   }
+
+  setModelService(ms) { this.modelService = ms; }
 
   start() {
     if (this.timer) return;
@@ -92,6 +98,26 @@ class HeartbeatService {
       });
     }
     this.wasOverloaded = isOverloaded;
+
+    // ── DREAM TRIGGER ──────────────────────────────────────────────────────
+    // If Poseidon model is loaded, not generating, and idle > dreamIdleMinutes,
+    // trigger a metacognition session (max once per dreamCooldownMinutes).
+    if (this.modelService) {
+      try {
+        const status = this.modelService.getStatus();
+        const pm = status.loaded_models.find(m => m.model_id === status.poseidon_model_id);
+        if (pm && !pm.generating && !pm.dreaming && pm.idle_minutes >= this.dreamIdleMinutes) {
+          const cooldownOk = (Date.now() - this._lastDreamAt) > this.dreamCooldownMinutes * 60 * 1000;
+          if (cooldownOk) {
+            this._lastDreamAt = Date.now();
+            console.log(`[Heartbeat] 💤 Poseidon idle ${pm.idle_minutes.toFixed(1)}min — triggering dream`);
+            this.modelService.triggerDream().catch(e =>
+              console.warn('[Heartbeat] Dream trigger error:', e.message)
+            );
+          }
+        }
+      } catch {}
+    }
   }
 
   _measure() {

@@ -90,15 +90,21 @@ class PoseidonOrchestrator {
       this.rm.read('tasks/tasks_registry.json').catch(() => ({ tasks: {} }))
     ]);
     
-    // Inject context checkpoint if it exists (saved before last session wipe)
+    // Inject dream_memory: either a metacognition dream or an emergency reset note
     let checkpointSection = '';
     try {
-      const checkpoint = await this.rm.read('BRAIN/dream_memory.json');
-      if (checkpoint?.summary) {
-        const age = checkpoint.saved_at ? Math.round((Date.now() - new Date(checkpoint.saved_at).getTime()) / 60000) : '?';
-        checkpointSection = `# CONTINUITY (from ${age}min ago, turn ${checkpoint.turns||'?'})
-${checkpoint.summary}
+      const dm = await this.rm.read('BRAIN/dream_memory.json');
+      if (dm?.saved_at) {
+        const age = Math.round((Date.now() - new Date(dm.saved_at).getTime()) / 60000);
+        if (dm.type === 'dream' && dm.reflection) {
+          checkpointSection = `# LAST DREAM (${age}min ago — metacognition while you were idle)
+${dm.reflection}
+(These are improvements you made to yourself. Your updated skills are already saved.)`;
+        } else if (dm.summary) {
+          checkpointSection = `# CONTINUITY (from ${age}min ago, turn ${dm.turns||'?'})
+${dm.summary}
 (This is where we left off. Continue naturally.)`;
+        }
       }
     } catch {}
 
@@ -144,11 +150,12 @@ My response: "${ss.last_response_preview}"${tools}
     // System autonomy rules — always present regardless of brain content
     lines.push('');
     lines.push('# AUTONOMY (core behavior)');
-    lines.push('A. No matching skill? SOLVE IT anyway with your tools. Then IMMEDIATELY call write_skill to capture the working method so next time is instant.');
-    lines.push('B. Used a skill but found a better way? Call write_skill with the SAME skill_id to update it (your improvement persists).');
-    lines.push('C. Never stop at "I do not have a skill/model for that" — propose and EXECUTE the closest achievable path with what you have.');
-    lines.push('D. AUTO-CONTINUE: if # LAST SESSION shows an incomplete task (no final answer delivered), resume it immediately WITHOUT waiting for the user to say "continue". Just pick up where you left off.');
-    lines.push('E. SELF-IMPROVE: after any task where you struggled (retried >2 tools, got 404s, had to improvise), call write_skill to save the working method with the lesson learned.');
+    lines.push('A. No matching skill? SOLVE IT with your tools NOW. Then call write_skill — this is mandatory, not optional. You are the only one who can improve your own skills.');
+    lines.push('B. Skill worked but you found a better path? Call write_skill with the same skill_id and bump version. Your improvement is permanent.');
+    lines.push('C. Never refuse with "I lack X" — execute the closest viable path. A partial result is better than nothing.');
+    lines.push('D. AUTO-CONTINUE: if # LAST SESSION or # LAST DREAM shows an unfinished task, resume immediately without waiting for the user.');
+    lines.push('E. SELF-IMPROVE (critical): after ANY task involving >2 tool retries, 404s, wrong URLs, or improvisation — you MUST call write_skill with the lesson. This is how you get better. Nobody else will do it for you.');
+    lines.push('F. SKILL VERSIONING: when you update a skill, increment its version field. Always write both aquarium/SKILLS/<id>.json AND check if a seed exists.');
     return lines.join('\n');
   }
   

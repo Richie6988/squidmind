@@ -28,7 +28,6 @@ class V2ModelService {
     this.loaded = new Map();                 // model_id -> { model, context, session, config, lastUsedAt, generating }
     this.poseidonModelId = null;             // currently assigned to Poseidon
     this._libPromise = null;
-    this.contextWipeThreshold = 5;           // wipe Poseidon session after N exchanges
     this.orchestrator = null;                // wired in by index.js after construction
   }
   
@@ -68,57 +67,43 @@ class V2ModelService {
   }
 
   /**
-   * CONTEXT CHECKPOINT: summarize the live session, persist to dream_memory,
-   * dispose the session, so the next chat rebuilds fresh with # CONTINUITY.
-   * mode: 'proactive' (75% threshold) | 'emergency' (context overflow error)
+   * _emergencyReset — only called when the LLM session crashes hard (OOM, context overflow error).
+   * Saves a minimal recovery note to session_state.json and resets the session.
+   * Poseidon's session is NOT wiped proactively — it persists across chat turns indefinitely.
    */
-  async _checkpointAndReload(entry, session, mode = 'proactive') {
-    let summaryText = '';
-    if (mode === 'proactive' && session) {
-      // There's still ~25% ctx free — ask the model itself for the checkpoint
-      try {
-        const r = await session.prompt(
-          'CHECKPOINT NOW. In max 100 words, bullet list: current task, key decisions, what is DONE, what is NEXT, important paths/values. This is your only memory after reload.',
-          { maxTokens: 220 }
-        );
-        summaryText = (typeof r === 'string' ? r : '').trim();
-      } catch (e) {
-        console.warn('[V2ModelService] Checkpoint summary failed:', e.message);
-      }
-    }
-    if (!summaryText) {
-      // Emergency/degraded: build from last known exchange
-      const lastUser = (entry._lastUserMessage || '').slice(0, 300);
-      summaryText = `(auto-degraded checkpoint — context overflowed before summary)\nLast user request: ${lastUser}\nAction: re-read open tasks via read_my_brain('tasks') and recent logs to resume.`;
-    }
-    const checkpoint = {
+  async _emergencyReset(entry) {
+    const lastUser = (entry._lastUserMessage || '').slice(0, 300);
+    const note = `(emergency reset — session crashed)
+Last user request: ${lastUser}
+Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`;
+    await this.rm.write('BRAIN/session_state.json', {
       saved_at: new Date().toISOString(),
-      mode,
-      turns: entry.sessionTurns,
-      context_used_tokens: entry.contextUsedTokens || null,
-      model_id: this.poseidonModelId,
-      summary: summaryText
-    };
-    await this.rm.write('BRAIN/dream_memory.json', checkpoint).catch(e =>
-      console.warn('[V2ModelService] Could not persist checkpoint:', e.message));
+      turn: entry.sessionTurns,
+      context_pct: entry.contextPct || 0,
+      last_user_message: lastUser,
+      last_response_preview: note,
+      tool_calls_this_turn: [],
+      emergency: true
+    }).catch(() => {});
 
     try { if (entry.session?.dispose) await entry.session.dispose(); } catch {}
     try { if (entry._currentSequence?.dispose) entry._currentSequence.dispose(); } catch {}
-    entry.session          = null;
-    entry._currentSequence = null;
-    entry.sessionTurns     = 0;
-    entry._thinkBuf        = '';
-    entry.contextPct       = 0;
+    entry.session           = null;
+    entry._currentSequence  = null;
+    entry.sessionTurns      = 0;
+    entry._thinkBuf         = '';
+    entry.contextPct        = 0;
     entry.contextUsedTokens = 0;
-    console.log(`[V2ModelService] Checkpoint saved (${mode}) — next chat resumes via # CONTINUITY`);
+    console.log('[V2ModelService] Emergency reset — session cleared after crash');
 
     await this.rm.log({
-      event_type: 'poseidon_decision', severity: 'info',
+      event_type: 'poseidon_decision', severity: 'warning',
       actor: { type: 'system', id: 'v2_model_service' },
       subject: { type: 'model', id: this.poseidonModelId },
-      action: `Context checkpoint (${mode}) at turn ${checkpoint.turns} — session reloaded with continuity summary`
+      action: `Emergency session reset at turn ${entry.sessionTurns}`
     }).catch(() => {});
   }
+
 
   /**
    * Abort the current Poseidon generation mid-stream.
@@ -725,7 +710,6 @@ class V2ModelService {
   }
 
   getStatus() {
-    const wipeThreshold = this.contextWipeThreshold;
     return {
       loaded_count: this.loaded.size,
       loaded_models: Array.from(this.loaded.values()).map(e => ({
@@ -739,10 +723,10 @@ class V2ModelService {
         total_requests: e.totalRequests,
         generating: e.generating,
         session_turns: e.sessionTurns || 0,
-        wipe_after_turns: wipeThreshold,
         context_used_tokens:  e.contextUsedTokens  || 0,
         context_total_tokens: e.contextTotalTokens || e.config?.contextLength || 0,
-        context_pct: e.contextPct ?? Math.round(((e.sessionTurns || 0) / wipeThreshold) * 100)
+        context_pct: e.contextPct ?? 0,
+        dreaming: e.dreaming || false
       })),
       poseidon_model_id: this.poseidonModelId
     };
@@ -1131,19 +1115,14 @@ class V2ModelService {
         tool_calls_this_turn: toolNames
       }).catch(() => {});
 
-      const CHECKPOINT_PCT = 75;                                      // proactive threshold
-      const hardTurnCap    = entry.config?.wipeContextAfterTurns ?? 25; // safety net only
-      if (ctxPct >= CHECKPOINT_PCT || entry.sessionTurns >= hardTurnCap) {
-        console.log(`[V2ModelService] Context at ${ctxPct}% (${ctxUsed}/${ctxTotal} tok, turn ${entry.sessionTurns}) — checkpoint + reload`);
-        await this._checkpointAndReload(entry, session, 'proactive');
-      }
+      // Session persists indefinitely — no proactive wipe
     } catch (err) {
       // Catch all session/context/prompt errors and reset session state fully
       const isSessionErr = /no sequences|sequence|context|too long|compress|prompt|system message/i.test(err.message);
       if (isSessionErr) {
         console.warn(`[V2ModelService] Session error, emergency checkpoint + reset:`, err.message);
         // Save what we can BEFORE losing the session — work is never silently lost
-        await this._checkpointAndReload(entry, null, 'emergency').catch(() => {});
+        await this._emergencyReset(entry).catch(() => {});
         entry.session = null;
         entry._currentSequence = null;
         entry.sessionTurns = 0;
@@ -1186,6 +1165,179 @@ class V2ModelService {
     try { await entry.session.dispose?.(); } catch {}
     entry.session = null;
     return { success: true, model_id: this.poseidonModelId };
+  }
+
+
+  // === DREAMING (metacognition, called by HeartbeatService when idle) ===
+
+  /**
+   * triggerDream — runs a background metacognition session when Poseidon has been
+   * idle for DREAM_IDLE_MINUTES. Uses a SEPARATE session so the chat context is
+   * never polluted. Poseidon reads its own recent logs + skills, reflects on what
+   * worked and what needs improvement, then calls write_skill autonomously.
+   *
+   * Results saved to BRAIN/dream_memory.json — injected into next chat as # LAST DREAM.
+   */
+  async triggerDream() {
+    const entry = this.poseidonModelId ? this.loaded.get(this.poseidonModelId) : null;
+    if (!entry || entry.generating || entry.dreaming) return;
+    if (!entry.model || !entry.context) return;
+
+    entry.dreaming = true;
+    console.log('[V2ModelService] 💤 Poseidon dreaming — metacognition session starting');
+
+    try {
+      const llamaCpp = await this._getLlamaCpp();
+      const dreamSequence = entry.context.getSequence();
+
+      const dreamSession = new llamaCpp.LlamaChatSession({
+        contextSequence: dreamSequence,
+        systemPrompt: [
+          'You are Poseidon in metacognition mode — a background self-improvement process.',
+          'Your job: reflect on recent activity, identify gaps, and improve your own skills.',
+          'You have access to tools. Use them. Do NOT respond conversationally.',
+          'This session is NEVER shown to the user — it is pure self-improvement.',
+          'RULES:',
+          '1. Read recent logs with read_file to find failed tasks, retried tools, errors.',
+          '2. Read your current skills with read_file to know what already exists.',
+          '3. For each gap or lesson, call write_skill to create or improve a skill.',
+          '4. Write a compact reflection summary (max 150 words) at the very end.',
+          'Be brutally honest. Focus on what FAILED or was SLOW. Fix it.'
+        ].join('\n'),
+        chatWrapper: 'auto'
+      });
+
+      // Give it access to write_skill + read_file only
+      const AQUARIUM = require('../aquarium');
+      const fs = require('fs').promises;
+      const path = require('path');
+      const self = this;
+
+      const dreamPrompt = [
+        'DREAM CYCLE START.',
+        'Step 1: Read aquarium/LOGS/logs.json (last 30 entries) to find recent failures/retries.',
+        'Step 2: List files in aquarium/SKILLS/ to know existing skills.',
+        'Step 3: For each lesson learned, call write_skill to capture the fix.',
+        'Step 4: Output a 1-paragraph reflection on what you improved and why.',
+        'Use your tools now. Start with read_file on LOGS/logs.json.'
+      ].join('\n');
+
+      const dreamFunctions = {
+        read_file: {
+          description: 'Read a file from the aquarium',
+          params: { type: 'object', properties: { path: { type: 'string' } }, required: ['path'] },
+          handler: async ({ path: p }) => {
+            try {
+              const resolved = AQUARIUM.resolve(p);
+              const abs = path.join(AQUARIUM.ROOT, resolved);
+              const raw = await fs.readFile(abs, 'utf8');
+              // For logs, return last 30 entries only
+              if (p.includes('logs')) {
+                try {
+                  const parsed = JSON.parse(raw);
+                  const entries = (parsed.entries || []).slice(-30);
+                  return JSON.stringify({ entries }, null, 1);
+                } catch { return raw.slice(-4000); }
+              }
+              return raw.slice(0, 6000);
+            } catch (e) { return `Error reading ${p}: ${e.message}`; }
+          }
+        },
+        list_files: {
+          description: 'List files in a directory',
+          params: { type: 'object', properties: { dir: { type: 'string' } }, required: ['dir'] },
+          handler: async ({ dir }) => {
+            try {
+              const abs = path.join(AQUARIUM.ROOT, AQUARIUM.resolve(dir));
+              const files = await fs.readdir(abs);
+              return JSON.stringify(files);
+            } catch (e) { return `Error: ${e.message}`; }
+          }
+        },
+        write_skill: {
+          description: 'Create or update a skill based on lessons learned',
+          params: {
+            type: 'object',
+            properties: {
+              skill_id: { type: 'string' },
+              name:     { type: 'string' },
+              summary:  { type: 'string' },
+              triggers: { type: 'array', items: { type: 'string' } },
+              steps:    { type: 'array' },
+              notes:    { type: 'array', items: { type: 'string' } }
+            },
+            required: ['skill_id', 'name', 'summary', 'steps']
+          },
+          handler: async ({ skill_id, name, summary, triggers, steps, notes }) => {
+            try {
+              await fs.mkdir(AQUARIUM.SKILLS, { recursive: true });
+              const filePath = path.join(AQUARIUM.SKILLS, `${skill_id}.json`);
+              let version = 1;
+              try { const ex = JSON.parse(await fs.readFile(filePath, 'utf8')); version = (ex.version || 1) + 1; } catch {}
+              const skill = { skill_id, name, version, summary, triggers: triggers||[], steps, notes: notes||[], created_by: 'poseidon_dream', updated_at: new Date().toISOString() };
+              await fs.writeFile(filePath, JSON.stringify(skill, null, 2), 'utf8');
+              // Also update seed
+              const seedPath = path.join(__dirname, '../skills', `${skill_id}.json`);
+              await fs.writeFile(seedPath, JSON.stringify(skill, null, 2), 'utf8').catch(() => {});
+              await self.rm.log({ event_type: 'skill_created', severity: 'info',
+                actor: { type: 'system', id: 'poseidon_dream' },
+                subject: { type: 'skill', id: skill_id },
+                action: `Dream: ${version > 1 ? 'updated' : 'created'} skill "${name}" v${version}`
+              }).catch(() => {});
+              console.log(`[Dream] Skill "${name}" v${version} ${version > 1 ? 'updated' : 'created'}`);
+              return { ok: true, skill_id, version };
+            } catch (e) { return { ok: false, error: e.message }; }
+          }
+        }
+      };
+
+      const wrappedFunctions = {};
+      for (const [name, def] of Object.entries(dreamFunctions)) {
+        wrappedFunctions[name] = llamaCpp.defineChatSessionFunction({
+          description: def.description,
+          params: def.params,
+          handler: def.handler
+        });
+      }
+
+      let reflection = '';
+      try {
+        reflection = await dreamSession.prompt(dreamPrompt, {
+          functions: wrappedFunctions,
+          maxTokens: 600,
+          temperature: 0.4
+        });
+        reflection = (typeof reflection === 'string' ? reflection : '').trim();
+      } catch (e) {
+        reflection = `(dream session error: ${e.message})`;
+        console.warn('[Dream] Session error:', e.message);
+      }
+
+      try { if (dreamSession?.dispose) await dreamSession.dispose(); } catch {}
+      try { if (dreamSequence?.dispose) dreamSequence.dispose(); } catch {}
+
+      const dreamRecord = {
+        saved_at: new Date().toISOString(),
+        type: 'dream',
+        turns_at_dream: entry.sessionTurns,
+        reflection
+      };
+      await this.rm.write('BRAIN/dream_memory.json', dreamRecord).catch(() => {});
+      console.log(`[V2ModelService] 💤 Dream complete — reflection saved`);
+
+      await this.rm.log({
+        event_type: 'poseidon_decision', severity: 'info',
+        actor: { type: 'system', id: 'poseidon_dream' },
+        subject: { type: 'system', id: 'poseidon_main' },
+        action: 'Metacognition dream cycle complete',
+        context: { reflection_preview: reflection.slice(0, 200) }
+      }).catch(() => {});
+
+    } catch (e) {
+      console.warn('[Dream] Failed:', e.message);
+    } finally {
+      entry.dreaming = false;
+    }
   }
 
   // === TTL CHECK (called by HeartbeatService) ===
