@@ -187,7 +187,14 @@ class ImageGenerationService {
 
       child.on('close', async (code) => {
         if (code !== 0) {
-          return resolve({ ok: false, error: `sd exited with code ${code}. stderr: ${stderr.slice(-400)}` });
+          let errMsg = `sd-diffusion exited with code ${code}.\n${stderr.slice(-500)}`;
+          // Detect common CUDA OOM during inference
+          if (/cublas.*failed|cudaMalloc.*out of memory|alloc.*CUDA.*buffer/i.test(stderr)) {
+            errMsg = 'CUDA out of memory during generation.\n' +
+              'Fix: use a smaller quantization (Q2_K instead of Q4_0)\n' +
+              'or reduce resolution (256x256 instead of 512x512).\n\n' + errMsg;
+          }
+          return resolve({ ok: false, error: errMsg });
         }
         try {
           const stat = await fs.stat(outputPath);

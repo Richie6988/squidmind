@@ -926,8 +926,8 @@ const ModelLoader = {
           <button onclick="this.closest('.modal').remove()" style="background:none;border:none;color:#64748b;font-size:16px;cursor:pointer;">✕</button>
         </div>
         <div class="ml-imggen-note" style="font-size:9px;color:#f59e0b;background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.2);border-radius:6px;padding:8px;">
-          ⚠ Requires <strong>stable-diffusion.cpp</strong> binary named <code>sd-diffusion</code> on PATH.<br>
-          Build → <code>sudo cp build/bin/sd /usr/local/bin/sd-diffusion</code><br>
+          ⚠ Requires <code>sd-diffusion</code> on PATH (stable-diffusion.cpp).<br>
+          On 8GB GPU: use <strong>Q2_K</strong> quantization to avoid VRAM OOM at 512×512.<br>
           <a href="https://github.com/leejet/stable-diffusion.cpp" target="_blank" style="color:#4facfe;">github.com/leejet/stable-diffusion.cpp</a>
         </div>
         <textarea id="imggen-prompt" placeholder="Describe the image you want to generate…"
