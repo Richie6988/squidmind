@@ -197,8 +197,7 @@ class ImageGenerationService {
         if (vae)  args.push('--vae',    vae);
         if (clip) args.push('--clip_l', clip);
         if (t5)   args.push('--t5xxl',  t5);
-        // When forcing CPU, also keep t5xxl on CPU explicitly
-        if (forceCPU && t5) args.push('--t5xxl-on-cpu');
+        // Note: --t5xxl-on-cpu not supported in this build; CPU forced via --rng std_default
 
         if (!vae || !clip || !t5) {
           const missing = [!vae&&'ae.safetensors', !clip&&'clip_l.safetensors', !t5&&'t5-v1_1-xxl-encoder-Q4_K_M.gguf (or t5xxl_fp8_e4m3fn.safetensors)'].filter(Boolean);
