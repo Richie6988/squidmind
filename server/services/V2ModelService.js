@@ -123,8 +123,15 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
     if (!this._libPromise) {
       this._libPromise = (async () => {
         const llamaCpp = await import('node-llama-cpp');
-        this.llama = await llamaCpp.getLlama();
-        console.log('[V2ModelService] node-llama-cpp v3 initialized');
+        // Try custom build first (built via "npx node-llama-cpp source build")
+        // This supports newer architectures like gemma4, llama4 not in prebuilt binaries
+        try {
+          this.llama = await llamaCpp.getLlama('lastBuild');
+          console.log('[V2ModelService] node-llama-cpp initialized (custom build)');
+        } catch {
+          this.llama = await llamaCpp.getLlama();
+          console.log('[V2ModelService] node-llama-cpp initialized (prebuilt)');
+        }
         return this.llama;
       })();
     }

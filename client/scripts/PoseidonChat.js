@@ -206,12 +206,24 @@ const PoseidonChat = {
       </div>`;
       return;
     }
+    // Build per-role indices for copy buttons (msgId needs role-relative index)
+    const _uIdxMap = {}, _aIdxMap = {};
+    let _uC = 0, _aC = 0;
+    this.history.forEach((h, gi) => {
+      if (h.role === 'user')      _uIdxMap[gi] = _uC++;
+      else if (h.role === 'assistant') _aIdxMap[gi] = _aC++;
+    });
     msgs.innerHTML = this.history.map((t, i) => {
+      const uIdx = _uIdxMap[i] ?? i;
+      const aIdx = _aIdxMap[i] ?? i;
       const ts = t.ts ? `<div class="pc-ts${t.role==='assistant'?' pc-ts-ai':''}">${this._fmtTs(new Date(t.ts))}</div>` : '';
       if (t.role === 'user') {
-        return `<div class="pc-msg pc-msg-user"><div class="pc-bubble-user">${this._esc(t.content)}</div><div class="pc-msg-actions"><button class="pc-copy-btn" onclick="PoseidonChat._copyText(this,'u'+i)">⎘</button></div>${ts}</div>`;
+        const _imgPreviews = (t._attachmentPreviews||[]).map(p=>
+          `<div class="pc-img-wrap" style="margin:4px 0"><img class="pc-md-img" src="${p.src}" alt="${p.name}" style="max-height:120px"></div>`
+        ).join('');
+        return `<div class="pc-msg pc-msg-user"><div class="pc-bubble-user">${_imgPreviews}${this._esc(t.content)}</div><div class="pc-msg-actions"><button class="pc-copy-btn" onclick="PoseidonChat._copyText(this,'u${uIdx}')">⎘</button></div>${ts}</div>`;
       } else {
-        return `<div class="pc-msg pc-msg-ai" id="pc-msg-${i}"><div class="pc-ai-row"><div class="pc-ai-dot">🔱</div><div class="pc-bubble-ai pc-text-final">${this._md(t.content)}</div></div><div class="pc-msg-actions"><button class="pc-copy-btn" onclick="PoseidonChat._copyText(this,'a'+i)">⎘</button></div>${ts}</div>`;
+        return `<div class="pc-msg pc-msg-ai" id="pc-msg-${i}"><div class="pc-ai-row"><div class="pc-ai-dot">🔱</div><div class="pc-bubble-ai pc-text-final">${this._md(t.content)}</div></div><div class="pc-msg-actions"><button class="pc-copy-btn" onclick="PoseidonChat._copyText(this,'a${aIdx}')">⎘</button></div>${ts}</div>`;
       }
     }).join('');
     this._scrollToBottom(msgs);
@@ -224,13 +236,15 @@ const PoseidonChat = {
     const msgRaw = ta?.value.trim();
     if (!msgRaw && !this._attachments?.length) return;
     if (this.currentRequest) return;
+    // Store image previews on history entry before clearing attachments
+    const _imgPreviews = (this._attachments||[]).filter(a=>a.type==='image').map(a=>({src:a.preview,name:a.name}));
     const msg = this._buildMessageWithAttachments(msgRaw || '(see attachment)');
     this._clearAttachments();
     ta.value = ''; ta.style.height = 'auto';
 
     const msgTs = new Date();
     this._autoScroll = true;  // new message → snap to bottom
-    this.history.push({ role: 'user', content: msg, ts: msgTs });
+    this.history.push({ role: 'user', content: msg, ts: msgTs, _attachmentPreviews: _imgPreviews });
     const aiIdx = this.history.length;
     const aiTs = new Date();
     this.history.push({ role: 'assistant', content: '', ts: aiTs });
@@ -756,9 +770,16 @@ const PoseidonChat = {
     const parts = [];
     for (const a of this._attachments) {
       if (a.type === 'image') {
-        parts.push(`[Attached image: ${a.name}]\n(Image data available — describe what you see if asked, or acknowledge it)`);
+        // Send image dimensions/type hint if available, plus note about vision limitation
+        const ext = a.name.split('.').pop()?.toUpperCase() || 'IMAGE';
+        parts.push(
+          `[USER ATTACHED IMAGE: ${a.name} (${ext})]` +
+          `\nNote: You are a text model — you cannot see the raw pixels. ` +
+          `If the user wants this image described, use fetch_image_url with a relevant Wikipedia/web URL, ` +
+          `or ask the user to describe what's in the image. Acknowledge the attachment briefly.`
+        );
       } else {
-        parts.push(`[Attached file: ${a.name}]\n\`\`\`\n${a.content}\n\`\`\``);
+        parts.push(`[ATTACHED FILE: ${a.name}]\n\`\`\`\n${a.content.slice(0, 12000)}\n\`\`\`${a.content.length > 12000 ? '\n(truncated)' : ''}`);
       }
     }
     parts.push(msg);
