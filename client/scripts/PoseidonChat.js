@@ -6,6 +6,8 @@ const PoseidonChat = {
   modal: null,
   history: [],
   currentRequest: null,
+  _copyStore: new Map(),
+  _copyCounter: 0,
   _mutatedThisTurn: false,
   _thinkText: '',
 
@@ -108,9 +110,7 @@ const PoseidonChat = {
               <button class="pc-send" id="pc-send" title="Send">
                 <svg id="pc-send-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
               </button>
-              <button class="pc-stop-btn" id="pc-stop" title="Stop generation" style="display:none">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
-              </button>
+              <button class="pc-stop-btn" id="pc-stop" title="Stop generation" style="display:none">■ Stop</button>
             </div>
           </div>
         </div>
@@ -185,9 +185,9 @@ const PoseidonChat = {
     msgs.innerHTML = this.history.map((t, i) => {
       const ts = t.ts ? `<div class="pc-ts${t.role==='assistant'?' pc-ts-ai':''}">${this._fmtTs(new Date(t.ts))}</div>` : '';
       if (t.role === 'user') {
-        return `<div class="pc-msg pc-msg-user"><div class="pc-bubble-user">${this._esc(t.content)}</div><div class="pc-msg-actions"><button class="pc-copy-btn" onclick="PoseidonChat._copyText(this, event)" data-raw="${this._esc(t.content)}">⎘</button></div>${ts}</div>`;
+        return `<div class="pc-msg pc-msg-user"><div class="pc-bubble-user">${this._esc(t.content)}</div><div class="pc-msg-actions"><button class="pc-copy-btn" onclick="PoseidonChat._copyText(this, event)" onclick="PoseidonChat._copyText('u'+i)">⎘</button></div>${ts}</div>`;
       } else {
-        return `<div class="pc-msg pc-msg-ai" id="pc-msg-${i}"><div class="pc-ai-row"><div class="pc-ai-dot">🔱</div><div class="pc-bubble-ai pc-text-final">${this._md(t.content)}</div></div><div class="pc-msg-actions"><button class="pc-copy-btn" onclick="PoseidonChat._copyText(this, event)" data-raw="${this._esc(t.content)}">⎘</button></div>${ts}</div>`;
+        return `<div class="pc-msg pc-msg-ai" id="pc-msg-${i}"><div class="pc-ai-row"><div class="pc-ai-dot">🔱</div><div class="pc-bubble-ai pc-text-final">${this._md(t.content)}</div></div><div class="pc-msg-actions"><button class="pc-copy-btn" onclick="PoseidonChat._copyText(this, event)" onclick="PoseidonChat._copyText('a'+i)">⎘</button></div>${ts}</div>`;
       }
     }).join('');
     this._scrollToBottom(msgs);
@@ -239,7 +239,7 @@ const PoseidonChat = {
 
     // Animated loader card inside the bubble
     contentEl.innerHTML = `<div class="pc-loader" id="pc-loader-active">
-      <div class="pc-loader-ring"></div>
+      <div class="pc-loader-ring"><span></span></div>
       <div class="pc-loader-text">
         <span class="pc-loader-msg" id="pc-loader-msg">Connecting to Poseidon…</span>
         <span class="pc-loader-elapsed" id="pc-loader-elapsed">0s</span>
@@ -368,8 +368,8 @@ const PoseidonChat = {
         const actions = document.createElement('div');
         actions.className = 'pc-msg-actions';
         actions.innerHTML = '<button class="pc-copy-btn" title="Copy">⎘</button>';
-        actions.querySelector('.pc-copy-btn').dataset.raw = fullText;
-        actions.querySelector('.pc-copy-btn').addEventListener('click', (ev) => this._copyText(actions.querySelector('.pc-copy-btn'), ev));
+        const liveIdx = this.history.filter(h=>h.role==='assistant').length - 1; actions.querySelector('.pc-copy-btn').setAttribute('onclick', `PoseidonChat._copyText('a\${liveIdx}')`);
+        // onclick set above
         const ts = lastMsg.querySelector('.pc-ts');
         if (ts) lastMsg.insertBefore(actions, ts); else lastMsg.appendChild(actions);
       }
@@ -535,6 +535,23 @@ const PoseidonChat = {
       return ` CODE${idx} `;
     });
 
+    // Extract images BEFORE HTML escaping (escaping corrupts URLs in src attributes)
+    const imgBlocks = [];
+    s = s.replace(/!\[([^\]]*?)\]\((https?:[^)]+)\)/g, function(_, alt, url) {
+      var isImg = /\.(png|jpg|jpeg|gif|webp|svg)(\?.*)?$/i.test(url) || /wikimedia|wikipedia|upload\.wiki/i.test(url);
+      if (isImg) {
+        var idx2 = imgBlocks.length;
+        imgBlocks.push('<div class="pc-img-wrap"><img class="pc-md-img" src="' + url + '" alt="' + alt.replace(/"/g,"&quot;") + '" loading="lazy" onerror="this.closest(\'.pc-img-wrap\').innerHTML=\'<span style=\'color:#475569;font-size:10px;\'>Image unavailable</span>\'"></img><div class="pc-img-caption">' + alt + '</div></div>');
+        return '\x00IMG' + idx2 + '\x00';
+      }
+      return '\x00LINK' + alt + '|||' + url + '\x00';
+    });
+    s = s.replace(/^(https?:\/\/\S+\.(?:png|jpg|jpeg|gif|webp|svg)(\?\S*)?)$/gim, function(_, url) {
+      var idx2 = imgBlocks.length;
+      imgBlocks.push('<div class="pc-img-wrap"><img class="pc-md-img" src="' + url + '" alt="" loading="lazy"></img></div>');
+      return '\x00IMG' + idx2 + '\x00';
+    });
+
     // Escape remaining HTML
     s = safeEsc(s);
 
@@ -552,15 +569,7 @@ const PoseidonChat = {
     s = s.replace(/\*(.+?)\*/g,     '<em>$1</em>');
     s = s.replace(/_(.+?)_/g,       '<em>$1</em>');
 
-    // Images ![alt](url) - render before links
-    s = s.replace(/!\[([^\]]*)\]\((https?:\/\/[^\)]+)\)/g, (_, alt, url) => {
-      const isImg = /\.(png|jpg|jpeg|gif|webp|svg)(\?.*)?$/i.test(url);
-      if (isImg) return `<div class="pc-img-wrap"><img class="pc-md-img" src="${url}" alt="${alt}" loading="lazy" onerror="this.style.display='none'"><div class="pc-img-caption">${alt}</div></div>`;
-      return `<a class="pc-md-link" href="${url}" target="_blank">${alt || url}</a>`;
-    });
-
-    // Bare image URLs on their own line
-    s = s.replace(/^(https?:\/\/\S+\.(png|jpg|jpeg|gif|webp|svg)(\?\S*)?)$/gim, '<div class="pc-img-wrap"><img class="pc-md-img" src="$1" alt="" loading="lazy" onerror="this.parentNode.remove()"></div>');
+    // (image handling moved to pre-escape section above)
 
     // Links [text](url)
     s = s.replace(/\[([^\]]+)\]\((https?:\/\/[^\)]+)\)/g, '<a class="pc-md-link" href="$2" target="_blank">$1</a>');
@@ -592,10 +601,10 @@ const PoseidonChat = {
     s = '<p class="pc-md-p">' + s + '</p>';
     s = s.replace(/\n/g, '<br>');
 
-    // Restore code blocks
-    s = s.replace(/ CODE(\d+) /g, (_, i) => codeBlocks[+i]);
-
-    // Clean empty paragraphs
+    // Restore code blocks, images, and plain links
+    s = s.replace(/\x00CODE(\d+)\x00/g, (_, i) => codeBlocks[+i] || '');
+    s = s.replace(/\x00IMG(\d+)\x00/g, (_, i) => imgBlocks[+i] || '');
+    s = s.replace(/\x00LINK(.*?)\|\|\|(.*?)\x00/g, (_, alt, url) => '<a class="pc-md-link" href="' + url + '" target="_blank">' + (alt || url) + '</a>');    // Clean empty paragraphs
     s = s.replace(/<p class="pc-md-p"><\/p>/g, '');
     s = s.replace(/<p class="pc-md-p">(<(?:h[2-4]|ul|blockquote|hr|pre))/g, '$1');
     s = s.replace(/(<\/(?:h[2-4]|ul|blockquote|pre)>)<\/p>/g, '$1');
@@ -610,23 +619,28 @@ const PoseidonChat = {
     }
   },
 
-  _copyText(btn, ev) {
-    if (ev) ev.stopPropagation();
-    const raw = btn.dataset.raw || '';
-    navigator.clipboard.writeText(raw).then(() => {
-      const prev = btn.textContent;
-      btn.textContent = '✓';
-      btn.style.color = '#06ffa5';
-      setTimeout(() => { btn.textContent = prev; btn.style.color = ''; }, 1200);
-    }).catch(() => {
-      // fallback
-      const ta = document.createElement('textarea');
-      ta.value = raw; ta.style.position = 'fixed'; ta.style.opacity = '0';
-      document.body.appendChild(ta); ta.select();
-      document.execCommand('copy');
-      document.body.removeChild(ta);
-      btn.textContent = '✓'; setTimeout(() => btn.textContent = '⎘', 1200);
-    });
+  _copyText(msgId) {
+    // msgId: 'u{i}' = user history index, 'a{i}' = assistant history index
+    let raw = '';
+    if (msgId && msgId.length > 1) {
+      const role = msgId[0] === 'u' ? 'user' : 'assistant';
+      const idx = parseInt(msgId.slice(1), 10);
+      raw = this.history.filter(h => h.role === role)[idx]?.content || '';
+    }
+    if (!raw) return;
+    const btn = event?.target || document.activeElement;
+    const flash = () => { if (!btn) return; btn.textContent = '✓'; btn.style.color = '#06ffa5'; setTimeout(() => { btn.textContent = '⎘'; btn.style.color = ''; }, 1400); };
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(raw).then(flash).catch(() => {
+        const ta = Object.assign(document.createElement('textarea'), { value: raw });
+        ta.style.cssText = 'position:fixed;opacity:0;'; document.body.appendChild(ta);
+        ta.select(); document.execCommand('copy'); document.body.removeChild(ta); flash();
+      });
+    } else {
+      const ta = Object.assign(document.createElement('textarea'), { value: raw });
+      ta.style.cssText = 'position:fixed;opacity:0;'; document.body.appendChild(ta);
+      ta.select(); document.execCommand('copy'); document.body.removeChild(ta); flash();
+    }
   },
 
   _esc(s) {
