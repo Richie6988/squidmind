@@ -793,7 +793,9 @@ class RegistryManager {
    * keeping full backward compatibility with callers that expect { tasks: {} }.
    */
   _taskDir(taskId) {
-    return require('path').join(this.dataRoot, 'tasks', taskId);
+    // Must use AQUARIUM.TASKS (uppercase on aquarium layout) — not dataRoot/tasks (lowercase)
+    const AQUARIUM = require('../aquarium');
+    return require('path').join(AQUARIUM.TASKS, taskId);
   }
 
   async _readTaskDetails(taskId) {
