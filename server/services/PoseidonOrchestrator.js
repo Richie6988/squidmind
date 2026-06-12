@@ -198,6 +198,9 @@ ${checkpoint.summary}
       lines.push('  read_my_brain("skills") → list all skills');
       lines.push('  read_my_brain("skills.<id>") → read a specific skill steps');
       lines.push('NOTE: file paths use aquarium layout: MODELS/, AGENTS/, PROJECTS/, TASKS/, BRAIN/, SKILLS/, CHANNELS/');
+      lines.push('IMAGES: to show an image inline, output markdown: ![description](https://direct-url-to-image.jpg)');
+      lines.push('  For web images: use read_my_brain("skills.find_image") for the correct strategy');
+      lines.push('  Wikipedia/Wikimedia URLs work. Pexels/Unsplash/Pixabay block bots — never use them');
     }
     return lines.join('\n');
   }

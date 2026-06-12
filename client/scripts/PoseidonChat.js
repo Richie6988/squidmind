@@ -351,7 +351,9 @@ const PoseidonChat = {
     // text chunk
     if (p.text) {
       onFirstToken();
-      let node = el.querySelector('.pc-text-final');
+      // Get the last text segment, or create a new one after the last tool
+      let node = el.lastElementChild?.classList.contains('pc-text-final')
+        ? el.lastElementChild : null;
       if (!node) {
         node = document.createElement('div');
         node.className = 'pc-text-final';
@@ -410,10 +412,10 @@ const PoseidonChat = {
       <span class="pc-tool-name">${this._esc(name)}</span>
       <span class="pc-tool-args">${this._esc(preview ? `(${preview})` : '')}</span>
       <span class="pc-tool-spin">◌</span>`;
-    // Insert tool call BEFORE the text node so answer always stays below
-    const textNode = el.querySelector('.pc-text-final');
-    if (textNode) el.insertBefore(d, textNode);
-    else el.appendChild(d);
+    // Seal current text segment, then append tool in stream order
+    const cur = el.querySelector('.pc-text-final:last-of-type');
+    if (cur) cur.classList.remove('pc-text-final');
+    el.appendChild(d);
   },
 
   _resolveToolCall(el, name, ok, summary, ms) {
