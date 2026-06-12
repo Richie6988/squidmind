@@ -525,13 +525,57 @@ class BotService extends EventEmitter {
    * Run a message through Poseidon and return the full text response.
    * Uses a simple per-conversation history stored in memory (keyed by platform:chatId).
    */
+  async _buildBotContext() {
+    // Build a rich context string injected before every bot message.
+    // This tells Poseidon the exact paths it must use for file operations.
+    const AQUARIUM = require('../aquarium');
+    const lines = [
+      `[REMOTE SESSION — Telegram/Discord]`,
+      `Aquarium root: ${AQUARIUM.ROOT}`,
+      `  PROJECTS: ${AQUARIUM.PROJECTS}`,
+      `  TASKS:    ${AQUARIUM.TASKS}`,
+      `  AGENTS:   ${AQUARIUM.AGENTS}`,
+      `  BRAIN:    ${AQUARIUM.BRAIN}`,
+      `  LOGS:     ${AQUARIUM.LOGS}`,
+    ];
+
+    // List active projects with actual folder paths
+    try {
+      const reg = await this.rm.read('projects/project_registry.json');
+      const active = Object.values(reg.projects || {}).filter(p => p.status !== 'archived');
+      if (active.length) {
+        lines.push('Active projects (use these exact paths for file operations):');
+        for (const p of active) {
+          const folder = require('path').join(AQUARIUM.PROJECTS, p.folder || p.project_id);
+          lines.push(`  ${p.name} (${p.project_id}): ${folder}`);
+          lines.push(`    input/:  ${folder}/input/`);
+          lines.push(`    output/: ${folder}/output/`);
+        }
+      } else {
+        lines.push('No active projects. Use create_project to create one.');
+      }
+    } catch {}
+
+    // List agents
+    try {
+      const agReg = await this.rm.read('agents/agent_registry.json');
+      const agents = Object.values(agReg.agents || {});
+      if (agents.length) {
+        lines.push(`Agents: ${agents.map(a => `${a.display_name} (${a.agent_id})`).join(', ')}`);
+      }
+    } catch {}
+
+    lines.push('RULE: Always write files inside the aquarium paths above. Never use relative paths like "./output" or "/tmp".');
+    lines.push('RULE: For project files use the project folder paths listed above.');
+    return lines.join('\n');
+  }
+
   async _runPoseidon(text, conversationKey) {
     if (!this.modelService.poseidonModelId) {
       throw new Error('Poseidon has no model loaded. Assign a model in the Models library first.');
     }
 
     // Wait for Poseidon to be free (sequences:1 — only one chat at a time)
-    // Poll up to 120s before giving up
     const maxWaitMs = 120_000;
     const pollMs    = 1_000;
     const deadline  = Date.now() + maxWaitMs;
@@ -542,30 +586,31 @@ class BotService extends EventEmitter {
       await new Promise(r => setTimeout(r, pollMs));
     }
 
-    // Per-conversation history (last 6 turns to keep context lean)
+    // Per-conversation history (last 6 turns)
     if (!this._convHistory) this._convHistory = new Map();
     const history = this._convHistory.get(conversationKey) || [];
+
+    // Build context prefix with aquarium paths + project locations
+    const ctx = await this._buildBotContext();
+    const enrichedText = `${ctx}\n\n---\n${text}`;
 
     let fullText = '';
     let toolSummary = [];
 
     try {
-      for await (const ev of this.modelService.chatWithPoseidon(text, history)) {
+      for await (const ev of this.modelService.chatWithPoseidon(enrichedText, history)) {
         if (ev.type === 'text') fullText += ev.chunk;
-        if (ev.type === 'tool_call') toolSummary.push(`🔧 ${ev.name}`);
-        // thinking events silently consumed
+        if (ev.type === 'tool_call') toolSummary.push(`⚡ ${ev.name}`);
       }
     } catch (err) {
       throw new Error(`Poseidon error: ${err.message}`);
     }
 
-    // Update history
+    // Update history with original text (not enriched, to avoid context bloat)
     history.push({ role: 'user', content: text });
     history.push({ role: 'assistant', content: fullText });
-    // Keep last 6 turns (12 messages)
     this._convHistory.set(conversationKey, history.slice(-12));
 
-    // Prepend tool summary if any
     if (toolSummary.length) {
       fullText = `_Used: ${[...new Set(toolSummary)].join(', ')}_\n\n${fullText}`;
     }
