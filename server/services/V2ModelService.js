@@ -502,9 +502,9 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
       // ── Step 4: Compute target contextLength from REAL remaining VRAM ─────
       if (config.contextLength === 'auto') {
         if (vramAfter && freeAfterGb > 0.3) {
-          const margin       = 0.4;  // 400 MB headroom for activations
+          const margin       = 0.25;  // 250 MB headroom for activations (flashAttention reduces pressure)
           const availKvGb    = Math.max(0, freeAfterGb - margin);
-          const bytesPerTok  = config.flashAttention ? 75 * 1024 : 150 * 1024;
+          const bytesPerTok  = config.flashAttention ? 50 * 1024 : 100 * 1024;  // FA halves KV memory
           const toksFit      = Math.floor(availKvGb * 1024 ** 3 / bytesPerTok);
           const capped       = Math.min(toksFit, trainCtx, 32768);
           config.contextLength = Math.max(V2ModelService.MIN_VIABLE_CTX, Math.floor(capped / 1024) * 1024);
@@ -818,24 +818,27 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
     entry.totalRequests++;
     entry._lastUserMessage = userMessage;
 
-    // ── AUTO-CONTINUE: enrich short "continue" messages with last session context ──
-    // If user sends a bare "continue"/"go"/"proceed" and session_state has an unfinished
-    // task, prepend the context so Poseidon resumes immediately.
-    const isContinueCmd = /^(continue|go ahead|proceed|keep going|resume|go on)\.?$/i.test(userMessage.trim());
-    if (isContinueCmd) {
-      try {
-        const ss = await this.rm.read('BRAIN/session_state.json');
-        if (ss?.last_user_message && !ss.emergency) {
-          const tools = ss.tool_calls_this_turn?.length ? ' (tools used: ' + ss.tool_calls_this_turn.join(', ') + ')' : '';
-          userMessage = '[RESUME PREVIOUS TASK]\n' +
-            'Your last exchange (turn ' + ss.turn + ', ' + ss.context_pct + '% ctx' + tools + '):\n' +
-            'User asked: "' + ss.last_user_message + '"\n' +
-            'Your last response: "' + ss.last_response_preview + '"\n' +
-            'The task appears incomplete. Pick up exactly where you left off and finish it.';
-          entry._lastUserMessage = userMessage;
-        }
-      } catch {}
-    }
+    // ── AUTO-CONTINUE: if session_state shows an unfinished task and this message
+    // looks like a continuation cue (short cmd OR first message after a crash),
+    // prepend the previous context so Poseidon resumes without re-reading state.
+    try {
+      const ss = await this.rm.read('BRAIN/session_state.json');
+      const isContinueCue = ss?.last_user_message && !ss.emergency && (
+        // Explicit continuation keywords
+        /^(continue|go ahead|proceed|keep going|resume|go on|do it|yes|go|ok|k|yep|sure)\.?$/i.test(userMessage.trim()) ||
+        // First turn after a crash/restart (turn 0 = fresh session, state exists = was mid-task)
+        (entry.sessionTurns === 0 && ss.last_user_message && ss.context_pct < 90)
+      );
+      if (isContinueCue) {
+        const tools = ss.tool_calls_this_turn?.length ? ' | last tools: ' + ss.tool_calls_this_turn.join(', ') : '';
+        userMessage = '[RESUME PREVIOUS TASK — turn ' + ss.turn + ', ' + ss.context_pct + '% ctx' + tools + ']\n' +
+          'User previously asked: "' + ss.last_user_message + '"\n' +
+          'Your last response: "' + ss.last_response_preview + '"\n' +
+          'Task was not completed. Resume and finish it now. Do not re-introduce yourself.';
+        entry._lastUserMessage = userMessage;
+        console.log('[V2ModelService] Auto-continue injected for turn ' + entry.sessionTurns);
+      }
+    } catch {}
     
     // Per-session turn counter (resets when session is wiped)
     entry.sessionTurns = (entry.sessionTurns || 0);
@@ -1024,7 +1027,7 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
       //   - 'tool_call' / 'tool_result' events: surface for UI thinking display
       let lastIdx = 0;
       let lastChunkAt = Date.now();
-      const IDLE_TIMEOUT_MS = 90000;
+      const IDLE_TIMEOUT_MS = 300000;  // 5 min — tool calls (web fetch, file ops) can take time
       const ABSOLUTE_MAX_MS = 30 * 60_000;
       const start = Date.now();
       while (true) {
@@ -1203,127 +1206,67 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
     if (!entry.model || !entry.context) return;
 
     entry.dreaming = true;
-    console.log('[V2ModelService] 💤 Poseidon dreaming — metacognition on idle session');
+    console.log('[V2ModelService] 💤 Poseidon dreaming — pure-JS metacognition');
 
     try {
-      const llamaCpp = await this._getLlamaCpp();
-
-      // Reuse the existing session — no new sequence needed (avoids "No sequences left").
-      // Dream only runs when Poseidon is idle (not generating), so the session is free.
-      if (!entry.session) {
-        console.log('[Dream] No active session — skipping (model not warmed up yet)');
-        entry.dreaming = false;
-        return;
-      }
-      const dreamSession = entry.session;
-
-      // Give it access to write_skill + read_file only
       const AQUARIUM = require('../aquarium');
-      const fs = require('fs').promises;
+      const fsp  = require('fs').promises;
+      const fsSync = require('fs');
       const path = require('path');
-      const self = this;
 
-      const dreamPrompt = [
-        'DREAM CYCLE START.',
-        'Step 1: Read aquarium/LOGS/logs.json (last 30 entries) to find recent failures/retries.',
-        'Step 2: List files in aquarium/SKILLS/ to know existing skills.',
-        'Step 3: For each lesson learned, call write_skill to capture the fix.',
-        'Step 4: Output a 1-paragraph reflection on what you improved and why.',
-        'Use your tools now. Start with read_file on LOGS/logs.json.'
-      ].join('\n');
-
-      const dreamFunctions = {
-        read_file: {
-          description: 'Read a file from the aquarium',
-          params: { type: 'object', properties: { path: { type: 'string' } }, required: ['path'] },
-          handler: async ({ path: p }) => {
-            try {
-              const resolved = AQUARIUM.resolve(p);
-              const abs = path.join(AQUARIUM.ROOT, resolved);
-              const raw = await fs.readFile(abs, 'utf8');
-              // For logs, return last 30 entries only
-              if (p.includes('logs')) {
-                try {
-                  const parsed = JSON.parse(raw);
-                  const entries = (parsed.entries || []).slice(-30);
-                  return JSON.stringify({ entries }, null, 1);
-                } catch { return raw.slice(-4000); }
-              }
-              return raw.slice(0, 6000);
-            } catch (e) { return `Error reading ${p}: ${e.message}`; }
-          }
-        },
-        list_files: {
-          description: 'List files in a directory',
-          params: { type: 'object', properties: { dir: { type: 'string' } }, required: ['dir'] },
-          handler: async ({ dir }) => {
-            try {
-              const abs = path.join(AQUARIUM.ROOT, AQUARIUM.resolve(dir));
-              const files = await fs.readdir(abs);
-              return JSON.stringify(files);
-            } catch (e) { return `Error: ${e.message}`; }
-          }
-        },
-        write_skill: {
-          description: 'Create or update a skill based on lessons learned',
-          params: {
-            type: 'object',
-            properties: {
-              skill_id: { type: 'string' },
-              name:     { type: 'string' },
-              summary:  { type: 'string' },
-              triggers: { type: 'array', items: { type: 'string' } },
-              steps:    { type: 'array' },
-              notes:    { type: 'array', items: { type: 'string' } }
-            },
-            required: ['skill_id', 'name', 'summary', 'steps']
-          },
-          handler: async ({ skill_id, name, summary, triggers, steps, notes }) => {
-            try {
-              await fs.mkdir(AQUARIUM.SKILLS, { recursive: true });
-              const filePath = path.join(AQUARIUM.SKILLS, `${skill_id}.json`);
-              let version = 1;
-              try { const ex = JSON.parse(await fs.readFile(filePath, 'utf8')); version = (ex.version || 1) + 1; } catch {}
-              const skill = { skill_id, name, version, summary, triggers: triggers||[], steps, notes: notes||[], created_by: 'poseidon_dream', updated_at: new Date().toISOString() };
-              await fs.writeFile(filePath, JSON.stringify(skill, null, 2), 'utf8');
-              // Also update seed
-              const seedPath = path.join(__dirname, '../skills', `${skill_id}.json`);
-              await fs.writeFile(seedPath, JSON.stringify(skill, null, 2), 'utf8').catch(() => {});
-              await self.rm.log({ event_type: 'skill_created', severity: 'info',
-                actor: { type: 'system', id: 'poseidon_dream' },
-                subject: { type: 'skill', id: skill_id },
-                action: `Dream: ${version > 1 ? 'updated' : 'created'} skill "${name}" v${version}`
-              }).catch(() => {});
-              console.log(`[Dream] Skill "${name}" v${version} ${version > 1 ? 'updated' : 'created'}`);
-              return { ok: true, skill_id, version };
-            } catch (e) { return { ok: false, error: e.message }; }
+      // ── Step 1: Read recent logs ─────────────────────────────────────────
+      let recentErrors = [];
+      let recentToolRetries = {};
+      try {
+        const logsPath = path.join(AQUARIUM.ROOT, 'LOGS', 'logs.json');
+        const logsRaw  = JSON.parse(fsSync.readFileSync(logsPath, 'utf8'));
+        const entries  = (logsRaw.entries || []).slice(-50);
+        // Find errors and retried tool calls
+        for (const e of entries) {
+          if (e.severity === 'error' || (e.context?.ok === false)) recentErrors.push(e.action || e.event_type);
+          if (e.event_type === 'tool_call' && e.context?.ok === false) {
+            const t = e.subject?.id || 'unknown';
+            recentToolRetries[t] = (recentToolRetries[t] || 0) + 1;
           }
         }
-      };
+      } catch {}
 
-      const wrappedFunctions = {};
-      for (const [name, def] of Object.entries(dreamFunctions)) {
-        wrappedFunctions[name] = llamaCpp.defineChatSessionFunction({
-          description: def.description,
-          params: def.params,
-          handler: def.handler
-        });
-      }
-
-      let reflection = '';
+      // ── Step 2: Read existing skills ─────────────────────────────────────
+      let existingSkills = [];
       try {
-        reflection = await dreamSession.prompt(dreamPrompt, {
-          functions: wrappedFunctions,
-          maxTokens: 600,
-          temperature: 0.4
-        });
-        reflection = (typeof reflection === 'string' ? reflection : '').trim();
-      } catch (e) {
-        reflection = `(dream session error: ${e.message})`;
-        console.warn('[Dream] Session error:', e.message);
+        if (fsSync.existsSync(AQUARIUM.SKILLS)) {
+          existingSkills = fsSync.readdirSync(AQUARIUM.SKILLS)
+            .filter(f => f.endsWith('.json'))
+            .map(f => f.replace('.json', ''));
+        }
+      } catch {}
+
+      // ── Step 3: Identify gaps and auto-patch known fixable patterns ───────
+      const patches = [];
+
+      // Pattern: fetch_image_url errors → skill needs reminder
+      const imgRetries = recentToolRetries['fetch_image_url'] || 0;
+      if (imgRetries > 2 && existingSkills.includes('find_image')) {
+        patches.push('find_image skill had repeated failures — skill is current v3, no auto-patch needed');
       }
 
-      // Don't dispose dreamSession — it IS entry.session (shared)
+      // Pattern: skill_not_found for a new skill type → note it
+      const notFoundErrors = recentErrors.filter(e => e && e.includes('not found'));
+      for (const err of notFoundErrors.slice(0, 3)) {
+        patches.push(`Observed gap: ${err}`);
+      }
+
+      // ── Step 4: Write dream summary ───────────────────────────────────────
+      const lines = [
+        `Dream at: ${new Date().toISOString()}`,
+        `Session turns at dream: ${entry.sessionTurns}`,
+        `Recent error count: ${recentErrors.length}`,
+        `Tool retry hotspots: ${JSON.stringify(recentToolRetries)}`,
+        `Existing skills (${existingSkills.length}): ${existingSkills.join(', ')}`,
+        patches.length ? `Observations:\n${patches.map(p => '- ' + p).join('\n')}` : 'No actionable gaps found.',
+        'On next chat: review these observations and update any relevant skills.'
+      ];
+      const reflection = lines.join('\n');
 
       const dreamRecord = {
         saved_at: new Date().toISOString(),
@@ -1332,14 +1275,14 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
         reflection
       };
       await this.rm.write('BRAIN/dream_memory.json', dreamRecord).catch(() => {});
-      console.log(`[V2ModelService] 💤 Dream complete — reflection saved`);
+      console.log(`[V2ModelService] 💤 Dream complete — ${patches.length} observation(s) logged`);
 
       await this.rm.log({
         event_type: 'poseidon_decision', severity: 'info',
         actor: { type: 'system', id: 'poseidon_dream' },
         subject: { type: 'system', id: 'poseidon_main' },
-        action: 'Metacognition dream cycle complete',
-        context: { reflection_preview: reflection.slice(0, 200) }
+        action: 'Pure-JS metacognition dream cycle complete',
+        context: { errors_seen: recentErrors.length, tool_retries: recentToolRetries }
       }).catch(() => {});
 
     } catch (e) {
@@ -1348,6 +1291,7 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
       entry.dreaming = false;
     }
   }
+
 
   // === TTL CHECK (called by HeartbeatService) ===
 
