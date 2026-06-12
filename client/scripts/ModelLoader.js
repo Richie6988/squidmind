@@ -914,49 +914,113 @@ const ModelLoader = {
     return p.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
   },
   
+  // Per-model optimal params based on filename
+  _imggenAutoParams(fileName) {
+    const f = (fileName || '').toLowerCase();
+    const isFlux = /flux/i.test(f);
+    if (isFlux) {
+      const isDev = /dev/i.test(f);
+      return { width: 1024, height: 1024, steps: isDev ? 20 : 8, cfg: 1.0, label: 'Flux optimal' };
+    }
+    const isXL = /xl|sdxl/i.test(f);
+    return isXL
+      ? { width: 1024, height: 1024, steps: 30, cfg: 7.5, label: 'SDXL optimal' }
+      : { width: 512,  height: 512,  steps: 25, cfg: 7.5, label: 'SD1.5 optimal' };
+  },
+
+  // 12 high-quality prompt presets
+  _imggenPrompts() {
+    return [
+      'cinematic portrait of a lone astronaut on a desolate alien mesa, golden hour light, dusty atmosphere, ultra-detailed, 8k, photorealistic',
+      'aerial view of a futuristic city at night, neon reflections on wet streets, volumetric fog, drone shot, hyperrealistic',
+      'ancient temple ruins in dense tropical jungle, shafts of sunlight through mist, moss-covered stones, cinematic composition',
+      'close-up macro of a mechanical eye with iris gears, copper and chrome, biopunk aesthetic, studio lighting, ultra-sharp',
+      'vast frozen tundra under aurora borealis, lonely pine tree, long exposure photography, high dynamic range',
+      'underwater city with bioluminescent coral skyscrapers, manta rays drifting past windows, deep ocean blues, photorealistic',
+      'hyperdetailed portrait of an elderly samurai, weathered face, cherry blossoms falling, golden ratio composition, 8k',
+      'surreal library with infinite spiral staircases, warm candlelight, books floating mid-air, Escher-inspired architecture',
+      'volcanic eruption at dusk, lava river meeting ocean, dramatic storm sky, national geographic style photography',
+      'crystal cave cathedral with towering amethyst pillars, ethereal inner glow, 8k fantasy landscape, cinematic',
+      'sci-fi space station interior, workers in exosuits, industrial scale, Syd Mead concept art style, detailed',
+      'raindrop on a spiderweb at dawn, golden bokeh background, extreme macro photography, award-winning composition',
+    ];
+  },
+
   openImageGen(modelId) {
     const m = this.library?.models?.find(m => m.model_id === modelId);
     if (!m) return;
+    const auto = this._imggenAutoParams(m.file_name);
+    const prompts = this._imggenPrompts();
+    const isFlux = /flux/i.test((m.file_name || '').toLowerCase());
+    const S = (v) => String(v).replace(/[<>&"]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'})[c]);
+
+    const promptChips = prompts.map((p) =>
+      '<button onclick="document.getElementById(\'imggen-prompt\').value=this.dataset.p;document.getElementById(\'imggen-prompt\').style.borderColor=\'#4facfe\'" ' +
+      'data-p="' + S(p) + '" ' +
+      'title="' + S(p) + '" ' +
+      'style="background:rgba(79,172,254,0.06);border:1px solid rgba(79,172,254,0.2);color:#94a3b8;border-radius:5px;padding:3px 7px;font-size:8px;cursor:pointer;max-width:155px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' +
+      S(p.slice(0, 26)) + '…</button>'
+    ).join('');
+
+    const cfgTitle  = isFlux ? 'Flux: keep at 1.0 (higher values ignored)' : 'SD: 7-12 for quality';
+    const stepTitle = isFlux ? 'Flux schnell: 8, dev: 20. More = slower + marginal gain' : 'SD: 20-30 for quality';
+
     const dlg = document.createElement('div');
     dlg.className = 'modal';
-    dlg.innerHTML = `
-      <div class="modal-content" style="width:480px;padding:20px;gap:10px;display:flex;flex-direction:column;">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
-          <strong style="color:#e2e8f0;font-size:12px;">🎨 Generate Image — ${this._escape(m.file_name)}</strong>
-          <button onclick="this.closest('.modal').remove()" style="background:none;border:none;color:#64748b;font-size:16px;cursor:pointer;">✕</button>
-        </div>
-        <div class="ml-imggen-note" style="font-size:9px;color:#f59e0b;background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.2);border-radius:6px;padding:8px;">
-          ⚠ Requires <code>sd-diffusion</code> on PATH (stable-diffusion.cpp).<br>
-          On 8GB GPU: use <strong>Q2_K</strong> quantization to avoid VRAM OOM at 512×512.<br>
-          <a href="https://github.com/leejet/stable-diffusion.cpp" target="_blank" style="color:#4facfe;">github.com/leejet/stable-diffusion.cpp</a>
-        </div>
-        <textarea id="imggen-prompt" placeholder="Describe the image you want to generate…"
-          style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:8px;color:#e2e8f0;font-size:10px;padding:8px;resize:vertical;min-height:60px;font-family:inherit;"></textarea>
-        <input id="imggen-neg" type="text" placeholder="Negative prompt (optional)"
-          style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:8px;color:#e2e8f0;font-size:10px;padding:6px 10px;">
-        <div style="display:flex;gap:8px;flex-wrap:wrap;">
-          <label style="font-size:9px;color:#64748b;display:flex;flex-direction:column;gap:3px;">Width<input id="imggen-w" type="number" value="512" min="64" max="2048" step="64" style="width:70px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:6px;color:#e2e8f0;font-size:10px;padding:4px 6px;"></label>
-          <label style="font-size:9px;color:#64748b;display:flex;flex-direction:column;gap:3px;">Height<input id="imggen-h" type="number" value="512" min="64" max="2048" step="64" style="width:70px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:6px;color:#e2e8f0;font-size:10px;padding:4px 6px;"></label>
-          <label style="font-size:9px;color:#64748b;display:flex;flex-direction:column;gap:3px;" title="Flux auto: 8 steps. SD1.5/SDXL: 20-30">Steps<input id="imggen-steps" type="number" value="20" min="1" max="100" style="width:55px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:6px;color:#e2e8f0;font-size:10px;padding:4px 6px;"></label>
-          <label style="font-size:9px;color:#64748b;display:flex;flex-direction:column;gap:3px;" title="Flux auto: 1.0. SD1.5/SDXL: 7-12">CFG<input id="imggen-cfg" type="number" value="7" min="0.1" max="30" step="0.1" style="width:55px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:6px;color:#e2e8f0;font-size:10px;padding:4px 6px;"></label>
-        </div>
-        <div style="display:flex;gap:8px;justify-content:flex-end;">
-          <button onclick="this.closest('.modal').remove()" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);color:#94a3b8;border-radius:6px;padding:5px 12px;font-size:10px;cursor:pointer;">Cancel</button>
-          <button id="imggen-run" onclick="ModelLoader._runImageGen('${modelId}', this.closest('.modal'))"
-            style="background:linear-gradient(135deg,#4facfe,#2563eb);border:none;color:#fff;border-radius:6px;padding:5px 14px;font-size:10px;cursor:pointer;font-weight:600;">Generate ✨</button>
-        </div>
-        <div id="imggen-result" style="display:none;margin-top:8px;text-align:center;"></div>
-      </div>`;
+    dlg.innerHTML =
+      '<div class="modal-content" style="width:540px;max-height:90vh;overflow-y:auto;padding:20px;gap:10px;display:flex;flex-direction:column;">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;">' +
+          '<strong style="color:#e2e8f0;font-size:12px;">Generate Image — ' + S(m.file_name) + '</strong>' +
+          '<button onclick="this.closest(\'.modal\').remove()" style="background:none;border:none;color:#64748b;font-size:16px;cursor:pointer;">✕</button>' +
+        '</div>' +
+        '<div style="font-size:8px;color:#64748b;margin-bottom:1px;">Prompt suggestions — click to use:</div>' +
+        '<div style="display:flex;flex-wrap:wrap;gap:4px;max-height:72px;overflow-y:auto;padding:1px 0;">' + promptChips + '</div>' +
+        '<textarea id="imggen-prompt" placeholder="Describe the image…" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:8px;color:#e2e8f0;font-size:10px;padding:8px;resize:vertical;min-height:58px;font-family:inherit;"></textarea>' +
+        '<input id="imggen-neg" type="text" placeholder="Negative prompt (optional)" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:8px;color:#e2e8f0;font-size:10px;padding:6px 10px;">' +
+        '<div style="display:flex;align-items:center;gap:8px;background:rgba(79,172,254,0.07);border:1px solid rgba(79,172,254,0.18);border-radius:7px;padding:6px 10px;">' +
+          '<span style="font-size:8px;color:#4facfe;font-weight:700;letter-spacing:.5px;">AUTO</span>' +
+          '<span style="font-size:8px;color:#64748b;">' + auto.label + ' — ' + auto.width + '×' + auto.height + ' · ' + auto.steps + ' steps · CFG ' + auto.cfg + '</span>' +
+          '<button onclick="ModelLoader._resetAutoParams(this.closest(\'.modal\'))" style="margin-left:auto;background:rgba(79,172,254,0.12);border:1px solid rgba(79,172,254,0.3);color:#4facfe;border-radius:5px;padding:2px 8px;font-size:8px;cursor:pointer;">Reset</button>' +
+        '</div>' +
+        '<div style="display:flex;gap:8px;flex-wrap:wrap;">' +
+          '<label style="font-size:9px;color:#64748b;display:flex;flex-direction:column;gap:3px;">Width<input id="imggen-w" type="number" value="' + auto.width + '" min="64" max="2048" step="64" style="width:70px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:6px;color:#e2e8f0;font-size:10px;padding:4px 6px;"></label>' +
+          '<label style="font-size:9px;color:#64748b;display:flex;flex-direction:column;gap:3px;">Height<input id="imggen-h" type="number" value="' + auto.height + '" min="64" max="2048" step="64" style="width:70px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:6px;color:#e2e8f0;font-size:10px;padding:4px 6px;"></label>' +
+          '<label title="' + stepTitle + '" style="font-size:9px;color:#64748b;display:flex;flex-direction:column;gap:3px;">Steps<input id="imggen-steps" type="number" value="' + auto.steps + '" min="1" max="100" style="width:55px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:6px;color:#e2e8f0;font-size:10px;padding:4px 6px;"></label>' +
+          '<label title="' + cfgTitle + '" style="font-size:9px;color:#64748b;display:flex;flex-direction:column;gap:3px;">CFG<input id="imggen-cfg" type="number" value="' + auto.cfg + '" min="0.1" max="30" step="0.1" style="width:55px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:6px;color:#e2e8f0;font-size:10px;padding:4px 6px;"></label>' +
+          '<label title="Seed (-1 = random, set a value to reproduce exact result)" style="font-size:9px;color:#64748b;display:flex;flex-direction:column;gap:3px;">Seed<input id="imggen-seed" type="number" value="-1" min="-1" max="2147483647" style="width:78px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:6px;color:#e2e8f0;font-size:10px;padding:4px 6px;"></label>' +
+        '</div>' +
+        '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:2px;">' +
+          '<button onclick="this.closest(\'.modal\').remove()" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);color:#94a3b8;border-radius:6px;padding:5px 12px;font-size:10px;cursor:pointer;">Cancel</button>' +
+          '<button id="imggen-run" onclick="ModelLoader._runImageGen(\'' + modelId + '\', this.closest(\'.modal\'))" style="background:linear-gradient(135deg,#4facfe,#2563eb);border:none;color:#fff;border-radius:6px;padding:5px 16px;font-size:10px;cursor:pointer;font-weight:600;">Generate</button>' +
+        '</div>' +
+        '<div id="imggen-result" style="display:none;margin-top:8px;text-align:center;"></div>' +
+      '</div>';
     document.body.appendChild(dlg);
+  },
+
+  _resetAutoParams(dlg) {
+    const btn = dlg.querySelector('#imggen-run');
+    if (!btn) return;
+    const match = btn.getAttribute('onclick')?.match(/\'([^\']+)\'/);
+    if (!match) return;
+    const modelId = match[1];
+    const m = ModelLoader.library?.models?.find(m => m.model_id === modelId);
+    if (!m) return;
+    const auto = ModelLoader._imggenAutoParams(m.file_name);
+    dlg.querySelector('#imggen-w').value     = auto.width;
+    dlg.querySelector('#imggen-h').value     = auto.height;
+    dlg.querySelector('#imggen-steps').value = auto.steps;
+    dlg.querySelector('#imggen-cfg').value   = auto.cfg;
   },
 
   async _runImageGen(modelId, dlg) {
     const prompt  = dlg.querySelector('#imggen-prompt')?.value.trim();
     const neg     = dlg.querySelector('#imggen-neg')?.value.trim() || '';
-    const width   = parseInt(dlg.querySelector('#imggen-w')?.value) || 512;
-    const height  = parseInt(dlg.querySelector('#imggen-h')?.value) || 512;
+    const width   = parseInt(dlg.querySelector('#imggen-w')?.value)     || 512;
+    const height  = parseInt(dlg.querySelector('#imggen-h')?.value)     || 512;
     const steps   = parseInt(dlg.querySelector('#imggen-steps')?.value) || 20;
     const cfg     = parseFloat(dlg.querySelector('#imggen-cfg')?.value) || 7;
+    const seed    = parseInt(dlg.querySelector('#imggen-seed')?.value)  ?? -1;
     if (!prompt) { alert('Enter a prompt first'); return; }
     const runBtn  = dlg.querySelector('#imggen-run');
     const result  = dlg.querySelector('#imggen-result');
@@ -986,7 +1050,7 @@ const ModelLoader = {
     try {
       const data = await window.ApiV2._fetch('/models/generate-image', {
         method: 'POST',
-        body: JSON.stringify({ modelId, prompt, negativePrompt: neg, width, height, steps, cfg })
+        body: JSON.stringify({ modelId, model_id: modelId, prompt, negativePrompt: neg, width, height, steps, cfg, seed })
       });
       _stopFastPoll();
       if (data.ok && data.url) {

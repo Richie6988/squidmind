@@ -495,22 +495,12 @@ class OrchestratorTools {
         }
       } catch(e) { console.warn('[generateImage] task creation failed:', e.message); }
 
-      // Resolve output directory: TASKS/{id}/output/ (aquarium/TASKS — uppercase)
+      // Output always goes to TASKS/output/<taskId-or-ts>/ — never to legacy generated/
       const AQUARIUM = require('../aquarium');
-      let outputDir, serveUrl;
-      if (taskId) {
-        outputDir = require('path').join(AQUARIUM.TASKS, taskId, 'output');
-        serveUrl  = `/api/files/read?path=${encodeURIComponent(require('path').join(AQUARIUM.TASKS, taskId, 'output', safeFilename))}`;
-      } else if (project_id) {
-        const pf = project_id.toUpperCase().startsWith('PROJECT_')
-          ? project_id.toUpperCase()
-          : `PROJECT_${project_id.replace(/\D/g, '').padStart(3, '0')}`;
-        outputDir = require('path').join(AQUARIUM.PROJECTS, pf, 'output');
-        serveUrl  = `/api/v2/projects/${pf}/outputs/${safeFilename}`;
-      } else {
-        outputDir = require('path').join(AQUARIUM.ROOT, 'generated');
-        serveUrl  = `/api/v2/models/generated/${safeFilename}`;
-      }
+      // Use taskId if available, else a timestamp-based folder so path is always under TASKS
+      const outputSlot = taskId || `img_${Date.now()}`;
+      const outputDir  = require('path').join(AQUARIUM.TASKS, outputSlot, 'output');
+      const serveUrl   = `/api/files/read?path=${encodeURIComponent(require('path').join(AQUARIUM.TASKS, outputSlot, 'output', safeFilename))}`;
       await fs2.mkdir(outputDir, { recursive: true });
       const outputPath = path.join(outputDir, safeFilename);
 
