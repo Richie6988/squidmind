@@ -205,19 +205,26 @@ const AQUARIUM = {
   }
   if (seeded > 0) console.log(`[Aquarium] Bootstrapped ${seeded} missing files from server/seed/`);
 
-  // Seed skills (only if SKILLS dir is empty)
+  // Seed skills — upsert: copy each skill if missing OR seed version > aquarium version
   try {
     fs.mkdirSync(AQUARIUM.SKILLS, { recursive: true });
-    const existingSkills = fs.readdirSync(AQUARIUM.SKILLS).filter(f => f.endsWith('.json'));
-    if (existingSkills.length === 0 && fs.existsSync(SKILLS_SEED)) {
+    if (fs.existsSync(SKILLS_SEED)) {
       let n = 0;
       for (const f of fs.readdirSync(SKILLS_SEED)) {
-        if (f.endsWith('.json')) {
-          fs.copyFileSync(path.join(SKILLS_SEED, f), path.join(AQUARIUM.SKILLS, f));
-          n++;
+        if (!f.endsWith('.json')) continue;
+        const dst = path.join(AQUARIUM.SKILLS, f);
+        const src = path.join(SKILLS_SEED, f);
+        let shouldCopy = !fs.existsSync(dst);
+        if (!shouldCopy) {
+          try {
+            const existing = JSON.parse(fs.readFileSync(dst, 'utf8'));
+            const seed     = JSON.parse(fs.readFileSync(src, 'utf8'));
+            if ((seed.version || 1) > (existing.version || 1)) shouldCopy = true;
+          } catch { shouldCopy = true; }
         }
+        if (shouldCopy) { fs.copyFileSync(src, dst); n++; }
       }
-      if (n > 0) console.log(`[Aquarium] Seeded ${n} skills from server/skills/`);
+      if (n > 0) console.log(`[Aquarium] Upserted ${n} skills from server/skills/`);
     }
   } catch {}
 })();

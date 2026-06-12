@@ -147,6 +147,8 @@ My response: "${ss.last_response_preview}"${tools}
     lines.push('A. No matching skill? SOLVE IT anyway with your tools. Then IMMEDIATELY call write_skill to capture the working method so next time is instant.');
     lines.push('B. Used a skill but found a better way? Call write_skill with the SAME skill_id to update it (your improvement persists).');
     lines.push('C. Never stop at "I do not have a skill/model for that" — propose and EXECUTE the closest achievable path with what you have.');
+    lines.push('D. AUTO-CONTINUE: if # LAST SESSION shows an incomplete task (no final answer delivered), resume it immediately WITHOUT waiting for the user to say "continue". Just pick up where you left off.');
+    lines.push('E. SELF-IMPROVE: after any task where you struggled (retried >2 tools, got 404s, had to improvise), call write_skill to save the working method with the lesson learned.');
     return lines.join('\n');
   }
   

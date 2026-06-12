@@ -1,38 +1,39 @@
 {
   "skill_id": "find_image",
   "name": "Find Image Online",
-  "version": 1,
-  "summary": "Find and display an image from the web using Wikipedia, Wikimedia Commons, or direct image URLs from search results.",
-  "triggers": ["show image", "find image", "image of", "picture of", "photo of", "show me"],
+  "version": 2,
+  "summary": "Find and display an image inline using Wikipedia/Wikimedia. Extract the real upload URL from the page HTML.",
+  "triggers": ["show image", "find image", "image of", "picture of", "photo of", "show me a", "display image"],
   "steps": [
     {
       "order": 1,
       "action": "web_search",
-      "note": "Search for '<subject> wikipedia' or '<subject> site:commons.wikimedia.org' — these sources allow fetching",
-      "params": {"query": "<subject> wikipedia", "num_results": 5}
+      "note": "Search '<subject> wikipedia' to get the Wikipedia article URL",
+      "params": {"query": "<subject> wikipedia", "num_results": 3}
     },
     {
       "order": 2,
       "action": "web_fetch",
-      "note": "Fetch the Wikipedia page — it contains direct image URLs in og:image meta tags or infobox",
-      "params": {"url": "wikipedia_url_from_results"}
+      "note": "Fetch the Wikipedia article page. The HTML will contain upload.wikimedia.org image URLs.",
+      "params": {"url": "https://en.wikipedia.org/wiki/<Subject>"}
     },
     {
       "order": 3,
-      "action": "extract_image_url",
-      "note": "Look for: 1) og:image meta tag, 2) //upload.wikimedia.org URLs, 3) Direct .jpg/.png/.webp URLs in the page content"
+      "action": "extract_url",
+      "note": "Scan fetched HTML for the FIRST URL matching: https://upload.wikimedia.org/wikipedia/commons/thumb/[a-f0-9]/[a-f0-9][a-f0-9]/<filename>/<width>px-<filename>. Use the thumbnail URL as-is — do NOT strip the /thumb/ path or the size suffix. These URLs work. URLs without /thumb/ often 404."
     },
     {
       "order": 4,
       "action": "render",
-      "note": "Output the image as markdown: ![description](https://url.to/image.jpg) — this renders inline in the chat"
+      "note": "Output exactly: ![<subject>](https://upload.wikimedia.org/...the-thumb-url...) — this renders inline. If no URL found, try web_search for 'site:upload.wikimedia.org <subject>'."
     }
   ],
   "notes": [
-    "NEVER try to fetch pexels.com, unsplash.com, pixabay.com, shutterstock.com — they block bots",
-    "Wikipedia og:image URLs look like: https://upload.wikimedia.org/wikipedia/commons/...",
-    "If Wikipedia fails, try web_search for '<subject> filetype:jpg site:wikimedia.org'",
-    "Always render as markdown image syntax: ![alt text](url) so it displays inline",
-    "For generated images: use generate_image tool if an image model is loaded"
+    "CRITICAL: Use /thumb/ URLs from Wikipedia HTML — they always work. Direct /wikipedia/commons/ URLs without /thumb/ return 404.",
+    "Thumb URL pattern: https://upload.wikimedia.org/wikipedia/commons/thumb/X/XX/File.jpg/400px-File.jpg",
+    "NEVER fetch pexels.com, unsplash.com, pixabay.com, shutterstock.com — 403 bots",
+    "NEVER try to construct Wikimedia URLs manually — extract them from the fetched page HTML",
+    "Render as markdown: ![alt](url) — the chat client renders this inline",
+    "If Wikipedia has no image, try web_search for 'commons.wikimedia.org <subject>' then fetch that commons page"
   ]
 }
