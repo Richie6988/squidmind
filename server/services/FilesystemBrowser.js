@@ -56,8 +56,9 @@ class FilesystemBrowser {
     const files = [];
     
     for (const entry of entries) {
-      // Skip hidden files (.git, .cache, etc) unless it's .huggingface (common HF cache)
-      if (entry.name.startsWith('.') && !['.huggingface', '.cache'].includes(entry.name)) continue;
+      // Only skip a few truly useless system dirs — show everything else including hidden
+      const SKIP = ['.git', '.Trash', '__pycache__', 'lost+found'];
+      if (SKIP.includes(entry.name)) continue;
       
       const entryPath = path.join(absPath, entry.name);
       

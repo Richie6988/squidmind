@@ -336,6 +336,18 @@ const PoseidonChat = {
       this._resolveToolCall(el, p.name, p.ok, p.summary, p.duration_ms);
       return;
     }
+    // image event
+    if (type === 'image') {
+      onFirstToken();
+      let tNode = el.querySelector('.pc-text-final');
+      if (!tNode) { tNode = document.createElement('div'); tNode.className = 'pc-text-final'; el.appendChild(tNode); }
+      const iWrap = document.createElement('div');
+      iWrap.className = 'pc-img-wrap';
+      iWrap.innerHTML = `<img class="pc-md-img" src="${p.url}" alt="${p.alt||''}" loading="lazy"><div class="pc-img-caption">${p.caption||p.alt||''}</div>`;
+      tNode.appendChild(iWrap);
+      return;
+    }
+
     // text chunk
     if (p.text) {
       onFirstToken();
@@ -398,7 +410,10 @@ const PoseidonChat = {
       <span class="pc-tool-name">${this._esc(name)}</span>
       <span class="pc-tool-args">${this._esc(preview ? `(${preview})` : '')}</span>
       <span class="pc-tool-spin">◌</span>`;
-    el.appendChild(d);
+    // Insert tool call BEFORE the text node so answer always stays below
+    const textNode = el.querySelector('.pc-text-final');
+    if (textNode) el.insertBefore(d, textNode);
+    else el.appendChild(d);
   },
 
   _resolveToolCall(el, name, ok, summary, ms) {
@@ -482,6 +497,16 @@ const PoseidonChat = {
     s = s.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
     s = s.replace(/\*(.+?)\*/g,     '<em>$1</em>');
     s = s.replace(/_(.+?)_/g,       '<em>$1</em>');
+
+    // Images ![alt](url) - render before links
+    s = s.replace(/!\[([^\]]*)\]\((https?:\/\/[^\)]+)\)/g, (_, alt, url) => {
+      const isImg = /\.(png|jpg|jpeg|gif|webp|svg)(\?.*)?$/i.test(url);
+      if (isImg) return `<div class="pc-img-wrap"><img class="pc-md-img" src="${url}" alt="${alt}" loading="lazy" onerror="this.style.display='none'"><div class="pc-img-caption">${alt}</div></div>`;
+      return `<a class="pc-md-link" href="${url}" target="_blank">${alt || url}</a>`;
+    });
+
+    // Bare image URLs on their own line
+    s = s.replace(/^(https?:\/\/\S+\.(png|jpg|jpeg|gif|webp|svg)(\?\S*)?)$/gim, '<div class="pc-img-wrap"><img class="pc-md-img" src="$1" alt="" loading="lazy" onerror="this.parentNode.remove()"></div>');
 
     // Links [text](url)
     s = s.replace(/\[([^\]]+)\]\((https?:\/\/[^\)]+)\)/g, '<a class="pc-md-link" href="$2" target="_blank">$1</a>');

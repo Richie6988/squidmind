@@ -6219,3 +6219,27 @@ h4.pc-md-h { font-size: 8px; color: #94a3b8; }
 .ml-sel-info { flex: 1; min-width: 0; }
 .ml-sel-name { display: block; font-size: 10px; color: var(--success); font-family: monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ml-sel-size { font-size: 9px; color: var(--text-secondary); }
+
+/* ── PoseidonChat images ── */
+.pc-img-wrap {
+  margin: 8px 0;
+  border-radius: 6px;
+  overflow: hidden;
+  display: inline-block;
+  max-width: 100%;
+  border: 1px solid var(--border);
+}
+.pc-md-img {
+  display: block;
+  max-width: 100%;
+  max-height: 480px;
+  object-fit: contain;
+  background: rgba(0,0,0,0.2);
+}
+.pc-img-caption {
+  font-size: 9px;
+  color: var(--text-secondary);
+  padding: 4px 8px;
+  background: rgba(0,0,0,0.2);
+  font-style: italic;
+}
