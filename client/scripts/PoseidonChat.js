@@ -209,9 +209,9 @@ const PoseidonChat = {
     msgs.innerHTML = this.history.map((t, i) => {
       const ts = t.ts ? `<div class="pc-ts${t.role==='assistant'?' pc-ts-ai':''}">${this._fmtTs(new Date(t.ts))}</div>` : '';
       if (t.role === 'user') {
-        return `<div class="pc-msg pc-msg-user"><div class="pc-bubble-user">${this._esc(t.content)}</div><div class="pc-msg-actions"><button class="pc-copy-btn" onclick="PoseidonChat._copyText(this, event)" onclick="PoseidonChat._copyText('u'+i)">⎘</button></div>${ts}</div>`;
+        return `<div class="pc-msg pc-msg-user"><div class="pc-bubble-user">${this._esc(t.content)}</div><div class="pc-msg-actions"><button class="pc-copy-btn" onclick="PoseidonChat._copyText(this,'u'+i)">⎘</button></div>${ts}</div>`;
       } else {
-        return `<div class="pc-msg pc-msg-ai" id="pc-msg-${i}"><div class="pc-ai-row"><div class="pc-ai-dot">🔱</div><div class="pc-bubble-ai pc-text-final">${this._md(t.content)}</div></div><div class="pc-msg-actions"><button class="pc-copy-btn" onclick="PoseidonChat._copyText(this, event)" onclick="PoseidonChat._copyText('a'+i)">⎘</button></div>${ts}</div>`;
+        return `<div class="pc-msg pc-msg-ai" id="pc-msg-${i}"><div class="pc-ai-row"><div class="pc-ai-dot">🔱</div><div class="pc-bubble-ai pc-text-final">${this._md(t.content)}</div></div><div class="pc-msg-actions"><button class="pc-copy-btn" onclick="PoseidonChat._copyText(this,'a'+i)">⎘</button></div>${ts}</div>`;
       }
     }).join('');
     this._scrollToBottom(msgs);
@@ -395,7 +395,7 @@ const PoseidonChat = {
         const actions = document.createElement('div');
         actions.className = 'pc-msg-actions';
         actions.innerHTML = '<button class="pc-copy-btn" title="Copy">⎘</button>';
-        const liveIdx = this.history.filter(h=>h.role==='assistant').length - 1; actions.querySelector('.pc-copy-btn').setAttribute('onclick', `PoseidonChat._copyText('a\${liveIdx}')`);
+        const liveIdx = this.history.filter(h=>h.role==='assistant').length - 1; actions.querySelector('.pc-copy-btn').setAttribute('onclick', `PoseidonChat._copyText(this,'a\${liveIdx}')`);
         // onclick set above
         const ts = lastMsg.querySelector('.pc-ts');
         if (ts) lastMsg.insertBefore(actions, ts); else lastMsg.appendChild(actions);
@@ -564,14 +564,31 @@ const PoseidonChat = {
 
     // Extract images BEFORE HTML escaping (escaping corrupts URLs in src attributes)
     const imgBlocks = [];
-    s = s.replace(/!\[([^\]]*?)\]\((https?:[^)]+)\)/g, function(_, alt, url) {
-      var isImg = /\.(png|jpg|jpeg|gif|webp|svg)(\?.*)?$/i.test(url) || /wikimedia|wikipedia|upload\.wiki/i.test(url);
+    // Match ![alt](url) — more permissive: url may have commas, encoded chars
+    s = s.replace(/!\[([^\]]*?)\]\(([^\)\n]+)\)/g, function(_, alt, url) {
+      url = url.trim();
+      var isImg = /upload\.wikimedia\.org/i.test(url)
+               || /\.(png|jpg|jpeg|gif|webp|svg)(\?[^)]*)?$/i.test(url);
       if (isImg) {
-        var idx2 = imgBlocks.length;
-        imgBlocks.push('<div class="pc-img-wrap"><img class="pc-md-img" src="' + url + '" alt="' + alt.replace(/"/g,"&quot;") + '" loading="lazy" onerror="this.closest(\'.pc-img-wrap\').innerHTML=\'<span style=\'color:#475569;font-size:10px;\'>Image unavailable</span>\'"></img><div class="pc-img-caption">' + alt + '</div></div>');
-        return '\x00IMG' + idx2 + '\x00';
+        var n = imgBlocks.length;
+        imgBlocks.push(
+          '<div class="pc-img-wrap">' +
+          '<img class="pc-md-img" src="' + url + '" alt="' + alt.replace(/"/g,'&quot;') + '" loading="lazy" ' +
+          'onerror="this.style.display=\'none\'; if(this.nextSibling)this.nextSibling.style.display=\'block\'">' +
+          '<div style="display:none;color:#475569;font-size:10px;padding:4px;">⚠ Could not load image</div>' +
+          (alt ? '<div class="pc-img-caption">' + alt + '</div>' : '') +
+          '</div>'
+        );
+        return '\x00IMG' + n + '\x00';
       }
+      // Not an image — treat as link
       return '\x00LINK' + alt + '|||' + url + '\x00';
+    });
+    // Bare image URLs on their own line
+    s = s.replace(/^(https?:\/\/\S+\.(?:png|jpg|jpeg|gif|webp|svg)\S*)$/gim, function(_, url) {
+      var n = imgBlocks.length;
+      imgBlocks.push('<div class="pc-img-wrap"><img class="pc-md-img" src="' + url + '" alt="" loading="lazy"></div>');
+      return '\x00IMG' + n + '\x00';
     });
     s = s.replace(/^(https?:\/\/\S+\.(?:png|jpg|jpeg|gif|webp|svg)(\?\S*)?)$/gim, function(_, url) {
       var idx2 = imgBlocks.length;
@@ -646,8 +663,9 @@ const PoseidonChat = {
     }
   },
 
-  _copyText(msgId) {
-    // msgId: 'u{i}' = user history index, 'a{i}' = assistant history index
+  _copyText(btn, msgId) {
+    // btn: the clicked button element (passed as 'this' from onclick)
+    // msgId: 'u{i}' user history index, 'a{i}' assistant history index
     let raw = '';
     if (msgId && msgId.length > 1) {
       const role = msgId[0] === 'u' ? 'user' : 'assistant';
@@ -655,8 +673,11 @@ const PoseidonChat = {
       raw = this.history.filter(h => h.role === role)[idx]?.content || '';
     }
     if (!raw) return;
-    const btn = event?.target || document.activeElement;
-    const flash = () => { if (!btn) return; btn.textContent = '✓'; btn.style.color = '#06ffa5'; setTimeout(() => { btn.textContent = '⎘'; btn.style.color = ''; }, 1400); };
+    const flash = () => {
+      if (!btn) return;
+      btn.textContent = '✓'; btn.style.color = '#06ffa5';
+      setTimeout(() => { btn.textContent = '⎘'; btn.style.color = ''; }, 1400);
+    };
     if (navigator.clipboard?.writeText) {
       navigator.clipboard.writeText(raw).then(flash).catch(() => {
         const ta = Object.assign(document.createElement('textarea'), { value: raw });
