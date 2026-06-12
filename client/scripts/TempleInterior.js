@@ -131,11 +131,12 @@ const TempleInterior = {
           
           <hr class="section-divider">
           
-          <h2>🔄 RECURRENT TASKS</h2>
-          <button class="btn-add-cron" onclick="TempleInterior.openCronBuilder()">
-            ➕ Create Task
-          </button>
-          <div class="recurrent-tasks" id="cron-tasks"></div>
+          <h2>📋 PROJECT TASKS</h2>
+          <div style="display:flex;gap:6px;margin-bottom:8px;">
+            <button class="btn-add-cron" onclick="TempleInterior.openCronBuilder()">➕ New Task</button>
+            <button class="btn-secondary" style="font-size:9px;padding:3px 8px;" onclick="TempleInterior.populateProjectTasks(TempleInterior.currentTemple)">↻ Refresh</button>
+          </div>
+          <div class="project-tasks-list" id="cron-tasks"></div>
         </div>
       </div>
     `;
@@ -571,35 +572,82 @@ const TempleInterior = {
   },
   
   /**
-   * Populate cron tasks: read from V2 tasks registry, filtered by project_id.
+   * Populate project tasks: all tasks belonging to this project, with status + progress + actions.
+   * Called by populateCronTasks alias for backward compat.
    */
-  async populateCronTasks(temple) {
+  async populateCronTasks(temple) { return this.populateProjectTasks(temple); },
+
+  async populateProjectTasks(temple) {
     const container = document.getElementById('cron-tasks');
     if (!container) return;
-    
-    const projectId = temple.project_id;
-    let cronTasks = [];
-    
+    const projectId = temple?.project_id;
+    container.innerHTML = '<p style="font-size:9px;color:#64748b;">Loading…</p>';
+
+    let tasks = [];
     if (projectId) {
       try {
         const r = await window.ApiV2._fetch('/tasks');
         const allTasks = Object.values(r.registry?.tasks || {});
-        cronTasks = allTasks.filter(t => t.project_id === projectId && t.schedule?.cron);
+        // Match by project_id, project_name, or context.project_id
+        tasks = allTasks.filter(t =>
+          t.project_id === projectId ||
+          t.context?.project_id === projectId ||
+          t.project_name === temple?.name
+        ).sort((a, b) => {
+          // in_progress first, then planned, then completed
+          const rank = s => s === 'in_progress' ? 0 : s === 'planned' ? 1 : s === 'open' ? 2 : 3;
+          return rank(a.lifecycle?.status || a.status) - rank(b.lifecycle?.status || b.status);
+        });
       } catch (err) {
-        console.warn('[TempleInterior] populateCronTasks fetch failed:', err.message);
+        container.innerHTML = '<p style="font-size:9px;color:#ef4444;">Failed to load tasks</p>';
+        return;
       }
     }
-    
-    if (cronTasks.length > 0) {
-      container.innerHTML = cronTasks.map(task => `
-        <div class="cron-task">
-          <span class="cron-schedule">${this._escape(task.schedule?.human || this.humanizeCron(task.schedule?.cron) || '')}</span>
-          <span class="cron-desc">${this._escape(task.description || task.name || '')}</span>
-          <button class="btn-edit-cron" onclick="TempleInterior.editCron('${this._escape(task.task_id || task.id)}')">✏️</button>
+
+    if (tasks.length === 0) {
+      container.innerHTML = '<p class="empty-state" style="font-size:9px;color:#64748b;">No tasks for this project yet — create one above.</p>';
+      return;
+    }
+
+    const statusColor = s => ({
+      'in_progress': '#4facfe', 'completed': '#22c55e', 'failed': '#ef4444',
+      'cancelled': '#94a3b8', 'planned': '#f59e0b', 'open': '#94a3b8'
+    })[s] || '#64748b';
+
+    const statusIcon = s => ({
+      'in_progress': '⚡', 'completed': '✅', 'failed': '❌',
+      'cancelled': '⊘', 'planned': '📋', 'open': '○'
+    })[s] || '○';
+
+    container.innerHTML = tasks.map(task => {
+      const status = task.lifecycle?.status || task.status || 'open';
+      const progress = task.progress ? '<div style="font-size:8px;color:#94a3b8;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">📍 ' + TempleInterior._esc(String(task.progress).slice(0, 90)) + '</div>' : '';
+      const isRunning = status === 'in_progress';
+      return `<div class="project-task-item" style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);border-radius:6px;padding:7px 10px;margin-bottom:6px;position:relative;">
+        <div style="display:flex;align-items:center;gap:6px;">
+          <span style="color:${statusColor(status)};font-size:10px;">${statusIcon(status)}</span>
+          <span style="font-size:10px;color:#e2e8f0;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${TempleInterior._esc(task.title)}</span>
+          <span style="font-size:8px;color:${statusColor(status)};background:rgba(255,255,255,0.05);border-radius:4px;padding:1px 6px;">${status}</span>
+          <button onclick="TempleInterior._deleteProjectTask('${task.task_id}')" title="Delete task" style="background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.2);color:#ef4444;border-radius:4px;padding:1px 5px;font-size:8px;cursor:pointer;">🗑</button>
         </div>
-      `).join('');
-    } else {
-      container.innerHTML = '<p class="empty-state">No scheduled tasks</p>';
+        ${progress}
+        ${isRunning ? '<div style="margin-top:4px;height:2px;background:rgba(79,172,254,0.15);border-radius:2px;overflow:hidden;"><div style="height:100%;background:linear-gradient(90deg,#4facfe,#2563eb);width:100%;animation:tq-progress-anim 2s linear infinite;"></div></div>' : ''}
+      </div>`;
+    }).join('');
+  },
+
+  _esc(s) {
+    if (!s) return '';
+    return String(s).replace(/[<>&"]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'})[c]);
+  },
+
+  async _deleteProjectTask(taskId) {
+    if (!confirm('Delete task ' + taskId + ' permanently?')) return;
+    try {
+      await window.ApiV2._fetch('/tasks/' + taskId, { method: 'DELETE' });
+      await this.populateProjectTasks(this.currentTemple);
+    } catch (err) {
+      alert('Delete failed: ' + err.message);
     }
   },
   

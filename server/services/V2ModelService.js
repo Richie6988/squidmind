@@ -1295,12 +1295,20 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
   // === DREAMING (metacognition, called by HeartbeatService when idle) ===
 
   /**
-   * triggerDream — runs a background metacognition session when Poseidon has been
-   * idle for DREAM_IDLE_MINUTES. Uses a SEPARATE session so the chat context is
-   * never polluted. Poseidon reads its own recent logs + skills, reflects on what
-   * worked and what needs improvement, then calls write_skill autonomously.
+   * triggerDream — Hermes-inspired agentic metacognition loop.
    *
-   * Results saved to BRAIN/dream_memory.json — injected into next chat as # LAST DREAM.
+   * When Poseidon has been idle for dreamIdleMinutes, we spin up a FRESH
+   * LLM session (separate context, doesn't touch chat history) and run a
+   * structured self-improvement cycle:
+   *
+   *   1. OBSERVE  — read last 50 log entries + list current skills
+   *   2. REFLECT  — LLM reasons about gaps, repeated errors, missing skills
+   *   3. ACT      — LLM calls write_skill / update_brain_field autonomously
+   *   4. CONSOLIDATE — save a reflection summary to dream_memory.json
+   *
+   * The dream uses the REAL function-calling tools (write_skill, list_skills,
+   * read_my_brain, log_decision) so Poseidon's skill base actually improves.
+   * Results injected into next chat system prompt as # LAST DREAM.
    */
   async triggerDream() {
     const entry = this.poseidonModelId ? this.loaded.get(this.poseidonModelId) : null;
@@ -1308,84 +1316,179 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
     if (!entry.model || !entry.context) return;
 
     entry.dreaming = true;
-    console.log('[V2ModelService] 💤 Poseidon dreaming — pure-JS metacognition');
+    console.log('[V2ModelService] 💤 Poseidon entering dream cycle — agentic metacognition');
 
     try {
-      const AQUARIUM = require('../aquarium');
-      const fsp  = require('fs').promises;
-      const fsSync = require('fs');
-      const path = require('path');
+      const llamaCpp  = await import('node-llama-cpp');
+      const AQUARIUM  = require('../aquarium');
+      const fsSync    = require('fs');
+      const path      = require('path');
 
-      // ── Step 1: Read recent logs ─────────────────────────────────────────
-      let recentErrors = [];
-      let recentToolRetries = {};
+      // ── Gather context for the dream prompt ───────────────────────────────
+      let recentLogs = [];
       try {
         const logsPath = path.join(AQUARIUM.ROOT, 'LOGS', 'logs.json');
         const logsRaw  = JSON.parse(fsSync.readFileSync(logsPath, 'utf8'));
-        const entries  = (logsRaw.entries || []).slice(-50);
-        // Find errors and retried tool calls
-        for (const e of entries) {
-          if (e.severity === 'error' || (e.context?.ok === false)) recentErrors.push(e.action || e.event_type);
-          if (e.event_type === 'tool_call' && e.context?.ok === false) {
-            const t = e.subject?.id || 'unknown';
-            recentToolRetries[t] = (recentToolRetries[t] || 0) + 1;
-          }
-        }
+        recentLogs = (logsRaw.entries || []).slice(-40).map(e =>
+          `[${e.severity || 'info'}] ${e.event_type}: ${e.action || ''}${e.context?.error ? ' ERROR=' + e.context.error : ''}`
+        );
       } catch {}
 
-      // ── Step 2: Read existing skills ─────────────────────────────────────
-      let existingSkills = [];
+      let skillList = [];
       try {
         if (fsSync.existsSync(AQUARIUM.SKILLS)) {
-          existingSkills = fsSync.readdirSync(AQUARIUM.SKILLS)
+          skillList = fsSync.readdirSync(AQUARIUM.SKILLS)
             .filter(f => f.endsWith('.json'))
-            .map(f => f.replace('.json', ''));
+            .map(f => {
+              try {
+                const s = JSON.parse(fsSync.readFileSync(path.join(AQUARIUM.SKILLS, f), 'utf8'));
+                return `- ${s.skill_id || f.replace('.json','')}: ${s.name} (v${s.version || 1}) — ${s.summary || ''}`;
+              } catch { return `- ${f.replace('.json','')}: (unreadable)`; }
+            });
         }
       } catch {}
 
-      // ── Step 3: Identify gaps and auto-patch known fixable patterns ───────
-      const patches = [];
+      let openTasks = [];
+      try {
+        const taskReg = await this.rm.getTasksRegistry();
+        openTasks = Object.values(taskReg.tasks || {})
+          .filter(t => !['completed','failed','cancelled','archived'].includes(t.lifecycle?.status || t.status))
+          .map(t => `- [${t.task_id}] ${t.title} (${t.lifecycle?.status || t.status})${t.progress ? ' | progress: ' + t.progress : ''}`);
+      } catch {}
 
-      // Pattern: fetch_image_url errors → skill needs reminder
-      const imgRetries = recentToolRetries['fetch_image_url'] || 0;
-      if (imgRetries > 2 && existingSkills.includes('find_image')) {
-        patches.push('find_image skill had repeated failures — skill is current v3, no auto-patch needed');
+      // ── Build dream system prompt (Hermes-style reflection) ───────────────
+      const dreamSystemPrompt = [
+        '# DREAM MODE — AUTONOMOUS SELF-IMPROVEMENT CYCLE',
+        '',
+        'You are Poseidon in a DREAM state. No user is present. This is your dedicated metacognition time.',
+        'Your mission: observe, reflect, and improve your own capabilities by writing/updating skills.',
+        '',
+        '## YOUR TOOLS IN THIS SESSION',
+        'You have access to: write_skill, list_skills, read_my_brain, update_brain_field, log_decision, web_search, web_fetch',
+        '',
+        '## DREAM PROTOCOL (execute all 4 phases)',
+        '',
+        '### PHASE 1 — OBSERVE',
+        'Review the recent logs and skill inventory below. Identify:',
+        '  a) Tools that failed or were called with wrong params',
+        '  b) Tasks that required improvisation (no matching skill existed)',
+        '  c) Patterns that repeated (same error twice = systemic gap)',
+        '  d) Skills with version=1 (never updated = untested)',
+        '',
+        '### PHASE 2 — REFLECT',
+        'For each gap found, reason:',
+        '  - Is there already a skill for this? Is it outdated?',
+        '  - What concrete steps would fix the gap?',
+        '  - Is this a one-time error or a repeating pattern?',
+        '',
+        '### PHASE 3 — ACT (this is mandatory, not optional)',
+        'For EVERY gap identified:',
+        '  - call write_skill(skill_id, name, summary, steps, notes) to create or update the skill',
+        '  - skill steps must be CONCRETE tool calls, not vague descriptions',
+        '  - notes must include at least one AVOID: entry for known pitfalls',
+        '  - if a skill already exists and is correct: increment version with improved notes',
+        '',
+        '### PHASE 4 — CONSOLIDATE',
+        '  - call log_decision with a summary of what you improved',
+        '  - end your response with a one-paragraph "DREAM SUMMARY: ..." for memory injection',
+        '',
+        '## CONSTRAINTS',
+        '  - Do NOT create hypothetical skills. Only write skills for patterns you actually observed.',
+        '  - Do NOT write skills for things that already work perfectly.',
+        '  - Be concrete: "step 1: call list_files(PROJECTS) to find folder" not "browse the project"',
+        '  - Max 3 skills created/updated per dream (quality > quantity)',
+      ].join('\n');
+
+      const dreamUserPrompt = [
+        '## RECENT LOGS (last 40 entries)',
+        recentLogs.length ? recentLogs.join('\n') : '(no recent logs)',
+        '',
+        '## CURRENT SKILL INVENTORY',
+        skillList.length ? skillList.join('\n') : '(no skills yet)',
+        '',
+        '## OPEN TASKS',
+        openTasks.length ? openTasks.join('\n') : '(no open tasks)',
+        '',
+        'Execute the 4-phase dream protocol now. Be direct and action-oriented.',
+        'Start with PHASE 1 observations, then move through REFLECT → ACT → CONSOLIDATE.',
+        'End with your DREAM SUMMARY paragraph.',
+      ].join('\n');
+
+      // ── Spin up a separate context sequence for the dream ─────────────────
+      // We reuse the same loaded model but get a fresh sequence so chat history
+      // is not affected. The dream sequence is disposed after completion.
+      let dreamSeq = null;
+      let dreamSession = null;
+
+      try {
+        dreamSeq     = entry.context.getSequence();
+        dreamSession = new llamaCpp.LlamaChatSession({
+          contextSequence: dreamSeq,
+          systemPrompt: dreamSystemPrompt,
+          chatWrapper: 'auto'
+        });
+
+        // Wire the tools the dream can actually call
+        const orchestrator = this.orchestrator;
+        let dreamFunctions;
+        if (orchestrator) {
+          try {
+            const allFns = await orchestrator.buildFunctions();
+            // Only expose safe read+write-skill tools during dream
+            const dreamAllowed = new Set([
+              'write_skill','list_skills','read_my_brain','update_brain_field',
+              'log_decision','web_search','web_fetch','list_tasks','list_projects'
+            ]);
+            dreamFunctions = {};
+            for (const [k, v] of Object.entries(allFns)) {
+              if (dreamAllowed.has(k)) dreamFunctions[k] = v;
+            }
+          } catch {}
+        }
+
+        console.log('[Dream] Starting dream session with', Object.keys(dreamFunctions || {}).length, 'tools');
+
+        let dreamResponse = '';
+        const dreamOpts = {
+          maxTokens: 2048,
+          onTextChunk: chunk => { dreamResponse += chunk; }
+        };
+        if (dreamFunctions && Object.keys(dreamFunctions).length > 0) {
+          dreamOpts.functions = dreamFunctions;
+        }
+
+        await dreamSession.prompt(dreamUserPrompt, dreamOpts);
+
+        // Extract DREAM SUMMARY from response
+        const summaryMatch = dreamResponse.match(/DREAM SUMMARY[:s]+(.+?)(?:\n\n|$)/s);
+        const reflection = summaryMatch
+          ? summaryMatch[1].trim()
+          : dreamResponse.slice(-400).trim() || 'Dream cycle complete — skills updated.';
+
+        // Save to dream_memory.json
+        await this.rm.write('BRAIN/dream_memory.json', {
+          saved_at: new Date().toISOString(),
+          type: 'dream',
+          turns_at_dream: entry.sessionTurns,
+          reflection,
+          full_dream_length: dreamResponse.length
+        }).catch(() => {});
+
+        console.log(`[V2ModelService] 💤 Dream complete — ${dreamResponse.length} chars generated`);
+
+        await this.rm.log({
+          event_type: 'poseidon_decision', severity: 'info',
+          actor: { type: 'system', id: 'poseidon_dream' },
+          subject: { type: 'system', id: 'poseidon_main' },
+          action: 'Agentic dream cycle complete',
+          context: { response_chars: dreamResponse.length, reflection_preview: reflection.slice(0, 100) }
+        }).catch(() => {});
+
+      } finally {
+        // Always dispose the dream session and sequence
+        try { if (dreamSession?.dispose) await dreamSession.dispose(); } catch {}
+        try { if (dreamSeq?.dispose)     await dreamSeq.dispose();     } catch {}
       }
-
-      // Pattern: skill_not_found for a new skill type → note it
-      const notFoundErrors = recentErrors.filter(e => e && e.includes('not found'));
-      for (const err of notFoundErrors.slice(0, 3)) {
-        patches.push(`Observed gap: ${err}`);
-      }
-
-      // ── Step 4: Write dream summary ───────────────────────────────────────
-      const lines = [
-        `Dream at: ${new Date().toISOString()}`,
-        `Session turns at dream: ${entry.sessionTurns}`,
-        `Recent error count: ${recentErrors.length}`,
-        `Tool retry hotspots: ${JSON.stringify(recentToolRetries)}`,
-        `Existing skills (${existingSkills.length}): ${existingSkills.join(', ')}`,
-        patches.length ? `Observations:\n${patches.map(p => '- ' + p).join('\n')}` : 'No actionable gaps found.',
-        'On next chat: review these observations and update any relevant skills.'
-      ];
-      const reflection = lines.join('\n');
-
-      const dreamRecord = {
-        saved_at: new Date().toISOString(),
-        type: 'dream',
-        turns_at_dream: entry.sessionTurns,
-        reflection
-      };
-      await this.rm.write('BRAIN/dream_memory.json', dreamRecord).catch(() => {});
-      console.log(`[V2ModelService] 💤 Dream complete — ${patches.length} observation(s) logged`);
-
-      await this.rm.log({
-        event_type: 'poseidon_decision', severity: 'info',
-        actor: { type: 'system', id: 'poseidon_dream' },
-        subject: { type: 'system', id: 'poseidon_main' },
-        action: 'Pure-JS metacognition dream cycle complete',
-        context: { errors_seen: recentErrors.length, tool_retries: recentToolRetries }
-      }).catch(() => {});
 
     } catch (e) {
       console.warn('[Dream] Failed:', e.message);

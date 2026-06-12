@@ -91,7 +91,9 @@ const TaskQueueUI = {
     const when    = t.lifecycle?.completed_at ? this._elapsed(t.lifecycle.completed_at) : '';
     const summary = t.result_summary ? this._esc(t.result_summary.slice(0, 120)) + (t.result_summary.length > 120 ? '…' : '') : '<em style="opacity:.5">No result saved</em>';
     return `
-      <div class="tq-done-item" onclick="TaskQueueUI.openTaskDetail('${t.task_id}')">
+      <div class="tq-done-item" style="position:relative;">
+        <button onclick="event.stopPropagation();TaskQueueUI.deleteTask('${t.task_id}')" title="Delete" style="position:absolute;top:4px;right:4px;background:rgba(239,68,68,0.12);border:1px solid rgba(239,68,68,0.25);color:#ef4444;border-radius:4px;padding:0 5px;font-size:8px;cursor:pointer;">🗑</button>
+        <div style="cursor:pointer" onclick="TaskQueueUI.openTaskDetail('${t.task_id}')">
         <div class="tq-done-row1">
           <span class="tq-done-icon">${icon}</span>
           <span class="tq-done-title">${this._esc(t.title)}</span>
@@ -99,6 +101,7 @@ const TaskQueueUI = {
         </div>
         <div class="tq-done-agent">${this._esc(agent)}</div>
         <div class="tq-done-summary">${summary}</div>
+        </div>
       </div>`;
   },
 
@@ -148,6 +151,7 @@ const TaskQueueUI = {
           <span class="tq-title tq-title-link" title="Click to view/edit details">${this._esc(t.title)}</span>
           ${canRun ? `<button class="tq-run-btn" onclick="TaskQueueUI.runTask('${t.task_id}')" title="▶ Run now">▶</button>` : ''}
           <button class="tq-cancel" onclick="TaskQueueUI.cancelTask('${t.task_id}')" title="Cancel">✕</button>
+          <button class="tq-delete" onclick="TaskQueueUI.deleteTask('${t.task_id}')" title="Delete permanently" style="background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.3);color:#ef4444;border-radius:4px;padding:0 5px;font-size:9px;cursor:pointer;margin-left:2px;">🗑</button>
         </div>
         <div class="tq-row2">
           ${typeBadge}
@@ -537,6 +541,20 @@ ${task.description}`
       if (dow === '1-5') return `Weekdays at ${timeStr}`;
     }
     return expr; // fallback: show raw
+  },
+
+  // ── Delete (hard) ──────────────────────────────────────────────────────────
+
+  async deleteTask(taskId) {
+    const task = this._tasks.find(t => t.task_id === taskId);
+    const label = task?.title ? '"' + task.title + '"' : taskId;
+    if (!await SquidModal.confirm('Permanently delete task ' + label + '? This cannot be undone.')) return;
+    try {
+      await window.ApiV2._fetch('/tasks/' + taskId, { method: 'DELETE' });
+      await this._render();
+    } catch (err) {
+      await SquidModal.alert('Delete failed: ' + err.message);
+    }
   },
 
   // ── Cancel ──────────────────────────────────────────────────────────────────
