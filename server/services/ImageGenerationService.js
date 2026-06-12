@@ -142,7 +142,13 @@ class ImageGenerationService {
         // Auto-locate companion files in same dir as model
         const vaeCandidates   = ['ae.safetensors', 'ae.sft'];
         const clipCandidates  = ['clip_l.safetensors', 'clip_l.sft'];
-        const t5Candidates    = ['t5xxl_fp8_e4m3fn.safetensors', 't5xxl_fp16.safetensors', 't5xxl.safetensors'];
+        const t5Candidates    = [
+          't5-v1_1-xxl-encoder-Q4_K_M.gguf',     // quantized GGUF (~2.3GB, recommended)
+          't5-v1_1-xxl-encoder-Q8_0.gguf',
+          't5xxl_fp8_e4m3fn.safetensors',          // fp8 safetensors (~4.7GB)
+          't5xxl_fp16.safetensors',
+          't5xxl.safetensors',
+        ];
 
         const findFile = (dir, names) => names.map(n => path2.join(dir, n)).find(p => fs2.existsSync(p));
         const vae  = findFile(modelDir, vaeCandidates);
@@ -162,7 +168,7 @@ class ImageGenerationService {
             'Download:\n' +
             '  wget https://huggingface.co/black-forest-labs/FLUX.1-schnell/resolve/main/ae.safetensors\n' +
             '  wget https://huggingface.co/comfyanonymous/flux_text_encoders/resolve/main/clip_l.safetensors\n' +
-            '  wget https://huggingface.co/comfyanonymous/flux_text_encoders/resolve/main/t5xxl_fp8_e4m3fn.safetensors'
+            '  wget https://huggingface.co/city96/t5-v1_1-xxl-encoder-gguf/resolve/main/t5-v1_1-xxl-encoder-Q4_K_M.gguf  (recommended, 2.3GB)'
           });
         }
       } else {
