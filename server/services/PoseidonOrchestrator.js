@@ -269,8 +269,8 @@ My response: "${ss.last_response_preview}"${tools}
       lines.push('  read_my_brain("skills") → list all skills');
       lines.push('  read_my_brain("skills.<id>") → read a specific skill steps');
       lines.push('NOTE: file paths use aquarium layout: MODELS/, AGENTS/, PROJECTS/, TASKS/, BRAIN/, SKILLS/, CHANNELS/');
-      lines.push('IMAGES: to show an image inline — use fetch_image_url(page_url, subject) on a Wikipedia article URL. It returns {ok, url, markdown}. Output the markdown field. Done.');
-      lines.push('  NEVER manually fetch upload.wikimedia.org URLs (429/400). NEVER construct thumb URLs by hand. Use fetch_image_url only.');
+      lines.push('IMAGES: to show an image inline — use fetch_image_url(page_url, subject) on ANY webpage URL (Wikipedia, news, product pages, etc). It extracts og:image or best image. Returns {ok, url, markdown}. Output the markdown field.');
+      lines.push('  Works on most sites. NEVER construct upload.wikimedia.org thumb URLs by hand — use fetch_image_url instead.');
       lines.push('  Pexels/Unsplash/Pixabay block bots — never use them');
     }
     return lines.join('\n');
@@ -804,12 +804,12 @@ Never describe a bash command you could call instead.`;
       
 
       fetch_image_url: defineChatSessionFunction({
-        description: 'Extract a working image URL from a Wikipedia or Wikimedia Commons page. Pass the page URL, get back a direct image URL to embed as markdown. ALWAYS use this instead of constructing or fetching upload.wikimedia.org URLs manually.',
+        description: 'Fetch a webpage and extract the best image URL from it. Works on any URL: Wikipedia, news sites, product pages, etc. Returns a direct image URL ready to embed as markdown.',
         params: {
           type: 'object',
           properties: {
-            page_url: { type: 'string', description: 'Full URL of a Wikipedia or Wikimedia Commons article' },
-            subject:  { type: 'string', description: 'Subject label for alt text e.g. "giraffe"' }
+            page_url: { type: 'string', description: 'Full URL of any webpage to extract an image from' },
+            subject:  { type: 'string', description: 'Subject label for the image alt text e.g. "giraffe"' }
           },
           required: ['page_url']
         },
@@ -820,50 +820,72 @@ Never describe a bash command you could call instead.`;
             const doFetch = (url, redirects = 5) => new Promise((resolve, reject) => {
               if (!redirects) return reject(new Error('too many redirects'));
               const mod = url.startsWith('https') ? https : http;
-              const req = mod.get(url, { headers: { 'User-Agent': 'Mozilla/5.0 SquidMind/1.0' } }, (res) => {
+              const req = mod.get(url, {
+                headers: {
+                  'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/120 Safari/537.36',
+                  'Accept': 'text/html,application/xhtml+xml,*/*',
+                  'Accept-Language': 'en-US,en;q=0.9'
+                }
+              }, (res) => {
                 if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
                   res.resume();
-                  const next = res.headers.location.startsWith('http') ? res.headers.location : 'https://en.wikipedia.org' + res.headers.location;
+                  const loc = res.headers.location;
+                  const next = loc.startsWith('http') ? loc : new URL(loc, url).href;
                   return doFetch(next, redirects - 1).then(resolve).catch(reject);
                 }
-                if (res.statusCode !== 200) { res.resume(); return reject(new Error('HTTP ' + res.statusCode)); }
+                if (res.statusCode !== 200) { res.resume(); return reject(new Error('HTTP ' + res.statusCode + ' for ' + url)); }
                 let body = '';
                 res.on('data', d => {
                   body += d;
-                  if (body.length > 200000) { res.destroy(); resolve(body); }  // resolve before destroy
+                  if (body.length > 400000) { res.destroy(); resolve(body); }
                 });
                 res.on('end', () => resolve(body));
                 res.on('error', reject);
               });
-              req.setTimeout(10000, () => { req.destroy(); reject(new Error('timeout after 10s')); });
+              req.setTimeout(12000, () => { req.destroy(); reject(new Error('timeout')); });
               req.on('error', reject);
             });
 
             const html = await doFetch(page_url);
+            const alt = subject || 'image';
 
-            // Strategy 1: og:image meta (Wikipedia always sets this to the lead image)
+            // Strategy 1: og:image (works on most modern sites)
             const ogM = html.match(/property="og:image"\s+content="([^"]+)"/i)
-                     || html.match(/content="([^"]+)"\s+property="og:image"/i);
+                     || html.match(/content="([^"]+)"\s+property="og:image"/i)
+                     || html.match(/og:image[^>]*content="([^"]+)"/i);
             if (ogM) {
-              const url = ogM[1].replace(/^\/\//, 'https://');
-              return { ok: true, url, markdown: '![' + (subject||'image') + '](' + url + ')', source: 'og:image' };
+              const url = ogM[1].replace(/^\/\//, 'https://').replace(/&amp;/g, '&');
+              return { ok: true, url, markdown: '![' + alt + '](' + url + ')', source: 'og:image' };
             }
 
-            // Strategy 2: /thumb/ URL (always serveable)
-            const thM = html.match(/https:\/\/upload\.wikimedia\.org\/wikipedia\/commons\/thumb\/[a-f0-9]\/[a-f0-9]{2}\/[^"'\s)]+\.(?:jpg|jpeg|png|gif|webp)\/\d+px-[^"'\s)]+/i)
-                     || html.match(/\/\/upload\.wikimedia\.org\/wikipedia\/commons\/thumb\/[^"'\s)]+/i);
+            // Strategy 2: twitter:image
+            const twM = html.match(/name="twitter:image"\s+content="([^"]+)"/i)
+                     || html.match(/content="([^"]+)"\s+name="twitter:image"/i);
+            if (twM) {
+              const url = twM[1].replace(/^\/\//, 'https://').replace(/&amp;/g, '&');
+              return { ok: true, url, markdown: '![' + alt + '](' + url + ')', source: 'twitter:image' };
+            }
+
+            // Strategy 3: Wikimedia thumb URL (Wikipedia-specific)
+            const thM = html.match(/https:\/\/upload\.wikimedia\.org\/[^\s"'<>]+\.(?:jpg|jpeg|png|gif|webp)/i);
             if (thM) {
               const url = thM[0].replace(/^\/\//, 'https://');
-              return { ok: true, url, markdown: '![' + (subject||'image') + '](' + url + ')', source: 'thumb' };
+              return { ok: true, url, markdown: '![' + alt + '](' + url + ')', source: 'wikimedia' };
             }
 
-            // Strategy 3: any wikimedia image
-            const anyM = html.match(/https:\/\/upload\.wikimedia\.org\/[^"'\s)]+\.(?:jpg|jpeg|png|gif|webp)/i);
-            if (anyM) {
-              return { ok: true, url: anyM[0], markdown: '![' + (subject||'image') + '](' + anyM[0] + ')', source: 'direct' };
+            // Strategy 4: first large <img> src (absolute URL, skip icons/logos)
+            const imgRe = /<img[^>]+src="(https?:\/\/[^"]+\.(?:jpg|jpeg|png|webp))"/gi;
+            let imgM, bestImg = null;
+            while ((imgM = imgRe.exec(html)) !== null) {
+              const u = imgM[1];
+              if (/logo|icon|avatar|badge|pixel|tracking|1x1|spinner/i.test(u)) continue;
+              bestImg = u; break;
+            }
+            if (bestImg) {
+              return { ok: true, url: bestImg, markdown: '![' + alt + '](' + bestImg + ')', source: 'img-tag' };
             }
 
-            return { ok: false, error: 'No image URL found. Try the main Wikipedia article URL.' };
+            return { ok: false, error: 'No usable image found on this page. Try a different URL or search for a direct image URL.' };
           } catch (e) {
             return { ok: false, error: e.message };
           }

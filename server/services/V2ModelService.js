@@ -818,7 +818,8 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
    * @param {Array<{role,content}>} history - prior turns
    * @yields {string} chunk of generated text
    */
-  async *chatWithPoseidon(userMessage, history = []) {
+  async *chatWithPoseidon(userMessage, historyIn = []) {
+    let history = historyIn.slice(); // mutable copy
     if (!this.poseidonModelId) {
       throw new Error('No model assigned to Poseidon. Import a model and assign it first.');
     }
@@ -850,10 +851,12 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
     // prepend the previous context so Poseidon resumes without re-reading state.
     try {
       const ss = await this.rm.read('BRAIN/session_state.json');
-      const isContinueCue = ss?.last_user_message && !ss.emergency && (
+      const isContinueCue = ss?.last_user_message && (
         // Explicit continuation keywords
         /^(continue|go ahead|proceed|keep going|resume|go on|do it|yes|go|ok|k|yep|sure)\.?$/i.test(userMessage.trim()) ||
-        // First turn after a crash/restart (turn 0 = fresh session, state exists = was mid-task)
+        // After emergency crash: always auto-resume on first turn
+        (entry.sessionTurns === 0 && ss.emergency) ||
+        // First turn with existing state (restart or page reload)
         (entry.sessionTurns === 0 && ss.last_user_message && ss.context_pct < 90)
       );
       if (isContinueCue) {
@@ -863,10 +866,25 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
           'Your last response: "' + ss.last_response_preview + '"\n' +
           'Task was not completed. Resume and finish it now. Do not re-introduce yourself.';
         entry._lastUserMessage = userMessage;
-        console.log('[V2ModelService] Auto-continue injected for turn ' + entry.sessionTurns);
+        // Clear emergency flag so auto-continue doesn't fire again next turn
+        if (ss.emergency) {
+          await this.rm.write('BRAIN/session_state.json', { ...ss, emergency: false }).catch(() => {});
+        }
+        console.log('[V2ModelService] Auto-continue injected for turn ' + entry.sessionTurns + (ss.emergency ? ' (post-emergency)' : ''));
       }
     } catch {}
     
+    // After emergency reset: clear incoming history to prevent context overflow
+    // The crash was likely caused by history being too large
+    if (entry.sessionTurns === 0 && history.length > 2) {
+      let ss2;
+      try { ss2 = await this.rm.read('BRAIN/session_state.json'); } catch {}
+      if (ss2?.emergency) {
+        console.log('[V2ModelService] Post-emergency: clearing history to prevent context overflow');
+        history = []; // start fresh — the auto-continue message above carries the context
+      }
+    }
+
     // Per-session turn counter (resets when session is wiped)
     entry.sessionTurns = (entry.sessionTurns || 0);
 
@@ -890,18 +908,16 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
         }
 
         // Auto-slim system prompt when context is tight.
-        // Rule of thumb: system prompt should not exceed 60% of total ctx,
-        // leaving 40% for conversation. ~4 chars per token.
+        // System prompt must leave room for conversation: use 40% budget (not 60%).
         const ctxTokens   = entry.config?.contextLength || V2ModelService.MIN_VIABLE_CTX;
         const promptTokens = Math.ceil(systemPrompt.length / 4);
-        const budgetTokens = Math.floor(ctxTokens * 0.6);
+        const budgetTokens = Math.floor(ctxTokens * 0.40); // 40% for system prompt
         if (promptTokens > budgetTokens) {
           const maxChars  = budgetTokens * 4;
           const original  = systemPrompt.length;
-          // Hard truncate: keep first section (absolute rules) + truncation notice
           const notice    = `
 
-[System prompt truncated from ${original} to ${maxChars} chars to fit ctx=${ctxTokens}]`;
+[System prompt truncated: ${original}→${maxChars} chars, ctx=${ctxTokens}]`;
           systemPrompt    = systemPrompt.slice(0, maxChars - notice.length) + notice;
           console.warn(`[V2ModelService] System prompt slimmed: ${original} → ${systemPrompt.length} chars (ctx=${ctxTokens})`);
           // Drop function-calling if ctx is critically small
