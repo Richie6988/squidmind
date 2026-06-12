@@ -926,8 +926,9 @@ const ModelLoader = {
           <button onclick="this.closest('.modal').remove()" style="background:none;border:none;color:#64748b;font-size:16px;cursor:pointer;">✕</button>
         </div>
         <div class="ml-imggen-note" style="font-size:9px;color:#f59e0b;background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.2);border-radius:6px;padding:8px;">
-          ⚠ Requires <strong>stable-diffusion.cpp</strong> with <code>sd</code> on PATH.<br>
-          Install: <a href="https://github.com/leejet/stable-diffusion.cpp" target="_blank" style="color:#4facfe;">github.com/leejet/stable-diffusion.cpp</a>
+          ⚠ Requires <strong>stable-diffusion.cpp</strong> binary named <code>sd-diffusion</code> on PATH.<br>
+          Build → <code>sudo cp build/bin/sd /usr/local/bin/sd-diffusion</code><br>
+          <a href="https://github.com/leejet/stable-diffusion.cpp" target="_blank" style="color:#4facfe;">github.com/leejet/stable-diffusion.cpp</a>
         </div>
         <textarea id="imggen-prompt" placeholder="Describe the image you want to generate…"
           style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:8px;color:#e2e8f0;font-size:10px;padding:8px;resize:vertical;min-height:60px;font-family:inherit;"></textarea>
@@ -936,8 +937,8 @@ const ModelLoader = {
         <div style="display:flex;gap:8px;flex-wrap:wrap;">
           <label style="font-size:9px;color:#64748b;display:flex;flex-direction:column;gap:3px;">Width<input id="imggen-w" type="number" value="512" min="64" max="2048" step="64" style="width:70px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:6px;color:#e2e8f0;font-size:10px;padding:4px 6px;"></label>
           <label style="font-size:9px;color:#64748b;display:flex;flex-direction:column;gap:3px;">Height<input id="imggen-h" type="number" value="512" min="64" max="2048" step="64" style="width:70px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:6px;color:#e2e8f0;font-size:10px;padding:4px 6px;"></label>
-          <label style="font-size:9px;color:#64748b;display:flex;flex-direction:column;gap:3px;">Steps<input id="imggen-steps" type="number" value="20" min="1" max="100" style="width:55px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:6px;color:#e2e8f0;font-size:10px;padding:4px 6px;"></label>
-          <label style="font-size:9px;color:#64748b;display:flex;flex-direction:column;gap:3px;">CFG<input id="imggen-cfg" type="number" value="7" min="1" max="30" step="0.5" style="width:55px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:6px;color:#e2e8f0;font-size:10px;padding:4px 6px;"></label>
+          <label style="font-size:9px;color:#64748b;display:flex;flex-direction:column;gap:3px;" title="Flux: 4 steps is enough. SD1.5/SDXL: 20-30">Steps<input id="imggen-steps" type="number" value="4" min="1" max="100" style="width:55px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:6px;color:#e2e8f0;font-size:10px;padding:4px 6px;"></label>
+          <label style="font-size:9px;color:#64748b;display:flex;flex-direction:column;gap:3px;" title="Flux: use 1.0. SD1.5/SDXL: 7-12">CFG<input id="imggen-cfg" type="number" value="1.0" min="0.1" max="30" step="0.1" style="width:55px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:6px;color:#e2e8f0;font-size:10px;padding:4px 6px;"></label>
         </div>
         <div style="display:flex;gap:8px;justify-content:flex-end;">
           <button onclick="this.closest('.modal').remove()" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);color:#94a3b8;border-radius:6px;padding:5px 12px;font-size:10px;cursor:pointer;">Cancel</button>

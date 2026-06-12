@@ -34,17 +34,26 @@ class ImageGenerationService {
     if (this._backend) return this._backend;
 
     const candidates = [
-      'sd',
+      'sd-diffusion',          // recommended install name (avoids clash with Rust sd tool)
+      'sdcpp',
       'stable-diffusion',
-      'stable-diffusion.cpp',
-      path.join(os.homedir(), '.local/bin/sd'),
-      '/usr/local/bin/sd',
+      path.join(os.homedir(), '.local/bin/sd-diffusion'),
+      '/usr/local/bin/sd-diffusion',
+      '/usr/local/bin/sdcpp',
+      path.join(process.cwd(), '../stable-diffusion.cpp/build/bin/sd'),
+      path.join(os.homedir(), 'stable-diffusion.cpp/build/bin/sd'),
       '/opt/sd/sd',
+      'sd',                    // last resort — check it's actually stable-diffusion.cpp
     ];
 
     for (const bin of candidates) {
       try {
-        await execAsync(`"${bin}" --version`, { timeout: 3000 });
+        const { stdout } = await execAsync(`"${bin}" --version 2>&1`, { timeout: 3000 });
+        // Rust 'sd' tool prints "sd v1.0.0 An intuitive find & replace CLI" — skip it
+        if (/find.replace|replace.cli|intuitive/i.test(stdout)) {
+          console.log(`[ImageGen] Skipping ${bin} — this is the Rust sd tool, not stable-diffusion.cpp`);
+          continue;
+        }
         this._backend = { type: 'sd', bin };
         console.log(`[ImageGen] Backend found: ${bin}`);
         return this._backend;
@@ -71,12 +80,21 @@ class ImageGenerationService {
    * @returns {Promise<{ ok: true, outputPath: string, bytes: number }|{ ok: false, error: string }>}
    */
   async generate({ modelPath, prompt, outputPath, width = 512, height = 512, steps = 20, cfg = 7, seed = -1, negativePrompt = '' }) {
+    // Flux models use cfg=1.0 and need far fewer steps (flow matching, not diffusion)
+    const isFlux = /flux/i.test(path.basename(modelPath));
+    if (isFlux) {
+      if (cfg === 7)  cfg   = 1.0;   // Flux ignores CFG > 1 — override default
+      if (steps === 20) steps = 4;   // Flux works great at 4 steps
+    }
     const backend = await this.detectBackend();
 
     if (backend.type === 'none') {
       return {
         ok: false,
-        error: 'No image generation backend installed. Install stable-diffusion.cpp and make sure "sd" is on your PATH. See: https://github.com/leejet/stable-diffusion.cpp'
+        error: 'stable-diffusion.cpp not found.\n' +
+          'After building, install as: sudo cp build/bin/sd /usr/local/bin/sd-diffusion\n' +
+          '(use sd-diffusion to avoid clash with Rust sd tool)\n' +
+          'Docs: https://github.com/leejet/stable-diffusion.cpp'
       };
     }
 
