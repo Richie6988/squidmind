@@ -495,12 +495,10 @@ class OrchestratorTools {
         }
       } catch(e) { console.warn('[generateImage] task creation failed:', e.message); }
 
-      // Output always goes to TASKS/output/<taskId-or-ts>/ — never to legacy generated/
+      // Output always goes to aquarium/TASKS/output/<filename> — flat folder, no per-task subdirs
       const AQUARIUM = require('../aquarium');
-      // Use taskId if available, else a timestamp-based folder so path is always under TASKS
-      const outputSlot = taskId || `img_${Date.now()}`;
-      const outputDir  = require('path').join(AQUARIUM.TASKS, outputSlot, 'output');
-      const serveUrl   = `/api/files/read?path=${encodeURIComponent(require('path').join(AQUARIUM.TASKS, outputSlot, 'output', safeFilename))}`;
+      const outputDir  = require('path').join(AQUARIUM.TASKS, 'OUTPUT');
+      const serveUrl   = `/api/files/read?path=${encodeURIComponent(require('path').join(AQUARIUM.TASKS, 'OUTPUT', safeFilename))}`;
       await fs2.mkdir(outputDir, { recursive: true });
       const outputPath = path.join(outputDir, safeFilename);
 
