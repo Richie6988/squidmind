@@ -34,7 +34,8 @@ class ImageGenerationService {
     if (this._backend) return this._backend;
 
     const candidates = [
-      'sd-diffusion',          // recommended install name (avoids clash with Rust sd tool)
+      'sd-diffusion',          // recommended install name
+      'sd-cli',                // actual binary name in newer stable-diffusion.cpp builds
       'sdcpp',
       'stable-diffusion',
       path.join(os.homedir(), '.local/bin/sd-diffusion'),
