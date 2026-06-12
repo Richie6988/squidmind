@@ -547,8 +547,14 @@ app.get('/api/files/read', async (req, res) => {
   }
 });
 
-// Serve static files
-app.use(express.static(path.join(__dirname, '../client')));
+// Serve static files — disable caching for JS/CSS so changes reload immediately
+app.use(express.static(path.join(__dirname, '../client'), {
+  setHeaders(res, filePath) {
+    if (/\.(js|css)$/.test(filePath)) {
+      res.setHeader('Cache-Control', 'no-store');
+    }
+  }
+}));
 
 // Catch-all route for SPA (must be last)
 app.use((req, res) => {

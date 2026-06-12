@@ -1,3 +1,4 @@
+/* v1781267640088 */
 /**
  * PoseidonChat - Streaming AI chat panel.
  * Handles SSE streaming, thinking blocks, tool calls, history.
@@ -248,7 +249,13 @@ const PoseidonChat = {
     msgs.querySelector('.pc-welcome')?.remove();
     const userEl = document.createElement('div');
     userEl.className = 'pc-msg pc-msg-user';
-    userEl.innerHTML = `<div class="pc-bubble-user">${this._esc(msg)}</div>
+    const userCid = ++this._copyCounter;
+    this._copyStore.set(userCid, msgRaw || '');
+    const _uImgPreviews = (_imgPreviews||[]).map(p =>
+      `<div class="pc-img-wrap" style="margin:4px 0"><img class="pc-md-img" src="${p.src}" alt="${p.name}" style="max-height:120px"></div>`
+    ).join('');
+    userEl.innerHTML = `<div class="pc-bubble-user">${_uImgPreviews}${this._esc(msgRaw || msg)}</div>
+      <div class="pc-msg-actions"><button class="pc-copy-btn" onclick="PoseidonChat._copyText(this)" data-cid="${userCid}">⎘</button></div>
       <div class="pc-ts">${this._fmtTs(msgTs)}</div>`;
     msgs.appendChild(userEl);
 
