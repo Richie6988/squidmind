@@ -1255,6 +1255,34 @@ input[type="color"]::-webkit-color-swatch {
   position: relative;
 }
 
+
+/* Project input upload */
+.resource-upload-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 4px; margin-top: 4px;
+}
+.resource-upload-btn {
+  display: inline-flex; align-items: center; gap: 5px;
+  background: rgba(79,172,254,0.1);
+  border: 1px dashed rgba(79,172,254,0.35);
+  border-radius: 6px; padding: 5px 10px;
+  font-size: 9px; color: #4facfe; cursor: pointer;
+  transition: all .15s; white-space: nowrap;
+}
+.resource-upload-btn:hover { background: rgba(79,172,254,0.2); border-style: solid; }
+.resource-drop-hint { font-size: 8px; color: #334155; }
+.resource-del-btn {
+  background: none; border: none; color: #334155;
+  cursor: pointer; font-size: 9px; padding: 0 3px;
+  margin-left: auto; flex-shrink: 0; line-height: 1;
+}
+.resource-del-btn:hover { color: #ef4444; }
+.resource-list.drag-over {
+  background: rgba(79,172,254,0.06);
+  border: 1px dashed rgba(79,172,254,0.4);
+  border-radius: 6px;
+}
+
 .resource-item {
   background: rgba(0, 0, 0, 0.3);
   padding: 12px;

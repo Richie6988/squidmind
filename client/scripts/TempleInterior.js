@@ -145,25 +145,104 @@ const TempleInterior = {
    * Populate input/output resources
    */
   populateResources(temple) {
-    const inputContainer = document.getElementById('input-resources');
+    const inputContainer  = document.getElementById('input-resources');
     const outputContainer = document.getElementById('output-resources');
-    
-    // Input resources (human-provided)
-    const inputFiles = temple.project?.files || [];
-    if (inputFiles.length > 0) {
-      inputContainer.innerHTML = inputFiles.map(file => `
-        <div class="resource-item" onclick="TempleInterior.openFile('${file.name}', '${file.path}', 'input')">
-          <span class="resource-icon">📄</span>
-          <span class="resource-name">${file.name}</span>
-          <span class="resource-size">${file.size || ''}</span>
-        </div>
-      `).join('');
-    } else {
-      inputContainer.innerHTML = '<p class="empty-state">No input files yet<br>Upload files to get started</p>';
-    }
-    
-    // Output resources — read from disk (images + text files in outputs/ folder)
+    if (!inputContainer || !outputContainer) return;
+    inputContainer.innerHTML  = '<p class="empty-state" style="opacity:.5;font-size:9px;">Loading…</p>';
+    outputContainer.innerHTML = '<p class="empty-state" style="opacity:.5;font-size:9px;">Loading…</p>';
+    this._loadInputFiles(temple, inputContainer);
     this._loadOutputFiles(temple, outputContainer);
+  },
+
+  async _loadInputFiles(temple, container) {
+    const pid = temple.project_id || 'PROJECT_001';
+    const folder = pid.toUpperCase().replace(/^project_/i, 'PROJECT_');
+    try {
+      const res  = await fetch(`/api/v2/projects/${folder}/inputs`);
+      const data = await res.json();
+      const files = data.files || [];
+      const uploadRow = `
+        <div class="resource-upload-row" id="input-upload-row-${folder}">
+          <label class="resource-upload-btn" title="Add file to project input">
+            📎 Add file
+            <input type="file" multiple style="display:none"
+              onchange="TempleInterior._handleInputUpload(event, '${folder}')">
+          </label>
+          <div class="resource-drop-hint">or drag & drop here</div>
+        </div>`;
+      if (files.length === 0) {
+        container.innerHTML = `<p class="empty-state">No input files yet</p>${uploadRow}`;
+      } else {
+        container.innerHTML = files.map(f => {
+          const icon = /\.(png|jpg|jpeg|gif|webp|svg)$/i.test(f.name) ? '🖼' : '📄';
+          const escaped = TempleInterior._escape(f.name);
+          return `<div class="resource-item" onclick="TempleInterior.openFile('${escaped}','${TempleInterior._escape(f.path)}','input')">
+            <span class="resource-icon">${icon}</span>
+            <span class="resource-name">${escaped}</span>
+            <span class="resource-size">${f.size||''}</span>
+            <button class="resource-del-btn" onclick="event.stopPropagation();TempleInterior._deleteInput('${folder}','${escaped}',this)" title="Remove">✕</button>
+          </div>`;
+        }).join('') + uploadRow;
+      }
+      // Wire drag-and-drop on the container
+      container.addEventListener('dragover', e => { e.preventDefault(); container.classList.add('drag-over'); });
+      container.addEventListener('dragleave', () => container.classList.remove('drag-over'));
+      container.addEventListener('drop', e => {
+        e.preventDefault(); container.classList.remove('drag-over');
+        const files2 = Array.from(e.dataTransfer?.files || []);
+        if (files2.length) TempleInterior._uploadFiles(folder, files2, container, temple);
+      });
+    } catch (e) {
+      container.innerHTML = `<p class="empty-state">Error loading input files: ${e.message}</p>`;
+    }
+  },
+
+  async _handleInputUpload(event, folder) {
+    const files = Array.from(event.target.files || []);
+    if (!files.length) return;
+    const temple = this.currentTemple;
+    const container = document.getElementById('input-resources');
+    await this._uploadFiles(folder, files, container, temple);
+    event.target.value = '';
+  },
+
+  async _uploadFiles(folder, files, container, temple) {
+    const uploadRow = container?.querySelector('.resource-upload-row');
+    if (uploadRow) uploadRow.insertAdjacentHTML('beforebegin', '<p style="font-size:9px;color:#4facfe;">Uploading…</p>');
+    for (const file of files) {
+      try {
+        const isText = /\.(txt|md|json|csv|js|ts|py|html|css|xml|yaml|yml|sh|c|cpp|h|java|rs|go|rb|php)$/i.test(file.name);
+        let content, encoding;
+        if (isText || file.type.startsWith('text/')) {
+          content  = await file.text();
+          encoding = 'utf8';
+        } else {
+          // Binary / image — base64
+          content = await new Promise((res, rej) => {
+            const r = new FileReader(); r.onload = () => res(r.result.split(',')[1]); r.onerror = rej; r.readAsDataURL(file);
+          });
+          encoding = 'base64';
+        }
+        await fetch(`/api/v2/projects/${folder}/inputs`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ fileName: file.name, content, encoding })
+        });
+      } catch (e) {
+        console.warn('[TempleInterior] Upload failed:', file.name, e.message);
+      }
+    }
+    // Reload input list
+    if (container && temple) await this._loadInputFiles(temple, container);
+  },
+
+  async _deleteInput(folder, fileName, btn) {
+    if (!confirm(`Remove "${fileName}" from project input?`)) return;
+    try {
+      await fetch(`/api/v2/projects/${folder}/inputs/${encodeURIComponent(fileName)}`, { method: 'DELETE' });
+      const container = document.getElementById('input-resources');
+      if (container && this.currentTemple) await this._loadInputFiles(this.currentTemple, container);
+    } catch (e) { alert('Delete failed: ' + e.message); }
   },
   
   async _loadOutputFiles(temple, container) {
