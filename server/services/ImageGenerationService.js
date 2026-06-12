@@ -141,14 +141,16 @@ class ImageGenerationService {
 
       // Q4_K_M / Q4_0 and larger quantizations need too much VRAM on 8GB GPUs
       // Use full CPU for Q4+ to avoid cublas OOM during inference
-      const quantMatch = modelFile.match(/[_-](q\d)/i);
-      const quantNum   = quantMatch ? parseInt(quantMatch[1].slice(1)) : 0;
+      // Regex catches: flux1-schnell-q4_0.gguf, model_Q4_K_M.gguf, model-q4_k.gguf
+      const quantMatch = modelFile.match(/[_-]q(\d+)/i);
+      const quantNum   = quantMatch ? parseInt(quantMatch[1]) : 0;
 
       // VRAM estimate: pixels * 4 bytes * ~16 (activations) → bytes → GB
       // Flux attention at 512x512 needs ~1GB extra, 768x768 ~2.2GB, 1024x1024 ~4GB
       const pixelCount    = width * height;
       const vramEstimate  = (pixelCount * 4 * 16) / (1024 ** 3);  // rough GB
-      const VRAM_BUDGET   = 5.5;  // safe threshold for 8GB GPU with OS overhead
+      // Flux needs T5+CLIP+VAE companions (~3GB baseline) so budget is much lower
+      const VRAM_BUDGET   = isFluxModel ? 2.5 : 5.5;
       const resolutionOOM = vramEstimate > VRAM_BUDGET;
 
       // Force CPU when: Q4+ quantization OR resolution too large for VRAM

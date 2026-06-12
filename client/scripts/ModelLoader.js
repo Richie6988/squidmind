@@ -961,22 +961,46 @@ const ModelLoader = {
     const runBtn  = dlg.querySelector('#imggen-run');
     const result  = dlg.querySelector('#imggen-result');
     runBtn.disabled = true; runBtn.textContent = 'Generating…';
-    result.style.display = 'none';
+    result.style.display = 'block';
+    result.innerHTML = '<div style="color:#94a3b8;font-size:9px;">Starting generation…</div>';
+
+    // Accelerate TaskQueueUI polling during generation (2s instead of 6s)
+    let _fastPoll = null;
+    const _startFastPoll = () => {
+      if (typeof TaskQueueUI !== 'undefined') {
+        clearInterval(TaskQueueUI.refreshInterval);
+        _fastPoll = setInterval(() => TaskQueueUI._render(), 2000);
+        TaskQueueUI.refreshInterval = _fastPoll;
+      }
+    };
+    const _stopFastPoll = () => {
+      if (_fastPoll) { clearInterval(_fastPoll); _fastPoll = null; }
+      if (typeof TaskQueueUI !== 'undefined') {
+        clearInterval(TaskQueueUI.refreshInterval);
+        TaskQueueUI.refreshInterval = setInterval(() => TaskQueueUI._render(), 6000);
+        TaskQueueUI._render();
+      }
+    };
+    _startFastPoll();
+
     try {
       const data = await window.ApiV2._fetch('/models/generate-image', {
         method: 'POST',
         body: JSON.stringify({ modelId, prompt, negativePrompt: neg, width, height, steps, cfg })
       });
-      if (data.ok) {
-        result.style.display = 'block';
-        result.innerHTML = `<img src="/api/v2/models/generated/${encodeURIComponent(data.fileName)}" style="max-width:100%;border-radius:8px;margin-top:8px;"><br>
-          <a href="/api/v2/models/generated/${encodeURIComponent(data.fileName)}" download="${data.fileName}" style="font-size:9px;color:#4facfe;">↓ Download</a>`;
+      _stopFastPoll();
+      if (data.ok && data.url) {
+        const imgUrl = data.url.startsWith('http') ? data.url : data.url;
+        result.innerHTML = `<img src="${imgUrl}" style="max-width:100%;border-radius:8px;margin-top:8px;"
+          onerror="this.style.display='none';this.nextSibling.style.display='block'">
+          <div style="display:none;color:#f87171;font-size:9px;">Image load failed — check task output in right panel</div><br>
+          <a href="${imgUrl}" download style="font-size:9px;color:#4facfe;">↓ Download</a>
+          ${data.task_id ? `<span style="font-size:8px;color:#475569;margin-left:8px;">task: ${data.task_id}</span>` : ''}`;
       } else {
-        result.style.display = 'block';
-        result.innerHTML = `<div style="color:#f87171;font-size:9px;padding:8px;background:rgba(248,113,113,0.08);border-radius:6px;">${data.error}</div>`;
+        result.innerHTML = `<div style="color:#f87171;font-size:9px;padding:8px;background:rgba(248,113,113,0.08);border-radius:6px;">${data.error || 'Unknown error'}</div>`;
       }
     } catch(e) {
-      result.style.display = 'block';
+      _stopFastPoll();
       result.innerHTML = `<div style="color:#f87171;font-size:9px;">${e.message}</div>`;
     } finally {
       runBtn.disabled = false; runBtn.textContent = 'Generate ✨';

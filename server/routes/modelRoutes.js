@@ -235,23 +235,7 @@ function buildRouter(v2ModelService) {
     return files.sort((a, b) => rank(a) - rank(b) || (b.size - a.size));
   }
 
-  // POST /api/v2/models/generate-image — generate image from image-type GGUF
-  router.post('/generate-image', async (req, res) => {
-    const { modelId, prompt, negativePrompt = '', width = 512, height = 512, steps = 20, cfg = 7, seed = -1 } = req.body;
-    if (!modelId || !prompt) return res.status(400).json({ ok: false, error: 'modelId and prompt required' });
-    try {
-      const AQUARIUM = require('../aquarium');
-      const fsp2 = require('fs').promises;
-      const outDir = path.join(AQUARIUM.ROOT, 'generated');
-      await fsp2.mkdir(outDir, { recursive: true });
-      const outFile = `gen_${Date.now()}.png`;
-      const outputPath = path.join(outDir, outFile);
-      const result = await v2ModelService.generateImage({ modelId, prompt, negativePrompt, outputPath, width, height, steps, cfg, seed });
-      if (!result.ok) return res.json({ ok: false, error: result.error });
-      const fileName = path.basename(result.outputPath || outputPath);
-      res.json({ ok: true, fileName, bytes: result.bytes });
-    } catch(e) { res.json({ ok: false, error: e.message }); }
-  });
+  // generate-image: see second declaration below
 
   // GET /api/v2/models/generated/:fileName — serve a generated image
   router.get('/generated/:fileName', (req, res) => {
@@ -400,13 +384,34 @@ function buildRouter(v2ModelService) {
   });
 
   // POST /api/v2/models/generate-image
+  // Uses OrchestratorTools so a task is created in right panel + output in TASKS/<id>/output/
   router.post('/generate-image', async (req, res) => {
     try {
+      const { modelId, model_id, prompt, negativePrompt, negative_prompt,
+              width, height, steps, cfg, cfg_scale, seed, project_id, filename } = req.body;
+      const tools = v2ModelService.orchestrator?.tools;
+      if (tools) {
+        const result = await tools.generateImage({
+          model_id: modelId || model_id,
+          prompt,
+          negative_prompt: negativePrompt || negative_prompt || '',
+          width:  Number(width)  || 512,
+          height: Number(height) || 512,
+          steps:  Number(steps)  || 20,
+          cfg_scale: Number(cfg || cfg_scale) || 7,
+          seed:   seed ?? -1,
+          project_id: project_id || null,
+          filename: filename || null,
+        });
+        if (!result.ok) return res.status(400).json({ success: false, ok: false, error: result.error });
+        return res.json({ success: true, ok: true, ...result });
+      }
+      // Fallback: orchestrator not ready yet
       const result = await v2ModelService.generateImage(req.body);
-      if (!result.ok) return res.status(400).json({ success: false, error: result.error });
-      res.json({ success: true, ...result });
+      if (!result.ok) return res.status(400).json({ success: false, ok: false, error: result.error });
+      res.json({ success: true, ok: true, ...result });
     } catch (err) {
-      res.status(500).json({ success: false, error: err.message });
+      res.status(500).json({ success: false, ok: false, error: err.message });
     }
   });
 
