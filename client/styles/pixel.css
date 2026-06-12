@@ -5100,16 +5100,24 @@ option {
 }
 .pc-close:hover { color: #ef4444; }
 
-.pc-turn {
-  font-family: 'Courier New', monospace;
-  font-size: 9px; color: #475569;
-  background: rgba(255,255,255,0.04);
-  padding: 3px 8px; border-radius: 10px;
-  border: 1px solid rgba(255,255,255,0.06);
+/* Copy button on messages */
+.pc-msg-actions {
+  display: flex; justify-content: flex-end;
+  padding: 2px 4px 0;
+  opacity: 0;
+  transition: opacity 0.15s;
 }
-.pc-turn-warn  { color: #f59e0b; border-color: rgba(245,158,11,0.3); }
-.pc-turn-fresh { color: #06ffa5; animation: pcFlash 1s ease-out; }
-@keyframes pcFlash { 0% { background: rgba(6,255,165,0.2); } 100% { background: rgba(255,255,255,0.04); } }
+.pc-msg:hover .pc-msg-actions { opacity: 1; }
+.pc-copy-btn {
+  background: none; border: 1px solid rgba(255,255,255,0.1);
+  color: rgba(148,163,184,0.6);
+  font-size: 11px; padding: 2px 6px; border-radius: 4px;
+  cursor: pointer; transition: all 0.12s;
+  font-family: monospace;
+}
+.pc-copy-btn:hover { background: rgba(79,172,254,0.12); color: #4facfe; border-color: rgba(79,172,254,0.35); }
+
+/* pc-turn removed */
 
 /* Status bar */
 .pc-status-bar {
@@ -5326,42 +5334,49 @@ option {
 
 /* Input area */
 .pc-input-area {
-  padding: 12px 16px 16px;
-  border-top: 1px solid rgba(255,255,255,0.06);
-  background: rgba(255,255,255,0.01);
+  padding: 10px 14px 14px;
+  border-top: 1px solid rgba(255,255,255,0.05);
+  background: transparent;
   flex: 0 0 auto;
 }
 .pc-input-wrap {
-  display: flex; gap: 8px; align-items: flex-end;
-  background: rgba(255,255,255,0.04);
-  border: 1px solid rgba(255,255,255,0.1);
-  border-radius: 8px;
-  padding: 4px 6px 4px 12px;
-  transition: border-color 0.2s;
+  display: flex; align-items: flex-end; gap: 0;
+  background: rgba(10,15,30,0.7);
+  border: 1px solid rgba(79,172,254,0.18);
+  border-radius: 14px;
+  padding: 6px 6px 6px 16px;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  backdrop-filter: blur(8px);
 }
-.pc-input-wrap:focus-within { border-color: rgba(79,172,254,0.4); box-shadow: 0 0 0 3px rgba(79,172,254,0.06); }
-
+.pc-input-wrap:focus-within {
+  border-color: rgba(79,172,254,0.5);
+  box-shadow: 0 0 0 3px rgba(79,172,254,0.08), 0 0 20px rgba(79,172,254,0.06);
+}
 .pc-input {
   flex: 1; background: none; border: none; outline: none;
   font-family: 'Courier New', monospace;
-  font-size: 11px; color: #e2e8f0;
-  resize: none; line-height: 1.5;
-  padding: 6px 0; max-height: 140px;
-  min-height: 32px;
+  font-size: 12px; color: #e2e8f0;
+  resize: none; line-height: 1.6;
+  padding: 6px 0; max-height: 140px; min-height: 28px;
 }
-.pc-input::placeholder { color: #334155; }
-
+.pc-input::placeholder { color: rgba(148,163,184,0.35); font-style: italic; }
+.pc-input-actions {
+  display: flex; align-items: flex-end; gap: 4px; padding-bottom: 4px;
+}
 .pc-send {
-  flex: 0 0 36px; height: 36px;
-  background: linear-gradient(135deg, #1d4ed8, #1e40af);
-  border: none; border-radius: 6px; cursor: pointer;
-  color: #e0f2fe; font-size: 14px;
+  width: 34px; height: 34px; flex-shrink: 0;
+  background: linear-gradient(135deg, #4facfe 0%, #2563eb 100%);
+  border: none; border-radius: 10px; cursor: pointer;
+  color: #fff;
   display: flex; align-items: center; justify-content: center;
-  transition: all 0.15s;
-  box-shadow: 0 2px 8px rgba(29,78,216,0.3);
+  transition: all 0.18s;
+  box-shadow: 0 2px 12px rgba(79,172,254,0.35);
 }
-.pc-send:hover:not(:disabled) { background: linear-gradient(135deg, #2563eb, #1d4ed8); transform: scale(1.05); }
-.pc-send:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+.pc-send:hover:not(:disabled) {
+  transform: scale(1.08);
+  box-shadow: 0 4px 18px rgba(79,172,254,0.5);
+}
+.pc-send:disabled { opacity: 0.3; cursor: not-allowed; transform: none; box-shadow: none; }
 
 /* ╔══════════════════════════════════════════════════════════╗
    ║  LOGS MODAL — System log viewer                          ║
@@ -6089,20 +6104,17 @@ h4.pc-md-h { font-size: 8px; color: #94a3b8; }
 /* ── Poseidon stop button ── */
 .pc-stop-btn {
   display: none;
-  align-items: center;
-  justify-content: center;
-  background: rgba(230,57,70,0.15);
-  border: 1px solid var(--danger);
-  color: var(--danger);
+  align-items: center; justify-content: center;
+  width: 34px; height: 34px;
+  background: rgba(239,68,68,0.12);
+  border: 1px solid rgba(239,68,68,0.4);
+  color: #ef4444;
   cursor: pointer;
-  font-size: 12px;
-  padding: 0 10px;
-  border-radius: 3px;
-  height: 100%;
-  transition: background 0.12s;
+  border-radius: 10px;
+  transition: all 0.15s;
   flex-shrink: 0;
 }
-.pc-stop-btn:hover { background: rgba(230,57,70,0.35); }
+.pc-stop-btn:hover { background: rgba(239,68,68,0.28); transform: scale(1.06); }
 
 /* ── Logs panel upgrades ── */
 .lm-filters { flex-direction: column; gap: 0; padding: 0; }

@@ -792,19 +792,23 @@ Never describe a bash command you could call instead.`;
             const doFetch = (url, redirects = 5) => new Promise((resolve, reject) => {
               if (!redirects) return reject(new Error('too many redirects'));
               const mod = url.startsWith('https') ? https : http;
-              mod.get(url, {
-                headers: { 'User-Agent': 'Mozilla/5.0 SquidMind/1.0' },
-                timeout: 8000
-              }, (res) => {
+              const req = mod.get(url, { headers: { 'User-Agent': 'Mozilla/5.0 SquidMind/1.0' } }, (res) => {
                 if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+                  res.resume();
                   const next = res.headers.location.startsWith('http') ? res.headers.location : 'https://en.wikipedia.org' + res.headers.location;
                   return doFetch(next, redirects - 1).then(resolve).catch(reject);
                 }
                 if (res.statusCode !== 200) { res.resume(); return reject(new Error('HTTP ' + res.statusCode)); }
                 let body = '';
-                res.on('data', d => { body += d; if (body.length > 300000) res.destroy(); });
+                res.on('data', d => {
+                  body += d;
+                  if (body.length > 200000) { res.destroy(); resolve(body); }  // resolve before destroy
+                });
                 res.on('end', () => resolve(body));
-              }).on('error', reject).on('timeout', function() { this.destroy(); reject(new Error('timeout')); });
+                res.on('error', reject);
+              });
+              req.setTimeout(10000, () => { req.destroy(); reject(new Error('timeout after 10s')); });
+              req.on('error', reject);
             });
 
             const html = await doFetch(page_url);

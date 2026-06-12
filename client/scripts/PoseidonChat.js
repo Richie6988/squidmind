@@ -81,8 +81,6 @@ const PoseidonChat = {
             </div>
           </div>
           <div class="pc-header-right">
-            <span id="pc-turn" class="pc-turn" title="Context turn / wipe threshold">—</span>
-            <button class="pc-btn" onclick="PoseidonChat.resetConversation()" title="Wipe context">↺ Wipe</button>
             <button class="pc-btn" onclick="PoseidonChat.close(); ModelLoader.open();" title="Manage models">⚙ Models</button>
             <button class="pc-close" onclick="PoseidonChat.close()">✕</button>
           </div>
@@ -104,12 +102,16 @@ const PoseidonChat = {
 
         <!-- Input -->
         <div class="pc-input-area">
-          <div class="pc-input-wrap">
+          <div class="pc-input-wrap" id="pc-input-wrap">
             <textarea id="pc-input" class="pc-input" placeholder="Message Poseidon..." rows="1"></textarea>
-            <button class="pc-send" id="pc-send">
-              <span id="pc-send-icon">▶</span>
-            </button>
-            <button class="pc-stop-btn" id="pc-stop" title="Stop generation" style="display:none">&#9646;&#9646;</button>
+            <div class="pc-input-actions">
+              <button class="pc-send" id="pc-send" title="Send">
+                <svg id="pc-send-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+              </button>
+              <button class="pc-stop-btn" id="pc-stop" title="Stop generation" style="display:none">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -167,14 +169,7 @@ const PoseidonChat = {
     el.className = `pc-status-${type}`;
   },
 
-  _updateTurnCounter(turn, threshold) {
-    const el = this.modal?.querySelector('#pc-turn');
-    if (!el) return;
-    el.textContent = `${turn} / ${threshold}`;
-    el.className = turn >= threshold - 1 ? 'pc-turn pc-turn-warn'
-                 : turn === 0            ? 'pc-turn pc-turn-fresh'
-                 : 'pc-turn';
-  },
+  _updateTurnCounter() { /* removed — no wipe */
 
   _renderHistory() {
     const msgs = this.modal?.querySelector('#pc-messages');
@@ -190,9 +185,9 @@ const PoseidonChat = {
     msgs.innerHTML = this.history.map((t, i) => {
       const ts = t.ts ? `<div class="pc-ts${t.role==='assistant'?' pc-ts-ai':''}">${this._fmtTs(new Date(t.ts))}</div>` : '';
       if (t.role === 'user') {
-        return `<div class="pc-msg pc-msg-user"><div class="pc-bubble-user">${this._esc(t.content)}</div>${ts}</div>`;
+        return `<div class="pc-msg pc-msg-user"><div class="pc-bubble-user">${this._esc(t.content)}</div><div class="pc-msg-actions"><button class="pc-copy-btn" onclick="PoseidonChat._copyText(this, event)" data-raw="${this._esc(t.content)}">⎘</button></div>${ts}</div>`;
       } else {
-        return `<div class="pc-msg pc-msg-ai" id="pc-msg-${i}"><div class="pc-ai-row"><div class="pc-ai-dot">🔱</div><div class="pc-bubble-ai pc-text-final">${this._md(t.content)}</div></div>${ts}</div>`;
+        return `<div class="pc-msg pc-msg-ai" id="pc-msg-${i}"><div class="pc-ai-row"><div class="pc-ai-dot">🔱</div><div class="pc-bubble-ai pc-text-final">${this._md(t.content)}</div></div><div class="pc-msg-actions"><button class="pc-copy-btn" onclick="PoseidonChat._copyText(this, event)" data-raw="${this._esc(t.content)}">⎘</button></div>${ts}</div>`;
       }
     }).join('');
     this._scrollToBottom(msgs);
@@ -364,7 +359,20 @@ const PoseidonChat = {
     if (type === 'error')          { throw new Error(p.error); }
     if (type === 'start')          { this._mutatedThisTurn = false; return; }
     if (type === 'end') {
-      if (p.turn !== undefined) this._updateTurnCounter(p.turn, p.wipe_threshold);
+      if (p.turn !== undefined) this._updateTurnCounter();
+      // Inject copy button into the last AI bubble
+      const lastAiMsg = this.modal?.querySelectorAll('.pc-msg-ai');
+      const lastMsg = lastAiMsg?.[lastAiMsg.length - 1];
+      if (lastMsg && !lastMsg.querySelector('.pc-copy-btn')) {
+        const fullText = this.history.filter(h => h.role === 'assistant').slice(-1)[0]?.content || '';
+        const actions = document.createElement('div');
+        actions.className = 'pc-msg-actions';
+        actions.innerHTML = '<button class="pc-copy-btn" title="Copy">⎘</button>';
+        actions.querySelector('.pc-copy-btn').dataset.raw = fullText;
+        actions.querySelector('.pc-copy-btn').addEventListener('click', (ev) => this._copyText(actions.querySelector('.pc-copy-btn'), ev));
+        const ts = lastMsg.querySelector('.pc-ts');
+        if (ts) lastMsg.insertBefore(actions, ts); else lastMsg.appendChild(actions);
+      }
       return;
     }
     if (type === 'thinking_start') { onFirstToken(); el.querySelector('.pc-loader')?.remove(); this._startThink(el); return; }
@@ -600,6 +608,25 @@ const PoseidonChat = {
       el = el || this.modal?.querySelector('#pc-messages');
       if (el) el.scrollTop = el.scrollHeight;
     }
+  },
+
+  _copyText(btn, ev) {
+    if (ev) ev.stopPropagation();
+    const raw = btn.dataset.raw || '';
+    navigator.clipboard.writeText(raw).then(() => {
+      const prev = btn.textContent;
+      btn.textContent = '✓';
+      btn.style.color = '#06ffa5';
+      setTimeout(() => { btn.textContent = prev; btn.style.color = ''; }, 1200);
+    }).catch(() => {
+      // fallback
+      const ta = document.createElement('textarea');
+      ta.value = raw; ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta); ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+      btn.textContent = '✓'; setTimeout(() => btn.textContent = '⎘', 1200);
+    });
   },
 
   _esc(s) {
