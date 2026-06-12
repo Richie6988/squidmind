@@ -137,7 +137,8 @@ class ImageGenerationService {
 
       if (isFluxModel) {
         args.push('--sampling-method', 'euler');
-        args.push('--clip-on-cpu');  // keep encoders on RAM to save VRAM
+        args.push('--clip-on-cpu');   // keep text encoders on RAM
+        args.push('--vae-on-cpu');    // keep VAE on RAM (~335MB saved on VRAM)
 
         // Auto-locate companion files in same dir as model
         const vaeCandidates   = ['ae.safetensors', 'ae.sft'];
