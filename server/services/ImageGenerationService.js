@@ -114,18 +114,31 @@ class ImageGenerationService {
    */
   _generateWithSd({ bin, modelPath, prompt, negativePrompt, outputPath, width, height, steps, cfg, seed }) {
     return new Promise((resolve) => {
+      const modelFile = require('path').basename(modelPath).toLowerCase();
+      // Flux / DiT models are standalone diffusion transformers — use --diffusion-model
+      // SD 1.x / SDXL full checkpoints use --model
+      const isFluxModel  = /flux/i.test(modelFile);
+      const isDiT        = /dit|mmdit/i.test(modelFile);
+      const modelFlag    = (isFluxModel || isDiT) ? '--diffusion-model' : '--model';
+
       const args = [
-        '--model', modelPath,
+        modelFlag, modelPath,
         '--prompt', prompt,
         '--output', outputPath,
-        '--width', String(width),
+        '--width',  String(width),
         '--height', String(height),
-        '--steps', String(steps),
+        '--steps',  String(steps),
         '--cfg-scale', String(cfg),
-        '--seed', String(seed),
-        '--rng', 'cuda',
+        '--seed',   String(seed),
       ];
-      if (negativePrompt) args.push('--negative-prompt', negativePrompt);
+
+      // Flux needs euler sampler and no negative prompt interference
+      if (isFluxModel) {
+        args.push('--sampling-method', 'euler');
+      } else {
+        args.push('--rng', 'cuda');
+      }
+      if (negativePrompt && !isFluxModel) args.push('--negative-prompt', negativePrompt);
 
       console.log(`[ImageGen] Spawning: ${bin} ${args.slice(0, 4).join(' ')} ...`);
       const child = spawn(bin, args, { stdio: ['ignore', 'pipe', 'pipe'] });
