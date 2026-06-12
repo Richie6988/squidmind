@@ -206,24 +206,15 @@ const PoseidonChat = {
       </div>`;
       return;
     }
-    // Build per-role indices for copy buttons (msgId needs role-relative index)
-    const _uIdxMap = {}, _aIdxMap = {};
-    let _uC = 0, _aC = 0;
-    this.history.forEach((h, gi) => {
-      if (h.role === 'user')      _uIdxMap[gi] = _uC++;
-      else if (h.role === 'assistant') _aIdxMap[gi] = _aC++;
-    });
     msgs.innerHTML = this.history.map((t, i) => {
-      const uIdx = _uIdxMap[i] ?? i;
-      const aIdx = _aIdxMap[i] ?? i;
       const ts = t.ts ? `<div class="pc-ts${t.role==='assistant'?' pc-ts-ai':''}">${this._fmtTs(new Date(t.ts))}</div>` : '';
       if (t.role === 'user') {
         const _imgPreviews = (t._attachmentPreviews||[]).map(p=>
           `<div class="pc-img-wrap" style="margin:4px 0"><img class="pc-md-img" src="${p.src}" alt="${p.name}" style="max-height:120px"></div>`
         ).join('');
-        return `<div class="pc-msg pc-msg-user"><div class="pc-bubble-user">${_imgPreviews}${this._esc(t.content)}</div><div class="pc-msg-actions"><button class="pc-copy-btn" onclick="PoseidonChat._copyText(this,'u${uIdx}')">⎘</button></div>${ts}</div>`;
+        return `<div class="pc-msg pc-msg-user"><div class="pc-bubble-user">${_imgPreviews}${this._esc(t.content)}</div><div class="pc-msg-actions"><button class="pc-copy-btn" onclick="PoseidonChat._copyText(this)" data-copy="${(()=>{try{return btoa(unescape(encodeURIComponent(t.content)));}catch{return '';}})()}">⎘</button></div>${ts}</div>`;
       } else {
-        return `<div class="pc-msg pc-msg-ai" id="pc-msg-${i}"><div class="pc-ai-row"><div class="pc-ai-dot">🔱</div><div class="pc-bubble-ai pc-text-final">${this._md(t.content)}</div></div><div class="pc-msg-actions"><button class="pc-copy-btn" onclick="PoseidonChat._copyText(this,'a${aIdx}')">⎘</button></div>${ts}</div>`;
+        return `<div class="pc-msg pc-msg-ai" id="pc-msg-${i}"><div class="pc-ai-row"><div class="pc-ai-dot">🔱</div><div class="pc-bubble-ai pc-text-final">${this._md(t.content)}</div></div><div class="pc-msg-actions"><button class="pc-copy-btn" onclick="PoseidonChat._copyText(this)" data-copy="${(()=>{try{return btoa(unescape(encodeURIComponent(t.content)));}catch{return '';}})()}">⎘</button></div>${ts}</div>`;
       }
     }).join('');
     this._scrollToBottom(msgs);
@@ -409,8 +400,10 @@ const PoseidonChat = {
         const actions = document.createElement('div');
         actions.className = 'pc-msg-actions';
         actions.innerHTML = '<button class="pc-copy-btn" title="Copy">⎘</button>';
-        const liveIdx = this.history.filter(h=>h.role==='assistant').length - 1; actions.querySelector('.pc-copy-btn').setAttribute('onclick', `PoseidonChat._copyText(this,'a\${liveIdx}')`);
-        // onclick set above
+        // Store content directly in data-copy (base64), no index needed
+        const liveCopy = (() => { try { return btoa(unescape(encodeURIComponent(fullText))); } catch { return ''; } })();
+        actions.querySelector('.pc-copy-btn').dataset.copy = liveCopy;
+        actions.querySelector('.pc-copy-btn').setAttribute('onclick', 'PoseidonChat._copyText(this)');
         const ts = lastMsg.querySelector('.pc-ts');
         if (ts) lastMsg.insertBefore(actions, ts); else lastMsg.appendChild(actions);
       }
@@ -677,31 +670,29 @@ const PoseidonChat = {
     }
   },
 
-  _copyText(btn, msgId) {
-    // btn: the clicked button element (passed as 'this' from onclick)
-    // msgId: 'u{i}' user history index, 'a{i}' assistant history index
-    let raw = '';
-    if (msgId && msgId.length > 1) {
-      const role = msgId[0] === 'u' ? 'user' : 'assistant';
-      const idx = parseInt(msgId.slice(1), 10);
-      raw = this.history.filter(h => h.role === role)[idx]?.content || '';
-    }
-    if (!raw) return;
+  _copyText(btn) {
+    // Content stored as base64 in data-copy attribute — no history indexing needed
+    const raw = btn && btn.dataset && btn.dataset.copy
+      ? (() => { try { return atob(btn.dataset.copy); } catch { return btn.dataset.copy; } })()
+      : '';
+    if (!raw) { console.warn('[copy] empty raw — data-copy:', btn?.dataset?.copy?.slice(0,20)); return; }
     const flash = () => {
       if (!btn) return;
+      const prev = btn.textContent;
       btn.textContent = '✓'; btn.style.color = '#06ffa5';
-      setTimeout(() => { btn.textContent = '⎘'; btn.style.color = ''; }, 1400);
+      setTimeout(() => { btn.textContent = prev; btn.style.color = ''; }, 1400);
+    };
+    const doCopy = () => {
+      const ta = document.createElement('textarea');
+      ta.value = raw; ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0;pointer-events:none;';
+      document.body.appendChild(ta); ta.focus(); ta.select();
+      try { document.execCommand('copy'); } catch {}
+      document.body.removeChild(ta); flash();
     };
     if (navigator.clipboard?.writeText) {
-      navigator.clipboard.writeText(raw).then(flash).catch(() => {
-        const ta = Object.assign(document.createElement('textarea'), { value: raw });
-        ta.style.cssText = 'position:fixed;opacity:0;'; document.body.appendChild(ta);
-        ta.select(); document.execCommand('copy'); document.body.removeChild(ta); flash();
-      });
+      navigator.clipboard.writeText(raw).then(flash).catch(doCopy);
     } else {
-      const ta = Object.assign(document.createElement('textarea'), { value: raw });
-      ta.style.cssText = 'position:fixed;opacity:0;'; document.body.appendChild(ta);
-      ta.select(); document.execCommand('copy'); document.body.removeChild(ta); flash();
+      doCopy();
     }
   },
 
