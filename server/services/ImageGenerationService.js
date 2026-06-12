@@ -144,9 +144,11 @@ class ImageGenerationService {
         const vaeCandidates   = ['ae.safetensors', 'ae.sft'];
         const clipCandidates  = ['clip_l.safetensors', 'clip_l.sft'];
         const t5Candidates    = [
-          't5-v1_1-xxl-encoder-Q4_K_M.gguf',     // quantized GGUF (~2.3GB, recommended)
+          't5-v1_1-xxl-encoder-Q4_K_M.gguf',   // quantized GGUF (~2.3GB, recommended)
           't5-v1_1-xxl-encoder-Q8_0.gguf',
-          't5xxl_fp8_e4m3fn.safetensors',          // fp8 safetensors (~4.7GB)
+          't5-v1_1-xxl-encoder-Q5_K_M.gguf',
+          't5-v1_1-xxl-encoder-Q6_K.gguf',
+          't5xxl_fp8_e4m3fn.safetensors',        // fp8 safetensors (~4.7GB)
           't5xxl_fp16.safetensors',
           't5xxl.safetensors',
         ];
@@ -161,7 +163,7 @@ class ImageGenerationService {
         if (t5)   args.push('--t5xxl',  t5);
 
         if (!vae || !clip || !t5) {
-          const missing = [!vae&&'ae.safetensors', !clip&&'clip_l.safetensors', !t5&&'t5xxl_fp8_e4m3fn.safetensors'].filter(Boolean);
+          const missing = [!vae&&'ae.safetensors', !clip&&'clip_l.safetensors', !t5&&'t5-v1_1-xxl-encoder-Q4_K_M.gguf (or t5xxl_fp8_e4m3fn.safetensors)'].filter(Boolean);
           console.warn(`[ImageGen] Flux missing companion files: ${missing.join(', ')} — download to ${modelDir}`);
           return resolve({ ok: false, error:
             `Flux requires companion files in ${modelDir}:\n` +

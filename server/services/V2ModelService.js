@@ -1383,8 +1383,17 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
     if (entry.model_type !== 'image') {
       return { ok: false, error: `Model ${modelId} is type '${entry.model_type || 'text'}', not an image model. Change model_type in the library.` };
     }
+    // Resolve model path — file_path may be absolute or relative, or only file_name available
+    const path = require('path');
+    let modelPath = entry.file_path;
+    if (!modelPath || !require('fs').existsSync(modelPath)) {
+      modelPath = path.join(this.modelsDir, entry.file_name || '');
+    }
+    if (!modelPath || !require('fs').existsSync(modelPath)) {
+      return { ok: false, error: `Model file not found: ${entry.file_path || entry.file_name}. Re-scan the library.` };
+    }
     return this.imageGen.generate({
-      modelPath: entry.file_path,
+      modelPath,
       prompt, outputPath, width, height, steps, cfg, seed, negativePrompt
     });
   }
