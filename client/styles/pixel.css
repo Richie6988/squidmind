@@ -5163,6 +5163,8 @@ option {
 
 .pc-msg-user {
   justify-content: flex-end;
+  align-items: flex-end;
+  flex-direction: column;
   animation: pcSlideRight 0.2s ease;
 }
 @keyframes pcSlideRight { from { opacity:0; transform:translateX(12px); } }
@@ -5184,6 +5186,7 @@ option {
 
 .pc-msg-ai {
   justify-content: flex-start;
+  flex-direction: column;
   animation: pcSlideLeft 0.2s ease;
 }
 @keyframes pcSlideLeft { from { opacity:0; transform:translateX(-12px); } }

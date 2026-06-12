@@ -191,8 +191,13 @@ ${checkpoint.summary}
       lines.push(`  read_my_brain('tasks')             → open tasks`);
       lines.push(`  read_my_brain('tools_catalog')     → tools by category`);
       lines.push('');
-      lines.push('KEY TOOL: dispatch_to_agent(agent_id, task_message, task_id?)');
-      lines.push('  → Runs an agent with its own session + tools. Returns immediately.');
+      lines.push('KEY TOOLS:');
+      lines.push('  dispatch_to_agent(agent_id, task_message, task_id?) → run agent async');
+      lines.push('  write_skill(skill_id, name, summary, steps, notes?) → save a new/improved skill to aquarium/SKILLS/');
+      lines.push('  read_my_brain("models") → list loaded/registered models');
+      lines.push('  read_my_brain("skills") → list all skills');
+      lines.push('  read_my_brain("skills.<id>") → read a specific skill steps');
+      lines.push('NOTE: file paths use aquarium layout: MODELS/, AGENTS/, PROJECTS/, TASKS/, BRAIN/, SKILLS/, CHANNELS/');
     }
     return lines.join('\n');
   }
@@ -698,6 +703,42 @@ Never describe a bash command you could call instead.`;
         handler: async (params) => self._updateUserContext(params)
       }),
       
+      write_skill: defineChatSessionFunction({
+        description: 'Create or update a skill in aquarium/SKILLS/. Use this to capture learned workflows, optimized processes, or new capabilities. Skills are loaded on next session.',
+        params: {
+          type: 'object',
+          properties: {
+            skill_id:   { type: 'string', description: 'Unique snake_case ID e.g. "image_search_flow"' },
+            name:       { type: 'string', description: 'Human-readable name' },
+            summary:    { type: 'string', description: 'One sentence describing what this skill does' },
+            triggers:   { type: 'array', items: { type: 'string' }, description: 'Phrases that should trigger this skill' },
+            steps:      { type: 'array', description: 'Array of step objects: {order, action, note, params}' },
+            notes:      { type: 'array', items: { type: 'string' }, description: 'Important caveats or tips' }
+          },
+          required: ['skill_id', 'name', 'summary', 'steps']
+        },
+        handler: async ({ skill_id, name, summary, triggers, steps, notes }) => {
+          try {
+            const fs   = require('fs').promises;
+            const path = require('path');
+            const AQUARIUM = require('../aquarium');
+            await fs.mkdir(AQUARIUM.SKILLS, { recursive: true });
+            const skill = { skill_id, name, version: 1, summary, triggers: triggers||[], steps, notes: notes||[], created_by: 'poseidon', created_at: new Date().toISOString() };
+            const filePath = path.join(AQUARIUM.SKILLS, `${skill_id}.json`);
+            const existed = require('fs').existsSync(filePath);
+            await fs.writeFile(filePath, JSON.stringify(skill, null, 2), 'utf8');
+            // Also update server/skills/ seed if it exists
+            const seedPath = path.join(__dirname, '../skills', `${skill_id}.json`);
+            await fs.writeFile(seedPath, JSON.stringify(skill, null, 2), 'utf8').catch(() => {});
+            await self.rm.log({ event_type: 'skill_created', actor: { type: 'system', id: 'poseidon_main' },
+              subject: { type: 'skill', id: skill_id }, action: `${existed?'Updated':'Created'} skill: ${name}` });
+            return { ok: true, skill_id, message: `Skill "${name}" ${existed?'updated':'created'} in aquarium/SKILLS/${skill_id}.json` };
+          } catch (err) {
+            return { ok: false, error: err.message };
+          }
+        }
+      }),
+
       read_my_brain: defineChatSessionFunction({
         description: 'Fetch a specific section of your own brain.json. Use this for skill recipes (e.g. "skills.create_agent"), tool details ("tools_catalog"), or your full soul ("fine_tuning"). Returns just that section so you do not blow context.',
         params: {
@@ -1359,6 +1400,13 @@ Never describe a bash command you could call instead.`;
           `${a.agent_id}: ${a.display_name} | ${a.specialization} | ${a.status} | brain: aquarium/AGENTS/${a.brain_file}`
         ).join('\n') || '(no agents)' };
       }
+      if (section_path === 'models') {
+        const reg = await this.rm.read('models/model_registry.json').catch(() => ({ models: {} }));
+        const models = Object.values(reg.models || {});
+        return { ok: true, section_path, content: models.length
+          ? models.map(m => `${m.model_id}: ${m.file_name} | ${m.model_type||'text'} | loaded: ${m.is_loaded||false} | ctx: ${m.config?.context_length||'?'}`).join('\n')
+          : '(no models registered — import a .gguf via the Models panel)' };
+      }
       if (section_path === 'tasks' || section_path === 'tasks.open') {
         const reg = await this.rm.getTasksRegistry().catch(() => ({ tasks: {} }));
         const open = Object.values(reg.tasks || {})
@@ -1382,7 +1430,7 @@ Never describe a bash command you could call instead.`;
           const available = (node && typeof node === 'object') ? Object.keys(node) : [];
           return {
             ok: false,
-            error: `Path "${section_path}" not found. Stopped at "${traversed.join('.')||'(root)'}". Available: ${available.join(', ')||'(none)'}. Hint: skills are in aquarium/SKILLS/*.md`
+            error: `Path "${section_path}" not found. Stopped at "${traversed.join('.')||'(root)'}". Available: ${available.join(', ')||'(none)'}. Hint: skills are in aquarium/SKILLS/*.json — call read_my_brain('skills') to list them`
           };
         }
       }

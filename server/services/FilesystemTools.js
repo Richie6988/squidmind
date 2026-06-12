@@ -47,7 +47,9 @@ class FilesystemTools {
    * Validate path is within workspace
    */
   validatePath(relativePath) {
-    const fullPath = path.join(this.workDir, relativePath);
+    // Resolve AQUARIUM paths (e.g. 'models/...' → 'MODELS/...')
+    const resolvedRel = AQUARIUM.resolve(relativePath);
+    const fullPath = path.join(this.workDir, resolvedRel);
     const resolved = path.resolve(fullPath);
     
     if (!resolved.startsWith(this.workDir)) {
