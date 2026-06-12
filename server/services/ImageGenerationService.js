@@ -220,8 +220,13 @@ class ImageGenerationService {
       // negativePrompt applies to both Flux and SD
       if (negativePrompt) args.push('--negative-prompt', negativePrompt);
 
-      console.log(`[ImageGen] Spawning: ${bin} ${args.slice(0, 4).join(' ')} ...`);
-      const child = spawn(bin, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+      console.log(`[ImageGen] Spawning: ${bin} ${args.slice(0, 4).join(' ')} ... forceCPU=${forceCPU}`);
+      // When forceCPU: set CUDA_VISIBLE_DEVICES="" to blind the process to all GPUs at driver level
+      // This works regardless of sd.cpp version — no CUDA backend = no CUDA OOM
+      const spawnEnv = forceCPU
+        ? { ...process.env, CUDA_VISIBLE_DEVICES: '', CUDA_DEVICE_ORDER: 'PCI_BUS_ID' }
+        : process.env;
+      const child = spawn(bin, args, { stdio: ['ignore', 'pipe', 'pipe'], env: spawnEnv });
 
       let stderr = '';
       child.stderr.on('data', d => { stderr += d.toString(); });

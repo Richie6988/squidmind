@@ -471,27 +471,26 @@ class OrchestratorTools {
 
       // Create a task to track progress in the right panel
       let taskId = null;
+      let taskObj = null;
       try {
-        const taskObj = await this.rm.createTask({
-          title: `🎨 Generate: ${prompt.slice(0, 55)}`,
+        taskObj = await this.rm.createTask({
+          title: `Image: ${prompt.slice(0, 55)}`,
           description: `Model: ${model_id}\nPrompt: ${prompt}\nSize: ${width||512}x${height||512}`,
           task_type: 'image_generation',
           project_id: project_id || null,
         });
-        taskId = taskObj?.task_id || taskObj;
-        // Force status to in_progress immediately (createTask always starts as 'planned')
-        if (taskId) {
+        taskId = taskObj?.task_id || null;
+        // Directly overwrite details.json with in_progress status — avoids write() path issues
+        if (taskId && taskObj) {
+          taskObj.status = 'in_progress';
+          taskObj.lifecycle = {
+            ...(taskObj.lifecycle || {}),
+            status: 'in_progress',
+            started_at: new Date().toISOString()
+          };
+          await this.rm._writeTaskDetails(taskId, taskObj);
           this.rm.invalidateCache();
-          const reg = await this.rm.getTasksRegistry();
-          if (reg.tasks?.[taskId]) {
-            reg.tasks[taskId].status = 'in_progress';
-            reg.tasks[taskId].lifecycle = {
-              ...reg.tasks[taskId].lifecycle,
-              status: 'in_progress',
-              started_at: new Date().toISOString()
-            };
-            await this.rm.write('tasks/tasks_registry.json', reg);
-          }
+          console.log('[generateImage] task created:', taskId, '— status: in_progress');
         }
       } catch(e) { console.warn('[generateImage] task creation failed:', e.message); }
 
@@ -511,18 +510,20 @@ class OrchestratorTools {
         seed: seed ?? -1, negativePrompt: negative_prompt || ''
       });
 
-      // Update task status
-      if (taskId) {
+      // Update task status directly in details.json — avoids flat registry path issues
+      if (taskId && taskObj) {
         try {
           const finalStatus = result.ok ? 'completed' : 'failed';
-          const reg = await this.rm.getTasksRegistry();
-          if (reg.tasks[taskId]) {
-            reg.tasks[taskId].lifecycle = { status: finalStatus, completed_at: new Date().toISOString() };
-            reg.tasks[taskId].status = finalStatus;
-            if (result.ok) reg.tasks[taskId].output_preview = serveUrl;
-            await this.rm.write('tasks/tasks_registry.json', reg);
-          }
-        } catch(e) { console.warn('[generateImage] task update failed:', e.message); }
+          taskObj.status = finalStatus;
+          taskObj.lifecycle = {
+            ...(taskObj.lifecycle || {}),
+            status: finalStatus,
+            completed_at: new Date().toISOString()
+          };
+          if (result.ok) taskObj.output_preview = serveUrl;
+          await this.rm._writeTaskDetails(taskId, taskObj);
+          this.rm.invalidateCache();
+        } catch(e) { console.warn('[generateImage] task status update failed:', e.message); }
       }
 
       if (!result.ok) return result;
