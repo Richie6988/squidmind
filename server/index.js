@@ -516,6 +516,37 @@ app.get('/api/v2/projects/:projectId/outputs/:filename', (req, res) => {
   });
 });
 
+// GET /api/files/read?path=... — read any file within aquarium or project dirs
+// Used by TempleInterior to load input/output file content for display
+app.get('/api/files/read', async (req, res) => {
+  const reqPath = req.query.path;
+  if (!reqPath) return res.status(400).json({ error: 'path required' });
+  const fsp2 = require('fs').promises;
+  // Resolve absolute path — allow aquarium root and project dirs
+  let absPath = reqPath;
+  if (!path.isAbsolute(absPath)) {
+    absPath = path.join(AQUARIUM.ROOT, reqPath);
+  }
+  // Security: must be inside aquarium root
+  const resolved = path.resolve(absPath);
+  if (!resolved.startsWith(path.resolve(AQUARIUM.ROOT))) {
+    return res.status(403).json({ error: 'Access denied: path outside aquarium' });
+  }
+  try {
+    const ext = path.extname(resolved).toLowerCase();
+    const isImage = ['.png','.jpg','.jpeg','.gif','.webp','.svg','.bmp'].includes(ext);
+    if (isImage) {
+      return res.sendFile(resolved, err => {
+        if (err) res.status(404).json({ error: 'File not found: ' + resolved });
+      });
+    }
+    const content = await fsp2.readFile(resolved, 'utf8');
+    res.json({ content });
+  } catch (e) {
+    res.status(404).json({ error: 'File not found: ' + e.message, path: resolved });
+  }
+});
+
 // Serve static files
 app.use(express.static(path.join(__dirname, '../client')));
 

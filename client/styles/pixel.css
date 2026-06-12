@@ -1278,10 +1278,13 @@ input[type="color"]::-webkit-color-swatch {
 }
 .resource-del-btn:hover { color: #ef4444; }
 .resource-list.drag-over {
-  background: rgba(79,172,254,0.06);
-  border: 1px dashed rgba(79,172,254,0.4);
+  background: rgba(79,172,254,0.08) !important;
+  border: 2px dashed rgba(79,172,254,0.6) !important;
   border-radius: 6px;
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(79,172,254,0.1);
 }
+.resource-list.drag-over * { pointer-events: none; }
 
 .resource-item {
   background: rgba(0, 0, 0, 0.3);

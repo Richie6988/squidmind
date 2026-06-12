@@ -184,13 +184,15 @@ const TempleInterior = {
           </div>`;
         }).join('') + uploadRow;
       }
-      // Wire drag-and-drop on the container
-      container.addEventListener('dragover', e => { e.preventDefault(); container.classList.add('drag-over'); });
-      container.addEventListener('dragleave', () => container.classList.remove('drag-over'));
+      // Wire drag-and-drop — use dragenter/dragleave counter to handle child elements
+      let _dragCount = 0;
+      container.addEventListener('dragenter', e => { e.preventDefault(); _dragCount++; container.classList.add('drag-over'); });
+      container.addEventListener('dragover',  e => { e.preventDefault(); });
+      container.addEventListener('dragleave', () => { _dragCount--; if (_dragCount <= 0) { _dragCount = 0; container.classList.remove('drag-over'); } });
       container.addEventListener('drop', e => {
-        e.preventDefault(); container.classList.remove('drag-over');
-        const files2 = Array.from(e.dataTransfer?.files || []);
-        if (files2.length) TempleInterior._uploadFiles(folder, files2, container, temple);
+        e.preventDefault(); _dragCount = 0; container.classList.remove('drag-over');
+        const dropped = Array.from(e.dataTransfer?.files || []);
+        if (dropped.length) TempleInterior._uploadFiles(folder, dropped, container, temple);
       });
     } catch (e) {
       container.innerHTML = `<p class="empty-state">Error loading input files: ${e.message}</p>`;
@@ -605,49 +607,49 @@ const TempleInterior = {
    * Open file in IDE
    */
   openFile(filename, filepath, type) {
-    console.log('📂 Opening file:', filename, 'Type:', type);
-
+    console.log('📂 Opening file:', filename, filepath, 'type:', type);
     this.currentFile = { filename, filepath, type };
-    document.getElementById('editor-filename').textContent = filename;
-
+    const editorEl  = document.getElementById('temple-editor');
+    const filenameEl = document.getElementById('editor-filename');
+    if (filenameEl) filenameEl.textContent = filename;
     const lower = filename.toLowerCase();
     const isImage = /\.(png|jpg|jpeg|gif|webp|svg|bmp)$/.test(lower);
+    const projectFolder = (this.currentTemple?.project_id || 'PROJECT_001')
+      .toUpperCase().replace(/^project_/i, 'PROJECT_');
 
     if (isImage) {
-      // For image outputs: show directly in the preview pane, blank the editor
-      document.getElementById('temple-editor').value = `[Image file: ${filename}]\n\nPreview shown on the right.`;
+      if (editorEl) editorEl.value = `[Image: ${filename}]`;
       const preview = document.getElementById('temple-preview');
-      // Build URL: if filepath looks like a project output use the API route
-      const projectFolder = this.currentTemple?.project_id
-        ? this.currentTemple.project_id.toUpperCase().replace(/project_/i, 'PROJECT_')
-        : null;
-      const imgUrl = filepath.startsWith('http')
-        ? filepath
-        : `/api/v2/projects/${projectFolder || 'PROJECT_001'}/outputs/${encodeURIComponent(filename)}`;
-      preview.srcdoc = `<!DOCTYPE html><html><body style="margin:0;background:#0d1b2a;display:flex;align-items:center;justify-content:center;min-height:100vh;">
-        <img src="${imgUrl}" style="max-width:100%;max-height:100vh;image-rendering:pixelated;" alt="${filename}"
-          onerror="this.style.display='none';document.body.innerHTML+='<p style=color:#e63946;font-family:monospace;font-size:11px;padding:16px>Image not found: ${imgUrl}</p>'">
+      // Use correct API route depending on type (input vs output)
+      let imgUrl;
+      if (filepath.startsWith('http')) {
+        imgUrl = filepath;
+      } else if (type === 'input') {
+        imgUrl = `/api/v2/projects/${projectFolder}/inputs/${encodeURIComponent(filename)}`;
+      } else {
+        imgUrl = `/api/v2/projects/${projectFolder}/outputs/${encodeURIComponent(filename)}`;
+      }
+      if (preview) preview.srcdoc = `<!DOCTYPE html><html><body style="margin:0;background:#0d1b2a;display:flex;align-items:center;justify-content:center;min-height:100vh;">
+        <img src="${imgUrl}" style="max-width:100%;max-height:90vh;border-radius:6px;" alt="${filename}"
+          onerror="document.body.innerHTML='<p style=color:#e63946;font-family:monospace;font-size:11px;padding:16px>Could not load: ${imgUrl}</p>'">
         </body></html>`;
       return;
     }
 
-    // Load file content (text/JSON)
-    fetch(`/api/files/read?path=${encodeURIComponent(filepath)}`)
-      .then(res => {
-        const ct = res.headers.get('content-type');
-        if (ct && ct.includes('application/json')) return res.json();
-        return res.text().then(text => ({ content: text }));
-      })
+    // Text/JSON: use /api/files/read with the absolute path from server
+    if (editorEl) editorEl.value = 'Loading…';
+    fetch('/api/files/read?path=' + encodeURIComponent(filepath))
+      .then(r => r.json())
       .then(data => {
-        const content = data.content || data;
-        document.getElementById('temple-editor').value =
+        if (data.error) throw new Error(data.error);
+        const content = data.content;
+        if (editorEl) editorEl.value =
           typeof content === 'string' ? content : JSON.stringify(content, null, 2);
         if (lower.endsWith('.html')) this.refreshPreview();
       })
       .catch(err => {
         console.error('Failed to load file:', err);
-        document.getElementById('temple-editor').value =
-          `// Failed to load file: ${err.message}`;
+        if (editorEl) editorEl.value = '// Failed to load: ' + err.message + '\n// Path: ' + filepath;
       });
   },
   
