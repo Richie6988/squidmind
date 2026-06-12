@@ -158,9 +158,17 @@ class ImageGenerationService {
         console.log('[ImageGen] Forcing CPU:', reason, '(avoids VRAM OOM)');
       }
 
+      if (forceCPU) {
+        // Force full CPU — disable CUDA RNG and offload all components
+        args.push('--rng', 'std_default');  // disables CUDA RNG path
+        args.push('--vae-on-cpu');
+        args.push('--clip-on-cpu');
+      }
+
       if (isFluxModel) {
         args.push('--sampling-method', 'euler');
         if (!forceCPU) {
+          // GPU: only move encoders to CPU, keep diffusion on GPU
           args.push('--clip-on-cpu');
           args.push('--vae-on-cpu');
         }
@@ -189,6 +197,8 @@ class ImageGenerationService {
         if (vae)  args.push('--vae',    vae);
         if (clip) args.push('--clip_l', clip);
         if (t5)   args.push('--t5xxl',  t5);
+        // When forcing CPU, also keep t5xxl on CPU explicitly
+        if (forceCPU && t5) args.push('--t5xxl-on-cpu');
 
         if (!vae || !clip || !t5) {
           const missing = [!vae&&'ae.safetensors', !clip&&'clip_l.safetensors', !t5&&'t5-v1_1-xxl-encoder-Q4_K_M.gguf (or t5xxl_fp8_e4m3fn.safetensors)'].filter(Boolean);

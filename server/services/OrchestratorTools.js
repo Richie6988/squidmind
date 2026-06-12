@@ -472,29 +472,43 @@ class OrchestratorTools {
       // Create a task to track progress in the right panel
       let taskId = null;
       try {
-        taskId = await this.rm.createTask({
-          title: `Generate image: ${prompt.slice(0, 60)}`,
+        const taskObj = await this.rm.createTask({
+          title: `🎨 Generate: ${prompt.slice(0, 55)}`,
           description: `Model: ${model_id}\nPrompt: ${prompt}\nSize: ${width||512}x${height||512}`,
           task_type: 'image_generation',
           project_id: project_id || null,
-          status: 'in_progress',
-          lifecycle: { status: 'in_progress', started_at: new Date().toISOString() }
         });
+        taskId = taskObj?.task_id || taskObj;
+        // Force status to in_progress immediately (createTask always starts as 'planned')
+        if (taskId) {
+          this.rm.invalidateCache();
+          const reg = await this.rm.getTasksRegistry();
+          if (reg.tasks?.[taskId]) {
+            reg.tasks[taskId].status = 'in_progress';
+            reg.tasks[taskId].lifecycle = {
+              ...reg.tasks[taskId].lifecycle,
+              status: 'in_progress',
+              started_at: new Date().toISOString()
+            };
+            await this.rm.write('tasks/tasks_registry.json', reg);
+          }
+        }
       } catch(e) { console.warn('[generateImage] task creation failed:', e.message); }
 
-      // Resolve output directory: prefer TASKS output, fallback to project output
+      // Resolve output directory: TASKS/{id}/output/ (aquarium/TASKS — uppercase)
+      const AQUARIUM = require('../aquarium');
       let outputDir, serveUrl;
       if (taskId) {
-        outputDir = path.join(_aq.TASKS, taskId, 'output');
-        serveUrl  = `/api/files/read?path=${encodeURIComponent(path.join(_aq.TASKS, taskId, 'output', safeFilename))}`;
+        outputDir = require('path').join(AQUARIUM.TASKS, taskId, 'output');
+        serveUrl  = `/api/files/read?path=${encodeURIComponent(require('path').join(AQUARIUM.TASKS, taskId, 'output', safeFilename))}`;
       } else if (project_id) {
         const pf = project_id.toUpperCase().startsWith('PROJECT_')
           ? project_id.toUpperCase()
           : `PROJECT_${project_id.replace(/\D/g, '').padStart(3, '0')}`;
-        outputDir = path.join(_aq.PROJECTS, pf, 'output');
+        outputDir = require('path').join(AQUARIUM.PROJECTS, pf, 'output');
         serveUrl  = `/api/v2/projects/${pf}/outputs/${safeFilename}`;
       } else {
-        outputDir = path.join(_aq.ROOT, 'generated');
+        outputDir = require('path').join(AQUARIUM.ROOT, 'generated');
         serveUrl  = `/api/v2/models/generated/${safeFilename}`;
       }
       await fs2.mkdir(outputDir, { recursive: true });
