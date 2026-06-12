@@ -104,10 +104,11 @@ const ControlTowerLive = {
     const model = (statusData?.loaded_models || []).find(m => m.model_id === poseidonId);
     if (!model) return;
 
-    const pct     = model.context_pct || 0;
-    const turns   = model.session_turns || 0;
-    const maxTurns = model.wipe_after_turns || 5;
-    const tokens  = model.total_tokens_generated || 0;
+    const pct      = model.context_pct || 0;
+    const turns    = model.session_turns || 0;
+    const ctxUsed  = model.context_used_tokens  || 0;
+    const ctxTotal = model.context_total_tokens || 0;
+    const tokens   = model.total_tokens_generated || 0;
 
     // Update or create context bar element
     let barWrap = document.getElementById('ctx-bar-wrap');
@@ -136,7 +137,9 @@ const ControlTowerLive = {
       fill.style.width = Math.min(100, pct) + '%';
       fill.style.background = pct < 60 ? 'var(--success)' : pct < 85 ? '#FBBF24' : 'var(--danger)';
     }
-    if (val) val.textContent = `${turns}/${maxTurns} turns (${pct}%)`;
+    if (val) val.textContent = ctxTotal
+      ? `${(ctxUsed/1000).toFixed(1)}k/${(ctxTotal/1000).toFixed(0)}k tok (${pct}%) · turn ${turns}`
+      : `turn ${turns} (${pct}%)`;
     if (tokEl) tokEl.textContent = `${(tokens/1000).toFixed(1)}k tokens total`;
   },
 

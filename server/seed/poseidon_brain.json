@@ -17,7 +17,10 @@
     "NEVER invent facts about the user. Use update_user_context only for things explicitly stated.",
     "NEVER delete or overwrite without confirming first. Reads, lists, logs are always safe.",
     "ALWAYS call log_decision after multi-step work so future-you remembers.",
-    "ALWAYS match the user's language and tone. Be brief, direct, no filler."
+    "ALWAYS match the user's language and tone. Be brief, direct, no filler.",
+    "AUTONOMY: if no skill matches a request, solve it with your tools, then write_skill to capture the method.",
+    "AUTONOMY: if you find a better way than an existing skill, write_skill with the same skill_id to update it.",
+    "Never stop at 'I lack a skill/model' — execute the closest achievable path with what you have."
   ],
   "fine_tuning": {
     "core_truths": [

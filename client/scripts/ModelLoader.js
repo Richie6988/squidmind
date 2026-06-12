@@ -167,7 +167,9 @@ const ModelLoader = {
     if (isInvalid) {
       actions = `<button class="btn-secondary danger-action" onclick="ModelLoader.removeFile('${this._escape(m.file_name)}')">Delete Bad File</button>`;
     } else if (!m.imported) {
-      actions = `<button class="btn-primary" onclick="ModelLoader.showImportDialog('${this._escape(m.file_name)}')">Import to Library</button>`;
+      actions = `
+        <button class="btn-primary" onclick="ModelLoader.showImportDialog('${this._escape(m.file_name)}')">Import to Library</button>
+        <button class="btn-secondary danger-action" onclick="ModelLoader.removeFile('${this._escape(m.file_name)}')">Delete</button>`;
     } else {
       const curType = m.config?.model_type || m.model_type || 'text';
       const toggleLabel = curType === 'image' ? '→ Text Model' : '→ Image Model';

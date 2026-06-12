@@ -68,6 +68,59 @@ class V2ModelService {
   }
 
   /**
+   * CONTEXT CHECKPOINT: summarize the live session, persist to dream_memory,
+   * dispose the session, so the next chat rebuilds fresh with # CONTINUITY.
+   * mode: 'proactive' (75% threshold) | 'emergency' (context overflow error)
+   */
+  async _checkpointAndReload(entry, session, mode = 'proactive') {
+    let summaryText = '';
+    if (mode === 'proactive' && session) {
+      // There's still ~25% ctx free — ask the model itself for the checkpoint
+      try {
+        const r = await session.prompt(
+          'CHECKPOINT NOW. In max 100 words, bullet list: current task, key decisions, what is DONE, what is NEXT, important paths/values. This is your only memory after reload.',
+          { maxTokens: 220 }
+        );
+        summaryText = (typeof r === 'string' ? r : '').trim();
+      } catch (e) {
+        console.warn('[V2ModelService] Checkpoint summary failed:', e.message);
+      }
+    }
+    if (!summaryText) {
+      // Emergency/degraded: build from last known exchange
+      const lastUser = (entry._lastUserMessage || '').slice(0, 300);
+      summaryText = `(auto-degraded checkpoint — context overflowed before summary)\nLast user request: ${lastUser}\nAction: re-read open tasks via read_my_brain('tasks') and recent logs to resume.`;
+    }
+    const checkpoint = {
+      saved_at: new Date().toISOString(),
+      mode,
+      turns: entry.sessionTurns,
+      context_used_tokens: entry.contextUsedTokens || null,
+      model_id: this.poseidonModelId,
+      summary: summaryText
+    };
+    await this.rm.write('BRAIN/dream_memory.json', checkpoint).catch(e =>
+      console.warn('[V2ModelService] Could not persist checkpoint:', e.message));
+
+    try { if (entry.session?.dispose) await entry.session.dispose(); } catch {}
+    try { if (entry._currentSequence?.dispose) entry._currentSequence.dispose(); } catch {}
+    entry.session          = null;
+    entry._currentSequence = null;
+    entry.sessionTurns     = 0;
+    entry._thinkBuf        = '';
+    entry.contextPct       = 0;
+    entry.contextUsedTokens = 0;
+    console.log(`[V2ModelService] Checkpoint saved (${mode}) — next chat resumes via # CONTINUITY`);
+
+    await this.rm.log({
+      event_type: 'poseidon_decision', severity: 'info',
+      actor: { type: 'system', id: 'v2_model_service' },
+      subject: { type: 'model', id: this.poseidonModelId },
+      action: `Context checkpoint (${mode}) at turn ${checkpoint.turns} — session reloaded with continuity summary`
+    }).catch(() => {});
+  }
+
+  /**
    * Abort the current Poseidon generation mid-stream.
    */
   abortGeneration() {
@@ -687,7 +740,9 @@ class V2ModelService {
         generating: e.generating,
         session_turns: e.sessionTurns || 0,
         wipe_after_turns: wipeThreshold,
-        context_pct: Math.round(((e.sessionTurns || 0) / wipeThreshold) * 100)
+        context_used_tokens:  e.contextUsedTokens  || 0,
+        context_total_tokens: e.contextTotalTokens || e.config?.contextLength || 0,
+        context_pct: e.contextPct ?? Math.round(((e.sessionTurns || 0) / wipeThreshold) * 100)
       })),
       poseidon_model_id: this.poseidonModelId
     };
@@ -756,6 +811,9 @@ class V2ModelService {
     if (!this.poseidonModelId) {
       throw new Error('No model assigned to Poseidon. Import a model and assign it first.');
     }
+    // Keep the last user message for emergency checkpoints
+    const _entryPre = this.loaded.get(this.poseidonModelId);
+    if (_entryPre) _entryPre._lastUserMessage = userMessage;
     
     // Auto-load if not yet loaded
     if (!this.loaded.has(this.poseidonModelId)) {
@@ -774,6 +832,7 @@ class V2ModelService {
     entry.generating = true;
     entry.lastUsedAt = Date.now();
     entry.totalRequests++;
+    entry._lastUserMessage = userMessage;
     
     // Per-session turn counter (resets when session is wiped)
     entry.sessionTurns = (entry.sessionTurns || 0);
@@ -819,6 +878,30 @@ class V2ModelService {
           }
         }
 
+        // TOOL COMPRESSION: tool schemas are serialized into the prompt and can
+        // cost 3-4k tokens with 27 tools. On tight contexts, truncate descriptions
+        // to the first sentence (max 90 chars) — keeps meaning, halves the cost.
+        if (functions && ctxTokens < 16384) {
+          let saved = 0;
+          for (const fn of Object.values(functions)) {
+            if (fn.description && fn.description.length > 90) {
+              const firstSentence = fn.description.split(/(?<=[.!?])\s/)[0] || fn.description;
+              const slim = firstSentence.slice(0, 90);
+              saved += fn.description.length - slim.length;
+              fn.description = slim;
+            }
+            // Also slim param descriptions
+            const props = fn.params?.properties || {};
+            for (const p of Object.values(props)) {
+              if (p.description && p.description.length > 60) {
+                saved += p.description.length - 60;
+                p.description = p.description.slice(0, 60);
+              }
+            }
+          }
+          if (saved > 0) console.log(`[V2ModelService] Tool descriptions compressed: ~${Math.round(saved/4)} tokens saved (ctx=${ctxTokens})`);
+        }
+
         const sequence   = entry.context.getSequence();
         entry.session    = new llamaCpp.LlamaChatSession({
           contextSequence: sequence,
@@ -828,6 +911,7 @@ class V2ModelService {
         entry._functions         = functions;
         entry._currentSequence   = sequence;
         entry.sessionTurns       = 0;
+        entry._lastSystemPromptChars = systemPrompt.length;
         const wrapper = entry.session.chatWrapper?.constructor?.name || 'unknown';
         console.log(`[V2ModelService] Session created for ${this.poseidonModelId} (${wrapper}, ctx=${ctxTokens}, prompt=${promptTokens}tok${functions ? `, ${Object.keys(functions).length} tools` : ', no tools (ctx too small)'})`);
       }
@@ -1015,50 +1099,36 @@ class V2ModelService {
         }
       }).catch(() => {});
       
-      // AUTO-WIPE: before wiping, generate a summary so Poseidon knows
-      // where to continue on the next session.
-      const wipeAfter = entry.config?.wipeContextAfterTurns ?? this.contextWipeThreshold;
-      if (entry.sessionTurns >= wipeAfter) {
-        console.log(`[V2ModelService] Auto-wiping context after ${entry.sessionTurns} turns — generating continuity summary...`);
-        try {
-          const summaryPrompt = 'In 5 bullet points, summarize the key decisions, actions taken, and what still needs to be done in our conversation. Be extremely concise — this will be your memory when we continue. Format: • point';
-          let summaryText = '';
-          const summaryResult = await session.prompt(summaryPrompt, { maxTokens: 300 });
-          summaryText = typeof summaryResult === 'string' ? summaryResult : '';
-          if (summaryText.trim()) {
-            const checkpoint = {
-              saved_at: new Date().toISOString(),
-              turns: entry.sessionTurns,
-              model_id: this.poseidonModelId,
-              summary: summaryText.trim()
-            };
-            await this.rm.write('BRAIN/dream_memory.json', checkpoint);
-            console.log(`[V2ModelService] Context checkpoint saved (${Math.round(summaryText.length/4)} tok summary)`);
-          }
-        } catch (e) {
-          console.warn('[V2ModelService] Could not save context checkpoint:', e.message);
-        }
-        try { if (entry.session?.dispose) await entry.session.dispose(); } catch {}
-        try { if (entry._currentSequence?.dispose) entry._currentSequence.dispose(); } catch {}
-        entry.session = null;
-        entry._currentSequence = null;
-        entry.sessionTurns = 0;
-        entry._thinkBuf = '';
-        await this.rm.log({
-          event_type: 'poseidon_decision',
-          severity: 'info',
-          actor: { type: 'system', id: 'v2_model_service' },
-          subject: { type: 'model', id: this.poseidonModelId },
-          action: `Context wiped after ${wipeAfter} turns. Next chat will reload brain.json.`
-        }).catch(() => {});
+      // ── CONTEXT CHECKPOINT SYSTEM (token-based, not turn-based) ──────────
+      // Measure REAL KV-cache usage from the sequence. When usage crosses the
+      // threshold, generate a continuity summary while there's still room,
+      // then reload the session fresh. The summary is injected into the next
+      // system prompt as # CONTINUITY so Poseidon resumes where it left off.
+      const ctxTotal = entry.config?.contextLength || 4096;
+      let ctxUsed = 0;
+      try { ctxUsed = entry._currentSequence?.nextTokenIndex ?? 0; } catch {}
+      if (!ctxUsed) {
+        // Fallback estimate: system prompt + ~400 tok per exchange
+        ctxUsed = Math.ceil((entry._lastSystemPromptChars || 3000) / 4) + entry.sessionTurns * 400;
+      }
+      const ctxPct = Math.min(100, Math.round((ctxUsed / ctxTotal) * 100));
+      entry.contextUsedTokens  = ctxUsed;
+      entry.contextTotalTokens = ctxTotal;
+      entry.contextPct         = ctxPct;
+
+      const CHECKPOINT_PCT = 75;                                      // proactive threshold
+      const hardTurnCap    = entry.config?.wipeContextAfterTurns ?? 25; // safety net only
+      if (ctxPct >= CHECKPOINT_PCT || entry.sessionTurns >= hardTurnCap) {
+        console.log(`[V2ModelService] Context at ${ctxPct}% (${ctxUsed}/${ctxTotal} tok, turn ${entry.sessionTurns}) — checkpoint + reload`);
+        await this._checkpointAndReload(entry, session, 'proactive');
       }
     } catch (err) {
       // Catch all session/context/prompt errors and reset session state fully
       const isSessionErr = /no sequences|sequence|context|too long|compress|prompt|system message/i.test(err.message);
       if (isSessionErr) {
-        console.warn(`[V2ModelService] Session error, resetting fully:`, err.message);
-        try { if (entry.session?.dispose) await entry.session.dispose(); } catch {}
-        try { if (entry._currentSequence?.dispose) entry._currentSequence.dispose(); } catch {}
+        console.warn(`[V2ModelService] Session error, emergency checkpoint + reset:`, err.message);
+        // Save what we can BEFORE losing the session — work is never silently lost
+        await this._checkpointAndReload(entry, null, 'emergency').catch(() => {});
         entry.session = null;
         entry._currentSequence = null;
         entry.sessionTurns = 0;

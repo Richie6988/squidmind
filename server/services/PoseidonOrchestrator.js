@@ -125,6 +125,12 @@ ${checkpoint.summary}
     ];
     const lines = ['# ABSOLUTE_RULES (never broken)'];
     rules.forEach((r, i) => lines.push(`${i + 1}. ${r}`));
+    // System autonomy rules — always present regardless of brain content
+    lines.push('');
+    lines.push('# AUTONOMY (core behavior)');
+    lines.push('A. No matching skill? SOLVE IT anyway with your tools. Then IMMEDIATELY call write_skill to capture the working method so next time is instant.');
+    lines.push('B. Used a skill but found a better way? Call write_skill with the SAME skill_id to update it (your improvement persists).');
+    lines.push('C. Never stop at "I do not have a skill/model for that" — propose and EXECUTE the closest achievable path with what you have.');
     return lines.join('\n');
   }
   
@@ -1358,7 +1364,7 @@ Never describe a bash command you could call instead.`;
           const available = fs.readdirSync(skillsDir).filter(f => f.endsWith('.json')).map(f => f.replace('.json',''));
           return {
             ok: false,
-            error: `Skill "${skillName}" not found. Available: ${available.join(', ') || '(none)'}.`
+            error: `Skill "${skillName}" not found. Available: ${available.join(', ') || '(none)'}. AUTONOMY RULE: solve the task NOW with your tools (web_search, web_fetch, read_file...), then call write_skill("${skillName}", ...) to save your working method.`
           };
         }
         const skill = JSON.parse(fs.readFileSync(filePath, 'utf8'));
