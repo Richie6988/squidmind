@@ -618,13 +618,14 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
         const tooNew = { gemma4: 'Gemma 4', phi4: 'Phi-4', llama4: 'Llama 4' };
         const name = tooNew[arch] || arch;
         throw new Error(
-          `"${name}" requires a newer llama.cpp build than node-llama-cpp 3.18.1 includes.\n\n` +
-          `OPTION 1 — Build from source (gets latest llama.cpp):\n` +
-          `  cd /home/reg/Bureau/AIKIP/SquidSquad/squidmind\n` +
-          `  npx node-llama-cpp build\n` +
+          `"${name}" requires a newer llama.cpp than bundled in node-llama-cpp 3.18.1.\n\n` +
+          `FIX — run the helper script (takes ~5-10min, needs cmake):\n` +
+          `  bash fix-llama-build.sh\n\n` +
+          `OR manually:\n` +
+          `  npx node-llama-cpp source download\n` +
+          `  npx node-llama-cpp source build --gpu cuda\n` +
           `  npm start\n\n` +
-          `OPTION 2 — Wait for node-llama-cpp 3.19+ (not released yet as of June 2026)\n\n` +
-          `OPTION 3 — Use a different model format (Qwen3, Llama 3.x, Mistral all work fine)`
+          `ALTERNATIVE — these models work fine with 3.18.1: Qwen3, Llama 3.x, Mistral, Phi-3`
         );
       }
       throw new Error(`Load failed: ${err.message}`);
