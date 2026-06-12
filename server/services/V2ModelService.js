@@ -610,6 +610,14 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
         subject: { type: 'model', id: modelId },
         action: `FAILED to load ${fileName}: ${err.message}`
       });
+      // Surface actionable message for unknown architecture (e.g. gemma4, phi4, etc.)
+      const archM = err.message.match(/unknown model architecture[:\s'"]+([\w0-9]+)/i);
+      if (archM) {
+        throw new Error(
+          `Architecture "${archM[1]}" not supported by current llama.cpp build.\n` +
+          `Run: cd <squidmind-dir> && npm update node-llama-cpp && npm start`
+        );
+      }
       throw new Error(`Load failed: ${err.message}`);
     }
   }

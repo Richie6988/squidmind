@@ -46,6 +46,7 @@ const PoseidonChat = {
   // Send a message programmatically (bypasses textarea)
   _sendRaw(msg) {
     if (this.currentRequest) return;
+    this._clearAttachments();
     const ta = this.modal?.querySelector('#pc-input');
     if (!ta) return;
     // Show a subtle resume indicator
@@ -104,8 +105,14 @@ const PoseidonChat = {
 
         <!-- Input -->
         <div class="pc-input-area">
+          <!-- Attachment previews strip -->
+          <div class="pc-attachments" id="pc-attachments"></div>
           <div class="pc-input-wrap" id="pc-input-wrap">
-            <textarea id="pc-input" class="pc-input" placeholder="Message Poseidon..." rows="1"></textarea>
+            <button class="pc-attach-btn" id="pc-attach-btn" title="Attach file or image">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>
+            </button>
+            <input type="file" id="pc-file-input" style="display:none" accept="image/*,.pdf,.txt,.md,.json,.csv,.js,.ts,.py,.html,.css" multiple>
+            <textarea id="pc-input" class="pc-input" placeholder="Message Poseidon... (paste images/files)" rows="1"></textarea>
             <div class="pc-input-actions">
               <button class="pc-send" id="pc-send" title="Send">
                 <svg id="pc-send-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
@@ -120,6 +127,23 @@ const PoseidonChat = {
 
     const ta   = this.modal.querySelector('#pc-input');
     const send = this.modal.querySelector('#pc-send');
+    this._attachments = [];  // [{name, type, content, preview}]
+
+    // Wire attachment button
+    const attachBtn  = this.modal.querySelector('#pc-attach-btn');
+    const fileInput  = this.modal.querySelector('#pc-file-input');
+    if (attachBtn) attachBtn.addEventListener('click', () => fileInput?.click());
+    if (fileInput) fileInput.addEventListener('change', (e) => this._handleFiles(Array.from(e.target.files)));
+
+    // Wire paste handler for images/files
+    ta.addEventListener('paste', (e) => {
+      const items = Array.from(e.clipboardData?.items || []);
+      const fileItems = items.filter(i => i.kind === 'file');
+      if (fileItems.length) {
+        e.preventDefault();
+        this._handleFiles(fileItems.map(i => i.getAsFile()).filter(Boolean));
+      }
+    });
     const msgs = this.modal.querySelector('#pc-messages');
     const stopBtnEl = this.modal.querySelector('#pc-stop');
     if (stopBtnEl) {
@@ -197,8 +221,11 @@ const PoseidonChat = {
 
   async _send() {
     const ta = this.modal?.querySelector('#pc-input');
-    const msg = ta?.value.trim();
-    if (!msg || this.currentRequest) return;
+    const msgRaw = ta?.value.trim();
+    if (!msgRaw && !this._attachments?.length) return;
+    if (this.currentRequest) return;
+    const msg = this._buildMessageWithAttachments(msgRaw || '(see attachment)');
+    this._clearAttachments();
     ta.value = ''; ta.style.height = 'auto';
 
     const msgTs = new Date();
@@ -641,6 +668,80 @@ const PoseidonChat = {
       ta.style.cssText = 'position:fixed;opacity:0;'; document.body.appendChild(ta);
       ta.select(); document.execCommand('copy'); document.body.removeChild(ta); flash();
     }
+  },
+
+  _attachments: [],
+
+  async _handleFiles(files) {
+    for (const file of files) {
+      if (!file) continue;
+      const type = file.type || '';
+      const name = file.name || 'attachment';
+      try {
+        if (type.startsWith('image/')) {
+          // Image: read as base64 data URL for preview, include description in context
+          const dataUrl = await new Promise((res, rej) => {
+            const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(file);
+          });
+          this._attachments.push({ name, type: 'image', content: dataUrl, preview: dataUrl });
+        } else {
+          // Text file: read as UTF-8
+          const text = await file.text();
+          this._attachments.push({ name, type: 'text', content: text.slice(0, 30000), preview: null });
+        }
+      } catch(e) {
+        console.warn('[PoseidonChat] File read error:', e.message);
+      }
+    }
+    this._renderAttachments();
+  },
+
+  _renderAttachments() {
+    const strip = this.modal?.querySelector('#pc-attachments');
+    if (!strip) return;
+    if (!this._attachments.length) { strip.innerHTML = ''; return; }
+    strip.innerHTML = this._attachments.map((a, i) => {
+      if (a.type === 'image') {
+        return `<div class="pc-att-chip" title="${a.name}">
+          <img src="${a.preview}" class="pc-att-thumb">
+          <span>${a.name.slice(0,20)}</span>
+          <button onclick="PoseidonChat._removeAttachment(${i})">✕</button>
+        </div>`;
+      }
+      return `<div class="pc-att-chip" title="${a.name}">
+        <span class="pc-att-icon">📄</span>
+        <span>${a.name.slice(0,20)}</span>
+        <span class="pc-att-size">${(a.content.length/1000).toFixed(0)}k chars</span>
+        <button onclick="PoseidonChat._removeAttachment(${i})">✕</button>
+      </div>`;
+    }).join('');
+  },
+
+  _removeAttachment(i) {
+    this._attachments.splice(i, 1);
+    this._renderAttachments();
+  },
+
+  _clearAttachments() {
+    this._attachments = [];
+    const strip = this.modal?.querySelector('#pc-attachments');
+    if (strip) strip.innerHTML = '';
+    const fi = this.modal?.querySelector('#pc-file-input');
+    if (fi) fi.value = '';
+  },
+
+  _buildMessageWithAttachments(msg) {
+    if (!this._attachments.length) return msg;
+    const parts = [];
+    for (const a of this._attachments) {
+      if (a.type === 'image') {
+        parts.push(`[Attached image: ${a.name}]\n(Image data available — describe what you see if asked, or acknowledge it)`);
+      } else {
+        parts.push(`[Attached file: ${a.name}]\n\`\`\`\n${a.content}\n\`\`\``);
+      }
+    }
+    parts.push(msg);
+    return parts.join('\n\n');
   },
 
   _esc(s) {

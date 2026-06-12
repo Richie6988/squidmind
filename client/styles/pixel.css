@@ -5565,6 +5565,37 @@ option {
 .pc-loader-msg  { font-family: 'Courier New', monospace; font-size: 10px; color: #94a3b8; }
 .pc-loader-elapsed { font-family: 'Courier New', monospace; font-size: 8px; color: #475569; }
 
+/* ── PoseidonChat: Attachments */
+.pc-attachments {
+  display: flex; flex-wrap: wrap; gap: 6px;
+  padding: 0 4px 6px; min-height: 0;
+}
+.pc-att-chip {
+  display: flex; align-items: center; gap: 5px;
+  background: rgba(79,172,254,0.08);
+  border: 1px solid rgba(79,172,254,0.2);
+  border-radius: 8px; padding: 4px 8px;
+  font-size: 9px; color: #94a3b8; max-width: 200px;
+}
+.pc-att-chip button {
+  background: none; border: none; color: #475569;
+  cursor: pointer; font-size: 10px; padding: 0 2px; line-height: 1;
+}
+.pc-att-chip button:hover { color: #ef4444; }
+.pc-att-thumb {
+  width: 28px; height: 28px; border-radius: 4px;
+  object-fit: cover; flex-shrink: 0;
+}
+.pc-att-icon { font-size: 14px; }
+.pc-att-size { color: #475569; font-size: 8px; }
+.pc-attach-btn {
+  background: none; border: none; color: #475569;
+  cursor: pointer; padding: 6px; border-radius: 8px;
+  display: flex; align-items: center; transition: all .15s;
+  flex-shrink: 0;
+}
+.pc-attach-btn:hover { color: #4facfe; background: rgba(79,172,254,0.1); }
+
 /* ── PoseidonChat: Images */
 .pc-img-wrap {
   margin: 10px 0;
