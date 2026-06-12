@@ -1,18 +1,47 @@
 {
   "skill_id": "manage_skills",
-  "name": "Manage Skills (self-improvement)",
-  "version": 1,
-  "summary": "Create, update, delete your own skills. Called automatically before unknown tasks (skill-first) and after improvisation.",
-  "triggers": ["create skill", "update skill", "delete skill", "list skills", "improve skill", "new skill", "write skill"],
+  "name": "Manage Skills (self-improvement engine)",
+  "version": 2,
+  "summary": "Create, update, delete your own skills. This is your primary self-improvement mechanism. Called automatically before unknown tasks AND after every task where you improvised.",
+  "triggers": [
+    "create skill", "update skill", "delete skill", "list skills",
+    "improve skill", "new skill", "write skill", "skill audit",
+    "self improve", "after task completed", "improvised a solution"
+  ],
   "steps": [
-    {"order": 1, "action": "list_skills", "note": "See what exists. Check version numbers."},
-    {"order": 2, "action": "write_skill", "note": "write_skill(skill_id, name, summary, triggers, steps, notes). Version auto-increments on update. skill_id: snake_case, unique."},
-    {"order": 3, "action": "delete_skill if obsolete", "note": "delete_skill(skill_id) removes from SKILLS/ and seeds. Use when a skill is wrong or superseded."}
+    {
+      "order": 1,
+      "action": "list_skills",
+      "note": "Always check what exists first. Note version numbers. Version 1 = untested draft, 2+ = battle-tested."
+    },
+    {
+      "order": 2,
+      "action": "read_my_brain('skills.<id>') for relevant skill",
+      "note": "Read the specific skill before updating it. Check what's already there."
+    },
+    {
+      "order": 3,
+      "action": "write_skill(skill_id, name, summary, triggers, steps, notes)",
+      "note": "Version auto-increments on update. Use same skill_id to update, new id to create. Steps MUST reference actual tool names. Notes MUST have at least one gotcha."
+    },
+    {
+      "order": 4,
+      "action": "delete_skill if truly obsolete",
+      "note": "delete_skill(skill_id). Only when superseded by a better skill or the approach is fundamentally broken."
+    },
+    {
+      "order": 5,
+      "action": "update_brain_field('performance_memory.skill_improvements_this_session', count+1)",
+      "note": "Track that you improved. This metric shows you are getting better."
+    }
   ],
   "notes": [
-    "SKILL-FIRST: call write_skill BEFORE executing an unknown task type, not after",
-    "Steps should reference actual tool names (web_search, fetch_image_url, etc.)",
-    "Always include a 'notes' array with gotchas and constraints learned from experience",
-    "Triggers determine when read_my_brain auto-suggests this skill — be specific"
+    "SKILL-FIRST RULE: call write_skill BEFORE executing an unknown task type, not after.",
+    "AFTER-TASK RULE: mandatory write_skill after any improvisation, even small ones.",
+    "Good skill anatomy: triggers (specific, 3-8 entries), steps (tool calls, not vague actions), notes (gotchas, AVOID patterns).",
+    "AVOID: creating duplicate skills — always check list_skills first.",
+    "AVOID: vague step descriptions like 'search for it' — write 'web_search(query)' instead.",
+    "The notes array is the most valuable part — that's where hard-won lessons live.",
+    "Every AVOID note prevents a future mistake. Write them even when it feels obvious."
   ]
 }

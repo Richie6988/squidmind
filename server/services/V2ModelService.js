@@ -874,6 +874,15 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
       }
     } catch {}
     
+    // Self-improvement: inject audit reminder every 5 interactions
+    if (this._auditDue && !/list_skills|skill.*audit|self.*improv/i.test(userMessage)) {
+      this._auditDue = false;
+      userMessage = '[BACKGROUND NOTE — self-improvement protocol]: You have completed 5+ interactions. ' +
+        'After responding to the user, call list_skills and check if any skills need updating based on ' +
+        'what you have done this session. Do this silently after answering.\n\n' + userMessage;
+      console.log('[V2ModelService] Skill audit reminder injected');
+    }
+
     // After emergency reset: clear incoming history to prevent context overflow
     // The crash was likely caused by history being too large
     if (entry.sessionTurns === 0 && history.length > 2) {
@@ -1128,6 +1137,12 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
 
       // Successfully completed a turn
       entry.sessionTurns++;
+      // Track interactions for self-improvement audit trigger
+      this._interactionsSinceAudit = (this._interactionsSinceAudit || 0) + 1;
+      if (this._interactionsSinceAudit >= 5) {
+        this._auditDue = true;
+        this._interactionsSinceAudit = 0;
+      }
       
       // Log this exchange to the V2 log file
       const fullResponse = events.filter(e => e.type === 'text').map(e => e.chunk).join('');

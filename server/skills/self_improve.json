@@ -1,0 +1,57 @@
+{
+  "skill_id": "self_improve",
+  "name": "Self-Observation & Skill Improvement",
+  "version": 1,
+  "summary": "Systematic protocol to observe your own performance after every task and update skills to improve over time. Run the self-observation loop after EVERY non-trivial task.",
+  "triggers": [
+    "improve yourself", "self improve", "skill audit", "update skills",
+    "after task", "skill review", "what skills do i have", "am i improving",
+    "self observation", "retrospective", "learn from this"
+  ],
+  "steps": [
+    {
+      "order": 1,
+      "action": "list_skills",
+      "note": "Get the current skill inventory. Check version numbers — version 1 = untested, version 2+ = battle-hardened."
+    },
+    {
+      "order": 2,
+      "action": "self-assess the last task",
+      "note": "Ask: (a) Did I use a skill? (b) Did I improvise anything? (c) Did I retry or hit errors? (d) Was the result perfect or approximate?"
+    },
+    {
+      "order": 3,
+      "action": "write_skill (if anything was improvised or imperfect)",
+      "note": "write_skill(skill_id, name, summary, triggers, steps, notes). If updating: use same skill_id, version auto-increments. NEVER skip this step after improvisation."
+    },
+    {
+      "order": 4,
+      "action": "add AVOID notes for failures",
+      "note": "If something failed: add a notes entry starting with 'AVOID:' describing what not to do. These notes are the most valuable part of a skill."
+    },
+    {
+      "order": 5,
+      "action": "periodic audit (every ~5 interactions)",
+      "note": "Call list_skills. For each skill with version=1 or no recent updates: read it with read_my_brain('skills.<id>'), check if it still reflects reality, update if stale."
+    },
+    {
+      "order": 6,
+      "action": "update_brain_field performance_memory",
+      "note": "update_brain_field('performance_memory.last_skill_audit_at', <ISO timestamp>) and increment skill_improvements_this_session counter."
+    },
+    {
+      "order": 7,
+      "action": "log_decision",
+      "note": "Log what you improved and why. Future-you needs this context."
+    }
+  ],
+  "notes": [
+    "The goal is compound improvement: each session should leave skills better than the previous one.",
+    "Version numbers matter: version 1 = first draft, version 2 = tested once, version 3+ = reliable.",
+    "Quality checklist for a good skill: concrete tool names in steps, ≥1 AVOID note, specific triggers.",
+    "AVOID: writing vague skills like 'search for information' — always specify which tools and what inputs.",
+    "AVOID: duplicating skills — always check list_skills first and update existing ones.",
+    "Pattern to watch: if you improvise the same thing twice, that improvisation IS the skill — write it.",
+    "After a crash or context overflow: write_skill('context_management') with what you learned about staying within limits."
+  ]
+}

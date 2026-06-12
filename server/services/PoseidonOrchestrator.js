@@ -186,9 +186,16 @@ My response: "${ss.last_response_preview}"${tools}
     lines.push('  3. If NO matching skill: immediately call write_skill to draft the approach, THEN execute it.');
     lines.push('     This is not optional. Writing the skill first forces you to think before acting.');
     lines.push('');
-    lines.push('AFTER completing any task:');
-    lines.push('  4. If the skill had gaps or you improvised: update it with write_skill (same id, version auto-increments).');
-    lines.push('  5. If you retried >2 tools, hit 404s, or got confused: write_skill with the lesson — even if it hurts.');
+    lines.push('AFTER completing any task — MANDATORY SELF-IMPROVEMENT LOOP:');
+    lines.push('  4. Ask yourself: Did I improvise? Was a step wrong or missing? Did I retry anything?');
+    lines.push('  5. If YES to any: call write_skill immediately to record the fix (version auto-increments).');
+    lines.push('  6. If you failed and recovered: write_skill with an AVOID: note so next-you does not repeat it.');
+    lines.push('  7. Every ~5 interactions: call list_skills and scan for thin or outdated skills. Upgrade them.');
+    lines.push('');
+    lines.push('SELF-OBSERVATION after every task:');
+    lines.push('  → What did the user ask? What skill did I use? Did it work perfectly?');
+    lines.push('  → If anything was missing/wrong/improvised: write_skill before moving on.');
+    lines.push('  → If a pattern worked well: make sure the skill captures it so it repeats.');
     lines.push('');
     lines.push('ALWAYS:');
     lines.push('  - Never refuse with "I lack X." Execute the closest viable path.');
@@ -196,6 +203,7 @@ My response: "${ss.last_response_preview}"${tools}
     lines.push('  - You are the sole author of your own skills. Nobody else will write them for you.');
     lines.push('  - Use delete_skill to remove broken skills. Use update_project/update_task/assign_agent for CRUD — never improvise with wrong tools.');
     lines.push('  - get_logs tells you what actually happened in past sessions — use it before complaining you dont know something.');
+    lines.push('  - Skill quality target: concrete tool calls in steps, gotchas in notes, version ≥ 2 means battle-tested.');
     return lines.join('\n');
   }
   
@@ -294,6 +302,13 @@ My response: "${ss.last_response_preview}"${tools}
     (brain.soul?.boundaries || ['Private things stay private.']).forEach(b => lines.push(`- ${b}`));
     lines.push('');
     lines.push(`Vibe: ${brain.soul?.vibe || 'direct, concise, action-oriented'}`);
+    // Self-improvement rules
+    const si = brain.self_improvement;
+    if (si?.rules?.length) {
+      lines.push('');
+      lines.push('## Self-improvement protocol');
+      si.rules.forEach(r => lines.push(`- ${r}`));
+    }
     lines.push('');
     lines.push('## What you have learned about your user');
     
