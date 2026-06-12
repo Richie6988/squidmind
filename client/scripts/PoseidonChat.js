@@ -169,7 +169,7 @@ const PoseidonChat = {
     el.className = `pc-status-${type}`;
   },
 
-  _updateTurnCounter() { /* removed — no wipe */
+  _updateTurnCounter() { /* removed — no wipe */ },
 
   _renderHistory() {
     const msgs = this.modal?.querySelector('#pc-messages');

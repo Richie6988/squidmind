@@ -166,10 +166,16 @@ app.post('/api/v2/poseidon/reset-session', async (req, res) => {
 
 // Hook V2ModelService TTL check + dream into heartbeat
 heartbeat.setModelService(v2ModelService);
+
+// Task auto-runner — fires on every heartbeat tick
+const TaskRunner = require('./services/TaskRunner');
+const taskRunner = new TaskRunner(sharedRm, v2ModelService, agentWorkerPool);
+
 const _originalTick = heartbeat.tick.bind(heartbeat);
 heartbeat.tick = async function() {
   await _originalTick();
   await v2ModelService.checkTtl();
+  await taskRunner.tick().catch(e => console.warn('[TaskRunner] tick error:', e.message));
 };
 
 // Initialize services

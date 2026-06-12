@@ -50,19 +50,19 @@ const TaskQueueUI = {
 
       // Active queue: not completed/failed/cancelled/archived
       this._tasks = allTasks
-        .filter(t => !['completed', 'failed', 'cancelled', 'archived'].includes(t.lifecycle?.status))
+        .filter(t => !['completed', 'failed', 'cancelled', 'archived'].includes(t.lifecycle?.status || t.status))
         .sort((a, b) => (b.sort_order || 0) - (a.sort_order || 0));
 
       // Completed tasks (last 10, most recent first) — for results view
       const doneTasks = allTasks
-        .filter(t => ['completed', 'failed'].includes(t.lifecycle?.status))
+        .filter(t => ['completed', 'failed'].includes(t.lifecycle?.status || t.status))
         .sort((a, b) => new Date(b.lifecycle?.completed_at || b.created_at || 0) - new Date(a.lifecycle?.completed_at || a.created_at || 0))
         .slice(0, 10);
 
       container.innerHTML = '';
 
       if (this._tasks.length === 0 && doneTasks.length === 0) {
-        container.innerHTML = '<p class="hint" style="font-size:9px;color:var(--text-secondary);">No tasks queued</p>';
+        container.innerHTML = '<p class="hint" style="font-size:9px;color:var(--text-secondary);">No tasks queued — create tasks and assign agents to auto-run them.</p>';
         return;
       }
 
@@ -108,7 +108,7 @@ const TaskQueueUI = {
     el.dataset.taskId = t.task_id;
     el.draggable = true;
 
-    const status = t.lifecycle?.status || '?';
+    const status = t.lifecycle?.status || t.status || 'open';
     const assignee = t.assignment?.assigned_to || null;
     const agentName = assignee
       ? (this.agents.find(a => a.agent_id === assignee)?.display_name || t.assignment?.assigned_name || assignee)
@@ -116,7 +116,7 @@ const TaskQueueUI = {
 
     const workerStatus = assignee ? (this._workerStatuses[assignee]?.status || 'idle') : null;
     const isRunning   = status === 'in_progress' || workerStatus === 'running';
-    const canRun      = assignee && ['planned', 'open', 'assigned'].includes(status);
+    const canRun      = false;  // tasks auto-run — manual run removed
     const isCron      = !!t.cron_schedule;
     const projectName = t.project_name || t.context?.project_id || null;
 

@@ -1409,11 +1409,13 @@ Never describe a bash command you could call instead.`;
         } catch {}
       }
 
+      const initStatus = assigned_agent_id ? 'open' : 'open'; // always open for auto-runner
       reg.tasks[taskId] = {
         task_id: taskId,
         title,
         description: description || '',
         project_name: project || null,
+        status: initStatus,  // top-level mirror for TaskRunner
         priority: {
           label: priority || 'medium',
           computed_score: priority === 'critical' ? 20 : priority === 'high' ? 15 : priority === 'low' ? 5 : 10,
@@ -1421,9 +1423,7 @@ Never describe a bash command you could call instead.`;
         },
         created_at: new Date().toISOString(),
         created_by: 'poseidon_main',
-        lifecycle: {
-          status: assigned_agent_id ? 'planned' : 'open'
-        },
+        lifecycle: { status: initStatus },
         assignment: {
           assigned_to: assigned_agent_id || null,
           assigned_name: agentName
@@ -1454,14 +1454,17 @@ Never describe a bash command you could call instead.`;
       this.rm.invalidateCache();
       const reg = await this.rm.read('tasks/tasks_registry.json');
       let tasks = Object.values(reg.tasks || {});
-      if (status && status !== 'all') tasks = tasks.filter(t => t.status === status);
+      if (status && status !== 'all') tasks = tasks.filter(t => (t.lifecycle?.status || t.status || 'open') === status);
       if (project) tasks = tasks.filter(t => (t.project_name || '').toUpperCase() === project.toUpperCase());
       
       return {
         ok: true, count: tasks.length,
         tasks: tasks.map(t => ({
-          task_id: t.task_id, title: t.title, status: t.status,
-          project: t.project_name, assigned_to: t.assigned_to, priority: t.priority
+          task_id: t.task_id, title: t.title,
+          status: t.lifecycle?.status || t.status || 'open',
+          project: t.project_name,
+          assigned_to: t.assignment?.assigned_to || t.assigned_to,
+          priority: t.priority?.label || t.priority
         }))
       };
     } catch (err) {
@@ -1476,7 +1479,7 @@ Never describe a bash command you could call instead.`;
       const task = reg.tasks?.[task_id];
       if (!task) return { ok: false, error: `Task ${task_id} not found. Use list_tasks to check IDs.` };
       // Handle nested fields
-      if (field === 'status')            task.lifecycle = { ...(task.lifecycle||{}), status: new_value };
+      if (field === 'status')            { task.lifecycle = { ...(task.lifecycle||{}), status: new_value }; task.status = new_value; }
       else if (field === 'priority')     task.priority  = { ...(task.priority||{}), label: new_value };
       else if (field === 'assigned_agent_id') task.assignment = { ...(task.assignment||{}), assigned_to: new_value };
       else                               task[field] = new_value;
