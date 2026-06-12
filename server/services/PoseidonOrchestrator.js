@@ -347,7 +347,8 @@ Never describe a bash command you could call instead.`;
 
 ## Project management
 - create_project(name, vision)
-- archive_project(project_name)
+- archive_project(project_name)  → reversible, hides from active view
+- delete_project(project_name)   → PERMANENT, removes folder + registry entry. Use when user says "delete"
 - list_projects()
 
 ## Task management
@@ -526,6 +527,18 @@ Never describe a bash command you could call instead.`;
           required: ['project_name']
         },
         handler: async (params) => self._archiveProject(params)
+      }),
+
+      delete_project: defineChatSessionFunction({
+        description: 'Permanently delete a project: removes it from the registry and deletes its folder. Irreversible. Use when user explicitly says "delete" (not just "remove" or "archive").',
+        params: {
+          type: 'object',
+          properties: {
+            project_name: { type: 'string', description: 'Name of the project to delete (case-insensitive)' }
+          },
+          required: ['project_name']
+        },
+        handler: async (params) => self._deleteProject(params)
       }),
 
       list_projects: defineChatSessionFunction({
@@ -1177,6 +1190,63 @@ Never describe a bash command you could call instead.`;
 
       return { ok: true, project_id: targetId, name: upperName, freed_agents: assignedAgents,
         message: `Archived ${upperName}. ${assignedAgents.length} agent(s) freed. Reversible by setting status back to 'active'.` };
+    } catch (err) {
+      return { ok: false, error: err.message };
+    }
+  }
+
+  async _deleteProject({ project_name }) {
+    try {
+      const upperName = project_name.toUpperCase();
+      this.rm.invalidateCache();
+      const AQUARIUM = require('../aquarium');
+      const fsp = require('fs').promises;
+      const reg = await this.rm.read('projects/project_registry.json');
+
+      let targetId = null;
+      for (const [pid, p] of Object.entries(reg.projects || {})) {
+        if (p.name === upperName || p.project_id === project_name) { targetId = pid; break; }
+      }
+      if (!targetId) return { ok: false, error: `Project "${upperName}" not found. Use list_projects to check existing names.` };
+
+      const proj = reg.projects[targetId];
+      const assignedAgents = [...(proj.assigned_agents || [])];
+
+      // Free assigned agents
+      if (assignedAgents.length > 0) {
+        try {
+          const agentReg = await this.rm.read('agents/agent_registry.json');
+          for (const agentId of assignedAgents) {
+            const agent = agentReg.agents?.[agentId];
+            if (agent) agent.assigned_projects = (agent.assigned_projects || []).filter(id => id !== targetId);
+          }
+          await this.rm.write('agents/agent_registry.json', agentReg);
+        } catch {}
+      }
+
+      // Delete project folder
+      const projectDir = AQUARIUM.projects(proj.folder || targetId);
+      try {
+        await fsp.rm(projectDir, { recursive: true, force: true });
+      } catch (e) {
+        console.warn(`[Poseidon] Could not delete project folder ${projectDir}:`, e.message);
+      }
+
+      // Remove from registry
+      delete reg.projects[targetId];
+      if (reg.metadata?.total_active) reg.metadata.total_active = Math.max(0, reg.metadata.total_active - 1);
+      await this.rm.write('projects/project_registry.json', reg);
+
+      await this.rm.log({
+        event_type: 'project_deleted', severity: 'info',
+        actor: { type: 'system', id: 'poseidon_main' },
+        subject: { type: 'project', id: targetId },
+        action: `Permanently deleted project ${upperName}`,
+        context: { freed_agents: assignedAgents }
+      });
+
+      return { ok: true, project_id: targetId, name: upperName, freed_agents: assignedAgents,
+        message: `Deleted project ${upperName} permanently. Folder and registry entry removed.` };
     } catch (err) {
       return { ok: false, error: err.message };
     }
