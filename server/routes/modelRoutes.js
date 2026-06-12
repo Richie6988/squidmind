@@ -242,13 +242,13 @@ function buildRouter(v2ModelService) {
     try {
       const AQUARIUM = require('../aquarium');
       const fsp2 = require('fs').promises;
-      const outDir = nodePath.join(AQUARIUM.ROOT, 'generated');
+      const outDir = path.join(AQUARIUM.ROOT, 'generated');
       await fsp2.mkdir(outDir, { recursive: true });
       const outFile = `gen_${Date.now()}.png`;
-      const outputPath = nodePath.join(outDir, outFile);
+      const outputPath = path.join(outDir, outFile);
       const result = await v2ModelService.generateImage({ modelId, prompt, negativePrompt, outputPath, width, height, steps, cfg, seed });
       if (!result.ok) return res.json({ ok: false, error: result.error });
-      const fileName = nodePath.basename(result.outputPath || outputPath);
+      const fileName = path.basename(result.outputPath || outputPath);
       res.json({ ok: true, fileName, bytes: result.bytes });
     } catch(e) { res.json({ ok: false, error: e.message }); }
   });
@@ -257,7 +257,7 @@ function buildRouter(v2ModelService) {
   router.get('/generated/:fileName', (req, res) => {
     const AQUARIUM = require('../aquarium');
     const safe = req.params.fileName.replace(/[^a-zA-Z0-9._-]/g, '');
-    const fpath = nodePath.join(AQUARIUM.ROOT, 'generated', safe);
+    const fpath = path.join(AQUARIUM.ROOT, 'generated', safe);
     if (!fpath.startsWith(AQUARIUM.ROOT)) return res.status(403).send('Forbidden');
     res.sendFile(fpath, err => { if (err) res.status(404).json({ error: 'not found' }); });
   });
