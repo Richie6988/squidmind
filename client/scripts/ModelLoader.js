@@ -77,31 +77,39 @@ const ModelLoader = {
           
           <!-- TAB: HuggingFace download -->
           <div id="ml-tab-download" class="ml-tab-content" style="display:none;">
-            <!-- Search bar -->
-            <div style="display:flex;gap:6px;margin-bottom:8px;">
-              <input id="ml-hf-query" type="text" placeholder="Search HuggingFace (e.g. qwen, mistral, smol...)" style="flex:1;font-size:10px;" onkeydown="if(event.key==='Enter')ModelLoader._hfSearch()">
-              <button class="btn-secondary" style="font-size:9px;padding:4px 8px;" onclick="ModelLoader._hfSearch()">Search</button>
+            <!-- Search row -->
+            <div class="ml-hf-search-row">
+              <input id="ml-hf-query" class="ml-hf-input" type="text"
+                placeholder="Search models (qwen, mistral, llama…)"
+                onkeydown="if(event.key==='Enter')ModelLoader._hfSearch()">
+              <button class="ml-hf-search-btn" onclick="ModelLoader._hfSearch()">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              </button>
             </div>
-            <!-- Quick filters -->
-            <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:10px;" id="ml-hf-filters">
-              <button class="ml-hf-pill active" data-q="gguf chat" onclick="ModelLoader._hfQuick(this,'gguf chat')">💬 Chat</button>
-              <button class="ml-hf-pill" data-q="gguf code" onclick="ModelLoader._hfQuick(this,'gguf code')">💻 Code</button>
-              <button class="ml-hf-pill" data-q="smol gguf" onclick="ModelLoader._hfQuick(this,'smol gguf')">🌙 Dream (small)</button>
-              <button class="ml-hf-pill" data-q="gguf reasoning" onclick="ModelLoader._hfQuick(this,'gguf reasoning')">🧠 Reasoning</button>
-              <button class="ml-hf-pill" data-q="gguf multilingual french" onclick="ModelLoader._hfQuick(this,'gguf multilingual french')">🌍 French</button>
+            <!-- Filter pills -->
+            <div class="ml-hf-pills" id="ml-hf-filters">
+              <button class="ml-hf-pill" onclick="ModelLoader._hfQuick(this,'')">🔥 Popular</button>
+              <button class="ml-hf-pill active" onclick="ModelLoader._hfQuick(this,'qwen')">💬 Qwen</button>
+              <button class="ml-hf-pill" onclick="ModelLoader._hfQuick(this,'mistral')">⚡ Mistral</button>
+              <button class="ml-hf-pill" onclick="ModelLoader._hfQuick(this,'llama')">🦙 Llama</button>
+              <button class="ml-hf-pill" onclick="ModelLoader._hfQuick(this,'code')">💻 Code</button>
+              <button class="ml-hf-pill" onclick="ModelLoader._hfQuick(this,'smol')">🌙 Dream</button>
+              <button class="ml-hf-pill" onclick="ModelLoader._hfQuick(this,'phi')">🔬 Phi</button>
             </div>
-            <!-- Results list -->
-            <div id="ml-hf-results" style="max-height:220px;overflow-y:auto;font-size:9px;"></div>
-            <!-- File picker (shown when a repo is selected) -->
-            <div id="ml-hf-files" style="display:none;margin-top:8px;border-top:1px solid var(--border);padding-top:8px;">
-              <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">
-                <span id="ml-hf-repo-name" style="font-size:9px;color:var(--accent);flex:1;"></span>
-                <button class="btn-secondary" style="font-size:8px;padding:2px 6px;" onclick="ModelLoader._hfCloseFiles()">✕ back</button>
+            <!-- Results — model list -->
+            <div id="ml-hf-results" class="ml-hf-results-list"></div>
+            <!-- File picker panel -->
+            <div id="ml-hf-files" class="ml-hf-file-panel" style="display:none;">
+              <div class="ml-hf-file-header">
+                <a id="ml-hf-repo-link" class="ml-hf-repo-link" href="#" target="_blank">↗</a>
+                <span id="ml-hf-repo-name" class="ml-hf-repo-title"></span>
+                <button class="ml-hf-back-btn" onclick="ModelLoader._hfCloseFiles()">← Back</button>
               </div>
-              <div id="ml-hf-file-list" style="max-height:160px;overflow-y:auto;"></div>
+              <div class="ml-hf-file-hint">Pick a quantization. <b>Q4_K_M</b> = best balance. <b>Q8</b> = highest quality. <b>Q2</b> = smallest.</div>
+              <div id="ml-hf-file-list" class="ml-hf-file-list"></div>
             </div>
             <!-- Active downloads -->
-            <div id="ml-downloads-list" style="margin-top:10px;"></div>
+            <div id="ml-downloads-list" style="margin-top:8px;"></div>
           </div>
           
         </div>
@@ -112,19 +120,55 @@ const ModelLoader = {
     if (!document.getElementById('ml-hf-css')) {
       const s = document.createElement('style'); s.id = 'ml-hf-css';
       s.textContent = `
-        .ml-hf-pill{font-size:8px;padding:3px 8px;border-radius:10px;border:1px solid var(--border,#333);background:transparent;color:var(--text-secondary,#aaa);cursor:pointer;white-space:nowrap;}
-        .ml-hf-pill.active,.ml-hf-pill:hover{background:var(--accent,#4facfe);color:#fff;border-color:var(--accent,#4facfe);}
-        .ml-hf-row{display:flex;align-items:center;gap:6px;padding:5px 6px;border-radius:4px;cursor:pointer;border-bottom:1px solid rgba(255,255,255,0.05);}
-        .ml-hf-row:hover{background:rgba(255,255,255,0.06);}
-        .ml-hf-role-badge{font-size:8px;padding:1px 5px;border-radius:8px;white-space:nowrap;background:rgba(255,255,255,0.08);}
-        .ml-hf-role-dream{color:#a78bfa;}.ml-hf-role-code{color:#60a5fa;}.ml-hf-role-chat{color:#34d399;}.ml-hf-role-embed{color:#f59e0b;}
-        .ml-hf-id{flex:1;font-size:9px;color:var(--text-primary,#fff);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-        .ml-hf-meta{font-size:8px;color:var(--text-secondary,#aaa);white-space:nowrap;}
-        .ml-hf-file-row{display:flex;align-items:center;gap:6px;padding:4px 6px;border-radius:4px;cursor:pointer;border-bottom:1px solid rgba(255,255,255,0.05);}
-        .ml-hf-file-row:hover{background:rgba(255,255,255,0.06);}
-        .ml-hf-quant{font-size:9px;font-weight:700;min-width:36px;}
-        .ml-hf-fname{flex:1;font-size:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-        .ml-hf-fsize{font-size:8px;color:var(--text-secondary,#aaa);white-space:nowrap;}
+        /* ── HF Search ── */
+        .ml-hf-search-row{display:flex;gap:6px;margin-bottom:10px;}
+        .ml-hf-input{flex:1;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:8px;color:#e2e8f0;font-size:10px;padding:6px 10px;outline:none;}
+        .ml-hf-input:focus{border-color:rgba(79,172,254,0.5);box-shadow:0 0 0 2px rgba(79,172,254,0.1);}
+        .ml-hf-search-btn{background:rgba(79,172,254,0.15);border:1px solid rgba(79,172,254,0.35);color:#4facfe;border-radius:8px;padding:6px 10px;cursor:pointer;display:flex;align-items:center;transition:all .15s;}
+        .ml-hf-search-btn:hover{background:rgba(79,172,254,0.28);}
+        .ml-hf-pills{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:10px;}
+        .ml-hf-pill{font-size:8px;padding:3px 9px;border-radius:10px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.03);color:#94a3b8;cursor:pointer;white-space:nowrap;transition:all .12s;}
+        .ml-hf-pill.active,.ml-hf-pill:hover{background:rgba(79,172,254,0.18);color:#4facfe;border-color:rgba(79,172,254,0.4);}
+        /* ── Results list ── */
+        .ml-hf-results-list{max-height:200px;overflow-y:auto;display:flex;flex-direction:column;gap:2px;}
+        .ml-hf-row{display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:6px;cursor:pointer;border:1px solid transparent;transition:all .12s;}
+        .ml-hf-row:hover{background:rgba(79,172,254,0.07);border-color:rgba(79,172,254,0.15);}
+        .ml-hf-role-badge{width:22px;height:22px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0;background:rgba(255,255,255,0.06);}
+        .ml-hf-row-body{flex:1;min-width:0;}
+        .ml-hf-row-top{display:flex;align-items:center;gap:6px;margin-bottom:2px;}
+        .ml-hf-row-bottom{display:flex;align-items:center;gap:8px;}
+        .ml-hf-id{font-size:10px;color:#e2e8f0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;}
+        .ml-hf-size-hint{font-size:8px;color:#a78bfa;background:rgba(167,139,250,0.1);padding:1px 5px;border-radius:4px;white-space:nowrap;}
+        .ml-hf-stat{font-size:8px;color:#64748b;}
+        .ml-hf-src{font-size:8px;color:#4facfe;text-decoration:none;opacity:0.7;}
+        .ml-hf-src:hover{opacity:1;}
+        .ml-hf-open-btn{background:rgba(79,172,254,0.1);border:1px solid rgba(79,172,254,0.25);color:#4facfe;border-radius:5px;padding:3px 8px;cursor:pointer;font-size:12px;transition:all .12s;flex-shrink:0;}
+        .ml-hf-open-btn:hover{background:rgba(79,172,254,0.25);}
+        /* ── File panel ── */
+        .ml-hf-file-panel{display:none;flex-direction:column;gap:6px;margin-top:8px;padding:10px;background:rgba(0,0,0,0.25);border-radius:8px;border:1px solid rgba(255,255,255,0.07);}
+        .ml-hf-file-header{display:flex;align-items:center;gap:6px;}
+        .ml-hf-repo-link{color:#4facfe;font-size:10px;text-decoration:none;flex-shrink:0;}
+        .ml-hf-repo-title{flex:1;font-size:9px;color:#94a3b8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+        .ml-hf-back-btn{background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);color:#94a3b8;border-radius:5px;padding:2px 8px;font-size:8px;cursor:pointer;}
+        .ml-hf-back-btn:hover{color:#e2e8f0;}
+        .ml-hf-file-hint{font-size:8px;color:#475569;padding:2px 0 4px;}
+        .ml-hf-file-hint b{color:#94a3b8;}
+        .ml-hf-file-list{display:flex;flex-direction:column;gap:3px;max-height:180px;overflow-y:auto;}
+        .ml-hf-file-row{display:flex;align-items:center;justify-content:space-between;padding:6px 8px;border-radius:5px;border:1px solid rgba(255,255,255,0.06);background:rgba(255,255,255,0.02);transition:all .12s;}
+        .ml-hf-file-row:hover{background:rgba(79,172,254,0.06);border-color:rgba(79,172,254,0.2);}
+        .ml-hf-file-rec{background:rgba(79,172,254,0.06);border-color:rgba(79,172,254,0.25);}
+        .ml-hf-file-left{display:flex;align-items:center;gap:6px;flex:1;min-width:0;}
+        .ml-hf-file-right{display:flex;align-items:center;gap:6px;flex-shrink:0;}
+        .ml-hf-quant{font-size:9px;font-weight:700;min-width:56px;font-family:monospace;}
+        .ml-hf-rec{font-size:7px;background:rgba(79,172,254,0.2);color:#4facfe;padding:1px 4px;border-radius:3px;white-space:nowrap;}
+        .ml-hf-fname{font-size:8px;color:#94a3b8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+        .ml-hf-fsize{font-size:9px;color:#64748b;white-space:nowrap;min-width:45px;text-align:right;}
+        .ml-hf-dl-btn{background:linear-gradient(135deg,#4facfe,#2563eb);border:none;color:#fff;border-radius:5px;padding:3px 8px;font-size:8px;cursor:pointer;white-space:nowrap;transition:all .12s;}
+        .ml-hf-dl-btn:hover{transform:scale(1.04);box-shadow:0 2px 8px rgba(79,172,254,0.4);}
+        /* ── States ── */
+        .ml-hf-loading{color:#64748b;font-size:9px;padding:12px 8px;text-align:center;}
+        .ml-hf-empty{color:#64748b;font-size:9px;padding:12px 8px;text-align:center;line-height:1.6;}
+        .ml-hf-error{color:#f87171;font-size:9px;padding:8px;}
       `; document.head.appendChild(s);
     }
     // Wire path input enter key
@@ -633,31 +677,44 @@ const ModelLoader = {
   // ── HuggingFace Search & Browse ──────────────────────────────────────────
 
   _hfCurrentQuery: '',
+  _hfCurrentRepo: null,
 
   async _hfSearch() {
-    const q = this.modal.querySelector('#ml-hf-query')?.value.trim() || 'gguf chat';
+    const q = this.modal.querySelector('#ml-hf-query')?.value.trim() || '';
     this._hfCurrentQuery = q;
-    const resultsEl = this.modal.querySelector('#ml-hf-results');
-    resultsEl.innerHTML = '<div style="color:var(--text-secondary);padding:8px;font-size:9px;">Searching HuggingFace…</div>';
+    const el = this.modal.querySelector('#ml-hf-results');
+    el.innerHTML = '<div class="ml-hf-loading">Searching HuggingFace…</div>';
     this._hfCloseFiles();
     try {
-      const data = await window.ApiV2._fetch('/models/hf-search?q=' + encodeURIComponent(q) + '&limit=25');
+      const data = await window.ApiV2._fetch('/models/hf-search?q=' + encodeURIComponent(q) + '&limit=24');
       if (!data.models?.length) {
-        resultsEl.innerHTML = '<div style="color:var(--text-secondary);padding:8px;font-size:9px;">No results for "' + q + '"</div>';
-        return;
+        el.innerHTML = '<div class="ml-hf-empty">No results — try a different search.</div>'; return;
       }
-      resultsEl.innerHTML = data.models.map(m => {
-        const roleIcon = { chat:'💬', code:'💻', dream:'🌙', embed:'📐' }[m.role] || '🤖';
-        const roleLabel = { chat:'Chat', code:'Code', dream:'Dream', embed:'Embed' }[m.role] || m.role;
-        const dl = m.downloads > 1000 ? (m.downloads/1000).toFixed(0)+'k' : m.downloads;
+      el.innerHTML = data.models.map(m => {
+        const roleIcon  = {chat:'💬',code:'💻',dream:'🌙',embed:'📐',reason:'🧠'}[m.role]||'🤖';
+        const roleClass = 'ml-hf-role-' + (m.role||'chat');
+        const dl = m.downloads > 1000000 ? (m.downloads/1000000).toFixed(1)+'M'
+                 : m.downloads > 1000    ? (m.downloads/1000).toFixed(0)+'k' : m.downloads;
+        const hint = m.size_hint ? `<span class="ml-hf-size-hint">${m.size_hint}</span>` : '';
+        const src_link = `https://huggingface.co/${m.id}`;
         return `<div class="ml-hf-row" onclick="ModelLoader._hfOpenRepo('${m.id}')">
-          <span class="ml-hf-role-badge ml-hf-role-${m.role}">${roleIcon} ${roleLabel}</span>
-          <span class="ml-hf-id">${m.id}</span>
-          <span class="ml-hf-meta">↓${dl} ♥${m.likes}</span>
+          <span class="ml-hf-role-badge ${roleClass}">${roleIcon}</span>
+          <div class="ml-hf-row-body">
+            <div class="ml-hf-row-top">
+              <span class="ml-hf-id">${m.id}</span>
+              ${hint}
+            </div>
+            <div class="ml-hf-row-bottom">
+              <span class="ml-hf-stat">↓${dl}</span>
+              <span class="ml-hf-stat">♥${m.likes}</span>
+              <a class="ml-hf-src" href="${src_link}" target="_blank" onclick="event.stopPropagation()">↗ HF</a>
+            </div>
+          </div>
+          <button class="ml-hf-open-btn" title="Browse files">›</button>
         </div>`;
       }).join('');
     } catch(e) {
-      resultsEl.innerHTML = '<div style="color:#f87171;padding:8px;font-size:9px;">Error: ' + e.message + '</div>';
+      el.innerHTML = '<div class="ml-hf-error">Error: ' + e.message + '</div>';
     }
   },
 
@@ -669,36 +726,51 @@ const ModelLoader = {
   },
 
   async _hfOpenRepo(repoId) {
-    const filesEl = this.modal.querySelector('#ml-hf-files');
+    this._hfCurrentRepo = repoId;
+    const panel   = this.modal.querySelector('#ml-hf-files');
     const fileList = this.modal.querySelector('#ml-hf-file-list');
-    const repoName = this.modal.querySelector('#ml-hf-repo-name');
-    repoName.textContent = repoId;
-    fileList.innerHTML = '<div style="color:var(--text-secondary);font-size:9px;padding:4px;">Loading files…</div>';
-    filesEl.style.display = 'block';
+    this.modal.querySelector('#ml-hf-repo-name').textContent = repoId;
+    const link = this.modal.querySelector('#ml-hf-repo-link');
+    if (link) { link.href = 'https://huggingface.co/' + repoId; }
+    fileList.innerHTML = '<div class="ml-hf-loading">Loading files…</div>';
+    panel.style.display = 'flex';
+    // Scroll file panel into view
+    panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     try {
       const data = await window.ApiV2._fetch('/models/hf-files?repo=' + encodeURIComponent(repoId));
       if (!data.files?.length) {
-        fileList.innerHTML = '<div style="color:var(--text-secondary);font-size:9px;padding:4px;">No .gguf files found in this repo.</div>';
+        const warn = data.warning || 'No .gguf files found.';
+        fileList.innerHTML = `<div class="ml-hf-empty">${warn}<br><a class="ml-hf-src" href="https://huggingface.co/${repoId}" target="_blank">Open on HuggingFace ↗</a></div>`;
         return;
       }
       fileList.innerHTML = data.files.map(f => {
-        const sizeStr = f.size_gb ? f.size_gb + ' GB' : '?';
-        const quantColor = /Q8|Q6/.test(f.quant) ? '#34d399' : /Q4/.test(f.quant) ? '#60a5fa' : /Q2|Q3/.test(f.quant) ? '#f59e0b' : '#a78bfa';
-        return `<div class="ml-hf-file-row" onclick="ModelLoader._hfStartDownload('${f.url}','${f.name}')">
-          <span class="ml-hf-quant" style="color:${quantColor};">${f.quant || 'GGUF'}</span>
-          <span class="ml-hf-fname">${f.name}</span>
-          <span class="ml-hf-fsize">${sizeStr}</span>
-          <button class="btn-primary" style="font-size:8px;padding:2px 6px;margin-left:4px;" onclick="event.stopPropagation();ModelLoader._hfStartDownload('${f.url}','${f.name}')">↓</button>
+        const qColor = /Q8|Q6/.test(f.quant)?'#34d399':/Q[45]/.test(f.quant)?'#60a5fa':/Q[23]/.test(f.quant)?'#f59e0b':/IQ/.test(f.quant)?'#a78bfa':'#94a3b8';
+        const recBadge = f.recommended ? '<span class="ml-hf-rec">★ Best</span>' : '';
+        const sizeStr  = f.size_gb != null ? f.size_gb + ' GB' : '?';
+        // Escape for use in onclick
+        const safeUrl  = f.url.replace(/'/g,"\'");
+        const safeName = f.name.replace(/'/g,"\'");
+        return `<div class="ml-hf-file-row ${f.recommended?'ml-hf-file-rec':''}" >
+          <div class="ml-hf-file-left">
+            <span class="ml-hf-quant" style="color:${qColor}">${f.quant}</span>
+            ${recBadge}
+            <span class="ml-hf-fname" title="${f.name}">${f.name}</span>
+          </div>
+          <div class="ml-hf-file-right">
+            <span class="ml-hf-fsize">${sizeStr}</span>
+            <button class="ml-hf-dl-btn" onclick="ModelLoader._hfStartDownload('${safeUrl}','${safeName}')">↓ Add</button>
+          </div>
         </div>`;
       }).join('');
     } catch(e) {
-      fileList.innerHTML = '<div style="color:#f87171;font-size:9px;padding:4px;">' + e.message + '</div>';
+      fileList.innerHTML = '<div class="ml-hf-error">' + e.message + '</div>';
     }
   },
 
   _hfCloseFiles() {
     const el = this.modal?.querySelector('#ml-hf-files');
     if (el) el.style.display = 'none';
+    this._hfCurrentRepo = null;
   },
 
   async _hfStartDownload(url, fileName) {
@@ -714,6 +786,7 @@ const ModelLoader = {
     }
   },
 
+  _downloadPollInterval: null,
   _downloadPollInterval: null,
   
   async _startDownload() {

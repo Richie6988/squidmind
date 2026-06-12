@@ -75,78 +75,128 @@ function buildRouter(v2ModelService) {
     }
   });
 
-  // GET /api/v2/models/hf-search - search HuggingFace model hub
-  router.get('/hf-search', async (req, res) => {
-    const { q = '', filter = 'gguf', limit = 20, sort = 'downloads' } = req.query;
-    try {
-      const https = require('https');
-      const fetch = (url) => new Promise((resolve, reject) => {
-        https.get(url, { headers: { 'User-Agent': 'SquidMind/2.0', 'Accept': 'application/json' }, timeout: 10000 }, (r) => {
-          let body = '';
-          r.on('data', d => body += d);
-          r.on('end', () => {
-            if (r.statusCode !== 200) return reject(new Error('HF API HTTP ' + r.statusCode));
-            try { resolve(JSON.parse(body)); } catch(e) { reject(e); }
-          });
-        }).on('error', reject).on('timeout', function(){ this.destroy(); reject(new Error('timeout')); });
+  // ── Shared HF fetch utility ────────────────────────────────────────────────
+  function hfFetch(path, qs = '') {
+    const https = require('https');
+    // path = e.g. 'models/org/repo' — DON'T encodeURIComponent the slashes
+    const url = 'https://huggingface.co/api/' + path + (qs ? '?' + qs : '');
+    return new Promise((resolve, reject) => {
+      const req = https.get(url, {
+        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; SquidMind/2.0)', 'Accept': 'application/json' }
+      }, (r) => {
+        // Follow redirects
+        if (r.statusCode >= 300 && r.statusCode < 400 && r.headers.location) {
+          r.resume();
+          return hfFetch(r.headers.location.replace('https://huggingface.co/api/', '')).then(resolve).catch(reject);
+        }
+        if (r.statusCode !== 200) { r.resume(); return reject(new Error('HF API HTTP ' + r.statusCode + ' for ' + url)); }
+        let body = '';
+        r.on('data', d => body += d);
+        r.on('end', () => { try { resolve(JSON.parse(body)); } catch(e) { reject(new Error('JSON parse failed: ' + e.message)); } });
+        r.on('error', reject);
       });
-      const query = encodeURIComponent(q || filter);
-      const url = `https://huggingface.co/api/models?search=${query}&filter=${encodeURIComponent(filter)}&sort=${sort}&limit=${limit}&full=false`;
-      const models = await fetch(url);
-      // Annotate with role suggestion
+      req.setTimeout(12000, () => { req.destroy(); reject(new Error('HF API timeout')); });
+      req.on('error', reject);
+    });
+  }
+
+  // GET /api/v2/models/hf-search
+  router.get('/hf-search', async (req, res) => {
+    const { q = '', limit = 24, sort = 'downloads' } = req.query;
+    try {
+      // Always search with gguf filter so we only get models with GGUF files
+      const qs = `search=${encodeURIComponent(q)}&filter=gguf&sort=${sort}&limit=${limit}&full=false`;
+      const models = await hfFetch('models', qs);
       const annotated = (Array.isArray(models) ? models : []).map(m => {
         const id = m.modelId || m.id || '';
-        const lower = id.toLowerCase();
+        // Estimate size from tags if possible
+        let size_hint = null;
+        const sizeTag = (m.tags || []).find(t => /^[0-9]+(.[0-9]+)?[bBmM]$/.test(t));
+        if (sizeTag) size_hint = sizeTag.toUpperCase();
+        // Role detection
         let role = 'chat';
-        if (/smol|tiny|0\.5b|0\.4b|1b[^0-9]|1\.5b/i.test(id)) role = 'dream';
-        else if (/code|coder|starcoder|deepseek.*coder/i.test(id)) role = 'code';
-        else if (/embed|nomic|e5-|bge-/i.test(id)) role = 'embed';
-        return {
-          id,
-          downloads: m.downloads || 0,
-          likes: m.likes || 0,
-          tags: m.tags || [],
-          role,
-          pipeline: m.pipeline_tag || '',
-          updated: m.lastModified || ''
-        };
+        if (/smol|tiny|0\.5b|0\.4b|\b1b\b|1\.5b|135m|360m|500m|256m/i.test(id)) role = 'dream';
+        else if (/code|coder|starcoder|deepseek.*coder|codellama/i.test(id)) role = 'code';
+        else if (/embed|nomic|e5-|bge-|rerank/i.test(id)) role = 'embed';
+        else if (/reason|think|qwq|o1|r1/i.test(id)) role = 'reason';
+        return { id, downloads: m.downloads || 0, likes: m.likes || 0, tags: m.tags || [],
+                 role, pipeline: m.pipeline_tag || '', size_hint, updated: m.lastModified || '' };
       });
-      res.json({ success: true, models: annotated, query: q });
-    } catch(e) {
-      res.json({ success: false, error: e.message, models: [] });
-    }
+      res.json({ success: true, models: annotated });
+    } catch(e) { res.json({ success: false, error: e.message, models: [] }); }
   });
 
-  // GET /api/v2/models/hf-files - list GGUF files in a HF repo
+  // GET /api/v2/models/hf-files?repo=org/repo
+  // Returns all GGUF files with real sizes, quant level, recommended flag
   router.get('/hf-files', async (req, res) => {
     const { repo } = req.query;
     if (!repo) return res.json({ success: false, error: 'repo required' });
     try {
-      const https = require('https');
-      const fetch = (url) => new Promise((resolve, reject) => {
-        https.get(url, { headers: { 'User-Agent': 'SquidMind/2.0', 'Accept': 'application/json' }, timeout: 10000 }, (r) => {
-          let body = '';
-          r.on('data', d => body += d);
-          r.on('end', () => { try { resolve(JSON.parse(body)); } catch(e) { reject(e); } });
-        }).on('error', reject);
-      });
-      const url = `https://huggingface.co/api/models/${encodeURIComponent(repo)}?blobs=false`;
-      const data = await fetch(url);
-      const siblings = (data.siblings || []).filter(f => f.rfilename && f.rfilename.endsWith('.gguf'));
+      // Use tree API which always returns file sizes reliably
+      // First try the model metadata endpoint with blobs=true
+      let data;
+      try {
+        data = await hfFetch('models/' + repo, 'blobs=true');
+      } catch(e1) {
+        // Fallback: try without blobs (sizes may be 0)
+        data = await hfFetch('models/' + repo, 'blobs=false');
+      }
+
+      const siblings = (data.siblings || []).filter(f =>
+        f.rfilename && (f.rfilename.endsWith('.gguf') || f.rfilename.endsWith('.GGUF'))
+      );
+
+      if (!siblings.length) {
+        // Try the repo tree endpoint as fallback
+        try {
+          const tree = await hfFetch(`models/${repo}/tree/main`);
+          const treeFiles = (Array.isArray(tree) ? tree : []).filter(f =>
+            f.type === 'file' && f.path && (f.path.endsWith('.gguf') || f.path.endsWith('.GGUF'))
+          );
+          if (treeFiles.length) {
+            const files = treeFiles.map(f => ({
+              name: f.path,
+              size: f.size || 0,
+              size_gb: f.size ? Math.round(f.size / (1024**3) * 100) / 100 : null,
+              url: `https://huggingface.co/${repo}/resolve/main/${f.path}`,
+              quant: detectQuant(f.path),
+              recommended: isRecommended(f.path)
+            }));
+            return res.json({ success: true, repo, files: sortFiles(files), source: 'tree' });
+          }
+        } catch {}
+        return res.json({ success: true, repo, files: [], warning: 'No .gguf files found. This repo may store models differently.' });
+      }
+
       const files = siblings.map(f => ({
         name: f.rfilename,
         size: f.size || 0,
-        size_gb: f.size ? Math.round(f.size / (1024**3) * 10) / 10 : null,
+        size_gb: f.size ? Math.round(f.size / (1024**3) * 100) / 100 : null,
         url: `https://huggingface.co/${repo}/resolve/main/${f.rfilename}`,
-        quant: (f.rfilename.match(/[QqIi][0-9]+[_A-Z]*/)?.[0] || '').toUpperCase()
+        quant: detectQuant(f.rfilename),
+        recommended: isRecommended(f.rfilename)
       }));
-      res.json({ success: true, repo, files });
-    } catch(e) {
-      res.json({ success: false, error: e.message, files: [] });
-    }
+      res.json({ success: true, repo, files: sortFiles(files), source: 'siblings' });
+    } catch(e) { res.json({ success: false, error: e.message, files: [] }); }
   });
 
+  function detectQuant(name) {
+    const m = name.match(/[_-]((?:IQ|Q)[0-9]+(?:_[A-Z0-9]+)*)/i)
+           || name.match(/((?:IQ|Q)[0-9]+(?:_[A-Z0-9]+)*)/i);
+    return m ? m[1].toUpperCase() : 'GGUF';
+  }
+  function isRecommended(name) {
+    // Q4_K_M and Q5_K_M are the sweet spot — flag them
+    return /Q[45]_K_M/i.test(name) || /Q4_K_S/i.test(name);
+  }
+  function sortFiles(files) {
+    // Sort: recommended first, then by quant level desc, then by size
+    const rank = f => f.recommended ? 0 : /Q8/.test(f.quant) ? 1 : /Q6/.test(f.quant) ? 2 : /Q5/.test(f.quant) ? 3 : /Q4/.test(f.quant) ? 4 : /Q3/.test(f.quant) ? 5 : /Q2/.test(f.quant) ? 6 : /IQ/.test(f.quant) ? 7 : 8;
+    return files.sort((a, b) => rank(a) - rank(b) || (b.size - a.size));
+  }
+
   // POST /api/v2/models/download - download from HuggingFace or direct URL
+    // POST /api/v2/models/download - download from HuggingFace or direct URL
   router.post('/download', async (req, res) => {
     try {
       const { url, fileName } = req.body;
