@@ -206,15 +206,18 @@ const PoseidonChat = {
       </div>`;
       return;
     }
+    this._copyStore.clear();
     msgs.innerHTML = this.history.map((t, i) => {
+      const cid = ++this._copyCounter;
+      this._copyStore.set(cid, t.content || '');
       const ts = t.ts ? `<div class="pc-ts${t.role==='assistant'?' pc-ts-ai':''}">${this._fmtTs(new Date(t.ts))}</div>` : '';
       if (t.role === 'user') {
         const _imgPreviews = (t._attachmentPreviews||[]).map(p=>
           `<div class="pc-img-wrap" style="margin:4px 0"><img class="pc-md-img" src="${p.src}" alt="${p.name}" style="max-height:120px"></div>`
         ).join('');
-        return `<div class="pc-msg pc-msg-user"><div class="pc-bubble-user">${_imgPreviews}${this._esc(t.content)}</div><div class="pc-msg-actions"><button class="pc-copy-btn" onclick="PoseidonChat._copyText(this)" data-copy="${(()=>{try{return btoa(unescape(encodeURIComponent(t.content)));}catch{return '';}})()}">⎘</button></div>${ts}</div>`;
+        return `<div class="pc-msg pc-msg-user"><div class="pc-bubble-user">${_imgPreviews}${this._esc(t.content)}</div><div class="pc-msg-actions"><button class="pc-copy-btn" onclick="PoseidonChat._copyText(this)" data-cid="${cid}">⎘</button></div>${ts}</div>`;
       } else {
-        return `<div class="pc-msg pc-msg-ai" id="pc-msg-${i}"><div class="pc-ai-row"><div class="pc-ai-dot">🔱</div><div class="pc-bubble-ai pc-text-final">${this._md(t.content)}</div></div><div class="pc-msg-actions"><button class="pc-copy-btn" onclick="PoseidonChat._copyText(this)" data-copy="${(()=>{try{return btoa(unescape(encodeURIComponent(t.content)));}catch{return '';}})()}">⎘</button></div>${ts}</div>`;
+        return `<div class="pc-msg pc-msg-ai" id="pc-msg-${i}"><div class="pc-ai-row"><div class="pc-ai-dot">🔱</div><div class="pc-bubble-ai pc-text-final">${this._md(t.content)}</div></div><div class="pc-msg-actions"><button class="pc-copy-btn" onclick="PoseidonChat._copyText(this)" data-cid="${cid}">⎘</button></div>${ts}</div>`;
       }
     }).join('');
     this._scrollToBottom(msgs);
@@ -401,8 +404,9 @@ const PoseidonChat = {
         actions.className = 'pc-msg-actions';
         actions.innerHTML = '<button class="pc-copy-btn" title="Copy">⎘</button>';
         // Store content directly in data-copy (base64), no index needed
-        const liveCopy = (() => { try { return btoa(unescape(encodeURIComponent(fullText))); } catch { return ''; } })();
-        actions.querySelector('.pc-copy-btn').dataset.copy = liveCopy;
+        const liveCid = ++PoseidonChat._copyCounter;
+        PoseidonChat._copyStore.set(liveCid, fullText);
+        actions.querySelector('.pc-copy-btn').dataset.cid = String(liveCid);
         actions.querySelector('.pc-copy-btn').setAttribute('onclick', 'PoseidonChat._copyText(this)');
         const ts = lastMsg.querySelector('.pc-ts');
         if (ts) lastMsg.insertBefore(actions, ts); else lastMsg.appendChild(actions);
@@ -671,29 +675,30 @@ const PoseidonChat = {
   },
 
   _copyText(btn) {
-    // Content stored as base64 in data-copy attribute — no history indexing needed
-    const raw = btn && btn.dataset && btn.dataset.copy
-      ? (() => { try { return atob(btn.dataset.copy); } catch { return btn.dataset.copy; } })()
-      : '';
-    if (!raw) { console.warn('[copy] empty raw — data-copy:', btn?.dataset?.copy?.slice(0,20)); return; }
+    // Read content from _copyStore by data-cid
+    const cid = btn && btn.dataset && btn.dataset.cid;
+    const raw = cid ? (PoseidonChat._copyStore.get(parseInt(cid, 10)) || '') : '';
+    if (!raw) { console.warn('[copy] nothing to copy, cid=', cid, 'store size=', PoseidonChat._copyStore.size); return; }
     const flash = () => {
       if (!btn) return;
-      const prev = btn.textContent;
       btn.textContent = '✓'; btn.style.color = '#06ffa5';
-      setTimeout(() => { btn.textContent = prev; btn.style.color = ''; }, 1400);
+      setTimeout(() => { btn.textContent = '⎘'; btn.style.color = ''; }, 1400);
     };
     const doCopy = () => {
       const ta = document.createElement('textarea');
-      ta.value = raw; ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0;pointer-events:none;';
+      ta.value = raw;
+      ta.style.cssText = 'position:fixed;top:0;left:0;width:2px;height:2px;opacity:0.01;z-index:99999;';
       document.body.appendChild(ta); ta.focus(); ta.select();
-      try { document.execCommand('copy'); } catch {}
-      document.body.removeChild(ta); flash();
+      try { document.execCommand('copy'); flash(); } catch(e) { console.warn('[copy]', e); }
+      document.body.removeChild(ta);
     };
-    if (navigator.clipboard?.writeText) {
-      navigator.clipboard.writeText(raw).then(flash).catch(doCopy);
-    } else {
-      doCopy();
-    }
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(raw).then(flash).catch(doCopy);
+      } else {
+        doCopy();
+      }
+    } catch { doCopy(); }
   },
 
   _attachments: [],
@@ -761,16 +766,11 @@ const PoseidonChat = {
     const parts = [];
     for (const a of this._attachments) {
       if (a.type === 'image') {
-        // Send image dimensions/type hint if available, plus note about vision limitation
-        const ext = a.name.split('.').pop()?.toUpperCase() || 'IMAGE';
-        parts.push(
-          `[USER ATTACHED IMAGE: ${a.name} (${ext})]` +
-          `\nNote: You are a text model — you cannot see the raw pixels. ` +
-          `If the user wants this image described, use fetch_image_url with a relevant Wikipedia/web URL, ` +
-          `or ask the user to describe what's in the image. Acknowledge the attachment briefly.`
-        );
+        // Send the image as base64 data URL — vision models can use it directly,
+        // text-only models will see the filename and can use tools to fetch/describe
+        parts.push(`[Image attached: ${a.name}]\nData: ${a.content}`);
       } else {
-        parts.push(`[ATTACHED FILE: ${a.name}]\n\`\`\`\n${a.content.slice(0, 12000)}\n\`\`\`${a.content.length > 12000 ? '\n(truncated)' : ''}`);
+        parts.push(`[File: ${a.name}]\n\`\`\`\n${a.content.slice(0, 12000)}\n\`\`\`${a.content.length > 12000 ? '\n(truncated)' : ''}`);
       }
     }
     parts.push(msg);
