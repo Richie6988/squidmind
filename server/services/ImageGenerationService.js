@@ -114,12 +114,15 @@ class ImageGenerationService {
    */
   _generateWithSd({ bin, modelPath, prompt, negativePrompt, outputPath, width, height, steps, cfg, seed }) {
     return new Promise((resolve) => {
-      const modelFile = require('path').basename(modelPath).toLowerCase();
+      const path2 = require('path');
+      const fs2   = require('fs');
+      const modelFile = path2.basename(modelPath).toLowerCase();
+      const modelDir  = path2.dirname(modelPath);
+
       // Flux / DiT models are standalone diffusion transformers — use --diffusion-model
-      // SD 1.x / SDXL full checkpoints use --model
-      const isFluxModel  = /flux/i.test(modelFile);
-      const isDiT        = /dit|mmdit/i.test(modelFile);
-      const modelFlag    = (isFluxModel || isDiT) ? '--diffusion-model' : '--model';
+      const isFluxModel = /flux/i.test(modelFile);
+      const isDiT       = /dit|mmdit/i.test(modelFile);
+      const modelFlag   = (isFluxModel || isDiT) ? '--diffusion-model' : '--model';
 
       const args = [
         modelFlag, modelPath,
@@ -132,13 +135,40 @@ class ImageGenerationService {
         '--seed',   String(seed),
       ];
 
-      // Flux needs euler sampler and no negative prompt interference
       if (isFluxModel) {
         args.push('--sampling-method', 'euler');
+        args.push('--clip-on-cpu');  // keep encoders on RAM to save VRAM
+
+        // Auto-locate companion files in same dir as model
+        const vaeCandidates   = ['ae.safetensors', 'ae.sft'];
+        const clipCandidates  = ['clip_l.safetensors', 'clip_l.sft'];
+        const t5Candidates    = ['t5xxl_fp8_e4m3fn.safetensors', 't5xxl_fp16.safetensors', 't5xxl.safetensors'];
+
+        const findFile = (dir, names) => names.map(n => path2.join(dir, n)).find(p => fs2.existsSync(p));
+        const vae  = findFile(modelDir, vaeCandidates);
+        const clip = findFile(modelDir, clipCandidates);
+        const t5   = findFile(modelDir, t5Candidates);
+
+        if (vae)  args.push('--vae',    vae);
+        if (clip) args.push('--clip_l', clip);
+        if (t5)   args.push('--t5xxl',  t5);
+
+        if (!vae || !clip || !t5) {
+          const missing = [!vae&&'ae.safetensors', !clip&&'clip_l.safetensors', !t5&&'t5xxl_fp8_e4m3fn.safetensors'].filter(Boolean);
+          console.warn(`[ImageGen] Flux missing companion files: ${missing.join(', ')} — download to ${modelDir}`);
+          return resolve({ ok: false, error:
+            `Flux requires companion files in ${modelDir}:\n` +
+            missing.map(f => `  Missing: ${f}`).join('\n') + '\n\n' +
+            'Download:\n' +
+            '  wget https://huggingface.co/black-forest-labs/FLUX.1-schnell/resolve/main/ae.safetensors\n' +
+            '  wget https://huggingface.co/comfyanonymous/flux_text_encoders/resolve/main/clip_l.safetensors\n' +
+            '  wget https://huggingface.co/comfyanonymous/flux_text_encoders/resolve/main/t5xxl_fp8_e4m3fn.safetensors'
+          });
+        }
       } else {
         args.push('--rng', 'cuda');
+        if (negativePrompt) args.push('--negative-prompt', negativePrompt);
       }
-      if (negativePrompt && !isFluxModel) args.push('--negative-prompt', negativePrompt);
 
       console.log(`[ImageGen] Spawning: ${bin} ${args.slice(0, 4).join(' ')} ...`);
       const child = spawn(bin, args, { stdio: ['ignore', 'pipe', 'pipe'] });
