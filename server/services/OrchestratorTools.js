@@ -464,37 +464,69 @@ class OrchestratorTools {
     try {
       if (!model_id) return { ok: false, error: 'model_id is required' };
       if (!prompt)   return { ok: false, error: 'prompt is required' };
-      if (!project_id) return { ok: false, error: 'project_id is required' };
 
-      // Resolve output path: data/projects/{PROJECT_XXX}/outputs/{filename}
-      const safeFilename = (filename || `generated_${Date.now()}.png`).replace(/[^a-zA-Z0-9._-]/g, '_');
-      const projectFolder = project_id.toUpperCase().startsWith('PROJECT_')
-        ? project_id.toUpperCase()
-        : `PROJECT_${project_id.replace(/\D/g, '').padStart(3, '0')}`;
       const _aq = require('../aquarium');
-      const outputDir  = path.join(_aq.PROJECTS, projectFolder, 'output');
+      const fs2 = require('fs').promises;
+      const safeFilename = (filename || `generated_${Date.now()}.png`).replace(/[^a-zA-Z0-9._-]/g, '_');
+
+      // Create a task to track progress in the right panel
+      let taskId = null;
+      try {
+        taskId = await this.rm.createTask({
+          title: `Generate image: ${prompt.slice(0, 60)}`,
+          description: `Model: ${model_id}\nPrompt: ${prompt}\nSize: ${width||512}x${height||512}`,
+          task_type: 'image_generation',
+          project_id: project_id || null,
+          status: 'in_progress',
+          lifecycle: { status: 'in_progress', started_at: new Date().toISOString() }
+        });
+      } catch(e) { console.warn('[generateImage] task creation failed:', e.message); }
+
+      // Resolve output directory: prefer TASKS output, fallback to project output
+      let outputDir, serveUrl;
+      if (taskId) {
+        outputDir = path.join(_aq.TASKS, taskId, 'output');
+        serveUrl  = `/api/files/read?path=${encodeURIComponent(path.join(_aq.TASKS, taskId, 'output', safeFilename))}`;
+      } else if (project_id) {
+        const pf = project_id.toUpperCase().startsWith('PROJECT_')
+          ? project_id.toUpperCase()
+          : `PROJECT_${project_id.replace(/\D/g, '').padStart(3, '0')}`;
+        outputDir = path.join(_aq.PROJECTS, pf, 'output');
+        serveUrl  = `/api/v2/projects/${pf}/outputs/${safeFilename}`;
+      } else {
+        outputDir = path.join(_aq.ROOT, 'generated');
+        serveUrl  = `/api/v2/models/generated/${safeFilename}`;
+      }
+      await fs2.mkdir(outputDir, { recursive: true });
       const outputPath = path.join(outputDir, safeFilename);
 
-      // Delegate to V2ModelService which knows the model file path
-      if (!this.modelService) return { ok: false, error: 'modelService not available on OrchestratorTools' };
+      if (!this.modelService) return { ok: false, error: 'modelService not available' };
 
       const result = await this.modelService.generateImage({
-        modelId: model_id,
-        prompt,
-        outputPath,
-        width:          width         || 512,
-        height:         height        || 512,
-        steps:          steps         || 20,
-        cfg:            cfg_scale     || 7,
-        seed:           seed          ?? -1,
-        negativePrompt: negative_prompt || ''
+        modelId: model_id, prompt, outputPath,
+        width: width || 512, height: height || 512,
+        steps: steps || 20, cfg: cfg_scale || 7,
+        seed: seed ?? -1, negativePrompt: negative_prompt || ''
       });
 
-      if (!result.ok) return result;
+      // Update task status
+      if (taskId) {
+        try {
+          const finalStatus = result.ok ? 'completed' : 'failed';
+          const reg = await this.rm.getTasksRegistry();
+          if (reg.tasks[taskId]) {
+            reg.tasks[taskId].lifecycle = { status: finalStatus, completed_at: new Date().toISOString() };
+            reg.tasks[taskId].status = finalStatus;
+            if (result.ok) reg.tasks[taskId].output_preview = serveUrl;
+            await this.rm.write('tasks/tasks_registry.json', reg);
+          }
+        } catch(e) { console.warn('[generateImage] task update failed:', e.message); }
+      }
 
-      // Serve URL: /api/v2/projects/{folder}/outputs/{filename}
-      const url = `/api/v2/projects/${projectFolder}/outputs/${safeFilename}`;
-      return { ok: true, url, outputPath: result.outputPath, bytes: result.bytes, filename: safeFilename };
+      if (!result.ok) return result;
+      return { ok: true, url: serveUrl, outputPath: result.outputPath, bytes: result.bytes,
+               filename: safeFilename, task_id: taskId,
+               markdown: `![${prompt.slice(0,40)}](${serveUrl})` };
     } catch (err) {
       return { ok: false, error: err.message };
     }

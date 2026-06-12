@@ -135,10 +135,21 @@ class ImageGenerationService {
         '--seed',   String(seed),
       ];
 
+      // Q4_K_M / Q4_0 and larger quantizations need too much VRAM on 8GB GPUs
+      // Use full CPU for Q4+ to avoid cublas OOM during inference
+      const quantMatch = modelFile.match(/[_-](q\d)/i);
+      const quantNum   = quantMatch ? parseInt(quantMatch[1].slice(1)) : 0;
+      const forceCPU   = quantNum >= 4;  // Q4 and above → CPU
+      if (forceCPU) {
+        console.log('[ImageGen] Q' + quantNum + ' model → forcing CPU (avoids VRAM OOM)');
+      }
+
       if (isFluxModel) {
         args.push('--sampling-method', 'euler');
-        args.push('--clip-on-cpu');   // keep text encoders on RAM
-        args.push('--vae-on-cpu');    // keep VAE on RAM (~335MB saved on VRAM)
+        if (!forceCPU) {
+          args.push('--clip-on-cpu');
+          args.push('--vae-on-cpu');
+        }
 
         // Auto-locate companion files in same dir as model
         // Scan directory and match by pattern — handles any filename variant
@@ -178,7 +189,7 @@ class ImageGenerationService {
           });
         }
       } else {
-        args.push('--rng', 'cuda');
+        if (!forceCPU) args.push('--rng', 'cuda');
         if (negativePrompt) args.push('--negative-prompt', negativePrompt);
       }
 
