@@ -368,6 +368,14 @@ const PoseidonChat = {
       clearTimers();
       this._setStatus('Ready', 'idle');
       this.history[aiIdx].content = fullText || '(no response)';
+      // Update the copy button's store entry now that history is final
+      // Find the AI bubble and update its button's cid entry
+      const _lastAi = this.modal?.querySelectorAll('.pc-msg-ai');
+      const _lastAiEl = _lastAi?.[_lastAi.length - 1];
+      const _lastBtn = _lastAiEl?.querySelector('.pc-copy-btn');
+      if (_lastBtn?.dataset?.cid) {
+        PoseidonChat._copyStore.set(parseInt(_lastBtn.dataset.cid, 10), fullText || '(no response)');
+      }
       // Stamp the AI message with finish time
       const tsEl = aiEl.querySelector(`#pc-ts-${aiIdx}`);
       if (tsEl) tsEl.textContent = this._fmtTs(new Date());
@@ -402,20 +410,25 @@ const PoseidonChat = {
     if (type === 'start')          { this._mutatedThisTurn = false; return; }
     if (type === 'end') {
       if (p.turn !== undefined) this._updateTurnCounter();
-      // Inject copy button into the last AI bubble
+      // Inject copy button — read accumulated text from contentEl's text nodes
       const lastAiMsg = this.modal?.querySelectorAll('.pc-msg-ai');
       const lastMsg = lastAiMsg?.[lastAiMsg.length - 1];
       if (lastMsg && !lastMsg.querySelector('.pc-copy-btn')) {
-        const fullText = this.history.filter(h => h.role === 'assistant').slice(-1)[0]?.content || '';
+        // Collect text from all .pc-text-final nodes (the actual streamed content)
+        const textNodes = lastMsg.querySelectorAll('.pc-text-final');
+        let fullText = '';
+        textNodes.forEach(n => { fullText += (n.dataset.raw || n.textContent || ''); });
+        // Fallback: history (may still be empty here but try)
+        if (!fullText) fullText = this.history.filter(h => h.role === 'assistant').slice(-1)[0]?.content || '';
         const actions = document.createElement('div');
         actions.className = 'pc-msg-actions';
         actions.innerHTML = '<button class="pc-copy-btn" title="Copy">⎘</button>';
-        // Store content directly in data-copy (base64), no index needed
         const liveCid = ++PoseidonChat._copyCounter;
         PoseidonChat._copyStore.set(liveCid, fullText);
-        actions.querySelector('.pc-copy-btn').dataset.cid = String(liveCid);
-        actions.querySelector('.pc-copy-btn').setAttribute('onclick', 'PoseidonChat._copyText(this)');
-        const ts = lastMsg.querySelector('.pc-ts');
+        const btn = actions.querySelector('.pc-copy-btn');
+        btn.dataset.cid = String(liveCid);
+        btn.setAttribute('onclick', 'PoseidonChat._copyText(this)');
+        const ts = lastMsg.querySelector('.pc-ts-ai') || lastMsg.querySelector('.pc-ts');
         if (ts) lastMsg.insertBefore(actions, ts); else lastMsg.appendChild(actions);
       }
       return;
