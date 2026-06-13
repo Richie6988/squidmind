@@ -1468,7 +1468,13 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
       let dreamSession = null;
 
       try {
-        dreamSeq     = entry.context.getSequence();
+        // Wait for agent to release the sequence if it's in use
+        const seqDeadline = Date.now() + 60_000;
+        while (Date.now() < seqDeadline) {
+          try { dreamSeq = entry.context.getSequence(); break; } catch {}
+          await new Promise(r => setTimeout(r, 2000));
+        }
+        if (!dreamSeq) { console.warn('[Dream] Could not get sequence after 60s — skipping'); return; }
         dreamSession = new llamaCpp.LlamaChatSession({
           contextSequence: dreamSeq,
           systemPrompt: dreamSystemPrompt,

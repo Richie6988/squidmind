@@ -3834,7 +3834,10 @@ button .pixel-icon {
   cursor: default;
 }
 
-.task-queue-item:hover { background: rgba(255,255,255,0.07); }
+.task-queue-item.tq-is-running {
+  border-left-color: var(--success);
+  background: rgba(6,255,165,0.04);
+}
 
 .task-queue-item.tq-dragging {
   opacity: 0.45;
@@ -3947,22 +3950,22 @@ button .pixel-icon {
 }
 
 .tq-progress-bar {
-  height: 3px;
-  background: rgba(255,255,255,0.08);
-  border-radius: 2px;
-  margin: 5px 0 2px;
+  height: 4px;
+  background: rgba(79,172,254,0.12);
+  border-radius: 0;
+  margin: 6px -6px 2px -2px;
   overflow: hidden;
 }
 .tq-progress-fill {
   height: 100%;
-  width: 35%;
-  background: var(--accent);
-  border-radius: 2px;
-  animation: tq-progress 2s ease-in-out infinite;
+  width: 40%;
+  background: linear-gradient(90deg, transparent, var(--accent), var(--success), transparent);
+  border-radius: 0;
+  animation: tq-progress 1.6s ease-in-out infinite;
 }
 @keyframes tq-progress {
-  0%   { transform: translateX(-100%); }
-  100% { transform: translateX(340%); }
+  0%   { transform: translateX(-150%); }
+  100% { transform: translateX(350%); }
 }
 
 .tq-running-meta {

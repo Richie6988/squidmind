@@ -55,11 +55,13 @@ class TaskRunner {
     }
 
     // ── One-shot tasks: pick highest priority open/planned task ───────────
+    const TERMINAL = new Set(['completed','failed','cancelled','archived','in_progress']);
     const runnable = allTasks
       .filter(t => {
         const s = t.lifecycle?.status || t.status || 'open';
         const tooManyFails = (this._failCounts.get(t.task_id) || 0) >= this.MAX_RETRIES;
-        return (s === 'open' || s === 'planned' || s === 'queued') && !this._running.has(t.task_id) && !tooManyFails;
+        // Never re-run terminal or already-running tasks
+        return !TERMINAL.has(s) && !this._running.has(t.task_id) && !tooManyFails;
       })
       .sort((a, b) => (b.sort_order || 0) - (a.sort_order || 0)); // highest sort_order first
 

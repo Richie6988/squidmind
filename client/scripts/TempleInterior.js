@@ -46,8 +46,7 @@ const TempleInterior = {
 
     this._pollTimer = setInterval(() => {
       this._renderHeader();
-      if (this._rightTab === 'kanban') this._renderKanban();
-      if (this._rightTab === 'tasks')  this._renderTasks();
+      this._renderKanban();
       const agSec = document.getElementById('ti-agents-always');
       if (agSec) this._renderAgentsCompact(agSec);
     }, 5000);
@@ -84,10 +83,10 @@ const TempleInterior = {
       <button class="ti-tab" id="ti-lt-files"   onclick="TempleInterior._switchLeft('files')">FILES</button>
       <button class="ti-tab" id="ti-lt-memory"  onclick="TempleInterior._switchLeft('memory')">MEMORY</button>
     </div>
-    <!-- Files or Memory content (top half, scrollable) -->
-    <div id="ti-left-body" style="display:flex;flex-direction:column;flex:1;min-height:0;overflow:hidden;max-height:55%;"></div>
-    <!-- Agents — always visible (bottom section, fixed) -->
-    <div style="border-top:2px solid var(--border);flex-shrink:0;display:flex;flex-direction:column;height:45%;min-height:0;overflow:hidden;">
+    <!-- Files or Memory content (top 38%) -->
+    <div id="ti-left-body" style="display:flex;flex-direction:column;flex:1;min-height:0;overflow:hidden;max-height:38%;"></div>
+    <!-- Agents — always visible (bottom 62%) -->
+    <div style="border-top:2px solid var(--border);flex-shrink:0;display:flex;flex-direction:column;height:62%;min-height:0;overflow:hidden;">
       <div class="ti-sec" style="flex-shrink:0;">AGENTS</div>
       <div id="ti-agents-always" style="flex:1;overflow:hidden;display:flex;flex-direction:column;"></div>
     </div>
@@ -115,8 +114,7 @@ const TempleInterior = {
 
   <div class="ti-right">
     <div class="ti-tabs">
-      <button class="ti-tab" id="ti-rt-kanban" onclick="TempleInterior._switchRight('kanban')">KANBAN</button>
-      <button class="ti-tab" id="ti-rt-tasks"  onclick="TempleInterior._switchRight('tasks')">TASKS</button>
+      <button class="ti-tab active" id="ti-rt-kanban">KANBAN</button>
     </div>
     <div id="ti-right-body" style="display:flex;flex-direction:column;flex:1;min-height:0;overflow:hidden;"></div>
   </div>
@@ -157,21 +155,16 @@ const TempleInterior = {
     if (agentSection) this._renderAgentsCompact(agentSection);
   },
 
-  _switchRight(tab) {
-    this._rightTab = tab;
-    ['kanban','tasks'].forEach(t => {
-      document.getElementById(`ti-rt-${t}`)?.classList.toggle('active', t === tab);
-    });
+  _switchRight(_tab) {
+    this._rightTab = 'kanban';
     const body = document.getElementById('ti-right-body');
-    if (!body) return;
-    if (tab === 'kanban') this._renderKanban(body);
-    if (tab === 'tasks')  this._renderTasks(body);
+    if (body) this._renderKanban(body);
   },
 
   _refreshAll() {
     this._renderHeader();
     this._switchLeft(this._leftTab);
-    this._switchRight(this._rightTab);
+    this._renderKanban();
     const agSec = document.getElementById('ti-agents-always');
     if (agSec) this._renderAgentsCompact(agSec);
   },
@@ -183,13 +176,15 @@ const TempleInterior = {
     const inside  = temple?.colors?.inside  || temple?.color || null;
     const outside = temple?.colors?.outside || null;
     if (inside) {
-      // Tint the arena background and left border accents
       root.style.setProperty('--ti-temple-color', inside);
-      const arena = document.getElementById('ti-arena-always');
-      if (arena) arena.style.background = `radial-gradient(ellipse at center, ${inside}18, transparent 70%)`;
+      root.style.background = `linear-gradient(160deg, ${inside}25 0%, var(--ocean-deep) 45%)`;
+      const left = root.querySelector('.ti-left');
+      if (left) left.style.background = `${inside}14`;
     }
     if (outside) {
-      root.style.borderTop = `3px solid ${outside}`;
+      root.style.borderTop = `4px solid ${outside}`;
+      const hdr = root.querySelector('.ti-header');
+      if (hdr) hdr.style.borderBottom = `2px solid ${outside}`;
     }
   },
 
@@ -280,9 +275,7 @@ const TempleInterior = {
   </div>
   <input type="file" multiple style="display:none" onchange="TempleInterior._handleUpload(event,'${folder}','input')">
 </div>
-<div class="ti-sec" style="margin-top:6px;">OUTPUT FILES
-  <button class="ti-sec-btn" onclick="TempleInterior._createNewFile('${folder}')">+ NEW</button>
-</div>
+<div class="ti-sec" style="margin-top:6px;">OUTPUT FILES</div>
 <div id="ti-output-list" class="ti-scroll" style="flex:1;min-height:48px;"></div>`;
     this._loadFileList(folder, 'input',  document.getElementById('ti-input-list'));
     this._loadFileList(folder, 'output', document.getElementById('ti-output-list'));
@@ -380,6 +373,7 @@ const TempleInterior = {
   async _createNewFile(folder) {
     const modal = document.createElement('div');
     modal.className = 'modal';
+    modal.style.zIndex = '20001';
     modal.innerHTML = `<div class="modal-content" style="width:360px;">
       <div class="modal-header"><h2>NEW FILE</h2>
         <button class="btn-close" onclick="this.closest('.modal').remove()">x</button></div>
@@ -478,6 +472,7 @@ const TempleInterior = {
   async _dispatchAgent(agentId) {
     const modal = document.createElement('div');
     modal.className = 'modal';
+    modal.style.zIndex = '20001';
     modal.innerHTML = `<div class="modal-content" style="width:420px;">
       <div class="modal-header"><h2>DISPATCH TASK</h2>
         <button class="btn-close" onclick="this.closest('.modal').remove()">x</button></div>
@@ -535,6 +530,7 @@ const TempleInterior = {
 
     const modal = document.createElement('div');
     modal.className = 'modal';
+    modal.style.zIndex = '20001';
     modal.innerHTML = `<div class="modal-content" style="width:380px;">
       <div class="modal-header"><h2>ASSIGN AGENT — ${this._esc(this.currentTemple?.name || '')}</h2>
         <button class="btn-close" onclick="this.closest('.modal').remove()">x</button></div>
@@ -646,7 +642,6 @@ const TempleInterior = {
 <div class="ti-kanban-wrap">
   <div class="ti-kanban-hdr">
     <span>${tasks.length} TASK${tasks.length !== 1 ? 'S' : ''}</span>
-    <button class="ti-tab-sm" onclick="TempleInterior._newTaskModal()">+ NEW</button>
   </div>
   <div class="ti-kanban-board">
     ${colDefs.map(col => `
@@ -755,6 +750,7 @@ const TempleInterior = {
 
     const modal = document.createElement('div');
     modal.className = 'modal';
+    modal.style.zIndex = '20001';
     modal.innerHTML = `<div class="modal-content" style="width:520px;">
       <div class="modal-header"><h2>NEW TASK — ${this._esc(pname||'')}</h2>
         <button class="btn-close" onclick="this.closest('.modal').remove()">x</button></div>

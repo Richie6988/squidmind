@@ -1380,7 +1380,9 @@ Never describe a bash command you could call instead.`;
       
       const nextId = reg.metadata.next_id || 1;
       const projectId = `project_${String(nextId).padStart(3, '0')}`;
-      const folderName = `PROJECT_${String(nextId).padStart(3, '0')}`;
+      // Use project name as folder name (sanitized) for human-readable paths
+      const safeName = upperName.replace(/[^A-Z0-9_-]/g, '_').slice(0, 32);
+      const folderName = safeName;
       const projectDir = require('../aquarium').projects(folderName);
       
       await fs.mkdir(projectDir, { recursive: true });

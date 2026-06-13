@@ -114,7 +114,7 @@ const TaskQueueUI = {
 
   _makeItem(t, idx) {
     const el = document.createElement('div');
-    el.className = 'task-queue-item';
+    el.className = 'task-queue-item' + (isRunning ? ' tq-is-running' : '');
     el.dataset.taskId = t.task_id;
     el.draggable = true;
 
