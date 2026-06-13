@@ -392,6 +392,9 @@ ${task.description}`
   // ── Task detail popup ──────────────────────────────────────────────────────
 
   async openTaskDetail(taskId) {
+    // Ensure agents/projects are loaded (may not be if called from TempleInterior)
+    if (!this.agents.length) await this._loadAgents();
+
     // Fetch fresh task data
     let task;
     try {
@@ -473,6 +476,7 @@ ${task.description}`
     `;
 
     document.body.appendChild(modal);
+    modal.style.zIndex = '20001';  // above temple (9999) and agent form (20000)
     modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
 
     modal.querySelector('#tqd-save').addEventListener('click', async () => {
