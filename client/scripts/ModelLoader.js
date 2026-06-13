@@ -330,10 +330,78 @@ const ModelLoader = {
         </p>`;
       return;
     }
-    
-    container.innerHTML = this.library.models.map(m => this._renderModelCard(m)).join('');
+
+    // Derive category for each model
+    const categorize = (m) => {
+      const cat = m.config?.model_category || m.model_category;
+      if (cat) return cat;
+      if (m.is_poseidon) return 'poseidon';
+      const mtype = m.config?.model_type || m.model_type || 'text';
+      if (mtype === 'image') return 'image';
+      return 'agent';  // default unassigned text models go to agent
+    };
+
+    const cats = { poseidon: [], agent: [], image: [] };
+    this.library.models.forEach(m => {
+      const c = categorize(m);
+      cats[c] = cats[c] || [];
+      cats[c].push(m);
+    });
+
+    const colDefs = [
+      { key: 'poseidon', label: 'POSEIDON', desc: 'Main chat model', color: 'var(--ui-accent)' },
+      { key: 'agent',    label: 'AGENTS',   desc: 'Specialized agent models', color: 'var(--ui-accent2)' },
+      { key: 'image',    label: 'IMAGE',    desc: 'Diffusion / image gen', color: '#a78bfa' },
+    ];
+
+    container.innerHTML = `<div class="ml-cat-board">
+      ${colDefs.map(col => `
+      <div class="ml-cat-col" data-category="${col.key}"
+        ondragover="event.preventDefault();event.currentTarget.classList.add('ml-cat-dragover')"
+        ondragleave="event.currentTarget.classList.remove('ml-cat-dragover')"
+        ondrop="ModelLoader._catDrop(event,'${col.key}')">
+        <div class="ml-cat-hdr" style="border-top:2px solid ${col.color}">
+          <span class="ml-cat-title" style="color:${col.color}">${col.label}</span>
+          <span class="ml-cat-count">${cats[col.key]?.length || 0}</span>
+        </div>
+        <div class="ml-cat-desc">${col.desc}</div>
+        <div class="ml-cat-cards" id="ml-cat-${col.key}">
+          ${(cats[col.key] || []).map(m => this._renderModelCard(m)).join('')}
+          ${(!cats[col.key]?.length) ? `<div class="ml-cat-empty">DROP HERE</div>` : ''}
+        </div>
+      </div>`).join('')}
+    </div>`;
+
+    // Wire drag handles on all model cards
+    container.querySelectorAll('.model-library-card').forEach(card => {
+      card.setAttribute('draggable', 'true');
+      card.addEventListener('dragstart', e => {
+        const mid = card.dataset.modelId;
+        e.dataTransfer.setData('text/plain', mid);
+        e.dataTransfer.effectAllowed = 'move';
+        card.style.opacity = '0.5';
+      });
+      card.addEventListener('dragend', () => { card.style.opacity = ''; });
+    });
   },
-  
+
+  async _catDrop(event, newCategory) {
+    event.preventDefault();
+    document.querySelectorAll('.ml-cat-col').forEach(c => c.classList.remove('ml-cat-dragover'));
+    const modelId = event.dataTransfer.getData('text/plain');
+    if (!modelId) return;
+    try {
+      await window.ApiV2._fetch(`/models/${modelId}/category`, {
+        method: 'PATCH',
+        body: JSON.stringify({ model_category: newCategory })
+      });
+      await this.loadLibrary();
+    } catch (e) {
+      console.warn('[ModelLoader] catDrop failed:', e.message);
+    }
+  },
+
+
   _renderModelCard(m) {
     const sizeStr = m.file_size_gb > 0 ? `${m.file_size_gb} GB` : `${m.size_bytes || 0} bytes`;
     const isMissing = m.status === 'missing';
@@ -409,7 +477,7 @@ const ModelLoader = {
     }
     
     return `
-      <div class="model-library-card ${m.is_poseidon ? 'is-poseidon' : ''} ${isInvalid ? 'is-invalid' : ''}">
+      <div class="model-library-card ${m.is_poseidon ? 'is-poseidon' : ''} ${isInvalid ? 'is-invalid' : ''}" data-model-id="${this._escape(m.model_id || '')}">
         <div class="model-card-header">
           <strong title="${this._escape(m.file_name)}">${this._escape(m.file_name)}</strong>
           <span class="model-size-pill">${sizeStr}</span>

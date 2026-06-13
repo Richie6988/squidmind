@@ -32,19 +32,46 @@ const TaskQueueUI = {
     } catch {}
   },
 
-  // ── Render ─────────────────────────────────────────────────────────────────
+  // ── Render ─────────────────────────────────────────────────────────────────────────────
+
+  _initDivider() {
+    const div = document.getElementById('tq-divider');
+    if (!div || div._initDone) return;
+    div._initDone = true;
+    let dragging = false, startY = 0, startH1 = 0, startH2 = 0;
+    div.addEventListener('mousedown', e => {
+      dragging = true; startY = e.clientY;
+      startH1 = document.getElementById('tq-pane-queue').offsetHeight;
+      startH2 = document.getElementById('tq-pane-results').offsetHeight;
+      document.body.style.userSelect = 'none';
+      document.body.style.cursor = 'row-resize';
+    });
+    document.addEventListener('mousemove', e => {
+      if (!dragging) return;
+      const dy = e.clientY - startY;
+      const p1 = document.getElementById('tq-pane-queue');
+      const p2 = document.getElementById('tq-pane-results');
+      if (p1) p1.style.height = Math.max(60, startH1 + dy) + 'px';
+      if (p2) p2.style.height = Math.max(60, startH2 - dy) + 'px';
+    });
+    document.addEventListener('mouseup', () => {
+      if (!dragging) return;
+      dragging = false;
+      document.body.style.userSelect = '';
+      document.body.style.cursor = '';
+    });
+  },
 
   async _render() {
-    const container = document.getElementById('task-queue');
-    if (!container) return;
+    const queueEl   = document.getElementById('task-queue');
+    const resultsEl = document.getElementById('task-results');
+    if (!queueEl) return;
+    this._initDivider();
     try {
-      // Await worker statuses so progress bars don't flicker/disappear between renders
       try {
         const ws = await window.ApiV2._fetch('/agents/pool/status');
         this._workerStatuses = ws.workers || {};
       } catch {}
-
-      // Broker state for busy indicator
       try {
         const ms = await window.ApiV2._fetch('/models/status');
         this._brokerState = ms?.broker?.state || 'IDLE';
@@ -55,47 +82,38 @@ const TaskQueueUI = {
       const tasks = r.registry.tasks || {};
       const allTasks = Object.values(tasks);
 
-      // Active queue: not completed/failed/cancelled/archived
       this._tasks = allTasks
         .filter(t => !['completed', 'failed', 'cancelled', 'archived'].includes(t.lifecycle?.status || t.status))
         .sort((a, b) => (b.sort_order || 0) - (a.sort_order || 0));
 
-      // Completed tasks (last 10, most recent first) — for results view
       const doneTasks = allTasks
         .filter(t => ['completed', 'failed'].includes(t.lifecycle?.status || t.status))
-        .sort((a, b) => new Date(b.lifecycle?.completed_at || b.created_at || 0) - new Date(a.lifecycle?.completed_at || a.created_at || 0))
-        .slice(0, 10);
+        .sort((a, b) => new Date(b.lifecycle?.completed_at || b.created_at || 0) - new Date(a.lifecycle?.completed_at || a.created_at || 0));
       this._doneTasks = doneTasks;
 
-      container.innerHTML = '';
-
-      if (this._tasks.length === 0 && doneTasks.length === 0) {
-        const hint = document.createElement('p');
-        hint.className = 'hint';
-        hint.style.cssText = 'font-size:9px;color:var(--text-secondary);';
-        hint.textContent = 'No tasks queued — create tasks and assign agents to auto-run them.';
-        container.appendChild(hint);
-        return;
+      // ── QUEUE PANE ──
+      const qc = document.getElementById('tq-queue-count');
+      if (qc) qc.textContent = this._tasks.length;
+      queueEl.innerHTML = '';
+      if (this._tasks.length === 0) {
+        queueEl.innerHTML = '<p class="hint" style="font-size:9px;color:var(--text-secondary);padding:8px;">No tasks queued.</p>';
+      } else {
+        this._tasks.forEach((t, idx) => queueEl.appendChild(this._makeItem(t, idx)));
       }
 
-      this._tasks.forEach((t, idx) => container.appendChild(this._makeItem(t, idx)));
-
-      // ── Completed / results section ──
-      if (doneTasks.length > 0) {
-        const sep = document.createElement('div');
-        sep.className = 'tq-done-section';
-        sep.innerHTML = `<div class="tq-done-header">
-          <span>✅ Recent results (${doneTasks.length})</span>
-          <button class="tq-done-toggle" onclick="this.closest('.tq-done-section').classList.toggle('tq-done-collapsed')">▾</button>
-        </div>
-        <div class="tq-done-list">${doneTasks.map(t => this._makeDoneItem(t)).join('')}</div>`;
-        container.appendChild(sep);
+      // ── RESULTS PANE ──
+      if (!resultsEl) return;
+      const rc = document.getElementById('tq-results-count');
+      if (rc) rc.textContent = doneTasks.length;
+      if (doneTasks.length === 0) {
+        resultsEl.innerHTML = '<p class="hint" style="font-size:9px;color:var(--text-secondary);padding:8px;">No results yet.</p>';
+      } else {
+        resultsEl.innerHTML = doneTasks.map(t => this._makeDoneItem(t)).join('');
       }
     } catch (err) {
-      container.innerHTML = `<p class="hint" style="font-size:9px;color:var(--danger);">Failed: ${this._esc(err.message)}</p>`;
+      queueEl.innerHTML = `<p class="hint" style="font-size:9px;color:var(--danger);">Failed: ${this._esc(err.message)}</p>`;
     }
   },
-
   _makeDoneItem(t) {
     const ok      = t.lifecycle?.status === 'completed';
     const icon    = ok ? '✓' : '✗';

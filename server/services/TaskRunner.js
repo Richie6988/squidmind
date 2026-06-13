@@ -228,7 +228,7 @@ class TaskRunner {
 
       // Wake the assigned agent
       if (agentId && agentId !== 'poseidon_main') {
-        try { await this.rm.updateAgentStatus(agentId, 'active'); } catch {}
+        try { await this.rm.updateAgentStatus(agentId, 'active', { task_id: taskId, reason: `Running task: ${task.title}` }); } catch {}
       }
 
       // Build rich task message including project context and progress state

@@ -720,6 +720,42 @@ class RegistryManager {
 
   // ==================== PROJECTS ====================
 
+  /**
+   * Thin wrapper used by TaskRunner and AgentWorker.
+   * 'active' → calls wakeAgent, 'sleeping' → calls sleepAgent.
+   * Also updates current_task_id on the registry entry when provided.
+   */
+  async updateAgentStatus(agentId, status, options = {}) {
+    try {
+      if (status === 'active') {
+        await this.wakeAgent(agentId, options);
+        // Track which task this agent is working on
+        if (options.task_id) {
+          const reg = await this.getAgentRegistry();
+          if (reg.agents[agentId]) {
+            reg.agents[agentId].current_task_id = options.task_id;
+            await this.write('agents/agent_registry.json', reg);
+          }
+        }
+      } else if (status === 'sleeping') {
+        await this.sleepAgent(agentId, options);
+        // Clear current task
+        try {
+          const reg = await this.getAgentRegistry();
+          if (reg.agents[agentId]) {
+            reg.agents[agentId].current_task_id = null;
+            await this.write('agents/agent_registry.json', reg);
+          }
+        } catch {}
+      }
+    } catch (e) {
+      // Log but don't throw — agent status update is non-critical
+      console.warn(`[RegistryManager] updateAgentStatus(${agentId}, ${status}) failed:`, e.message);
+    }
+  }
+
+
+
   async getProjectRegistry() {
     return await this.read('projects/project_registry.json');
   }

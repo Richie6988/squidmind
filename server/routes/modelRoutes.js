@@ -439,6 +439,26 @@ function buildRouter(v2ModelService) {
     }
   });
 
+  // PATCH /api/v2/models/:modelId/category — set model_category (poseidon|agent|image)
+  router.patch('/:modelId/category', async (req, res) => {
+    try {
+      const { model_category } = req.body;
+      if (!['poseidon', 'agent', 'image'].includes(model_category)) {
+        return res.status(400).json({ success: false, error: 'model_category must be poseidon, agent, or image' });
+      }
+      // Sync model_type too so existing logic stays consistent
+      const model_type = model_category === 'image' ? 'image' : 'text';
+      await v2ModelService.updateModelParams(req.params.modelId, { model_category, model_type });
+      // If poseidon category, also set is_poseidon flag
+      if (model_category === 'poseidon') {
+        await v2ModelService.setPoseidonModel(req.params.modelId);
+      }
+      res.json({ success: true, model_id: req.params.modelId, model_category });
+    } catch (err) {
+      res.status(400).json({ success: false, error: err.message });
+    }
+  });
+
   return router;
 }
 
