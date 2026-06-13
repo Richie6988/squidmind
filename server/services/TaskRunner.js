@@ -204,14 +204,21 @@ class TaskRunner {
             throw new Error('PREEMPTED_BY_CHAT');
           }
         } finally {
-          // Dispose BG session so the sequence is free for Poseidon CHAT
+          // Dispose session AND sequence independently before releasing broker.
+          // CHAT acquires immediately on release — sequence must be free first.
           const posId  = this.modelService.poseidonModelId;
           const posEnt = posId ? this.modelService.loaded.get(posId) : null;
-          if (posEnt?.session) {
-            try { await posEnt.session.dispose?.(); } catch {}
-            posEnt.session = null;
-            posEnt._currentSequence = null;
+          if (posEnt) {
+            if (posEnt.session) {
+              try { await posEnt.session.dispose?.(); } catch {}
+              posEnt.session = null;
+            }
+            if (posEnt._currentSequence) {
+              try { await posEnt._currentSequence.dispose?.(); } catch {}
+              posEnt._currentSequence = null;
+            }
             posEnt.sessionTurns = 0;
+            await new Promise(r => setTimeout(r, 200));  // ensure llama.cpp frees the slot
           }
           this.modelService.broker.release(bgToken);
         }

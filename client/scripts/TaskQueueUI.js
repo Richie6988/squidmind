@@ -68,17 +68,6 @@ const TaskQueueUI = {
 
       container.innerHTML = '';
 
-      // ── Broker busy banner ──
-      if (this._brokerState && this._brokerState !== 'IDLE') {
-        const isBG   = this._brokerOwner?.startsWith('bg_task');
-        const taskId = isBG ? this._brokerOwner.replace('bg_task_','') : null;
-        const label  = taskId ? `⏳ Running ${taskId}` : `⏳ Model busy`;
-        const banner = document.createElement('div');
-        banner.className = 'tq-busy-banner';
-        banner.textContent = label;
-        container.appendChild(banner);
-      }
-
       if (this._tasks.length === 0 && doneTasks.length === 0) {
         const hint = document.createElement('p');
         hint.className = 'hint';
@@ -172,12 +161,18 @@ const TaskQueueUI = {
       'paused':      { cls: 'tq-dot-paused',   label: 'paused' },
     }[status] || { cls: 'tq-dot-open', label: status };
 
+    // Is this the task currently held by the broker?
+    const bgOwner  = this._brokerOwner || '';
+    const bgTaskId = bgOwner.startsWith('bg_task') ? bgOwner.replace('bg_task_','') : null;
+    const isBrokerActive = bgTaskId === t.task_id && this._brokerState !== 'IDLE';
+    if (isBrokerActive) el.classList.add('tq-is-running');
+
     el.innerHTML = `
       <div class="tq-drag-handle" title="Drag to reorder">⠿</div>
       <div class="tq-body">
         <div class="tq-row1">
           <span class="tq-rank">#${idx + 1}</span>
-          <span class="tq-dot ${statusDot.cls} ${isRunning ? 'tq-dot-pulse' : ''}" title="${statusDot.label}">⬤</span>
+          <span class="tq-dot ${statusDot.cls} ${(isRunning || isBrokerActive) ? 'tq-dot-pulse' : ''}" title="${statusDot.label}">⬤</span>
           <span class="tq-title tq-title-link" title="Click to view/edit details">${this._esc(t.title)}</span>
           ${canRun ? `<button class="tq-run-btn" onclick="TaskQueueUI.runTask('${t.task_id}')" title="▶ Run now">▶</button>` : ''}
           <button class="tq-cancel" onclick="TaskQueueUI.deleteTask('${t.task_id}')" title="Delete task">✕</button>
@@ -189,8 +184,10 @@ const TaskQueueUI = {
                   onclick="TaskQueueUI.openAssignPicker('${t.task_id}', this)"
                   title="Click to assign agent">${this._esc(agentName)}</button>
         </div>
-        ${isRunning ? `<div class="tq-progress-bar"><div class="tq-progress-fill"></div></div>` : ''}
-        ${isRunning ? `<div class="tq-running-meta">⚡ Running${t.lifecycle?.started_at ? ' · ' + TaskQueueUI._elapsed(t.lifecycle.started_at) : ''}</div>` : ''}
+        ${(isRunning || isBrokerActive) ? `<div class="tq-progress-bar"><div class="tq-progress-fill"></div></div>` : ''}
+        ${isBrokerActive ? `<div class="tq-running-meta">⏳ Running…${t.lifecycle?.started_at ? ' · ' + TaskQueueUI._elapsed(t.lifecycle.started_at) : ''}</div>`
+          : isRunning    ? `<div class="tq-running-meta">⚡ Running${t.lifecycle?.started_at ? ' · ' + TaskQueueUI._elapsed(t.lifecycle.started_at) : ''}</div>`
+          : ''}
       </div>
     `;
 
