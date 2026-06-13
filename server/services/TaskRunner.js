@@ -26,6 +26,10 @@ class TaskRunner {
   async tick() {
     // Sequential: if any task is already running, skip this tick
     if (this._running.size > 0) return;
+    // Wait for model to be loaded before running any task — avoids POSEIDON_BG
+    // acquiring the broker while chatWithPoseidon is still loading the model,
+    // which would block all CHAT requests until the task finishes.
+    if (this.modelService.loaded.size === 0) return;
 
     let reg;
     try {
@@ -174,13 +178,30 @@ class TaskRunner {
           }
 
           const posMsg = `[BACKGROUND AUTO-TASK ${taskId}]\n${agentPrefix}${msg}`;
+          // Preemption: abort BG inference the moment a CHAT request is queued.
+          // The task will retry on the next tick once Poseidon is free.
+          let preempted = false;
           for await (const ev of this.modelService.chatWithPoseidon(posMsg, [])) {
             if (ev.type === 'text') output += ev.chunk;
+            if (this.modelService.broker.hasChatWaiting()) {
+              preempted = true;
+              this.modelService.abortCurrentGeneration?.();
+              break;
+            }
+          }
+          if (preempted) {
+            console.log(`[TaskRunner] BG task ${taskId} preempted by CHAT — will retry`);
+            throw new Error('PREEMPTED_BY_CHAT');
           }
         } finally {
           this.modelService.broker.release(bgToken);
         }
       } catch (e) {
+        if (e.message === 'PREEMPTED_BY_CHAT') {
+          // Not a real failure — task will retry next tick after CHAT finishes
+          this._running.delete(taskId);
+          return;
+        }
         output = `Execution error: ${e.message}`;
         failed = true;
       }

@@ -878,7 +878,7 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
       throw new Error('Poseidon model failed to load');
     }
     // Acquire the model slot (CHAT priority — preempts background work)
-    const brokerToken = await this.broker.acquire(PRIORITY.CHAT, 'poseidon_chat', { timeoutMs: 30_000 });
+    const brokerToken = await this.broker.acquire(PRIORITY.CHAT, 'poseidon_chat', { timeoutMs: 5 * 60_000 });
     entry.generating = true;
     entry.lastUsedAt = Date.now();
     entry.totalRequests++;

@@ -164,6 +164,14 @@ class ModelBroker extends EventEmitter {
   }
 
   /**
+   * hasChatWaiting()
+   * True if a CHAT request is queued — used by BG tasks to yield voluntarily.
+   */
+  hasChatWaiting() {
+    return this._queue.some(e => e.priority === PRIORITY.CHAT);
+  }
+
+  /**
    * isImageAllowed()
    * True only if slot free AND no LLM-priority tasks queued (CHAT/AGENT/BG).
    * IMAGE evicts the LLM from VRAM — it can't co-exist with queued LLM work.
