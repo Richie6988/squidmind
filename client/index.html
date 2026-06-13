@@ -188,45 +188,60 @@
           <button class="lm-close" onclick="ui.closeLogsModal()">✕</button>
         </div>
       </div>
-      <div class="lm-filters">
-        <div class="lm-filter-row">
-          <button class="lm-tab active" onclick="ui.setLogFilter(this,'all')">ALL</button>
-          <button class="lm-tab" onclick="ui.setLogFilter(this,'poseidon')">🔱 POSEIDON</button>
-          <button class="lm-tab" onclick="ui.setLogFilter(this,'dream')">💤 DREAM</button>
-          <button class="lm-tab" onclick="ui.setLogFilter(this,'task')">✦ TASKS</button>
-          <button class="lm-tab" onclick="ui.setLogFilter(this,'agent')">🤖 AGENTS</button>
-          <button class="lm-tab" onclick="ui.setLogFilter(this,'model')">📦 MODELS</button>
-          <button class="lm-tab" onclick="ui.setLogFilter(this,'project')">📁 PROJECTS</button>
-          <button class="lm-tab" onclick="ui.setLogFilter(this,'error')">⚠ ERRORS</button>
-          <button class="lm-tab" onclick="ui.setLogFilter(this,'system')">⚙ SYSTEM</button>
+      <div class="lm-tab-row">
+        <button class="lm-tab active" onclick="ui.setLogFilter(this,'all')">ALL</button>
+        <button class="lm-tab" onclick="ui.setLogFilter(this,'poseidon')">POSEIDON</button>
+        <button class="lm-tab" onclick="ui.setLogFilter(this,'dream')">DREAM</button>
+        <button class="lm-tab" onclick="ui.setLogFilter(this,'task')">TASKS</button>
+        <button class="lm-tab" onclick="ui.setLogFilter(this,'agent')">AGENTS</button>
+        <button class="lm-tab" onclick="ui.setLogFilter(this,'model')">MODELS</button>
+        <button class="lm-tab" onclick="ui.setLogFilter(this,'project')">PROJECTS</button>
+        <button class="lm-tab" onclick="ui.setLogFilter(this,'error')">ERRORS</button>
+        <button class="lm-tab" onclick="ui.setLogFilter(this,'system')">SYSTEM</button>
+      </div>
+      <div class="lm-filter-row">
+        <input class="lm-search" id="lm-search" type="text" placeholder="Search…" oninput="ui.filterLogs()">
+        <div class="lm-drop-wrap" id="lm-drop-sev">
+          <button class="lm-drop-btn" onclick="ui._lmToggleDrop('lm-drop-sev')">
+            <span class="lm-drop-val" data-id="lm-sev">All severity</span><span class="lm-drop-arrow">▾</span>
+          </button>
+          <div class="lm-drop-list">
+            <div class="lm-drop-item active" data-val="" onclick="ui._lmPickDrop('lm-drop-sev','lm-sev',this,'All severity')">All severity</div>
+            <div class="lm-drop-item" data-val="error" onclick="ui._lmPickDrop('lm-drop-sev','lm-sev',this,'Error')">Error</div>
+            <div class="lm-drop-item" data-val="warning" onclick="ui._lmPickDrop('lm-drop-sev','lm-sev',this,'Warning')">Warning</div>
+            <div class="lm-drop-item" data-val="info" onclick="ui._lmPickDrop('lm-drop-sev','lm-sev',this,'Info')">Info</div>
+          </div>
+          <input type="hidden" id="lm-sev" value="">
         </div>
-        <div class="lm-filter-row lm-filter-row2">
-          <input class="lm-search" id="lm-search" type="text" placeholder="Search…" oninput="ui.filterLogs()">
-          <select class="lm-sev-select" id="lm-sev" onchange="ui.filterLogs()">
-            <option value="">All severity</option>
-            <option value="error">🔴 Error</option>
-            <option value="warning">🟡 Warning</option>
-            <option value="info">ℹ Info</option>
-          </select>
-          <select class="lm-sev-select" id="lm-actor" onchange="ui.filterLogs()">
-            <option value="">All actors</option>
-            <option value="poseidon_main">Poseidon</option>
-            <option value="poseidon_dream">Dream</option>
-            <option value="human_user">User</option>
-            <option value="system">System</option>
-          </select>
-          <select class="lm-sev-select" id="lm-limit" onchange="ui.reloadLogs()">
-            <option value="100">Last 100</option>
-            <option value="200" selected>Last 200</option>
-            <option value="500">Last 500</option>
-            <option value="1000">Last 1000</option>
-          </select>
+        <div class="lm-drop-wrap" id="lm-drop-actor">
+          <button class="lm-drop-btn" onclick="ui._lmToggleDrop('lm-drop-actor')">
+            <span class="lm-drop-val" data-id="lm-actor">All actors</span><span class="lm-drop-arrow">▾</span>
+          </button>
+          <div class="lm-drop-list">
+            <div class="lm-drop-item active" data-val="" onclick="ui._lmPickDrop('lm-drop-actor','lm-actor',this,'All actors')">All actors</div>
+            <div class="lm-drop-item" data-val="poseidon_main" onclick="ui._lmPickDrop('lm-drop-actor','lm-actor',this,'Poseidon')">Poseidon</div>
+            <div class="lm-drop-item" data-val="poseidon_dream" onclick="ui._lmPickDrop('lm-drop-actor','lm-actor',this,'Dream')">Dream</div>
+            <div class="lm-drop-item" data-val="human_user" onclick="ui._lmPickDrop('lm-drop-actor','lm-actor',this,'User')">User</div>
+            <div class="lm-drop-item" data-val="system" onclick="ui._lmPickDrop('lm-drop-actor','lm-actor',this,'System')">System</div>
+          </div>
+          <input type="hidden" id="lm-actor" value="">
+        </div>
+        <div class="lm-drop-wrap" id="lm-drop-limit">
+          <button class="lm-drop-btn" onclick="ui._lmToggleDrop('lm-drop-limit')">
+            <span class="lm-drop-val" data-id="lm-limit">Last 200</span><span class="lm-drop-arrow">▾</span>
+          </button>
+          <div class="lm-drop-list lm-drop-right">
+            <div class="lm-drop-item" data-val="100" onclick="ui._lmPickDrop('lm-drop-limit','lm-limit',this,'Last 100',true)">Last 100</div>
+            <div class="lm-drop-item active" data-val="200" onclick="ui._lmPickDrop('lm-drop-limit','lm-limit',this,'Last 200',true)">Last 200</div>
+            <div class="lm-drop-item" data-val="500" onclick="ui._lmPickDrop('lm-drop-limit','lm-limit',this,'Last 500',true)">Last 500</div>
+            <div class="lm-drop-item" data-val="1000" onclick="ui._lmPickDrop('lm-drop-limit','lm-limit',this,'Last 1000',true)">Last 1000</div>
+          </div>
+          <input type="hidden" id="lm-limit" value="200">
         </div>
       </div>
       <div class="lm-list" id="lm-list"><div class="lm-empty">Loading...</div></div>
     </div>
   </div>
-
   <script src="scripts/SquidModal.js"></script>
   <script src="scripts/ui.js"></script>
   <script src="scripts/api.js"></script>

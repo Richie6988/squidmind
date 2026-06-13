@@ -847,6 +847,21 @@ Never describe a bash command you could call instead.`;
         handler: async (params) => self.tools.webFetch(params)
       }),
       
+      fetch_and_save: defineChatSessionFunction({
+        description: 'Fetch a URL, extract its text content, and save it to a file in the task or project output folder. Use instead of web_fetch when you need to persist the content for later steps.',
+        params: {
+          type: 'object',
+          properties: {
+            url:        { type: 'string', description: 'Full http(s) URL to fetch' },
+            output_path:{ type: 'string', description: 'Filename to save (e.g. "bbc_article.txt"). Relative, saved in task or project output folder.' },
+            task_id:    { type: 'string', description: 'Current task_id — used to determine output folder when no project' },
+            project_id: { type: 'string', description: 'Project ID if this task belongs to a project' }
+          },
+          required: ['url']
+        },
+        handler: async (params) => self.tools.fetchAndSave(params)
+      }),
+
 
       fetch_image_url: defineChatSessionFunction({
         description: 'Fetch a webpage and extract the best image URL from it. Works on any URL: Wikipedia, news sites, product pages, etc. Returns a direct image URL ready to embed as markdown.',

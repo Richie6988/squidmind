@@ -154,6 +154,39 @@ ui.closeLogsModal = function() {
   ui._liveTimer = null;
 };
 
+// ── Custom dropdown helpers ──────────────────────────────────────────────────
+ui._lmToggleDrop = function(wrapId) {
+  const wrap = document.getElementById(wrapId);
+  if (!wrap) return;
+  const isOpen = wrap.classList.contains('lm-drop-open');
+  // Close all first
+  document.querySelectorAll('.lm-drop-wrap').forEach(w => w.classList.remove('lm-drop-open'));
+  if (!isOpen) wrap.classList.add('lm-drop-open');
+};
+
+ui._lmPickDrop = function(wrapId, hiddenId, item, label, reload) {
+  const wrap   = document.getElementById(wrapId);
+  const hidden = document.getElementById(hiddenId);
+  if (!wrap || !hidden) return;
+  // Update active state
+  wrap.querySelectorAll('.lm-drop-item').forEach(i => i.classList.remove('active'));
+  item.classList.add('active');
+  // Update label + hidden value
+  const valEl = wrap.querySelector('.lm-drop-val');
+  if (valEl) valEl.textContent = label;
+  hidden.value = item.dataset.val || '';
+  wrap.classList.remove('lm-drop-open');
+  if (reload) ui.reloadLogs(); else ui.filterLogs();
+};
+
+// Close dropdowns on outside click
+document.addEventListener('click', function(e) {
+  if (!e.target.closest('.lm-drop-wrap')) {
+    document.querySelectorAll('.lm-drop-wrap').forEach(w => w.classList.remove('lm-drop-open'));
+  }
+});
+// ── End custom dropdown helpers ──────────────────────────────────────────────
+
 ui.toggleLiveLog = function(cb) {
   clearInterval(ui._liveTimer);
   if (cb.checked) ui._liveTimer = setInterval(() => ui.reloadLogs(), 5000);

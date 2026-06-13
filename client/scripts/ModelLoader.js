@@ -87,44 +87,111 @@ const ModelLoader = {
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
               </button>
             </div>
-            <!-- Type filters -->
-            <div class="ml-hf-pills" id="ml-hf-filters">
-              <button class="ml-hf-pill active" onclick="ModelLoader._hfQuick(this,'','any')">🔥 All</button>
-              <button class="ml-hf-pill" onclick="ModelLoader._hfQuick(this,'','text-generation')">💬 Text</button>
-              <button class="ml-hf-pill" onclick="ModelLoader._hfQuick(this,'code','text-generation')">💻 Code</button>
-              <button class="ml-hf-pill" onclick="ModelLoader._hfQuick(this,'','text-to-image')">🖼 Image</button>
-              <button class="ml-hf-pill" onclick="ModelLoader._hfQuick(this,'','feature-extraction')">📐 Embed</button>
-              <button class="ml-hf-pill" onclick="ModelLoader._hfQuick(this,'tool_calling','any')">🔧 Tools</button>
-              <button class="ml-hf-pill" onclick="ModelLoader._hfQuick(this,'smol','any')">🌙 Dream</button>
+            <!-- Filters row: pipeline dropdown + size pills + sort + quant dropdowns -->
+            <div class="ml-hf-filter-bar">
+              <!-- Pipeline dropdown -->
+              <div class="ml-hf-drop" id="ml-hf-drop-pipeline">
+                <button class="ml-hf-drop-btn" onclick="ModelLoader._hfDropToggle('ml-hf-drop-pipeline')">
+                  <span class="ml-hf-drop-val" id="ml-hf-pipe-label">All types</span><span class="ml-hf-drop-arr">&#x25BE;</span>
+                </button>
+                <div class="ml-hf-drop-menu ml-hf-drop-pipeline-menu">
+                  <div class="ml-hf-drop-group">Presets</div>
+                  <div class="ml-hf-drop-item active" data-q="" data-p="any" onclick="ModelLoader._hfPickPipeline(this)">All</div>
+                  <div class="ml-hf-drop-item" data-q="" data-p="text-generation" onclick="ModelLoader._hfPickPipeline(this)">Text Generation</div>
+                  <div class="ml-hf-drop-item" data-q="code" data-p="text-generation" onclick="ModelLoader._hfPickPipeline(this)">Code</div>
+                  <div class="ml-hf-drop-item" data-q="tool_calling" data-p="any" onclick="ModelLoader._hfPickPipeline(this)">Tool Calling</div>
+                  <div class="ml-hf-drop-group">Multimodal</div>
+                  <div class="ml-hf-drop-item" data-q="" data-p="audio-text-to-text" onclick="ModelLoader._hfPickPipeline(this)">Audio-Text-to-Text</div>
+                  <div class="ml-hf-drop-item" data-q="" data-p="image-text-to-text" onclick="ModelLoader._hfPickPipeline(this)">Image-Text-to-Text</div>
+                  <div class="ml-hf-drop-item" data-q="" data-p="image-text-to-image" onclick="ModelLoader._hfPickPipeline(this)">Image-Text-to-Image</div>
+                  <div class="ml-hf-drop-item" data-q="" data-p="image-text-to-video" onclick="ModelLoader._hfPickPipeline(this)">Image-Text-to-Video</div>
+                  <div class="ml-hf-drop-item" data-q="" data-p="visual-question-answering" onclick="ModelLoader._hfPickPipeline(this)">Visual QA</div>
+                  <div class="ml-hf-drop-item" data-q="" data-p="document-question-answering" onclick="ModelLoader._hfPickPipeline(this)">Document QA</div>
+                  <div class="ml-hf-drop-item" data-q="" data-p="video-text-to-text" onclick="ModelLoader._hfPickPipeline(this)">Video-Text-to-Text</div>
+                  <div class="ml-hf-drop-item" data-q="" data-p="any-to-any" onclick="ModelLoader._hfPickPipeline(this)">Any-to-Any</div>
+                  <div class="ml-hf-drop-group">Computer Vision</div>
+                  <div class="ml-hf-drop-item" data-q="" data-p="text-to-image" onclick="ModelLoader._hfPickPipeline(this)">Text-to-Image</div>
+                  <div class="ml-hf-drop-item" data-q="" data-p="image-to-text" onclick="ModelLoader._hfPickPipeline(this)">Image-to-Text</div>
+                  <div class="ml-hf-drop-item" data-q="" data-p="image-to-image" onclick="ModelLoader._hfPickPipeline(this)">Image-to-Image</div>
+                  <div class="ml-hf-drop-item" data-q="" data-p="image-to-video" onclick="ModelLoader._hfPickPipeline(this)">Image-to-Video</div>
+                  <div class="ml-hf-drop-item" data-q="" data-p="text-to-video" onclick="ModelLoader._hfPickPipeline(this)">Text-to-Video</div>
+                  <div class="ml-hf-drop-item" data-q="" data-p="image-classification" onclick="ModelLoader._hfPickPipeline(this)">Image Classification</div>
+                  <div class="ml-hf-drop-item" data-q="" data-p="object-detection" onclick="ModelLoader._hfPickPipeline(this)">Object Detection</div>
+                  <div class="ml-hf-drop-item" data-q="" data-p="image-segmentation" onclick="ModelLoader._hfPickPipeline(this)">Image Segmentation</div>
+                  <div class="ml-hf-drop-item" data-q="" data-p="depth-estimation" onclick="ModelLoader._hfPickPipeline(this)">Depth Estimation</div>
+                  <div class="ml-hf-drop-item" data-q="" data-p="zero-shot-image-classification" onclick="ModelLoader._hfPickPipeline(this)">Zero-Shot Image Classif.</div>
+                  <div class="ml-hf-drop-item" data-q="" data-p="zero-shot-object-detection" onclick="ModelLoader._hfPickPipeline(this)">Zero-Shot Object Detect.</div>
+                  <div class="ml-hf-drop-item" data-q="" data-p="mask-generation" onclick="ModelLoader._hfPickPipeline(this)">Mask Generation</div>
+                  <div class="ml-hf-drop-item" data-q="" data-p="keypoint-detection" onclick="ModelLoader._hfPickPipeline(this)">Keypoint Detection</div>
+                  <div class="ml-hf-drop-item" data-q="" data-p="text-to-3d" onclick="ModelLoader._hfPickPipeline(this)">Text-to-3D</div>
+                  <div class="ml-hf-drop-item" data-q="" data-p="image-to-3d" onclick="ModelLoader._hfPickPipeline(this)">Image-to-3D</div>
+                  <div class="ml-hf-drop-item" data-q="" data-p="video-classification" onclick="ModelLoader._hfPickPipeline(this)">Video Classification</div>
+                  <div class="ml-hf-drop-item" data-q="" data-p="image-feature-extraction" onclick="ModelLoader._hfPickPipeline(this)">Image Feature Extraction</div>
+                  <div class="ml-hf-drop-group">NLP</div>
+                  <div class="ml-hf-drop-item" data-q="" data-p="text-classification" onclick="ModelLoader._hfPickPipeline(this)">Text Classification</div>
+                  <div class="ml-hf-drop-item" data-q="" data-p="token-classification" onclick="ModelLoader._hfPickPipeline(this)">Token Classification</div>
+                  <div class="ml-hf-drop-item" data-q="" data-p="question-answering" onclick="ModelLoader._hfPickPipeline(this)">Question Answering</div>
+                  <div class="ml-hf-drop-item" data-q="" data-p="summarization" onclick="ModelLoader._hfPickPipeline(this)">Summarization</div>
+                  <div class="ml-hf-drop-item" data-q="" data-p="translation" onclick="ModelLoader._hfPickPipeline(this)">Translation</div>
+                  <div class="ml-hf-drop-item" data-q="" data-p="zero-shot-classification" onclick="ModelLoader._hfPickPipeline(this)">Zero-Shot Classification</div>
+                  <div class="ml-hf-drop-item" data-q="" data-p="feature-extraction" onclick="ModelLoader._hfPickPipeline(this)">Feature Extraction</div>
+                  <div class="ml-hf-drop-item" data-q="" data-p="fill-mask" onclick="ModelLoader._hfPickPipeline(this)">Fill-Mask</div>
+                  <div class="ml-hf-drop-item" data-q="" data-p="sentence-similarity" onclick="ModelLoader._hfPickPipeline(this)">Sentence Similarity</div>
+                  <div class="ml-hf-drop-item" data-q="" data-p="text-ranking" onclick="ModelLoader._hfPickPipeline(this)">Text Ranking</div>
+                  <div class="ml-hf-drop-group">Audio</div>
+                  <div class="ml-hf-drop-item" data-q="" data-p="text-to-speech" onclick="ModelLoader._hfPickPipeline(this)">Text-to-Speech</div>
+                  <div class="ml-hf-drop-item" data-q="" data-p="text-to-audio" onclick="ModelLoader._hfPickPipeline(this)">Text-to-Audio</div>
+                  <div class="ml-hf-drop-item" data-q="" data-p="automatic-speech-recognition" onclick="ModelLoader._hfPickPipeline(this)">ASR</div>
+                  <div class="ml-hf-drop-item" data-q="" data-p="audio-to-audio" onclick="ModelLoader._hfPickPipeline(this)">Audio-to-Audio</div>
+                  <div class="ml-hf-drop-item" data-q="" data-p="audio-classification" onclick="ModelLoader._hfPickPipeline(this)">Audio Classification</div>
+                  <div class="ml-hf-drop-item" data-q="" data-p="voice-activity-detection" onclick="ModelLoader._hfPickPipeline(this)">Voice Activity Detection</div>
+                  <div class="ml-hf-drop-group">Tabular / RL / Other</div>
+                  <div class="ml-hf-drop-item" data-q="" data-p="tabular-classification" onclick="ModelLoader._hfPickPipeline(this)">Tabular Classification</div>
+                  <div class="ml-hf-drop-item" data-q="" data-p="tabular-regression" onclick="ModelLoader._hfPickPipeline(this)">Tabular Regression</div>
+                  <div class="ml-hf-drop-item" data-q="" data-p="time-series-forecasting" onclick="ModelLoader._hfPickPipeline(this)">Time Series Forecasting</div>
+                  <div class="ml-hf-drop-item" data-q="" data-p="reinforcement-learning" onclick="ModelLoader._hfPickPipeline(this)">Reinforcement Learning</div>
+                  <div class="ml-hf-drop-item" data-q="" data-p="robotics" onclick="ModelLoader._hfPickPipeline(this)">Robotics</div>
+                  <div class="ml-hf-drop-item" data-q="" data-p="graph-ml" onclick="ModelLoader._hfPickPipeline(this)">Graph ML</div>
+                </div>
+              </div>
+              <!-- Sort dropdown -->
+              <div class="ml-hf-drop" id="ml-hf-drop-sort">
+                <button class="ml-hf-drop-btn" onclick="ModelLoader._hfDropToggle('ml-hf-drop-sort')">
+                  <span class="ml-hf-drop-val" id="ml-hf-sort-label">Downloads</span><span class="ml-hf-drop-arr">&#x25BE;</span>
+                </button>
+                <div class="ml-hf-drop-menu">
+                  <div class="ml-hf-drop-item active" data-val="downloads" onclick="ModelLoader._hfPickSort(this)">Downloads</div>
+                  <div class="ml-hf-drop-item" data-val="trending" onclick="ModelLoader._hfPickSort(this)">Trending</div>
+                  <div class="ml-hf-drop-item" data-val="likes" onclick="ModelLoader._hfPickSort(this)">Likes</div>
+                  <div class="ml-hf-drop-item" data-val="lastModified" onclick="ModelLoader._hfPickSort(this)">Recent</div>
+                </div>
+              </div>
+              <!-- Quant dropdown -->
+              <div class="ml-hf-drop" id="ml-hf-drop-quant">
+                <button class="ml-hf-drop-btn" onclick="ModelLoader._hfDropToggle('ml-hf-drop-quant')">
+                  <span class="ml-hf-drop-val" id="ml-hf-quant-label">Any quant</span><span class="ml-hf-drop-arr">&#x25BE;</span>
+                </button>
+                <div class="ml-hf-drop-menu">
+                  <div class="ml-hf-drop-item active" data-val="" onclick="ModelLoader._hfPickQuant(this)">Any</div>
+                  <div class="ml-hf-drop-item" data-val="Q4" onclick="ModelLoader._hfPickQuant(this)">Q4</div>
+                  <div class="ml-hf-drop-item" data-val="Q5" onclick="ModelLoader._hfPickQuant(this)">Q5</div>
+                  <div class="ml-hf-drop-item" data-val="Q8" onclick="ModelLoader._hfPickQuant(this)">Q8</div>
+                  <div class="ml-hf-drop-item" data-val="F16" onclick="ModelLoader._hfPickQuant(this)">F16</div>
+                  <div class="ml-hf-drop-item" data-val="IQ" onclick="ModelLoader._hfPickQuant(this)">IQ (iMatrix)</div>
+                </div>
+              </div>
             </div>
-            <!-- Size filter -->
+            <!-- Size filter pills -->
             <div class="ml-hf-size-row">
               <span class="ml-hf-size-label">Size:</span>
               <button class="ml-hf-size-pill active" data-min="" data-max="" onclick="ModelLoader._hfSizeFilter(this)">Any</button>
-              <button class="ml-hf-size-pill" data-min="" data-max="1.5" onclick="ModelLoader._hfSizeFilter(this)">≤1B</button>
-              <button class="ml-hf-size-pill" data-min="1.5" data-max="4" onclick="ModelLoader._hfSizeFilter(this)">1–3B</button>
-              <button class="ml-hf-size-pill" data-min="4" data-max="9" onclick="ModelLoader._hfSizeFilter(this)">4–8B</button>
-              <button class="ml-hf-size-pill" data-min="9" data-max="15" onclick="ModelLoader._hfSizeFilter(this)">9–14B</button>
+              <button class="ml-hf-size-pill" data-min="" data-max="1.5" onclick="ModelLoader._hfSizeFilter(this)">&#x2264;1B</button>
+              <button class="ml-hf-size-pill" data-min="1.5" data-max="4" onclick="ModelLoader._hfSizeFilter(this)">1&#x2013;3B</button>
+              <button class="ml-hf-size-pill" data-min="4" data-max="9" onclick="ModelLoader._hfSizeFilter(this)">4&#x2013;8B</button>
+              <button class="ml-hf-size-pill" data-min="9" data-max="15" onclick="ModelLoader._hfSizeFilter(this)">9&#x2013;14B</button>
               <button class="ml-hf-size-pill" data-min="15" data-max="" onclick="ModelLoader._hfSizeFilter(this)">15B+</button>
             </div>
-            <!-- Sort + Language + Quant row -->
-            <div class="ml-hf-size-row">
-              <span class="ml-hf-size-label">Sort:</span>
-              <button class="ml-hf-size-pill active" data-sort="downloads" onclick="ModelLoader._hfSortFilter(this)">&#x2193; Downloads</button>
-              <button class="ml-hf-size-pill" data-sort="trending" onclick="ModelLoader._hfSortFilter(this)">&#x1F525; Trending</button>
-              <button class="ml-hf-size-pill" data-sort="likes" onclick="ModelLoader._hfSortFilter(this)">&#x2665; Likes</button>
-              <button class="ml-hf-size-pill" data-sort="lastModified" onclick="ModelLoader._hfSortFilter(this)">&#x1F553; Recent</button>
-            </div>
-            <div class="ml-hf-size-row">
-              <span class="ml-hf-size-label">Quant:</span>
-              <button class="ml-hf-size-pill active" data-quant="" onclick="ModelLoader._hfQuantFilter(this)">Any</button>
-              <button class="ml-hf-size-pill" data-quant="Q4" onclick="ModelLoader._hfQuantFilter(this)">Q4</button>
-              <button class="ml-hf-size-pill" data-quant="Q5" onclick="ModelLoader._hfQuantFilter(this)">Q5</button>
-              <button class="ml-hf-size-pill" data-quant="Q8" onclick="ModelLoader._hfQuantFilter(this)">Q8</button>
-              <button class="ml-hf-size-pill" data-quant="F16" onclick="ModelLoader._hfQuantFilter(this)">F16</button>
-              <button class="ml-hf-size-pill" data-quant="IQ" onclick="ModelLoader._hfQuantFilter(this)">IQ (iMatrix)</button>
-            </div>
-            <!-- Results -->
+                        <!-- Results -->
             <div id="ml-hf-results" class="ml-hf-results-list"></div>
             <!-- File picker panel -->
             <div id="ml-hf-files" class="ml-hf-file-panel" style="display:none;">
@@ -149,55 +216,74 @@ const ModelLoader = {
       const s = document.createElement('style'); s.id = 'ml-hf-css';
       s.textContent = `
         .ml-hf-search-row{display:flex;gap:6px;margin-bottom:8px;}
-        .ml-hf-input{flex:1;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:8px;color:#e2e8f0;font-size:10px;padding:6px 10px;outline:none;}
+        .ml-hf-input{flex:1;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);color:#e2e8f0;font-size:10px;padding:6px 10px;outline:none;}
         .ml-hf-input:focus{border-color:rgba(79,172,254,0.5);}
-        .ml-hf-search-btn{background:rgba(79,172,254,0.15);border:1px solid rgba(79,172,254,0.35);color:#4facfe;border-radius:8px;padding:6px 10px;cursor:pointer;display:flex;align-items:center;transition:all .15s;}
+        .ml-hf-search-btn{background:rgba(79,172,254,0.15);border:1px solid rgba(79,172,254,0.35);color:#4facfe;padding:6px 10px;cursor:pointer;display:flex;align-items:center;transition:all .15s;}
         .ml-hf-search-btn:hover{background:rgba(79,172,254,0.28);}
-        .ml-hf-pills{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:6px;}
-        .ml-hf-pill{font-size:8px;padding:3px 9px;border-radius:10px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.03);color:#94a3b8;cursor:pointer;white-space:nowrap;transition:all .12s;}
-        .ml-hf-pill.active,.ml-hf-pill:hover{background:rgba(79,172,254,0.18);color:#4facfe;border-color:rgba(79,172,254,0.4);}
-        .ml-hf-size-row{display:flex;align-items:center;gap:4px;margin-bottom:10px;flex-wrap:wrap;}
-        .ml-hf-size-label{font-size:8px;color:#475569;white-space:nowrap;}
-        .ml-hf-size-pill{font-size:8px;padding:2px 7px;border-radius:8px;border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.02);color:#64748b;cursor:pointer;transition:all .12s;white-space:nowrap;}
+        /* Filter bar with dropdowns */
+        .ml-hf-filter-bar{display:flex;align-items:center;gap:6px;margin-bottom:8px;flex-wrap:wrap;}
+        .ml-hf-drop{position:relative;}
+        .ml-hf-drop-btn{display:flex;align-items:center;gap:5px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);color:#94a3b8;font-family:'Press Start 2P',monospace;font-size:7px;padding:5px 9px;cursor:pointer;white-space:nowrap;transition:border-color .15s,color .15s;}
+        .ml-hf-drop-btn:hover,.ml-hf-drop-open .ml-hf-drop-btn{border-color:rgba(79,172,254,0.4);color:#4facfe;}
+        .ml-hf-drop-arr{font-size:7px;opacity:0.7;transition:transform .15s;}
+        .ml-hf-drop-open .ml-hf-drop-arr{transform:scaleY(-1);}
+        .ml-hf-drop-menu{display:none;position:absolute;top:calc(100% + 3px);left:0;z-index:9999;background:#080f1e;border:1px solid rgba(79,172,254,0.3);box-shadow:0 8px 24px rgba(0,0,0,0.7);min-width:180px;max-height:320px;overflow-y:auto;}
+        .ml-hf-drop-pipeline-menu{min-width:220px;}
+        .ml-hf-drop-open .ml-hf-drop-menu{display:block;}
+        .ml-hf-drop-group{font-family:'Press Start 2P',monospace;font-size:6px;color:#334155;padding:6px 10px 3px;border-top:1px solid rgba(255,255,255,0.05);letter-spacing:1px;text-transform:uppercase;}
+        .ml-hf-drop-group:first-child{border-top:none;}
+        .ml-hf-drop-item{font-family:'Courier New',monospace;font-size:10px;color:#64748b;padding:6px 12px;cursor:pointer;border-bottom:1px solid rgba(255,255,255,0.02);transition:background .1s,color .1s;}
+        .ml-hf-drop-item:hover{background:rgba(79,172,254,0.1);color:#e2e8f0;}
+        .ml-hf-drop-item.active{color:#4facfe;background:rgba(79,172,254,0.07);}
+        /* Size pills */
+        .ml-hf-size-row{display:flex;align-items:center;gap:4px;margin-bottom:8px;flex-wrap:wrap;}
+        .ml-hf-size-label{font-family:'Press Start 2P',monospace;font-size:7px;color:#475569;white-space:nowrap;}
+        .ml-hf-size-pill{font-family:'Press Start 2P',monospace;font-size:7px;padding:4px 8px;border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.02);color:#64748b;cursor:pointer;transition:all .12s;white-space:nowrap;}
         .ml-hf-size-pill.active,.ml-hf-size-pill:hover{background:rgba(167,139,250,0.15);color:#a78bfa;border-color:rgba(167,139,250,0.35);}
+        /* Results */
         .ml-hf-results-list{max-height:195px;overflow-y:auto;display:flex;flex-direction:column;gap:2px;}
-        .ml-hf-row{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:6px;cursor:pointer;border:1px solid transparent;transition:all .12s;}
+        .ml-hf-row{display:flex;align-items:center;gap:8px;padding:6px 8px;cursor:pointer;border:1px solid transparent;transition:all .12s;}
         .ml-hf-row:hover{background:rgba(79,172,254,0.07);border-color:rgba(79,172,254,0.15);}
-        .ml-hf-role-badge{width:22px;height:22px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0;background:rgba(255,255,255,0.06);}
         .ml-hf-row-body{flex:1;min-width:0;}
         .ml-hf-row-top{display:flex;align-items:center;gap:6px;margin-bottom:2px;}
         .ml-hf-row-bottom{display:flex;align-items:center;gap:8px;}
-        .ml-hf-id{font-size:10px;color:#e2e8f0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;}
-        .ml-hf-size-hint{font-size:8px;color:#a78bfa;background:rgba(167,139,250,0.1);padding:1px 5px;border-radius:4px;white-space:nowrap;}
+        .ml-hf-id{font-family:'Courier New',monospace;font-size:10px;color:#e2e8f0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;}
+        .ml-hf-size-hint{font-size:8px;color:#a78bfa;background:rgba(167,139,250,0.1);padding:1px 5px;white-space:nowrap;}
         .ml-hf-stat{font-size:8px;color:#64748b;} .ml-hf-date{color:#475569;font-style:italic;}
         .ml-hf-src{font-size:8px;color:#4facfe;text-decoration:none;opacity:0.7;}
         .ml-hf-src:hover{opacity:1;text-decoration:underline;}
-        .ml-hf-open-btn{background:rgba(79,172,254,0.1);border:1px solid rgba(79,172,254,0.25);color:#4facfe;border-radius:5px;padding:3px 8px;cursor:pointer;font-size:12px;transition:all .12s;flex-shrink:0;}
+        .ml-hf-open-btn{background:rgba(79,172,254,0.1);border:1px solid rgba(79,172,254,0.25);color:#4facfe;padding:3px 8px;cursor:pointer;font-size:12px;transition:all .12s;flex-shrink:0;}
         .ml-hf-open-btn:hover{background:rgba(79,172,254,0.25);}
-        .ml-hf-file-panel{display:none;flex-direction:column;gap:6px;margin-top:8px;padding:10px;background:rgba(0,0,0,0.25);border-radius:8px;border:1px solid rgba(255,255,255,0.07);}
+        .ml-hf-file-panel{display:none;flex-direction:column;gap:6px;margin-top:8px;padding:10px;background:rgba(0,0,0,0.25);border:1px solid rgba(255,255,255,0.07);}
         .ml-hf-file-header{display:flex;align-items:center;gap:6px;}
         .ml-hf-repo-link{color:#4facfe;font-size:10px;text-decoration:none;flex-shrink:0;}
         .ml-hf-repo-title{flex:1;font-size:9px;color:#94a3b8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-        .ml-hf-back-btn{background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);color:#94a3b8;border-radius:5px;padding:2px 8px;font-size:8px;cursor:pointer;}
+        .ml-hf-back-btn{background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);color:#94a3b8;padding:2px 8px;font-size:8px;cursor:pointer;}
         .ml-hf-file-hint{font-size:8px;color:#475569;padding:2px 0 4px;}.ml-hf-file-hint b{color:#94a3b8;}
         .ml-hf-file-list{display:flex;flex-direction:column;gap:3px;max-height:180px;overflow-y:auto;}
-        .ml-hf-file-row{display:flex;align-items:center;justify-content:space-between;padding:6px 8px;border-radius:5px;border:1px solid rgba(255,255,255,0.06);background:rgba(255,255,255,0.02);transition:all .12s;}
+        .ml-hf-file-row{display:flex;align-items:center;justify-content:space-between;padding:6px 8px;border:1px solid rgba(255,255,255,0.06);background:rgba(255,255,255,0.02);transition:all .12s;}
         .ml-hf-file-row:hover{background:rgba(79,172,254,0.06);border-color:rgba(79,172,254,0.2);}
         .ml-hf-file-rec{background:rgba(79,172,254,0.06);border-color:rgba(79,172,254,0.25);}
         .ml-hf-file-left{display:flex;align-items:center;gap:6px;flex:1;min-width:0;}
         .ml-hf-file-right{display:flex;align-items:center;gap:6px;flex-shrink:0;}
         .ml-hf-quant{font-size:9px;font-weight:700;min-width:56px;font-family:monospace;}
-        .ml-hf-rec{font-size:7px;background:rgba(79,172,254,0.2);color:#4facfe;padding:1px 4px;border-radius:3px;white-space:nowrap;}
+        .ml-hf-rec{font-size:7px;background:rgba(79,172,254,0.2);color:#4facfe;padding:1px 4px;white-space:nowrap;}
         .ml-hf-fname{font-size:8px;color:#94a3b8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
         .ml-hf-fsize{font-size:9px;color:#64748b;white-space:nowrap;min-width:45px;text-align:right;}
-        .ml-hf-dl-btn{background:linear-gradient(135deg,#4facfe,#2563eb);border:none;color:#fff;border-radius:5px;padding:3px 8px;font-size:8px;cursor:pointer;white-space:nowrap;transition:all .12s;}
+        .ml-hf-dl-btn{background:linear-gradient(135deg,#4facfe,#2563eb);border:none;color:#fff;padding:3px 8px;font-size:8px;cursor:pointer;white-space:nowrap;transition:all .12s;}
         .ml-hf-dl-btn:hover{transform:scale(1.04);box-shadow:0 2px 8px rgba(79,172,254,0.4);}
-        .ml-hf-cap{font-size:7px;padding:1px 5px;border-radius:4px;background:rgba(99,102,241,0.15);color:#818cf8;border:1px solid rgba(99,102,241,0.25);white-space:nowrap;}
-                .ml-hf-loading{color:#64748b;font-size:9px;padding:12px 8px;text-align:center;}
+        .ml-hf-cap{font-size:7px;padding:1px 5px;background:rgba(99,102,241,0.15);color:#818cf8;border:1px solid rgba(99,102,241,0.25);white-space:nowrap;}
+        .ml-hf-loading{color:#64748b;font-size:9px;padding:12px 8px;text-align:center;}
         .ml-hf-empty{color:#64748b;font-size:9px;padding:12px 8px;text-align:center;line-height:1.6;}
         .ml-hf-error{color:#f87171;font-size:9px;padding:8px;}
       `; document.head.appendChild(s);
     }
+    // Close HF dropdowns on outside click
+    this.modal.addEventListener('click', (e) => {
+      if (!e.target.closest('.ml-hf-drop')) {
+        this.modal.querySelectorAll('.ml-hf-drop').forEach(d => d.classList.remove('ml-hf-drop-open'));
+      }
+    });
     // Wire path input enter key
     const pathInput = this.modal.querySelector('#ml-browse-path');
     if (pathInput) {
@@ -708,9 +794,54 @@ const ModelLoader = {
 
   _hfCurrentQuery: '', _hfCurrentPipeline: 'any', _hfCurrentRepo: null,
   _hfMinSize: '', _hfMaxSize: '',
+  _hfSort: 'downloads', _hfQuant: '',
+
+  // ── Custom dropdown helpers ──────────────────────────────────────────────
+  _hfDropToggle(id) {
+    const wrap = this.modal?.querySelector('#' + id) || document.getElementById(id);
+    if (!wrap) return;
+    const isOpen = wrap.classList.contains('ml-hf-drop-open');
+    // Close all HF dropdowns
+    (this.modal || document).querySelectorAll('.ml-hf-drop').forEach(d => d.classList.remove('ml-hf-drop-open'));
+    if (!isOpen) wrap.classList.add('ml-hf-drop-open');
+  },
+
+  _hfPickPipeline(item) {
+    const wrap = item.closest('.ml-hf-drop');
+    wrap.querySelectorAll('.ml-hf-drop-item').forEach(i => i.classList.remove('active'));
+    item.classList.add('active');
+    this._hfCurrentPipeline = item.dataset.p || 'any';
+    const q = item.dataset.q || '';
+    if (q) this.modal.querySelector('#ml-hf-query').value = q;
+    const label = this.modal.querySelector('#ml-hf-pipe-label');
+    if (label) label.textContent = item.textContent.trim();
+    wrap.classList.remove('ml-hf-drop-open');
+    this._hfSearch();
+  },
+
+  _hfPickSort(item) {
+    const wrap = item.closest('.ml-hf-drop');
+    wrap.querySelectorAll('.ml-hf-drop-item').forEach(i => i.classList.remove('active'));
+    item.classList.add('active');
+    this._hfSort = item.dataset.val || 'downloads';
+    const label = this.modal.querySelector('#ml-hf-sort-label');
+    if (label) label.textContent = item.textContent.trim();
+    wrap.classList.remove('ml-hf-drop-open');
+    this._hfSearch();
+  },
+
+  _hfPickQuant(item) {
+    const wrap = item.closest('.ml-hf-drop');
+    wrap.querySelectorAll('.ml-hf-drop-item').forEach(i => i.classList.remove('active'));
+    item.classList.add('active');
+    this._hfQuant = item.dataset.val || '';
+    const label = this.modal.querySelector('#ml-hf-quant-label');
+    if (label) label.textContent = item.textContent.trim() || 'Any quant';
+    wrap.classList.remove('ml-hf-drop-open');
+    this._hfSearch();
+  },
 
   _hfSizeFilter(btn) {
-    // Only toggle pills in the same row
     btn.closest('.ml-hf-size-row').querySelectorAll('.ml-hf-size-pill').forEach(p => p.classList.remove('active'));
     btn.classList.add('active');
     this._hfMinSize = btn.dataset.min || '';
@@ -718,26 +849,18 @@ const ModelLoader = {
     this._hfSearch();
   },
 
-  _hfSortFilter(btn) {
-    btn.closest('.ml-hf-size-row').querySelectorAll('.ml-hf-size-pill').forEach(p => p.classList.remove('active'));
-    btn.classList.add('active');
-    this._hfSort = btn.dataset.sort || 'downloads';
-    this._hfSearch();
-  },
-
-  _hfQuantFilter(btn) {
-    btn.closest('.ml-hf-size-row').querySelectorAll('.ml-hf-size-pill').forEach(p => p.classList.remove('active'));
-    btn.classList.add('active');
-    this._hfQuant = btn.dataset.quant || '';
-    this._hfSearch();
-  },
+  // legacy kept for compat — no longer wired in HTML but may be called by old callbacks
+  _hfSortFilter(btn) { this._hfSort = btn.dataset.sort || 'downloads'; this._hfSearch(); },
+  _hfQuantFilter(btn) { this._hfQuant = btn.dataset.quant || ''; this._hfSearch(); },
 
   async _hfSearch() {
     const q = this.modal.querySelector('#ml-hf-query')?.value.trim() || '';
     this._hfCurrentQuery = q;
     const el = this.modal.querySelector('#ml-hf-results');
-    el.innerHTML = '<div class="ml-hf-loading">Searching HuggingFace…</div>';
+    el.innerHTML = '<div class="ml-hf-loading">Searching HuggingFace\u2026</div>';
     this._hfCloseFiles();
+    // Close dropdowns
+    (this.modal || document).querySelectorAll('.ml-hf-drop').forEach(d => d.classList.remove('ml-hf-drop-open'));
     try {
       const sort = this._hfSort || 'downloads';
       let url = '/models/hf-search?q=' + encodeURIComponent(q) + '&limit=30&sort=' + sort;
@@ -746,10 +869,8 @@ const ModelLoader = {
       if (this._hfMaxSize) url += '&maxSize=' + this._hfMaxSize;
       if (this._hfQuant)   url += '&quant=' + encodeURIComponent(this._hfQuant);
       const data = await window.ApiV2._fetch(url);
-      if (!data.models?.length) { el.innerHTML = '<div class="ml-hf-empty">No results — try different filters.</div>'; return; }
+      if (!data.models?.length) { el.innerHTML = '<div class="ml-hf-empty">No results \u2014 try different filters.</div>'; return; }
       el.innerHTML = data.models.map(m => {
-        const icons = {chat:'💬',code:'💻',dream:'🌙',embed:'📐',reason:'🧠',image:'🖼',audio:'🎵'};
-        const roleIcon = icons[m.role] || '🤖';
         const dl = m.downloads > 1000000 ? (m.downloads/1000000).toFixed(1)+'M'
                  : m.downloads > 1000 ? (m.downloads/1000).toFixed(0)+'k' : (m.downloads||0);
         const lk = m.likes > 1000 ? (m.likes/1000).toFixed(1)+'k' : (m.likes||0);
@@ -758,26 +879,24 @@ const ModelLoader = {
         const capsHtml = (m.caps||[]).map(c => `<span class="ml-hf-cap">${c}</span>`).join('');
         const updatedStr = m.updated ? new Date(m.updated).toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit',year:'2-digit'}) : '';
         return `<div class="ml-hf-row" onclick="ModelLoader._hfOpenRepo('${m.id}')">
-          <span class="ml-hf-role-badge ml-hf-role-${m.role}">${roleIcon}</span>
           <div class="ml-hf-row-body">
             <div class="ml-hf-row-top"><span class="ml-hf-id">${m.id}</span>${sz}</div>
             <div class="ml-hf-row-bottom">
               ${capsHtml}
-              <span class="ml-hf-stat">↓${dl}</span>
-              <span class="ml-hf-stat">♥${lk}</span>
+              <span class="ml-hf-stat">\u2193${dl}</span>
+              <span class="ml-hf-stat">\u2665${lk}</span>
               ${updatedStr ? `<span class="ml-hf-stat ml-hf-date">${updatedStr}</span>` : ''}
-              <a class="ml-hf-src" href="${src_link}" target="_blank" onclick="event.stopPropagation()">↗ HF</a>
+              <a class="ml-hf-src" href="${src_link}" target="_blank" onclick="event.stopPropagation()">\u2197 HF</a>
             </div>
           </div>
-          <button class="ml-hf-open-btn" title="Browse files">›</button>
+          <button class="ml-hf-open-btn" title="Browse files">\u203a</button>
         </div>`;
       }).join('');
     } catch(e) { el.innerHTML = '<div class="ml-hf-error">Error: ' + e.message + '</div>'; }
   },
 
   _hfQuick(btn, q, pipeline) {
-    this.modal.querySelectorAll('.ml-hf-pill').forEach(p => p.classList.remove('active'));
-    btn.classList.add('active');
+    // Legacy — kept for any remaining calls
     this.modal.querySelector('#ml-hf-query').value = q;
     this._hfCurrentPipeline = pipeline || 'any';
     this._hfSearch();
