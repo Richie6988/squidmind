@@ -1259,8 +1259,9 @@ input[type="color"]::-webkit-color-swatch {
 }
 
 /* ── Left panel ── */
+/* ── Left panel ── */
 .ti-left {
-  width: 280px;
+  width: clamp(280px, 22vw, 400px);
   min-width: 280px;
   flex-shrink: 0;
   display: flex;
@@ -1282,7 +1283,7 @@ input[type="color"]::-webkit-color-swatch {
 
 /* ── Right panel ── */
 .ti-right {
-  width: 320px;
+  width: clamp(320px, 28vw, 500px);
   min-width: 320px;
   flex-shrink: 0;
   display: flex;
@@ -1666,7 +1667,7 @@ input[type="color"]::-webkit-color-swatch {
 .ti-kcard.fail  { border-left-color: var(--danger); opacity: 0.65; }
 .ti-kcard.dragging { opacity: 0.4; }
 .ti-kcard.drag-over { border-top: 2px solid var(--ui-accent); }
-.ti-kcard-title { font-family: 'Courier New', monospace; font-size: 10px; color: var(--text-primary); line-height: 1.4; margin-bottom: 4px; }
+.ti-kcard-title { font-family: 'Courier New', monospace; font-size: 11px; color: var(--text-primary); line-height: 1.4; margin-bottom: 4px; }
 .ti-kcard-prog  { font-family: 'Courier New', monospace; font-size: 8px; color: var(--ui-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 3px; }
 .ti-kcard-foot  { display: flex; align-items: center; justify-content: space-between; margin-top: 3px; }
 .ti-kcard-agent { font-family: 'Courier New', monospace; font-size: 8px; color: var(--text-secondary); }

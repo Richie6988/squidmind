@@ -173,19 +173,40 @@ const TempleInterior = {
   _applyTempleColor(temple) {
     const root = document.getElementById('temple-interior');
     if (!root) return;
+    // Try inline colors first, then re-fetch from registry for accuracy
+    const applyColors = (inside, outside) => {
+      if (inside) {
+        root.style.setProperty('--ti-temple-color', inside);
+        root.style.background = `linear-gradient(160deg, ${inside}30 0%, var(--ocean-deep) 50%)`;
+        const left = root.querySelector('.ti-left');
+        if (left) left.style.background = `linear-gradient(180deg, ${inside}18 0%, rgba(10,34,57,0.7) 100%)`;
+        const right = root.querySelector('.ti-right');
+        if (right) right.style.background = `linear-gradient(180deg, ${inside}10 0%, rgba(10,34,57,0.7) 100%)`;
+      }
+      if (outside) {
+        root.style.borderTop = `4px solid ${outside}`;
+        const hdr = root.querySelector('.ti-header');
+        if (hdr) {
+          hdr.style.borderBottom = `2px solid ${outside}88`;
+          hdr.style.background = `linear-gradient(90deg, ${outside}18 0%, transparent 60%)`;
+        }
+      }
+    };
+
     const inside  = temple?.colors?.inside  || temple?.color || null;
     const outside = temple?.colors?.outside || null;
-    if (inside) {
-      root.style.setProperty('--ti-temple-color', inside);
-      root.style.background = `linear-gradient(160deg, ${inside}25 0%, var(--ocean-deep) 45%)`;
-      const left = root.querySelector('.ti-left');
-      if (left) left.style.background = `${inside}14`;
+    if (inside || outside) {
+      applyColors(inside, outside);
+      return;
     }
-    if (outside) {
-      root.style.borderTop = `4px solid ${outside}`;
-      const hdr = root.querySelector('.ti-header');
-      if (hdr) hdr.style.borderBottom = `2px solid ${outside}`;
-    }
+    // No inline colors — fetch from project registry
+    const pid = temple?.project_id || this.currentTemple?.project_id;
+    if (!pid) return;
+    window.ApiV2?._fetch('/projects').then(r => {
+      const proj = r?.registry?.projects?.[pid] ||
+        Object.values(r?.registry?.projects || {}).find(p => p.project_id === pid || p.name === temple?.name);
+      if (proj?.colors) applyColors(proj.colors.inside, proj.colors.outside);
+    }).catch(() => {});
   },
 
   // ═══ AGENTS (always-visible compact section) ═════════════════════════════
@@ -203,7 +224,7 @@ const TempleInterior = {
     try { regAgents = (await window.ApiV2._fetch('/agents')).registry.agents || {}; } catch {}
     try { workers   = (await window.ApiV2._fetch('/agents/pool/status')).workers || {}; } catch {}
 
-    const agents = assignedIds.map(id => regAgents[id]).filter(Boolean);
+    const agents = assignedIds.filter(id => id && id !== 'poseidon_main').map(id => regAgents[id]).filter(Boolean);
 
     // Arena + compact list
     container.innerHTML = `
@@ -419,7 +440,7 @@ const TempleInterior = {
     try { regAgents = (await window.ApiV2._fetch('/agents')).registry.agents || {}; } catch {}
     try { workers   = (await window.ApiV2._fetch('/agents/pool/status')).workers || {}; } catch {}
 
-    const agents = assignedIds.map(id => regAgents[id]).filter(Boolean);
+    const agents = assignedIds.filter(id => id && id !== 'poseidon_main').map(id => regAgents[id]).filter(Boolean);
 
     c.innerHTML = `
 <div class="ti-arena" id="ti-arena"></div>
