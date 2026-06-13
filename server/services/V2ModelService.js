@@ -74,6 +74,18 @@ class V2ModelService {
     }
   }
 
+  /** Read saved Poseidon model ID from brain (used after image gen to restore) */
+  async _getSavedPoseidonId() {
+    try {
+      const brain = await this.rm.getPoseidonBrain();
+      const savedId = brain?.current_state?.loaded_model_id;
+      if (!savedId) return null;
+      const reg = await this.rm.read('models/model_registry.json').catch(() => ({ models: {} }));
+      return reg.models?.[savedId] ? savedId : null;
+    } catch { return null; }
+  }
+
+
   /**
    * _emergencyReset — only called when the LLM session crashes hard (OOM, context overflow error).
    * Saves a minimal recovery note to session_state.json and resets the session.
@@ -1701,9 +1713,19 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
       prompt, outputPath, width, height, steps, cfg, seed, negativePrompt
     });
 
-      console.log(`[V2ModelService] Image generation ${result.ok ? 'completed' : 'failed'} — LLMs will reload on next chat request`);
+      console.log(`[V2ModelService] Image generation ${result.ok ? 'completed' : 'failed'} — reloading Poseidon...`);
     } finally {
       this.broker.release(imgToken);
+      // Always reload Poseidon after image gen (success or failure)
+      // so the system is immediately ready for the next chat/task
+      const savedPoseidonId = await this._getSavedPoseidonId();
+      if (savedPoseidonId) {
+        console.log(`[V2ModelService] Post-image: reloading Poseidon (${savedPoseidonId})...`);
+        this.poseidonModelId = savedPoseidonId;
+        this.ensureLoaded(savedPoseidonId).catch(e =>
+          console.warn('[V2ModelService] Post-image Poseidon reload failed:', e.message)
+        );
+      }
     }
     return result;
   }

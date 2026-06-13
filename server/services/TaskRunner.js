@@ -328,15 +328,34 @@ class TaskRunner {
               const agentEntry = registry.agents?.[agentId];
               if (agentEntry) {
                 const brain = await this.rm.read(`agents/${agentEntry.brain_file}`);
-                const persona = brain?.personality?.description || brain?.system_prompt || '';
-                const name    = brain?.name || agentEntry.name || agentId;
-                if (persona) {
-                  agentPrefix = `[AGENT ROLE: ${name}]\n${persona.slice(0, 400)}\n---\n`;
-                } else {
-                  agentPrefix = `[AGENT ROLE: ${name}]\n---\n`;
-                }
+                const name  = brain?.identity?.display_name || brain?.identity?.nickname
+                           || agentEntry.display_name || agentId;
+                const role  = brain?.identity?.role || agentEntry.specialization || '';
+
+                // Read system_prompt from all known schema locations
+                const persona =
+                  brain?.brain_config?.system_prompt ||
+                  brain?.personality?.description    ||
+                  brain?.system_prompt               ||
+                  (role ? `You are ${name}, an AI agent specializing in: ${role}.` : '');
+
+                // Include capability skills if defined
+                const caps = brain?.capabilities?.skills
+                  ? Object.keys(brain.capabilities.skills).join(', ')
+                  : '';
+                const modelPref = brain?.brain_config?.model_binding?.preferred_model_id
+                  ? `\nPreferred model: ${brain.brain_config.model_binding.preferred_model_id}`
+                  : '';
+
+                agentPrefix = `[AGENT: ${name}]\n`;
+                if (persona) agentPrefix += `${persona.slice(0, 500)}\n`;
+                if (role && persona && !persona.includes(role)) agentPrefix += `Role: ${role}\n`;
+                if (caps) agentPrefix += `Agent skills: ${caps}\n`;
+                agentPrefix += modelPref + `---\n`;
               }
-            } catch {}
+            } catch (e) {
+              console.warn(`[TaskRunner] Could not load agent brain for ${agentId}:`, e.message);
+            }
           }
 
           const posMsg = `[BACKGROUND AUTO-TASK ${taskId}]\n${agentPrefix}${msg}`;

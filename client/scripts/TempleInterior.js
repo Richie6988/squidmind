@@ -251,12 +251,14 @@ const TempleInterior = {
     ? '<p class="ti-empty" style="font-size:8px;">No agents assigned</p>'
     : agents.map(a => {
         const w     = workers[a.agent_id] || {};
-        const isRun = w.status === 'running';
+        // Check both AgentWorkerPool status AND registry status (TaskRunner sets registry 'active')
+        const isRun = w.status === 'running' || a.status === 'active';
+        const taskId = a.current_task_id || '';
         return `<div class="ti-agent-row ${isRun ? 'running' : ''}">
           <div class="ti-agent-dot ${isRun ? 'run' : 'idle'}"></div>
           <div style="flex:1;min-width:0;">
             <div class="ti-agent-name">${this._esc(a.display_name || a.agent_id)}</div>
-            <div class="ti-agent-spec">${this._esc(a.specialization || '')}</div>
+            <div class="ti-agent-spec">${taskId ? this._esc(taskId) : this._esc(a.specialization || '')}</div>
           </div>
           <span class="ti-agent-badge ${isRun ? 'run' : 'idle'}">${isRun ? 'RUN' : 'IDLE'}</span>
           <button class="ti-sec-btn" onclick="TempleInterior._dispatchAgent('${a.agent_id}')" style="font-size:6px;padding:2px 5px;">SEND</button>

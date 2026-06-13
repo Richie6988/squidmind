@@ -446,14 +446,35 @@ function buildRouter(v2ModelService) {
       if (!['poseidon', 'agent', 'image'].includes(model_category)) {
         return res.status(400).json({ success: false, error: 'model_category must be poseidon, agent, or image' });
       }
-      // Sync model_type too so existing logic stays consistent
       const model_type = model_category === 'image' ? 'image' : 'text';
-      await v2ModelService.updateModelParams(req.params.modelId, { model_category, model_type });
-      // If poseidon category, also set is_poseidon flag
-      if (model_category === 'poseidon') {
-        await v2ModelService.setPoseidonModel(req.params.modelId);
+      const modelId = req.params.modelId;
+
+      // Auto-upsert: if model not in registry yet (unimported), create a minimal entry
+      // This allows categorizing models without going through the full import flow
+      const rm = v2ModelService.rm;
+      rm.invalidateCache();
+      const reg = await rm.read('models/model_registry.json').catch(() => ({ models: {} }));
+      if (!reg.models[modelId]) {
+        // Find the file on disk to bootstrap the entry
+        const lib = await v2ModelService.getLibrary();
+        const found = lib.models?.find(m => m.model_id === modelId);
+        if (found) {
+          await v2ModelService._registryUpsert(modelId, {
+            model_id: modelId,
+            file_name: found.file_name,
+            file_path: found.file_path,
+            file_size_gb: found.file_size_gb,
+            status: 'imported',
+            config: { model_type, model_category, contextLength: 4096, gpuLayers: 'auto', cpuThreads: 4, batchSize: 512, flashAttention: true, useMmap: true, useMlock: false, autoUnloadIdleMinutes: 10 }
+          });
+        } else {
+          return res.status(404).json({ success: false, error: `Model ${modelId} not found on disk` });
+        }
+      } else {
+        await v2ModelService.updateModelParams(modelId, { model_category, model_type });
       }
-      res.json({ success: true, model_id: req.params.modelId, model_category });
+
+      res.json({ success: true, model_id: modelId, model_category });
     } catch (err) {
       res.status(400).json({ success: false, error: err.message });
     }

@@ -397,7 +397,14 @@ const ModelLoader = {
       });
       await this.loadLibrary();
     } catch (e) {
-      console.warn('[ModelLoader] catDrop failed:', e.message);
+      const msg = e.message || String(e);
+      console.warn('[ModelLoader] catDrop failed:', msg);
+      // Show inline error in the container
+      const errDiv = document.createElement('div');
+      errDiv.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#1e0a0a;border:1px solid #ef4444;color:#f87171;font-family:\'Courier New\',monospace;font-size:9px;padding:8px 16px;z-index:99999;';
+      errDiv.textContent = 'Category update failed: ' + msg;
+      document.body.appendChild(errDiv);
+      setTimeout(() => errDiv.remove(), 4000);
     }
   },
 
