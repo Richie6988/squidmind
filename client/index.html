@@ -120,6 +120,7 @@
               <div class="tq-pane-header">
                 <span class="tq-pane-title">QUEUE</span>
                 <span class="tq-pane-count" id="tq-queue-count">—</span>
+                <button class="tq-del-all-btn" onclick="TaskQueueUI.deleteAllQueued()" title="Delete all queued tasks">&#10005; ALL</button>
               </div>
               <div id="task-queue" class="tq-pane-body">
                 <p class="hint" style="font-size: 9px; color: var(--text-secondary);">Loading...</p>
@@ -130,6 +131,7 @@
               <div class="tq-pane-header">
                 <span class="tq-pane-title">RESULTS</span>
                 <span class="tq-pane-count" id="tq-results-count">—</span>
+                <button class="tq-del-all-btn" onclick="TaskQueueUI.deleteAllResults()" title="Delete all completed results">&#10005; ALL</button>
               </div>
               <div id="task-results" class="tq-pane-body">
                 <p class="hint" style="font-size: 9px; color: var(--text-secondary);">No results yet.</p>

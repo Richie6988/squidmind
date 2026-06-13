@@ -1153,8 +1153,6 @@ const ModelLoader = {
     const isFlux = /flux/i.test(f);
     if (isFlux) {
       const isDev  = /dev/i.test(f);
-      // Q2 quant has lower quality ceiling — 850x850 is sweet spot for speed/quality
-      // Q4+ can do 1024 but will force CPU anyway; 850 is a safe universal default
       const quantMatch = f.match(/[_-]q(\d+)/i);
       const quant = quantMatch ? parseInt(quantMatch[1]) : 0;
       const defW  = (quant >= 4 || quant === 0) ? 850 : 1024;
@@ -1167,21 +1165,43 @@ const ModelLoader = {
       : { width: 512,  height: 512,  steps: 25, cfg: 7.5, label: 'SD1.5 optimal' };
   },
 
-  // 12 high-quality prompt presets
+  // Default negative prompt applied when user leaves field empty
+  _imggenDefaultNegative(fileName) {
+    const f = (fileName || '').toLowerCase();
+    const isFlux = /flux/i.test(f);
+    if (isFlux) {
+      // Flux is a DiT — negative prompts have minimal effect but still filter artifacts
+      return 'blurry, watermark, text, logo, ugly, deformed, signature';
+    }
+    // SD1.5 / SDXL — negative prompts have strong effect
+    return 'blurry, low quality, low res, ugly, deformed, mutated, watermark, text, logo, ' +
+      'extra limbs, missing fingers, bad anatomy, bad proportions, jpeg artifacts, oversaturated, ' +
+      'cartoonish, flat, 2d, sketch, painting, drawing, illustration, nsfw';
+  },
+
+  // Prompt gallery: organized by use-case with embedded quality tokens
   _imggenPrompts() {
     return [
-      'cinematic portrait of a lone astronaut on a desolate alien mesa, golden hour light, dusty atmosphere, ultra-detailed, 8k, photorealistic',
-      'aerial view of a futuristic city at night, neon reflections on wet streets, volumetric fog, drone shot, hyperrealistic',
-      'ancient temple ruins in dense tropical jungle, shafts of sunlight through mist, moss-covered stones, cinematic composition',
-      'close-up macro of a mechanical eye with iris gears, copper and chrome, biopunk aesthetic, studio lighting, ultra-sharp',
-      'vast frozen tundra under aurora borealis, lonely pine tree, long exposure photography, high dynamic range',
-      'underwater city with bioluminescent coral skyscrapers, manta rays drifting past windows, deep ocean blues, photorealistic',
-      'hyperdetailed portrait of an elderly samurai, weathered face, cherry blossoms falling, golden ratio composition, 8k',
-      'surreal library with infinite spiral staircases, warm candlelight, books floating mid-air, Escher-inspired architecture',
-      'volcanic eruption at dusk, lava river meeting ocean, dramatic storm sky, national geographic style photography',
-      'crystal cave cathedral with towering amethyst pillars, ethereal inner glow, 8k fantasy landscape, cinematic',
-      'sci-fi space station interior, workers in exosuits, industrial scale, Syd Mead concept art style, detailed',
-      'raindrop on a spiderweb at dawn, golden bokeh background, extreme macro photography, award-winning composition',
+      // ── Photography style ──
+      'a lone astronaut standing on a desolate alien mesa at golden hour, cinematic composition, 8k uhd, photorealistic, dramatic lighting, sharp focus, RAW photo',
+      'aerial drone shot of a futuristic megacity at night, neon reflections on wet streets, volumetric fog, hyperrealistic, 4k, photorealistic',
+      'extreme close-up macro portrait of a monarch butterfly wing, iridescent scales, depth of field, studio lighting, ultra-sharp, 100mm macro lens, award-winning photography',
+      'vintage photograph of an abandoned Victorian greenhouse, overgrown plants breaking through glass ceiling, moody afternoon light, film grain, Kodachrome',
+      // ── Architecture / Environment ──
+      'ancient stone temple ruins in dense tropical jungle, shafts of golden light through morning mist, moss-covered, cinematic, ultra-detailed, photorealistic',
+      'underground crystal cave with towering amethyst pillars, ethereal bioluminescent glow, fantasy landscape, 8k, cinematic lighting',
+      'brutalist concrete skyscraper at dusk, dramatic storm sky, reflections in glass facade, architectural photography, wide angle, 4k',
+      // ── Sci-Fi / Concept Art ──
+      'interior of a massive abandoned space station, industrial scale, workers in exosuits, concept art style, Syd Mead inspired, highly detailed, cinematic',
+      'biopunk mechanical eye with iris made of copper gears and chrome lenses, studio lighting, extreme macro, ultra-sharp, 8k, photorealistic',
+      'deep ocean research submersible approaching an alien shipwreck, bioluminescent coral growth, rays of light from above, cinematic underwater photography',
+      // ── Portrait ──
+      'hyperdetailed portrait of an elderly Mongolian nomad, weathered face full of character, golden hour backlight, shallow depth of field, 85mm lens, f/1.4, photorealistic',
+      'portrait of a samurai in full armor, cherry blossoms falling, misty mountain background, golden ratio composition, dramatic shadows, 8k',
+      // ── Nature / Abstract ──
+      'macro photograph of a single raindrop on a spider web at dawn, golden bokeh background, shallow depth of field, award-winning nature photography',
+      'volcanic lava flow meeting the ocean at sunset, steam explosion, dramatic sky, long exposure photography, national geographic style',
+      'abstract fluid art, metallic liquid mercury in motion, iridescent reflections, black background, studio macro photography, 8k',
     ];
   },
 
@@ -1193,14 +1213,15 @@ const ModelLoader = {
     const isFlux = /flux/i.test((m.file_name || '').toLowerCase());
     const S = (v) => String(v).replace(/[<>&"]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'})[c]);
 
-    const promptChips = prompts.map((p) =>
+    const categories = ['Photo','Photo','Photo','Photo','Arch','Arch','Arch','Sci-Fi','Sci-Fi','Sci-Fi','Portrait','Portrait','Nature','Nature','Abstract'];
+    const promptChips = prompts.map((p, i) =>
       '<button onclick="var ta=this.closest(\'.modal\').querySelector(\'#imggen-prompt\');if(ta){ta.value=this.dataset.p;ta.style.borderColor=\'#4facfe\';}" ' +
       'data-p="' + S(p) + '" ' +
       'title="' + S(p) + '" ' +
-      'style="background:rgba(79,172,254,0.06);border:1px solid rgba(79,172,254,0.2);color:#94a3b8;border-radius:5px;padding:3px 7px;font-size:8px;cursor:pointer;max-width:155px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' +
-      S(p.slice(0, 26)) + '…</button>'
+      'style="background:rgba(79,172,254,0.06);border:1px solid rgba(79,172,254,0.2);color:#94a3b8;border-radius:5px;padding:3px 8px;font-size:8px;cursor:pointer;max-width:180px;text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' +
+      '<span style="color:#4facfe;font-size:6px;font-family:\'Courier New\',monospace;margin-right:4px;">' + (categories[i]||'') + ' · </span>' +
+      S(p.slice(0, 34)) + '…</button>'
     ).join('');
-
     const cfgTitle  = isFlux ? 'Flux: keep at 1.0 (higher values ignored)' : 'SD: 7-12 for quality';
     const stepTitle = isFlux ? 'Flux schnell: 8, dev: 20. More = slower + marginal gain' : 'SD: 20-30 for quality';
 
@@ -1217,7 +1238,7 @@ const ModelLoader = {
         '<div style="font-size:8px;color:#64748b;margin-bottom:1px;">Prompt suggestions — click to use:</div>' +
         '<div style="display:flex;flex-wrap:wrap;gap:4px;max-height:72px;overflow-y:auto;padding:1px 0;">' + promptChips + '</div>' +
         '<textarea id="imggen-prompt" placeholder="Describe the image…" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:8px;color:#e2e8f0;font-size:10px;padding:8px;resize:vertical;min-height:58px;font-family:inherit;"></textarea>' +
-        '<input id="imggen-neg" type="text" placeholder="Negative prompt (optional)" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:8px;color:#e2e8f0;font-size:10px;padding:6px 10px;">' +
+        '<input id="imggen-neg" type="text" placeholder="Negative prompt — leave empty for smart default" value="' + S(this._imggenDefaultNegative(m.file_name)) + '" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:8px;color:#e2e8f0;font-size:10px;padding:6px 10px;">' +
         '<div style="display:flex;align-items:center;gap:8px;background:rgba(79,172,254,0.07);border:1px solid rgba(79,172,254,0.18);border-radius:7px;padding:6px 10px;">' +
           '<span style="font-size:8px;color:#4facfe;font-weight:700;letter-spacing:.5px;">AUTO</span>' +
           '<span style="font-size:8px;color:#64748b;">' + auto.label + ' — ' + auto.width + '×' + auto.height + ' · ' + auto.steps + ' steps · CFG ' + auto.cfg + '</span>' +
@@ -1273,7 +1294,7 @@ const ModelLoader = {
 
   async _runImageGen(modelId, dlg) {
     const prompt  = dlg.querySelector('#imggen-prompt')?.value.trim();
-    const neg     = dlg.querySelector('#imggen-neg')?.value.trim() || '';
+    const neg     = dlg.querySelector('#imggen-neg')?.value.trim() || ModelLoader._imggenDefaultNegative(dlg.querySelector('strong')?.textContent?.replace('Generate Image — ', '') || '');
     const width   = parseInt(dlg.querySelector('#imggen-w')?.value)     || 850;
     const height  = parseInt(dlg.querySelector('#imggen-h')?.value)     || 850;
     const steps   = parseInt(dlg.querySelector('#imggen-steps')?.value) || 20;

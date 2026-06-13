@@ -1634,13 +1634,27 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
    * Generate an image using an image-type GGUF model.
    * Returns { ok, outputPath, bytes, url } or { ok:false, error }.
    */
-  async generateImage({ modelId, prompt, outputPath, width, height, steps, cfg, seed, negativePrompt }) {
+  async generateImage({ modelId, model_id, prompt, outputPath, task_id, width, height, steps, cfg, seed, negativePrompt }) {
+    // Support both camelCase and snake_case model id
+    modelId = modelId || model_id;
+
     this.rm.invalidateCache();
     const reg = await this.rm.read('models/model_registry.json');
+
+    // Auto-detect image model if not specified
+    if (!modelId) {
+      const imgEntry = Object.entries(reg.models || {}).find(([, e]) =>
+        (e.config?.model_type || e.model_type) === 'image' || (e.config?.model_category || e.model_category) === 'image'
+      );
+      if (!imgEntry) return { ok: false, error: 'No image model in library. Import a Flux/SD model and tag it as IMAGE.' };
+      modelId = imgEntry[0];
+      console.log(`[V2ModelService] Auto-selected image model: ${modelId}`);
+    }
+
     const entry = reg.models?.[modelId];
     if (!entry) return { ok: false, error: `Model ${modelId} not in registry` };
-    if (entry.model_type !== 'image') {
-      return { ok: false, error: `Model ${modelId} is type '${entry.model_type || 'text'}', not an image model. Change model_type in the library.` };
+    if (entry.model_type !== 'image' && entry.config?.model_type !== 'image' && entry.config?.model_category !== 'image') {
+      return { ok: false, error: `Model ${modelId} is not tagged as an image model. Drag it to the IMAGE column in the library.` };
     }
     const path = require('path');
     let modelPath = entry.file_path;
@@ -1649,6 +1663,21 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
     }
     if (!modelPath || !require('fs').existsSync(modelPath)) {
       return { ok: false, error: `Model file not found: ${entry.file_path || entry.file_name}. Re-scan the library.` };
+    }
+
+    // Auto-generate outputPath from task_id if not provided
+    if (!outputPath) {
+      const AQUARIUM = require('../aquarium');
+      const fname = `generated_${Date.now()}.png`;
+      if (task_id) {
+        const taskDir = path.join(AQUARIUM.TASKS, task_id);
+        await require('fs').promises.mkdir(taskDir, { recursive: true });
+        outputPath = path.join(taskDir, fname);
+      } else {
+        const genDir = path.join(AQUARIUM.TASKS, 'generated');
+        await require('fs').promises.mkdir(genDir, { recursive: true });
+        outputPath = path.join(genDir, fname);
+      }
     }
 
     // Acquire IMAGE slot — waits for any LLM work to finish first

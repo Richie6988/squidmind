@@ -259,11 +259,18 @@ class TaskRunner {
         /image[_\s]gen/i.test(task.task_type || '');
 
       if (isImageTask) {
+        let imageServeUrl = null;
         try {
           const prompt = task.description || task.title.replace(/^generate[: ]*/i, '');
-          console.log(`[TaskRunner] 🎨 Image gen task ${taskId}: "${prompt.slice(0, 60)}"`);
+          console.log(`[TaskRunner] Image gen task ${taskId}: "${prompt.slice(0, 60)}"`);
           const result = await this.modelService.generateImage({ prompt, task_id: taskId });
-          output = result?.image_path ? `Image saved: ${result.image_path}` : JSON.stringify(result);
+          if (result?.ok && result.outputPath) {
+            imageServeUrl = `/api/files/read?path=${encodeURIComponent(result.outputPath)}`;
+            output = `Image saved: ${result.outputPath}`;
+          } else {
+            output = result?.error ? `Image gen failed: ${result.error}` : JSON.stringify(result);
+            failed = !result?.ok;
+          }
         } catch (e) {
           output = `Image gen failed: ${e.message}`;
           failed = true;
@@ -281,8 +288,14 @@ class TaskRunner {
         } else {
           await this._markDone(taskId);
           if (failed) { this._failCounts.set(taskId, this.MAX_RETRIES); }
-          await this._setStatus(taskId, status, { result_summary: output.slice(0, 500), completed_at: new Date().toISOString() });
-          console.log(`[TaskRunner] ${failed ? '✗✗' : '✓'} ${taskId} ${status} (${output.length} chars)`);
+          // Store output_preview so image appears pinned in the results pane
+          const extra = {
+            result_summary: output.slice(0, 500),
+            completed_at: new Date().toISOString(),
+            ...(imageServeUrl ? { output_preview: imageServeUrl } : {})
+          };
+          await this._setStatus(taskId, status, extra);
+          console.log(`[TaskRunner] ${failed ? '✗✗' : '✓'} ${taskId} ${status}`);
           if (failed) {
             await this._notify(`[IAQUA] Task FAILED: "${task.title}"\n${output.slice(0, 300)}`);
           } else {
