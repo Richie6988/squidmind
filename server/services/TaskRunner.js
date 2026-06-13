@@ -181,7 +181,7 @@ class TaskRunner {
           // Preemption: abort BG inference the moment a CHAT request is queued.
           // The task will retry on the next tick once Poseidon is free.
           let preempted = false;
-          for await (const ev of this.modelService.chatWithPoseidon(posMsg, [], { _skipBroker: true })) {
+          for await (const ev of this.modelService.chatWithPoseidon(posMsg, [], { _skipBroker: true, _bgMode: true })) {
             if (ev.type === 'text') output += ev.chunk;
             if (this.modelService.broker.hasChatWaiting()) {
               preempted = true;

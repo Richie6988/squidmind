@@ -87,11 +87,13 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
       last_user_message: lastUser,
       last_response_preview: note,
       tool_calls_this_turn: [],
-      emergency: true
+      emergency: false   // never true — would trigger endless auto-continue loop
     }).catch(() => {});
 
     try { if (entry.session?.dispose) await entry.session.dispose(); } catch {}
-    try { if (entry._currentSequence?.dispose) entry._currentSequence.dispose(); } catch {}
+    try { if (entry._currentSequence?.dispose) await entry._currentSequence.dispose(); } catch {}
+    // Small delay to ensure llama.cpp releases the sequence slot before next getSequence()
+    await new Promise(r => setTimeout(r, 100));
     entry.session           = null;
     entry._currentSequence  = null;
     entry.sessionTurns      = 0;
@@ -858,7 +860,7 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
    * @param {Array<{role,content}>} history - prior turns
    * @yields {string} chunk of generated text
    */
-  async *chatWithPoseidon(userMessage, historyIn = [], { _skipBroker = false } = {}) {
+  async *chatWithPoseidon(userMessage, historyIn = [], { _skipBroker = false, _bgMode = false } = {}) {
     let history = historyIn.slice(); // mutable copy
     if (!this.poseidonModelId) {
       throw new Error('No model assigned to Poseidon. Import a model and assign it first.');
@@ -889,6 +891,8 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
     // ── AUTO-CONTINUE: if session_state shows an unfinished task and this message
     // looks like a continuation cue (short cmd OR first message after a crash),
     // prepend the previous context so Poseidon resumes without re-reading state.
+    // Skip entirely for BG tasks — they have their own message, not continuations.
+    if (_bgMode) { /* skip auto-continue */ } else
     try {
       const ss = await this.rm.read('BRAIN/session_state.json');
       const isContinueCue = ss?.last_user_message && (
@@ -1011,7 +1015,15 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
           if (saved > 0) console.log(`[V2ModelService] Tool descriptions compressed: ~${Math.round(saved/4)} tokens saved (ctx=${ctxTokens})`);
         }
 
-        const sequence   = entry.context.getSequence();
+        // Retry getSequence with a short delay — previous session dispose may not be
+        // synchronous in llama.cpp and the slot may not be available immediately.
+        let sequence;
+        for (let _seq_try = 0; _seq_try < 3; _seq_try++) {
+          try { sequence = entry.context.getSequence(); break; } catch (e) {
+            if (_seq_try < 2) { await new Promise(r => setTimeout(r, 200)); }
+            else throw e;
+          }
+        }
         entry.session    = new llamaCpp.LlamaChatSession({
           contextSequence: sequence,
           systemPrompt,
