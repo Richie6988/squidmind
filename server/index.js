@@ -164,6 +164,7 @@ app.post('/api/v2/poseidon/reset-session', async (req, res) => {
   }
 });
 
+
 // Hook V2ModelService TTL check + dream into heartbeat
 heartbeat.setModelService(v2ModelService);
 
@@ -171,6 +172,13 @@ heartbeat.setModelService(v2ModelService);
 const TaskRunner = require('./services/TaskRunner');
 const taskRunner = new TaskRunner(sharedRm, v2ModelService, agentWorkerPool);
 heartbeat.setTaskRunner(taskRunner);
+
+// Signal from chat modal open/close — pauses BG tasks while user is chatting
+app.post('/api/v2/poseidon/chat-active', (req, res) => {
+  const { active } = req.body;
+  taskRunner.setChatActive(!!active);
+  res.json({ ok: true, active: !!active });
+});
 
 const _originalTick = heartbeat.tick.bind(heartbeat);
 heartbeat.tick = async function() {

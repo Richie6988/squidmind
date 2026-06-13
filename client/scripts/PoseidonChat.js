@@ -15,6 +15,8 @@ const PoseidonChat = {
   async open() {
     this._buildModal();
     await this._refreshStatus();
+    // Signal server: chat open -- pause BG tasks
+    window.ApiV2._fetch('/poseidon/chat-active', { method: 'POST', body: JSON.stringify({ active: true }) }).catch(() => {});
     // Poll broker state every 3s so busy indicator stays current
     clearInterval(this._statusInterval);
     this._statusInterval = setInterval(() => this._refreshStatus(), 3000);
@@ -561,7 +563,7 @@ const PoseidonChat = {
     } catch (e) { await SquidModal.alert('Reset failed: ' + e.message); }
   },
 
-  close() { clearInterval(this._statusInterval); this.modal?.classList.add('hidden'); },
+  close() { clearInterval(this._statusInterval); window.ApiV2._fetch('/poseidon/chat-active', { method: 'POST', body: JSON.stringify({ active: false }) }).catch(() => {}); this.modal?.classList.add('hidden'); },
 
   // ── Helpers ──────────────────────────────────────────────────────────────
 

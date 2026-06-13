@@ -179,7 +179,7 @@ const TaskQueueUI = {
         </div>
         <div class="tq-row2">
           ${typeBadge}
-          <span class="tq-status-label">${statusDot.label}</span>
+          ${(isBrokerActive || isRunning) ? '' : `<span class="tq-status-label">${statusDot.label}</span>`}
           <button class="tq-assignee ${assignee ? 'tq-assigned' : 'tq-unassigned'}"
                   onclick="TaskQueueUI.openAssignPicker('${t.task_id}', this)"
                   title="Click to assign agent">${this._esc(agentName)}</button>

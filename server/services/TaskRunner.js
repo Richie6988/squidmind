@@ -21,6 +21,18 @@ class TaskRunner {
     this._lastCronRun   = new Map();
     this._failCounts    = new Map();
     this.MAX_RETRIES    = 3;
+    this._chatOpenUntil = 0;  // epoch ms — don't run BG tasks until after this
+  }
+
+  /** Called by route when chat modal opens or closes */
+  setChatActive(isOpen) {
+    if (isOpen) {
+      // Keep tasks paused while chat is open + 30s grace after close
+      this._chatOpenUntil = Date.now() + 30_000;
+    } else {
+      // Grace period: wait 30s after close before resuming tasks
+      this._chatOpenUntil = Date.now() + 30_000;
+    }
   }
 
   async tick() {
@@ -28,6 +40,8 @@ class TaskRunner {
     if (this._running.size > 0) return;
     // Wait for model to be loaded before running any task
     if (this.modelService.loaded.size === 0) return;
+    // Don't start BG tasks if chat modal is open or recently closed
+    if (Date.now() < this._chatOpenUntil) return;
     // Don't start BG tasks if CHAT is active or waiting — user interaction takes priority
     const brokerState = this.modelService.broker.getState();
     if (brokerState.state !== 'IDLE') return;  // someone holds the broker
