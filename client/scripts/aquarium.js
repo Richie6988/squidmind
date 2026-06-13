@@ -178,25 +178,131 @@ const aquarium = {
   },
 
   drawBackground() {
-    // Gradient
-    const gradient = this.ctx.createLinearGradient(0, 0, 0, this.canvas.height);
-    gradient.addColorStop(0, '#1D3557');
-    gradient.addColorStop(1, '#0A2239');
-    this.ctx.fillStyle = gradient;
-    this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-    
-    // Bubbles (simple particles)
-    this.ctx.fillStyle = 'rgba(168, 218, 220, 0.3)';
-    const bubbleCount = 20;
-    for (let i = 0; i < bubbleCount; i++) {
-      const x = (Date.now() / 50 + i * 50) % this.canvas.width;
-      const y = (Date.now() / 30 + i * 30) % this.canvas.height;
-      const size = 2 + Math.sin(Date.now() / 500 + i) * 2;
-      
+    const W = this.canvas.width, H = this.canvas.height;
+    const t = Date.now() / 1000;
+
+    // ── Deep ocean gradient ────────────────────────────────────────────────
+    const grad = this.ctx.createLinearGradient(0, 0, 0, H);
+    grad.addColorStop(0,   '#0a1628');
+    grad.addColorStop(0.4, '#071322');
+    grad.addColorStop(1,   '#04080f');
+    this.ctx.fillStyle = grad;
+    this.ctx.fillRect(0, 0, W, H);
+
+    // ── Volumetric light rays from top ─────────────────────────────────────
+    this.ctx.save();
+    for (let r = 0; r < 6; r++) {
+      const angle  = -0.18 + r * 0.08 + Math.sin(t * 0.12 + r) * 0.04;
+      const originX = W * (0.25 + r * 0.1) + Math.sin(t * 0.07 + r * 1.3) * 40;
+      const rayLen  = H * (0.55 + Math.sin(t * 0.09 + r) * 0.12);
+      const rayW    = 28 + r * 8 + Math.sin(t * 0.11 + r) * 10;
+      const alpha   = 0.022 + Math.sin(t * 0.13 + r) * 0.008;
+
+      const rg = this.ctx.createLinearGradient(
+        originX, -10,
+        originX + Math.sin(angle) * rayLen, rayLen
+      );
+      rg.addColorStop(0,   `rgba(79,172,254,${alpha * 2.5})`);
+      rg.addColorStop(0.4, `rgba(79,172,254,${alpha})`);
+      rg.addColorStop(1,   'rgba(79,172,254,0)');
+      this.ctx.fillStyle = rg;
       this.ctx.beginPath();
-      this.ctx.arc(x, y, size, 0, Math.PI * 2);
+      this.ctx.moveTo(originX - rayW * 0.3, -10);
+      this.ctx.lineTo(originX + rayW * 0.3, -10);
+      this.ctx.lineTo(originX + Math.sin(angle) * rayLen + rayW, rayLen);
+      this.ctx.lineTo(originX + Math.sin(angle) * rayLen - rayW, rayLen);
+      this.ctx.closePath();
       this.ctx.fill();
     }
+    this.ctx.restore();
+
+    // ── Caustic light patterns on floor ────────────────────────────────────
+    this.ctx.save();
+    this.ctx.globalAlpha = 0.06;
+    for (let c = 0; c < 8; c++) {
+      const cx = (W * 0.1 + c * W * 0.12 + Math.sin(t * 0.17 + c * 0.9) * 35) % W;
+      const cy = H * 0.72 + Math.sin(t * 0.13 + c * 1.1) * 18;
+      const cr = 18 + Math.sin(t * 0.2 + c) * 10;
+      const cg = this.ctx.createRadialGradient(cx, cy, 0, cx, cy, cr);
+      cg.addColorStop(0,   'rgba(79,172,254,0.9)');
+      cg.addColorStop(0.5, 'rgba(79,172,254,0.3)');
+      cg.addColorStop(1,   'rgba(79,172,254,0)');
+      this.ctx.fillStyle = cg;
+      this.ctx.beginPath();
+      this.ctx.arc(cx, cy, cr, 0, Math.PI * 2);
+      this.ctx.fill();
+    }
+    this.ctx.restore();
+
+    // ── Rising micro-bubbles ───────────────────────────────────────────────
+    if (!this._bubbles) {
+      this._bubbles = Array.from({ length: 35 }, (_, i) => ({
+        x: Math.random() * W,
+        y: H + Math.random() * H,
+        r: 0.8 + Math.random() * 2.2,
+        speed: 0.3 + Math.random() * 0.8,
+        wobble: Math.random() * Math.PI * 2,
+        wobbleSpeed: 0.015 + Math.random() * 0.025,
+        alpha: 0.15 + Math.random() * 0.3,
+        phase: Math.random() * Math.PI * 2
+      }));
+    }
+    this.ctx.save();
+    for (const b of this._bubbles) {
+      b.y   -= b.speed;
+      b.wobble += b.wobbleSpeed;
+      b.x   += Math.sin(b.wobble) * 0.4;
+      if (b.y < -10) {
+        b.y = H + 10;
+        b.x = Math.random() * W;
+      }
+      const fadeTop = Math.max(0, Math.min(1, b.y / (H * 0.3)));
+      this.ctx.globalAlpha = b.alpha * fadeTop;
+      this.ctx.strokeStyle = 'rgba(120,200,255,0.8)';
+      this.ctx.lineWidth = 0.7;
+      this.ctx.beginPath();
+      this.ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2);
+      this.ctx.stroke();
+      // Bubble shine
+      this.ctx.fillStyle = 'rgba(200,240,255,0.6)';
+      this.ctx.beginPath();
+      this.ctx.arc(b.x - b.r * 0.3, b.y - b.r * 0.3, b.r * 0.28, 0, Math.PI * 2);
+      this.ctx.fill();
+    }
+    this.ctx.restore();
+
+    // ── Depth particles (distant plankton) ─────────────────────────────────
+    if (!this._plankton) {
+      this._plankton = Array.from({ length: 18 }, () => ({
+        x: Math.random() * W, y: Math.random() * H,
+        r: 0.5 + Math.random(),
+        dx: (Math.random() - 0.5) * 0.15,
+        dy: (Math.random() - 0.5) * 0.08,
+        phase: Math.random() * Math.PI * 2,
+        color: Math.random() > 0.5 ? '6,255,165' : '79,172,254'
+      }));
+    }
+    this.ctx.save();
+    for (const p of this._plankton) {
+      p.x += p.dx + Math.sin(t * 0.3 + p.phase) * 0.1;
+      p.y += p.dy + Math.cos(t * 0.2 + p.phase) * 0.06;
+      if (p.x < 0) p.x = W; if (p.x > W) p.x = 0;
+      if (p.y < 0) p.y = H; if (p.y > H) p.y = 0;
+      const pa = 0.1 + 0.2 * Math.abs(Math.sin(t * 0.4 + p.phase));
+      this.ctx.globalAlpha = pa;
+      this.ctx.fillStyle = `rgb(${p.color})`;
+      this.ctx.beginPath();
+      this.ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+      this.ctx.fill();
+    }
+    this.ctx.restore();
+
+    // ── Subtle floor gradient ──────────────────────────────────────────────
+    const floorGrad = this.ctx.createLinearGradient(0, H * 0.8, 0, H);
+    floorGrad.addColorStop(0, 'rgba(4,12,24,0)');
+    floorGrad.addColorStop(1, 'rgba(4,12,24,0.6)');
+    this.ctx.fillStyle = floorGrad;
+    this.ctx.fillRect(0, H * 0.8, W, H * 0.2);
   },
 
   onMouseMove(e) {

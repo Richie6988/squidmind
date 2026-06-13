@@ -1742,19 +1742,23 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
       prompt, outputPath, width, height, steps, cfg, seed, negativePrompt
     });
 
-      console.log(`[V2ModelService] Image generation ${result.ok ? 'completed' : 'failed'} — reloading Poseidon...`);
-    } finally {
-      this.broker.release(imgToken);
-      // Always reload Poseidon after image gen (success or failure)
-      // so the system is immediately ready for the next chat/task
+      console.log(`[V2ModelService] Image generation ${result.ok ? 'completed' : 'failed'} — reloading Poseidon before releasing broker...`);
+
+      // Reload Poseidon BEFORE releasing broker so TaskRunner can't grab
+      // the slot while the LLM is still loading (would cause OOM)
       const savedPoseidonId = await this._getSavedPoseidonId();
       if (savedPoseidonId) {
-        console.log(`[V2ModelService] Post-image: reloading Poseidon (${savedPoseidonId})...`);
         this.poseidonModelId = savedPoseidonId;
-        this.ensureLoaded(savedPoseidonId).catch(e =>
-          console.warn('[V2ModelService] Post-image Poseidon reload failed:', e.message)
-        );
+        console.log(`[V2ModelService] Post-image: reloading Poseidon (${savedPoseidonId})...`);
+        try {
+          await this.ensureLoaded(savedPoseidonId);
+          console.log(`[V2ModelService] ✓ Poseidon ready after image gen`);
+        } catch (e) {
+          console.warn('[V2ModelService] Post-image Poseidon reload failed:', e.message);
+        }
       }
+    } finally {
+      this.broker.release(imgToken);
     }
     return result;
   }

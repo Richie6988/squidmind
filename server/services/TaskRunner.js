@@ -169,6 +169,16 @@ class TaskRunner {
 
     // ── One-shot tasks: pick highest priority open/planned task ───────────
     const TERMINAL = new Set(['completed','failed','cancelled','archived','in_progress']);
+
+    // Reset stale in_progress tasks (stuck from previous server run, not in _running)
+    for (const t of allTasks) {
+      const s = t.lifecycle?.status || t.status;
+      if (s === 'in_progress' && !this._running.has(t.task_id) && !this._done.has(t.task_id)) {
+        console.log(`[TaskRunner] Resetting stale in_progress task ${t.task_id} → planned`);
+        this._setStatus(t.task_id, 'planned').catch(() => {});
+      }
+    }
+
     const runnable = allTasks
       .filter(t => {
         const s = t.lifecycle?.status || t.status || 'open';
@@ -176,11 +186,16 @@ class TaskRunner {
         const retryDelay = this._retryAfter.get(t.task_id) || 0;
         return !TERMINAL.has(s)
           && !this._running.has(t.task_id)
-          && !this._done.has(t.task_id)   // never re-run completed tasks
+          && !this._done.has(t.task_id)
           && !tooManyFails
-          && Date.now() >= retryDelay;    // exponential backoff
+          && Date.now() >= retryDelay;
       })
-      .sort((a, b) => (b.sort_order || 0) - (a.sort_order || 0)); // highest sort_order first
+      // Sort: highest sort_order first, then FIFO by task_id (creation order)
+      .sort((a, b) => {
+        const pDiff = (b.sort_order || 0) - (a.sort_order || 0);
+        if (pDiff !== 0) return pDiff;
+        return (a.task_id || '').localeCompare(b.task_id || '');
+      });
 
     if (runnable.length === 0) return;
     const task = runnable[0];
