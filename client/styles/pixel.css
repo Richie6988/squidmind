@@ -1703,6 +1703,12 @@ input[type="color"]::-webkit-color-swatch {
   border: 1px solid rgba(6,255,165,0.2);
   padding: 1px 5px;
 }
+.ti-kcard-agent.running {
+  color: var(--success);
+  background: rgba(6,255,165,0.15);
+  border-color: var(--success);
+  animation: tiDotPulse 1.4s infinite;
+}
 .ti-kcard-del {
   font-family: 'Press Start 2P', monospace;
   font-size: 6px;

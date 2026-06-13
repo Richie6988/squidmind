@@ -529,16 +529,15 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
       // ── Step 4: Compute target contextLength from REAL remaining VRAM ─────
       if (config.contextLength === 'auto') {
         if (vramAfter && freeAfterGb > 0.3) {
-          // Be aggressive — try the model's full trainCtx.
-          // The retry ladder below (target → /2 → /4 → MIN) handles OOM gracefully
-          // without reloading weights. Better to aim high and step down than to
-          // cap at 32768 and miss 128k capable models.
-          const margin       = 0.15;  // tight headroom — let retry ladder handle OOM
-          const availKvGb    = Math.max(0, freeAfterGb - margin);
-          const bytesPerTok  = config.flashAttention ? 40 * 1024 : 80 * 1024;
-          const toksFit      = Math.floor(availKvGb * 1024 ** 3 / bytesPerTok);
-          // Try up to trainCtx — no 32768 cap
-          const target       = Math.min(toksFit * 1.5, trainCtx);  // 50% optimistic since retry catches OOM
+          // Conservative but not capped at 32768.
+          // bytesPerTok empirically ~100KB/tok GPU (Q4) with flash attention ~60KB/tok.
+          // Leave 300MB headroom for activations and overhead.
+          const margin      = 0.30;
+          const availKvGb   = Math.max(0, freeAfterGb - margin);
+          const bytesPerTok = config.flashAttention ? 60 * 1024 : 100 * 1024;
+          const toksFit     = Math.floor(availKvGb * 1024 ** 3 / bytesPerTok);
+          // Cap at trainCtx but no artificial 32768 cap — real models go to 128k
+          const target      = Math.min(toksFit, trainCtx);
           config.contextLength = Math.max(V2ModelService.MIN_VIABLE_CTX, Math.floor(target / 1024) * 1024);
           console.log(`  [auto] contextLength: ${config.contextLength} (${availKvGb.toFixed(2)} GB for KV, trainCtx=${trainCtx})`);
         } else {
@@ -1011,21 +1010,23 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
         // TOOL COMPRESSION: tool schemas are serialized into the prompt and can
         // cost 3-4k tokens with 27 tools. On tight contexts, truncate descriptions
         // to the first sentence (max 90 chars) — keeps meaning, halves the cost.
-        if (functions && ctxTokens < 16384) {
+        if (functions && ctxTokens < 32768) {  // always compress on consumer GPUs
           let saved = 0;
           for (const fn of Object.values(functions)) {
             if (fn.description && fn.description.length > 90) {
+              const maxDesc = ctxTokens < 20000 ? 60 : 90;
               const firstSentence = fn.description.split(/(?<=[.!?])\s/)[0] || fn.description;
-              const slim = firstSentence.slice(0, 90);
+              const slim = firstSentence.slice(0, maxDesc);
               saved += fn.description.length - slim.length;
               fn.description = slim;
             }
             // Also slim param descriptions
             const props = fn.params?.properties || {};
             for (const p of Object.values(props)) {
-              if (p.description && p.description.length > 60) {
-                saved += p.description.length - 60;
-                p.description = p.description.slice(0, 60);
+              const maxParam = ctxTokens < 20000 ? 40 : 60;
+              if (p.description && p.description.length > maxParam) {
+                saved += p.description.length - maxParam;
+                p.description = p.description.slice(0, maxParam);
               }
             }
           }

@@ -133,6 +133,11 @@ class TaskRunner {
     try {
       await this._setStatus(taskId, 'in_progress', { started_at: new Date().toISOString() });
 
+      // Wake the assigned agent
+      if (agentId && agentId !== 'poseidon_main') {
+        try { await this.rm.updateAgentStatus(agentId, 'active'); } catch {}
+      }
+
       // Build rich task message including project context and progress state
       const projectPart = task.context?.project_id
         ? `\nProject: ${task.context.project_id}`
@@ -323,6 +328,10 @@ class TaskRunner {
 
       console.log(`[TaskRunner] ${failed?'✗':'✓'} ${taskId} ${finalStatus} (${output.length} chars)`);
     } finally {
+      // Put agent back to sleep
+      if (agentId && agentId !== 'poseidon_main') {
+        try { await this.rm.updateAgentStatus(agentId, 'sleeping'); } catch {}
+      }
       this._running.delete(taskId);
     }
   }

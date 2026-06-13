@@ -46,10 +46,13 @@ const TempleInterior = {
 
     this._pollTimer = setInterval(() => {
       this._renderHeader();
+      // Always refresh kanban and agents regardless of active tab
       this._renderKanban();
       const agSec = document.getElementById('ti-agents-always');
       if (agSec) this._renderAgentsCompact(agSec);
-    }, 5000);
+      // Also refresh task list in right panel if visible
+      if (this._rightTab !== 'kanban') this._renderTasks();
+    }, 3000);
   },
 
   close() {
@@ -640,17 +643,25 @@ const TempleInterior = {
       const isDone = status === 'completed';
       const cls    = isRun ? 'prog' : isDone ? 'done' : isFail ? 'fail' : '';
       const agent  = task.assignment?.assigned_name || task.assignment?.assigned_to || '';
-      const prog   = task.progress ? `<div class="ti-kcard-prog">&gt; ${this._esc(String(task.progress).slice(0,60))}</div>` : '';
+      // Progress line: show for in_progress tasks
+      const progText = task.progress ? String(task.progress).slice(0, 80) : '';
+      const prog   = isRun && progText ? `<div class="ti-kcard-prog">&gt; ${this._esc(progText)}</div>` : '';
+      // Result summary for done tasks
+      const summary = (isDone || isFail) && task.result_summary
+        ? `<div class="ti-kcard-prog">${this._esc(String(task.result_summary).slice(0, 100))}</div>` : '';
       const bar    = isRun ? `<div class="ti-kcard-bar"><div class="ti-kcard-bar-fill"></div></div>` : '';
+      const agentBadge = agent
+        ? `<span class="ti-kcard-agent${isRun ? ' running' : ''}">${isRun ? '⚡' : '>'} ${this._esc(agent.slice(0,14))}</span>`
+        : '';
       return `<div class="ti-kcard ${cls}" draggable="true" data-task-id="${task.task_id}"
           ondragstart="TempleInterior._kDragStart(event)"
           ondragover="event.preventDefault();event.currentTarget.classList.add('drag-over')"
           ondragleave="event.currentTarget.classList.remove('drag-over')"
           onclick="TempleInterior._openTaskDetail('${task.task_id}')">
         <div class="ti-kcard-title">${this._esc(task.title)}</div>
-        ${prog}${bar}
+        ${prog}${summary}${bar}
         <div class="ti-kcard-foot">
-          <span class="ti-kcard-agent">${agent ? '&gt; ' + this._esc(agent.slice(0,16)) : ''}</span>
+          ${agentBadge}
           <button class="ti-kcard-del" onclick="event.stopPropagation();TempleInterior._deleteTask('${task.task_id}')">X</button>
         </div>
       </div>`;
