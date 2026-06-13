@@ -220,7 +220,15 @@ class OrchestratorTools {
   // ====================================================================
 
   _resolveInWorkspace(relPath) {
-    const fullPath = path.resolve(this.workspaceRoot, relPath);
+    const AQUARIUM = require('../aquarium');
+    // Aquarium-aware: PROJECTS/*, TASKS/*, BRAIN/*, etc. → resolve from AQUARIUM.ROOT
+    const upper = relPath.toUpperCase();
+    let fullPath;
+    if (/^(PROJECTS|TASKS|MODELS|AGENTS|SKILLS|BRAIN|LOGS|CHANNELS)(\/|$)/.test(upper)) {
+      fullPath = path.join(AQUARIUM.ROOT, relPath);
+    } else {
+      fullPath = path.resolve(this.workspaceRoot, relPath);
+    }
     if (!fullPath.startsWith(this.workspaceRoot)) {
       throw new Error(`Path "${relPath}" escapes the workspace`);
     }

@@ -961,17 +961,6 @@ Never describe a bash command you could call instead.`;
         handler: async () => self.tools.githubStatus()
       }),
       
-      github_diff: defineChatSessionFunction({
-        description: 'Show pending changes (working tree + staged). Optionally limit to a specific file. Use to inspect what you are about to commit.',
-        params: {
-          type: 'object',
-          properties: {
-            path: { type: 'string', description: 'Optional: limit diff to one file' }
-          }
-        },
-        handler: async (params) => self.tools.githubDiff(params)
-      }),
-      
       github_commit: defineChatSessionFunction({
         description: 'Stage and commit changes. If files array is omitted, stages everything (git add -A). Message should be a clear one-liner; optionally followed by a blank line and details.',
         params: {
@@ -987,30 +976,6 @@ Never describe a bash command you could call instead.`;
           required: ['message']
         },
         handler: async (params) => self.tools.githubCommit(params)
-      }),
-      
-      github_push: defineChatSessionFunction({
-        description: 'Push commits to remote. Defaults: origin / current branch.',
-        params: {
-          type: 'object',
-          properties: {
-            remote: { type: 'string', description: 'Remote name (default: origin)' },
-            branch: { type: 'string', description: 'Branch name (default: current)' }
-          }
-        },
-        handler: async (params) => self.tools.githubPush(params)
-      }),
-      
-      github_pull: defineChatSessionFunction({
-        description: 'Pull from remote. Defaults: origin / current branch.',
-        params: {
-          type: 'object',
-          properties: {
-            remote: { type: 'string' },
-            branch: { type: 'string' }
-          }
-        },
-        handler: async (params) => self.tools.githubPull(params)
       }),
       
       // ============ USER LEARNING ============
@@ -1173,108 +1138,46 @@ Never describe a bash command you could call instead.`;
           },
           required: ['model_id', 'prompt']
         },
-        handler: async (params) => self.tools.generateImage(params)
+        handler: async (params) => {
+          // Auto-resolve image model if not specified
+          if (!params.model_id) {
+            try {
+              self.rm.invalidateCache();
+              const reg = await self.rm.read('models/model_registry.json');
+              const imgModel = Object.values(reg.models || {}).find(m =>
+                (m.model_type || m.config?.model_type) === 'image'
+              );
+              if (imgModel) params.model_id = imgModel.model_id;
+              else return { ok: false, error: 'No image model found in library. Import a FLUX or SD model first and tag it as model_type: image.' };
+            } catch(e) { return { ok: false, error: e.message }; }
+          }
+          return self.tools.generateImage(params);
+        }
       }),
 
       dispatch_to_agent: defineChatSessionFunction({
-        description: 'Dispatch a task to a specific agent. The agent will execute it autonomously using its own model session, personality, skills, and tools. Returns immediately with a job_id; results stream in the background. Use list_agents to pick the right agent_id.',
+        description: 'Create a task assigned to a specific agent and queue it for execution. The TaskRunner will pick it up automatically. Prefer create_task directly for most cases. Use this when you need to assign to a specific agent immediately.',
         params: {
           type: 'object',
           properties: {
             agent_id:    { type: 'string', description: 'Agent ID (e.g. "agent_001")' },
-            task_message:{ type: 'string', description: 'Clear task description for the agent. Be specific: include context, expected output format, and any constraints.' },
-            task_id:     { type: 'string', description: 'Optional task_id from tasks_registry to link this run to a tracked task' }
+            title:       { type: 'string', description: 'Short task title (specific, one action)' },
+            description: { type: 'string', description: 'Full task description with context and expected output' },
+            project_id:  { type: 'string', description: 'Project ID to link to (optional)' }
           },
-          required: ['agent_id', 'task_message']
+          required: ['agent_id', 'title']
         },
-        handler: async ({ agent_id, task_message, task_id }) => {
-          if (!self.agentWorkerPool) {
-            return { ok: false, error: 'AgentWorkerPool not initialized. Server may still be starting.' };
-          }
+        handler: async ({ agent_id, title, description, project_id }) => {
           try {
-            // Mark task as in_progress using _writeTaskDetails (correct path)
-            let taskTitle = task_message.split('\n')[0].slice(0, 80);
-            if (task_id) {
-              try {
-                const taskObj = await self.rm._readTaskDetails(task_id);
-                if (taskObj) {
-                  taskTitle = taskObj.title || taskTitle;
-                  taskObj.lifecycle = { ...(taskObj.lifecycle || {}), status: 'in_progress', started_at: new Date().toISOString() };
-                  taskObj.status = 'in_progress';
-                  await self.rm._writeTaskDetails(task_id, taskObj);
-                  self.rm.invalidateCache();
-                }
-              } catch {}
-            }
-
-            // Fire-and-forget: run in background, log result
-            const gen = await self.agentWorkerPool.dispatch(agent_id, task_message);
-            let fullText = '';
-            let toolCalls = 0;
-            // Consume generator in background
-            (async () => {
-              try {
-                for await (const ev of gen) {
-                  if (ev.type === 'text') fullText += ev.chunk;
-                  if (ev.type === 'tool_call') toolCalls++;
-                  if (ev.type === 'error') {
-                    await self.rm.log({ event_type: 'agent_error', actor: { type: 'agent', id: agent_id },
-                      subject: { type: 'task', id: task_id || 'unknown' }, action: ev.error });
-                  }
-                }
-                // Mark task done + save full result
-                if (task_id) {
-                  try {
-                    const now = new Date().toISOString();
-                    const taskObj2 = await self.rm._readTaskDetails(task_id);
-                    if (taskObj2) {
-                      taskObj2.lifecycle = { ...(taskObj2.lifecycle || {}), status: 'completed', completed_at: now };
-                      taskObj2.status = 'completed';
-                      taskObj2.result_summary = fullText.slice(0, 500);
-                      taskObj2.progress = 'completed — ' + fullText.slice(0, 100);
-                      await self.rm._writeTaskDetails(task_id, taskObj2);
-                      self.rm.invalidateCache();
-                    }
-                    // Write full result to task's results/ folder (AQUARIUM.TASKS uppercase path)
-                    const fsp2 = require('fs').promises;
-                    const path2 = require('path');
-                    const AQUARIUM2 = require('../aquarium');
-                    const taskResultsDir = path2.join(AQUARIUM2.TASKS, task_id, 'results');
-                    await fsp2.mkdir(taskResultsDir, { recursive: true });
-                    const header2 = [
-                      `Task: ${task_id}`,
-                      `Title: ${taskTitle}`,
-                      `Agent: ${agent_id}`,
-                      `Completed: ${new Date().toISOString()}`,
-                      `Tool calls: ${toolCalls}`,
-                      '─'.repeat(60),
-                      ''
-                    ].join('\n');
-                    await fsp2.writeFile(path2.join(taskResultsDir, 'output.txt'), header2 + fullText, 'utf8');
-                  } catch (e) {
-                    console.warn('[dispatch_to_agent] result save error:', e.message);
-                  }
-                }
-                await self.rm.log({ event_type: 'task_completed', actor: { type: 'agent', id: agent_id },
-                  subject: { type: 'task', id: task_id || 'adhoc' },
-                  action: `Agent \${agent_id} completed task (\${toolCalls} tool calls)`,
-                  context: { result_preview: fullText.slice(0, 200) }
-                });
-              } catch (bgErr) {
-                console.error('[dispatch_to_agent] background error:', bgErr.message);
-              }
-            })();
-
-            return {
-              ok: true,
-              agent_id,
-              task_id: task_id || null,
-              message: `Agent \${agent_id} is now running the task. Results will be logged. Monitor via /api/v2/agents/\${agent_id}/worker-status`,
-              stream_url: `/api/v2/agents/\${agent_id}/run`
-            };
-          } catch (err) {
-            return { ok: false, error: err.message };
-          }
+            const result = await self._createTask({
+              title,
+              description: description || title,
+              priority: 'medium',
+              project_id: project_id || null,
+              assigned_to: agent_id
+            });
+            return { ok: true, task_id: result.task_id, message: `Task "${title}" created and assigned to ${agent_id}. TaskRunner will execute it automatically.` };
+          } catch(e) { return { ok: false, error: e.message }; }
         }
       })
     };

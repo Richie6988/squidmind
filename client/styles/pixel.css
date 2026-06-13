@@ -6691,6 +6691,19 @@ h4.pc-md-h { font-size: 8px; color: #94a3b8; }
   margin-bottom: 8px;
   animation: pcBusyPulse 1.4s ease-in-out infinite;
 }
+.tq-result-pre {
+  font-family: 'Courier New', monospace;
+  font-size: 10px;
+  color: var(--text-primary);
+  background: rgba(0,0,0,0.3);
+  border: 1px solid var(--border);
+  padding: 10px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 400px;
+  overflow-y: auto;
+  line-height: 1.6;
+}
 .tq-done-section { margin-top: 10px; border-top: 1px solid var(--border); padding-top: 8px; }
 .tq-done-header {
   display: flex; align-items: center; justify-content: space-between;

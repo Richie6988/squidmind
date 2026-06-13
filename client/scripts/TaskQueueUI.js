@@ -112,7 +112,7 @@ const TaskQueueUI = {
     return `
       <div class="tq-done-item" style="position:relative;">
         <button onclick="event.stopPropagation();TaskQueueUI.deleteTask('${t.task_id}')" title="Delete" style="position:absolute;top:4px;right:4px;background:rgba(239,68,68,0.12);border:1px solid rgba(239,68,68,0.25);color:#ef4444;border-radius:4px;padding:0 5px;font-size:8px;cursor:pointer;">🗑</button>
-        <div style="cursor:pointer" onclick="TaskQueueUI.openTaskDetail('${t.task_id}')">
+        <div style="cursor:pointer" onclick="TaskQueueUI.openTaskResult('${t.task_id}')">
         <div class="tq-done-row1">
           <span class="tq-done-icon">${icon}</span>
           <span class="tq-done-title">${this._esc(t.title)}</span>
@@ -390,6 +390,72 @@ ${task.description}`
   },
 
   // ── Task detail popup ──────────────────────────────────────────────────────
+
+  async openTaskResult(taskId) {
+    let task;
+    try {
+      const r = await window.ApiV2.tasks.list();
+      task = r.registry.tasks?.[taskId];
+    } catch(e) { return SquidModal.alert('Could not load task: ' + e.message); }
+    if (!task) return SquidModal.alert('Task not found.');
+
+    const modal = document.createElement('div');
+    modal.className = 'modal tq-detail-modal';
+    modal.style.zIndex = '20001';
+
+    const status = task.lifecycle?.status || 'unknown';
+    const isOk   = status === 'completed';
+    const when    = task.lifecycle?.completed_at ? new Date(task.lifecycle.completed_at).toLocaleString() : '';
+    const agent   = task.assignment?.assigned_name || task.assignment?.assigned_to || '—';
+
+    // Full result: load from file if available
+    let resultHtml = '';
+    if (task.output_preview) {
+      resultHtml = `<div style="margin:8px 0"><img src="${task.output_preview}" style="max-width:100%;border:1px solid var(--border);"></div>`;
+    } else if (task.result_summary) {
+      resultHtml = `<pre class="tq-result-pre">${this._esc(task.result_summary)}</pre>`;
+      // Try to load full result
+      if (task.result_file) {
+        try {
+          const fd = await window.ApiV2._fetch('/tasks/' + taskId + '/result');
+          if (fd.content) resultHtml = `<pre class="tq-result-pre">${this._esc(fd.content)}</pre>`;
+        } catch {}
+      }
+    } else {
+      resultHtml = '<p style="color:var(--ui-muted);font-size:10px;">No result saved.</p>';
+    }
+
+    modal.innerHTML = `
+      <div class="modal-content tq-detail-content">
+        <div class="modal-header">
+          <div class="tq-detail-title-row">
+            <span class="tq-detail-status-badge status-${status}">${status}</span>
+            <span class="tq-detail-tid">${this._esc(taskId)}</span>
+          </div>
+          <button class="btn-close" onclick="this.closest('.modal').remove()">x</button>
+        </div>
+        <div class="tq-detail-body">
+          <div style="font-family:'Press Start 2P',monospace;font-size:9px;color:var(--text-primary);margin-bottom:8px;">${this._esc(task.title)}</div>
+          <div style="font-family:'Courier New',monospace;font-size:9px;color:var(--ui-muted);margin-bottom:12px;">
+            Agent: ${this._esc(agent)} · ${when}
+          </div>
+          <div class="tq-detail-field">
+            <label>Result</label>
+            ${resultHtml}
+          </div>
+          ${task.result_summary && task.output_preview ? '' :
+            (task.description ? `<div class="tq-detail-field"><label>Task</label><div class="tq-detail-result">${this._esc(task.description || '')}</div></div>` : '')}
+        </div>
+        <div class="agent-form-footer">
+          <button class="btn-secondary" onclick="TaskQueueUI.openTaskDetail('${taskId}')">✏ Edit</button>
+          <button class="btn-primary" onclick="this.closest('.modal').remove()">Close</button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(modal);
+    modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+  },
 
   async openTaskDetail(taskId) {
     // Ensure agents/projects are loaded (may not be if called from TempleInterior)
