@@ -44,6 +44,13 @@ const TaskQueueUI = {
         this._workerStatuses = ws.workers || {};
       } catch {}
 
+      // Broker state for busy indicator
+      try {
+        const ms = await window.ApiV2._fetch('/models/status');
+        this._brokerState = ms?.broker?.state || 'IDLE';
+        this._brokerOwner = ms?.broker?.owner || '';
+      } catch { this._brokerState = null; }
+
       const r = await window.ApiV2.tasks.list();
       const tasks = r.registry.tasks || {};
       const allTasks = Object.values(tasks);
@@ -61,8 +68,19 @@ const TaskQueueUI = {
 
       container.innerHTML = '';
 
+      // ── Broker busy banner ──
+      if (this._brokerState && this._brokerState !== 'IDLE') {
+        const isBG   = this._brokerOwner?.startsWith('bg_task');
+        const taskId = isBG ? this._brokerOwner.replace('bg_task_','') : null;
+        const label  = taskId ? `⏳ Running ${taskId}` : `⏳ Model busy`;
+        const banner = document.createElement('div');
+        banner.className = 'tq-busy-banner';
+        banner.textContent = label;
+        container.appendChild(banner);
+      }
+
       if (this._tasks.length === 0 && doneTasks.length === 0) {
-        container.innerHTML = '<p class="hint" style="font-size:9px;color:var(--text-secondary);">No tasks queued — create tasks and assign agents to auto-run them.</p>';
+        container.innerHTML += '<p class="hint" style="font-size:9px;color:var(--text-secondary);">No tasks queued — create tasks and assign agents to auto-run them.</p>';
         return;
       }
 

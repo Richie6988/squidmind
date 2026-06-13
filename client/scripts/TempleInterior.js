@@ -177,19 +177,22 @@ const TempleInterior = {
     const applyColors = (inside, outside) => {
       if (inside) {
         root.style.setProperty('--ti-temple-color', inside);
-        root.style.background = `linear-gradient(160deg, ${inside}30 0%, var(--ocean-deep) 50%)`;
+        // Solid backgrounds — no transparency so aquarium never bleeds through
+        root.style.background = `var(--ocean-deep)`;
         const left = root.querySelector('.ti-left');
-        if (left) left.style.background = `linear-gradient(180deg, ${inside}18 0%, rgba(10,34,57,0.7) 100%)`;
+        if (left) left.style.background = `var(--ocean-deep)`;
         const right = root.querySelector('.ti-right');
-        if (right) right.style.background = `linear-gradient(180deg, ${inside}10 0%, rgba(10,34,57,0.7) 100%)`;
+        if (right) right.style.background = `var(--ocean-deep)`;
+        // Accent: top border only
+        root.style.borderTop = `3px solid ${inside}`;
       }
       if (outside) {
-        root.style.borderTop = `4px solid ${outside}`;
         const hdr = root.querySelector('.ti-header');
         if (hdr) {
           hdr.style.borderBottom = `2px solid ${outside}88`;
-          hdr.style.background = `linear-gradient(90deg, ${outside}18 0%, transparent 60%)`;
+          hdr.style.background = `var(--ocean-deep)`;
         }
+        if (!inside) root.style.borderTop = `3px solid ${outside}`;
       }
     };
 

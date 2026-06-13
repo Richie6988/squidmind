@@ -15,6 +15,9 @@ const PoseidonChat = {
   async open() {
     this._buildModal();
     await this._refreshStatus();
+    // Poll broker state every 3s so busy indicator stays current
+    clearInterval(this._statusInterval);
+    this._statusInterval = setInterval(() => this._refreshStatus(), 3000);
     // Auto-continue: if last session had an incomplete task, resume it immediately
     // without requiring any user input.
     this._tryAutoContinue();
@@ -177,9 +180,17 @@ const PoseidonChat = {
     try {
       const s = await window.ApiV2._fetch('/models/status');
       if (!tag) return;
+      const broker = s.broker;
+      const state  = broker?.state || 'IDLE';
+      const owner  = broker?.owner || '';
       if (s.poseidon_model_id) {
-        tag.textContent = s.poseidon_model_id;
-        tag.className = 'pc-model-tag pc-model-ready';
+        const isBusy = state !== 'IDLE';
+        const isBG   = isBusy && owner.startsWith('bg_task');
+        const label  = isBG   ? `\u23f3 ${s.poseidon_model_id} \u2014 task running`
+                     : isBusy ? `\u23f3 ${s.poseidon_model_id} \u2014 busy`
+                     :          s.poseidon_model_id;
+        tag.textContent = label;
+        tag.className = isBusy ? 'pc-model-tag pc-model-busy' : 'pc-model-tag pc-model-ready';
       } else {
         tag.textContent = 'no model assigned';
         tag.className = 'pc-model-tag pc-model-warn';
@@ -550,7 +561,7 @@ const PoseidonChat = {
     } catch (e) { await SquidModal.alert('Reset failed: ' + e.message); }
   },
 
-  close() { this.modal?.classList.add('hidden'); },
+  close() { clearInterval(this._statusInterval); this.modal?.classList.add('hidden'); },
 
   // ── Helpers ──────────────────────────────────────────────────────────────
 

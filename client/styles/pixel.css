@@ -5612,6 +5612,8 @@ option {
 }
 .pc-model-ready { color: #06ffa5; }
 .pc-model-warn  { color: #f59e0b; }
+.pc-model-busy  { color: #f59e0b; animation: pcBusyPulse 1.4s ease-in-out infinite; }
+@keyframes pcBusyPulse { 0%,100% { opacity:1; } 50% { opacity:0.45; } }
 
 .pc-btn {
   background: rgba(255,255,255,0.04);
@@ -6639,6 +6641,16 @@ h4.pc-md-h { font-size: 8px; color: #94a3b8; }
 }
 
 /* ── Task queue completed/results section ── */
+.tq-busy-banner {
+  font-size: 9px;
+  color: #f59e0b;
+  background: rgba(245,158,11,0.08);
+  border: 1px solid rgba(245,158,11,0.3);
+  border-radius: 4px;
+  padding: 5px 10px;
+  margin-bottom: 8px;
+  animation: pcBusyPulse 1.4s ease-in-out infinite;
+}
 .tq-done-section { margin-top: 10px; border-top: 1px solid var(--border); padding-top: 8px; }
 .tq-done-header {
   display: flex; align-items: center; justify-content: space-between;
