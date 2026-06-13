@@ -1,4 +1,5 @@
 'use strict';
+const { PRIORITY } = require('./ModelBroker');
 /**
  * TaskRunner — automatic task execution engine.
  * Polls open/planned tasks every heartbeat tick and executes them.
@@ -139,21 +140,28 @@ class TaskRunner {
             if (ev.type === 'error') { failed = true; output += '\nERROR: ' + ev.error; }
           }
         } else {
-          // Poseidon handles it — use fresh session for background tasks
-          // to prevent context accumulation from repeated failures
-          const poseidonId = this.modelService.poseidonModelId;
-          const posEntry = poseidonId ? this.modelService.loaded.get(poseidonId) : null;
-          if (posEntry?.session && !posEntry.generating) {
-            // Wipe session so this task runs in clean context
-            try { if (posEntry.session.dispose) await posEntry.session.dispose(); } catch {}
-            posEntry.session = null;
-            posEntry._currentSequence = null;
-            posEntry.sessionTurns = 0;
-            console.log(`[TaskRunner] Fresh session for background task ${taskId}`);
-          }
-          const posMsg = `[BACKGROUND AUTO-TASK ${taskId}]\n${msg}`;
-          for await (const ev of this.modelService.chatWithPoseidon(posMsg, [])) {
-            if (ev.type === 'text') output += ev.chunk;
+          // Poseidon handles it directly — acquire POSEIDON_BG slot through broker
+          // broker.acquire blocks until CHAT/AGENT slots are free
+          const bgToken = await this.modelService.broker.acquire(
+            PRIORITY.POSEIDON_BG, `bg_task_${taskId}`,
+            { timeoutMs: 10 * 60 * 1000 }
+          );
+          try {
+            // Fresh session for each background task (no context contamination)
+            const poseidonId = this.modelService.poseidonModelId;
+            const posEntry = poseidonId ? this.modelService.loaded.get(poseidonId) : null;
+            if (posEntry?.session) {
+              try { if (posEntry.session.dispose) await posEntry.session.dispose(); } catch {}
+              posEntry.session = null;
+              posEntry._currentSequence = null;
+              posEntry.sessionTurns = 0;
+            }
+            const posMsg = `[BACKGROUND AUTO-TASK ${taskId}]\n${msg}`;
+            for await (const ev of this.modelService.chatWithPoseidon(posMsg, [])) {
+              if (ev.type === 'text') output += ev.chunk;
+            }
+          } finally {
+            this.modelService.broker.release(bgToken);
           }
         }
       } catch (e) {

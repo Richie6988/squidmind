@@ -159,10 +159,12 @@ class AgentWorker extends EventEmitter {
     this.rm           = rm;
     this.modelService = modelService;
     this.toolRegistry = toolRegistry;
+    this.broker       = modelService.broker;  // shared model broker
 
     this.session      = null;   // LlamaChatSession
     this.sequence     = null;   // context sequence
     this.generating   = false;
+    this._brokerToken  = null;  // broker token held during task execution
     this.status       = 'idle'; // idle | running | error
     this._functions   = null;
     this._modelId     = null;
@@ -202,11 +204,12 @@ class AgentWorker extends EventEmitter {
     if (!entry) throw new Error(`Model ${modelId} failed to load`);
 
     // Wait for Poseidon (or another agent) to free the model before grabbing a sequence
-    const deadline = Date.now() + 180_000;
-    while (entry.generating) {
-      if (Date.now() > deadline) throw new Error(`Model ${modelId} still busy after 3min — aborting`);
-      await new Promise(r => setTimeout(r, 1500));
-    }
+    // Acquire model slot through broker — guaranteed sequential access
+    const { PRIORITY } = require('./ModelBroker');
+    this._brokerToken = await this.broker.acquire(
+      PRIORITY.AGENT, this.agentId,
+      { timeoutMs: 10 * 60 * 1000 }   // 10 min max wait
+    );
 
     const llamaCpp = await import('node-llama-cpp');
     const { defineChatSessionFunction } = llamaCpp;
@@ -393,10 +396,20 @@ class AgentWorker extends EventEmitter {
 
     this.generating = false;
     this.status     = 'idle';
+
+    // Release model slot — lets next agent/task/dream proceed
+    if (this._brokerToken) {
+      this.broker.release(this._brokerToken);
+      this._brokerToken = null;
+    }
   }
 
   /** Dispose session — releases the sequence back to Poseidon's context pool */
   async dispose() {
+    if (this._brokerToken) {
+      this.broker.release(this._brokerToken);
+      this._brokerToken = null;
+    }
     try { await this.session?.dispose?.(); } catch {}
     // IMPORTANT: do NOT dispose this._agentContext — it belongs to Poseidon
     // Only dispose if we actually own a dedicated context (legacy path)

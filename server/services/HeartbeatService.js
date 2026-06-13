@@ -103,18 +103,28 @@ class HeartbeatService {
     this.wasOverloaded = isOverloaded;
 
     // ── DREAM TRIGGER ──────────────────────────────────────────────────────
+    // Only trigger dream if:
+    //   1. Broker is idle (no active or queued LLM work)
+    //   2. Poseidon model is loaded
+    //   3. Model has been idle for dreamIdleMinutes
+    //   4. Cooldown period has passed
     if (this.modelService) {
       try {
-        const status = this.modelService.getStatus();
-        const pm = status.loaded_models.find(m => m.model_id === status.poseidon_model_id);
-        if (pm && !pm.generating && !pm.dreaming && pm.idle_minutes >= this.dreamIdleMinutes) {
-          const cooldownOk = (Date.now() - this._lastDreamAt) > this.dreamCooldownMinutes * 60 * 1000;
-          if (cooldownOk) {
-            this._lastDreamAt = Date.now();
-            console.log(`[Heartbeat] 💤 Poseidon idle ${pm.idle_minutes.toFixed(1)}min — triggering dream`);
-            this.modelService.triggerDream().catch(e =>
-              console.warn('[Heartbeat] Dream trigger error:', e.message)
-            );
+        const broker = this.modelService.broker;
+        const brokerState = broker?.getState?.();
+        // Skip if broker busy or has queued requests
+        if (brokerState && brokerState.state === 'IDLE' && brokerState.queue.length === 0) {
+          const status = this.modelService.getStatus();
+          const pm = status.loaded_models.find(m => m.model_id === status.poseidon_model_id);
+          if (pm && !pm.generating && !pm.dreaming && pm.idle_minutes >= this.dreamIdleMinutes) {
+            const cooldownOk = (Date.now() - this._lastDreamAt) > this.dreamCooldownMinutes * 60 * 1000;
+            if (cooldownOk) {
+              this._lastDreamAt = Date.now();
+              console.log(`[Heartbeat] 💤 Poseidon idle ${pm.idle_minutes.toFixed(1)}min, broker IDLE — triggering dream`);
+              this.modelService.triggerDream().catch(e =>
+                console.warn('[Heartbeat] Dream trigger error:', e.message)
+              );
+            }
           }
         }
       } catch {}
@@ -148,8 +158,9 @@ class HeartbeatService {
 
       if (unassigned.length === 0) return;
 
-      // Inject a planning nudge into Poseidon's next response
-      // We do this via a synthetic background message if Poseidon is idle
+      // Only inject nudge when broker is genuinely idle
+      const broker = this.modelService.broker;
+      if (!broker?.isDreamAllowed()) return;  // reuse same "nothing pending" check
       const entry = this.modelService.loaded.get(this.modelService.poseidonModelId);
       if (!entry || entry.generating || entry.dreaming) return;
 

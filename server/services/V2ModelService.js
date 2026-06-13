@@ -25,6 +25,7 @@ class V2ModelService {
     this.modelsDir = modelsDir;
     this.llama = null;                       // node-llama-cpp instance (singleton)
     this.imageGen = new ImageGenerationService();
+    this.broker   = new ModelBroker();  // single-resource coordinator
     this.loaded = new Map();                 // model_id -> { model, context, session, config, lastUsedAt, generating }
     this.poseidonModelId = null;             // currently assigned to Poseidon
     this._libPromise = null;
@@ -259,6 +260,7 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
     return {
       models: items,
       poseidon_model_id: this.poseidonModelId,
+      broker: this.broker.getState(),
       currently_loaded: Array.from(this.loaded.keys())
     };
   }
@@ -873,10 +875,8 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
     if (!entry) {
       throw new Error('Poseidon model failed to load');
     }
-    if (entry.generating) {
-      throw new Error('Poseidon is already generating a response. Wait for it to finish.');
-    }
-
+    // Acquire the model slot (CHAT priority — preempts background work)
+    const brokerToken = await this.broker.acquire(PRIORITY.CHAT, 'poseidon_chat', { timeoutMs: 30_000 });
     entry.generating = true;
     entry.lastUsedAt = Date.now();
     entry.totalRequests++;
@@ -1310,6 +1310,7 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
       throw err;
     } finally {
       entry.generating = false;
+      this.broker.release(brokerToken);
       entry.lastUsedAt = Date.now();
 
       // Update registry
@@ -1362,6 +1363,17 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
     if (!entry || entry.generating || entry.dreaming) return;
     if (!entry.model || !entry.context) return;
 
+    // Refuse dream if broker has pending work
+    if (!this.broker.isDreamAllowed()) {
+      console.log('[V2ModelService] 💤 Dream skipped — broker has pending work');
+      return;
+    }
+    const dreamBrokerToken = await this.broker.acquire(PRIORITY.DREAM, 'dream', { timeoutMs: 5000 })
+      .catch(() => null);
+    if (!dreamBrokerToken) {
+      console.log('[V2ModelService] 💤 Dream skipped — could not acquire slot');
+      return;
+    }
     entry.dreaming = true;
     console.log('[V2ModelService] 💤 Poseidon entering dream cycle — agentic metacognition');
 
@@ -1547,6 +1559,7 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
       console.warn('[Dream] Failed:', e.message);
     } finally {
       entry.dreaming = false;
+      this.broker.release(dreamBrokerToken);
     }
   }
 
@@ -1592,33 +1605,34 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
       return { ok: false, error: `Model file not found: ${entry.file_path || entry.file_name}. Re-scan the library.` };
     }
 
-    // Unload all LLM models from VRAM before image generation
-    // Image gen (especially Flux) needs all available RAM/VRAM — LLMs must be evicted first
-    const loadedIds = [...this.loaded.keys()];
-    if (loadedIds.length > 0) {
-      console.log(`[V2ModelService] Unloading ${loadedIds.length} LLM model(s) before image gen: ${loadedIds.join(', ')}`);
-      for (const id of loadedIds) {
-        try {
-          const e = this.loaded.get(id);
-          try { if (e?.session?.dispose)  await e.session.dispose();  } catch {}
-          try { if (e?.context?.dispose)  await e.context.dispose();  } catch {}
-          try { if (e?.model?.dispose)    await e.model.dispose();    } catch {}
-          this.loaded.delete(id);
-          console.log(`[V2ModelService] Evicted ${id} from VRAM`);
-        } catch (evictErr) {
-          console.warn(`[V2ModelService] Could not evict ${id}:`, evictErr.message);
+    // Acquire IMAGE slot — waits for any LLM work to finish first
+    const imgToken = await this.broker.acquire(PRIORITY.IMAGE, 'image_gen', { timeoutMs: 60 * 60 * 1000 });
+    let result;
+    try {
+      // Evict LLM from VRAM so image gen gets the full budget
+      const loadedIds = [...this.loaded.keys()];
+      if (loadedIds.length > 0) {
+        console.log(`[V2ModelService] Evicting ${loadedIds.length} LLM(s) before image gen`);
+        for (const id of loadedIds) {
+          try {
+            const e = this.loaded.get(id);
+            try { if (e?.session?.dispose)  await e.session.dispose();  } catch {}
+            try { if (e?.context?.dispose)  await e.context.dispose();  } catch {}
+            try { if (e?.model?.dispose)    await e.model.dispose();    } catch {}
+            this.loaded.delete(id);
+          } catch {}
         }
+        this.poseidonModelId = null;
       }
-      // poseidonModelId will reload automatically on next chat request
-      this.poseidonModelId = null;
-    }
-
-    const result = await this.imageGen.generate({
+      result = await this.imageGen.generate({
       modelPath,
       prompt, outputPath, width, height, steps, cfg, seed, negativePrompt
     });
 
-    console.log(`[V2ModelService] Image generation ${result.ok ? 'completed' : 'failed'} — LLMs will reload on next chat request`);
+      console.log(`[V2ModelService] Image generation ${result.ok ? 'completed' : 'failed'} — LLMs will reload on next chat request`);
+    } finally {
+      this.broker.release(imgToken);
+    }
     return result;
   }
 

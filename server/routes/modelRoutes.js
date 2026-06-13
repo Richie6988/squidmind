@@ -319,6 +319,11 @@ function buildRouter(v2ModelService) {
     res.json({ success: true, ...v2ModelService.getStatus() });
   });
 
+  // GET /api/v2/models/broker — broker state for monitoring
+  router.get('/broker', (req, res) => {
+    res.json({ success: true, broker: v2ModelService.broker?.getState?.() ?? null });
+  });
+
   // POST /api/v2/models/import - register a model in the library (no load)
   router.post('/import', async (req, res) => {
     try {
