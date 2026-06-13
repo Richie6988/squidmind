@@ -28,10 +28,10 @@ const EventEmitter = require('events');
 
 const PRIORITY = Object.freeze({
   CHAT:         0,
-  AGENT:        1,
-  POSEIDON_BG:  2,
-  DREAM:        3,
-  IMAGE:        4,
+  IMAGE:        1,   // image gen preempts agents — needs full VRAM, evicts LLM
+  AGENT:        2,
+  POSEIDON_BG:  3,
+  DREAM:        4,
 });
 const PRIORITY_NAMES = Object.fromEntries(Object.entries(PRIORITY).map(([k,v]) => [v,k]));
 
@@ -100,10 +100,10 @@ class ModelBroker extends EventEmitter {
         return;
       }
 
-      // Image: refused if LLM tasks are queued (would starve forever)
-      // generateImage catches this and schedules a retry
+      // Image: refused if AGENT or BG tasks are queued (but not other IMAGE requests)
+      // IMAGE has higher priority than AGENT/BG so it will be served first once slot free.
       if (priority === PRIORITY.IMAGE) {
-        const llmQueued = this._queue.some(e => e.priority <= PRIORITY.POSEIDON_BG);
+        const llmQueued = this._queue.some(e => e.priority >= PRIORITY.AGENT && e.priority <= PRIORITY.POSEIDON_BG);
         if (llmQueued) {
           reject(new Error('BROKER_IMAGE_REFUSED: LLM tasks queued'));
           return;
@@ -174,9 +174,10 @@ class ModelBroker extends EventEmitter {
   /**
    * hasHighPriorityWaiting()
    * True if CHAT or IMAGE is waiting — BG tasks should yield.
+   * With IMAGE=1 < POSEIDON_BG=3, any queue entry with priority < POSEIDON_BG qualifies.
    */
   hasHighPriorityWaiting() {
-    return this._queue.some(e => e.priority === PRIORITY.CHAT || e.priority === PRIORITY.IMAGE);
+    return this._queue.some(e => e.priority < PRIORITY.POSEIDON_BG);
   }
   /**
    * isImageAllowed()
@@ -185,7 +186,7 @@ class ModelBroker extends EventEmitter {
    */
   isImageAllowed() {
     if (this._token) return false;
-    const llmQueued = this._queue.some(e => e.priority <= PRIORITY.POSEIDON_BG);
+    const llmQueued = this._queue.some(e => e.priority >= PRIORITY.AGENT && e.priority <= PRIORITY.POSEIDON_BG);
     return !llmQueued;
   }
 

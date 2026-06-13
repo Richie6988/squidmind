@@ -1627,7 +1627,7 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
     const imgDeadline = Date.now() + 60 * 60 * 1000; // 1h max wait
     while (!imgToken) {
       try {
-        imgToken = await this.broker.acquire(PRIORITY.IMAGE, 'image_gen', { timeoutMs: 60_000 });
+        imgToken = await this.broker.acquire(PRIORITY.IMAGE, 'image_gen', { timeoutMs: 5 * 60_000 });
       } catch (e) {
         if (e.message.includes('BROKER_IMAGE_REFUSED')) {
           // LLM tasks still queued — wait for them to drain
