@@ -170,8 +170,9 @@ heartbeat.setModelService(v2ModelService);
 
 // Task auto-runner — fires on every heartbeat tick
 const TaskRunner = require('./services/TaskRunner');
-const taskRunner = new TaskRunner(sharedRm, v2ModelService, agentWorkerPool);
+const taskRunner = new TaskRunner(sharedRm, v2ModelService, agentWorkerPool, botService);
 heartbeat.setTaskRunner(taskRunner);
+taskRunner.loadDone().catch(e => console.warn('[TaskRunner] loadDone error:', e.message));
 
 // Signal from chat modal open/close — pauses BG tasks while user is chatting
 app.post('/api/v2/poseidon/chat-active', (req, res) => {

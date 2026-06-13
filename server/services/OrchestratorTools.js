@@ -556,6 +556,64 @@ class OrchestratorTools {
       return { ok: false, error: err.message };
     }
   }
+  /**
+   * Fetch a URL and save the extracted text content to a file.
+   * output_path is relative to the project output or task folder.
+   */
+  async fetchAndSave({ url, output_path, task_id, project_id }) {
+    if (!url || !/^https?:\/\//.test(url)) {
+      return { ok: false, error: 'url must start with http(s)://' };
+    }
+    try {
+      // Fetch and clean
+      const fetchResult = await this.webFetch({ url });
+      if (!fetchResult.ok) return fetchResult;
+
+      const content = fetchResult.content;
+
+      // Resolve output path
+      const AQUARIUM = require('../aquarium');
+      const path = require('path');
+      const fs   = require('fs').promises;
+      let savePath;
+
+      if (output_path && path.isAbsolute(output_path)) {
+        savePath = output_path;
+      } else if (project_id) {
+        try {
+          const reg  = await this.rm.read('projects/project_registry.json').catch(() => ({ projects: {} }));
+          const proj = reg.projects?.[project_id];
+          const folder = proj?.folder || project_id;
+          const outDir = path.join(AQUARIUM.PROJECTS, folder, 'output');
+          await fs.mkdir(outDir, { recursive: true });
+          const fname = output_path || `fetch_${Date.now()}.txt`;
+          savePath = path.join(outDir, path.basename(fname));
+        } catch {
+          savePath = path.join(AQUARIUM.TASKS, task_id || `tmp_${Date.now()}`, output_path || `fetch_${Date.now()}.txt`);
+        }
+      } else if (task_id) {
+        const taskDir = path.join(AQUARIUM.TASKS, task_id);
+        await fs.mkdir(taskDir, { recursive: true });
+        const fname = output_path || `fetch_${Date.now()}.txt`;
+        savePath = path.join(taskDir, path.basename(fname));
+      } else {
+        return { ok: false, error: 'Provide task_id or project_id so the file has a destination' };
+      }
+
+      await fs.mkdir(path.dirname(savePath), { recursive: true });
+      await fs.writeFile(savePath, content, 'utf8');
+
+      return {
+        ok: true,
+        url,
+        saved_to: savePath,
+        char_count: content.length,
+        summary: content.slice(0, 300)
+      };
+    } catch (err) {
+      return { ok: false, error: err.message, url };
+    }
+  }
 }
 
 module.exports = OrchestratorTools;

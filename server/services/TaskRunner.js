@@ -11,26 +11,77 @@ const fs   = require('fs').promises;
 const fsSync = require('fs');
 const AQUARIUM = require('../aquarium');
 
+// Retry backoff delays per attempt (ms)
+const RETRY_BACKOFF = [0, 30_000, 120_000, 300_000]; // attempt 1: immediate, 2: 30s, 3: 2min, 4: 5min
+
+// Error categories for smarter retry decisions
+function classifyError(msg) {
+  if (!msg) return 'unknown';
+  const m = msg.toLowerCase();
+  if (m.includes('out of memory') || m.includes('oom') || m.includes('vram') || m.includes('no context')) return 'oom';
+  if (m.includes('preempted')) return 'preempted';
+  if (m.includes('hallucin') || m.includes('invalid tool') || m.includes('tool not found')) return 'tool_error';
+  if (m.includes('timeout') || m.includes('timed out')) return 'timeout';
+  return 'unknown';
+}
+
+const DONE_FILE = path.join(AQUARIUM.TASKS, '_done.json');
+
 class TaskRunner {
-  constructor(rm, modelService, agentPool) {
+  constructor(rm, modelService, agentPool, botService = null) {
     this.rm           = rm;
     this.modelService = modelService;
     this.agentPool    = agentPool;
+    this.botService   = botService;   // BotService for Telegram/Discord notifications
     this._running       = new Set();
-    this._done          = new Set();  // in-memory: tasks completed this session (never re-run)
+    this._done          = new Set();  // persistent: tasks completed (never re-run)
     this._lastCronRun   = new Map();
     this._failCounts    = new Map();
+    this._retryAfter    = new Map();  // taskId → epoch ms when next retry is allowed
     this.MAX_RETRIES    = 3;
-    this._chatOpenUntil = 0;  // epoch ms — don't run BG tasks until after this
+    this._chatOpenUntil = 0;
+    this._doneLoaded    = false;
+  }
+
+  /** Load persisted _done set from disk (called once at startup) */
+  async loadDone() {
+    try {
+      await fs.mkdir(AQUARIUM.TASKS, { recursive: true });
+      const raw = await fs.readFile(DONE_FILE, 'utf8');
+      const ids = JSON.parse(raw);
+      if (Array.isArray(ids)) ids.forEach(id => this._done.add(id));
+      console.log(`[TaskRunner] Loaded ${this._done.size} completed tasks from _done.json`);
+    } catch { /* file doesn't exist yet — start fresh */ }
+    this._doneLoaded = true;
+  }
+
+  /** Persist _done set to disk */
+  async _saveDone() {
+    try {
+      await fs.mkdir(AQUARIUM.TASKS, { recursive: true });
+      await fs.writeFile(DONE_FILE, JSON.stringify([...this._done]), 'utf8');
+    } catch (e) {
+      console.warn('[TaskRunner] _saveDone failed:', e.message);
+    }
+  }
+
+  /** Add task to _done and persist */
+  async _markDone(taskId) {
+    this._done.add(taskId);
+    await this._saveDone();
+  }
+
+  /** Send Telegram/Discord notification if BotService is available */
+  async _notify(text) {
+    if (!this.botService) return;
+    try { await this.botService.notify(text); } catch {}
   }
 
   /** Called by route when chat modal opens or closes */
   setChatActive(isOpen) {
     if (isOpen) {
-      // Keep tasks paused while chat is open + 30s grace after close
       this._chatOpenUntil = Date.now() + 30_000;
     } else {
-      // Grace period: wait 30s after close before resuming tasks
       this._chatOpenUntil = Date.now() + 30_000;
     }
   }
@@ -38,6 +89,8 @@ class TaskRunner {
   async tick() {
     // Sequential: if any task is already running, skip this tick
     if (this._running.size > 0) return;
+    // Wait for _done to be loaded from disk before running any task
+    if (!this._doneLoaded) return;
     // Wait for model to be loaded before running any task
     if (this.modelService.loaded.size === 0) return;
     // Don't start BG tasks if chat modal is open or recently closed
@@ -66,12 +119,36 @@ class TaskRunner {
       const lastRun = this._lastCronRun.get(task.task_id) || 0;
       if (this._isCronDue(cronStr, lastRun, now)) {
         this._lastCronRun.set(task.task_id, now);
-        console.log(`[TaskRunner] ⏱ Cron task due: ${task.task_id} "${task.title}"`);
-        // Create a fresh run of this task
-        const freshTask = { ...task, lifecycle: { ...task.lifecycle, status: 'open' } };
-        this._runTask(freshTask).catch(e =>
-          console.error(`[TaskRunner] Cron task ${task.task_id} error:`, e.message)
-        );
+        console.log(`[TaskRunner] Cron task due: ${task.task_id} "${task.title}"`);
+        // Spawn a FRESH task so each cron run is independently tracked.
+        // The original task stays in registry as the cron template.
+        try {
+          const reg = await this.rm.read('tasks/tasks_registry.json');
+          const nextId = reg.metadata?.next_id || 1;
+          const cronTaskId = `task_${String(nextId).padStart(4, '0')}_cron_${Date.now()}`;
+          reg.tasks = reg.tasks || {};
+          reg.tasks[cronTaskId] = {
+            ...task,
+            task_id: cronTaskId,
+            title: task.title,
+            description: task.description || '',
+            status: 'open',
+            lifecycle: { status: 'open' },
+            created_at: new Date().toISOString(),
+            cron_schedule: null, // fresh run — no re-cron
+            cron_parent: task.task_id,
+          };
+          reg.metadata = reg.metadata || {};
+          reg.metadata.next_id = nextId + 1;
+          await this.rm.write('tasks/tasks_registry.json', reg);
+          // Run the fresh task
+          const freshTask = reg.tasks[cronTaskId];
+          this._runTask(freshTask).catch(e =>
+            console.error(`[TaskRunner] Cron task ${cronTaskId} error:`, e.message)
+          );
+        } catch (e) {
+          console.error(`[TaskRunner] Failed to create cron instance for ${task.task_id}:`, e.message);
+        }
         return; // one task per tick
       }
     }
@@ -82,10 +159,12 @@ class TaskRunner {
       .filter(t => {
         const s = t.lifecycle?.status || t.status || 'open';
         const tooManyFails = (this._failCounts.get(t.task_id) || 0) >= this.MAX_RETRIES;
+        const retryDelay = this._retryAfter.get(t.task_id) || 0;
         return !TERMINAL.has(s)
           && !this._running.has(t.task_id)
           && !this._done.has(t.task_id)   // never re-run completed tasks
-          && !tooManyFails;
+          && !tooManyFails
+          && Date.now() >= retryDelay;    // exponential backoff
       })
       .sort((a, b) => (b.sort_order || 0) - (a.sort_order || 0)); // highest sort_order first
 
@@ -179,16 +258,23 @@ class TaskRunner {
         const status = failed ? 'failed' : 'completed';
         const prevFails = this._failCounts.get(taskId) || 0;
         if (failed && prevFails + 1 < this.MAX_RETRIES) {
-          this._failCounts.set(taskId, prevFails + 1);
+          const attempt = prevFails + 1;
+          this._failCounts.set(taskId, attempt);
+          const backoff = RETRY_BACKOFF[attempt] || RETRY_BACKOFF[RETRY_BACKOFF.length - 1];
+          this._retryAfter.set(taskId, Date.now() + backoff);
           await this._setStatus(taskId, 'open');
-          console.warn(`[TaskRunner] ✗ ${taskId} failed (attempt ${prevFails+1}/${this.MAX_RETRIES}) — will retry`);
+          console.warn(`[TaskRunner] ✗ ${taskId} failed (attempt ${attempt}/${this.MAX_RETRIES}) — retry in ${backoff/1000}s`);
         } else {
-          this._done.add(taskId);
+          await this._markDone(taskId);
           if (failed) { this._failCounts.set(taskId, this.MAX_RETRIES); }
           await this._setStatus(taskId, status, { result_summary: output.slice(0, 500), completed_at: new Date().toISOString() });
           console.log(`[TaskRunner] ${failed ? '✗✗' : '✓'} ${taskId} ${status} (${output.length} chars)`);
+          if (failed) {
+            await this._notify(`[IAQUA] Task FAILED: "${task.title}"\n${output.slice(0, 300)}`);
+          } else {
+            await this._notify(`[IAQUA] Task done: "${task.title}"\n${output.slice(0, 200)}`);
+          }
         }
-        console.warn(`[TaskRunner] ✗ ${taskId} failed (${output.length} chars)`);
         this._running.delete(taskId);
         return;
       }
@@ -291,29 +377,37 @@ class TaskRunner {
       if (failed) {
         const prevFails = (this._failCounts.get(taskId) || 0) + 1;
         this._failCounts.set(taskId, prevFails);
+        const errType = classifyError(output);
         if (prevFails >= this.MAX_RETRIES) {
-          console.warn(`[TaskRunner] ✗✗ ${taskId} hit ${this.MAX_RETRIES} failures — marking permanently failed`);
-          this._done.add(taskId);  // stop retrying
+          console.warn(`[TaskRunner] ✗✗ ${taskId} hit ${this.MAX_RETRIES} failures (${errType}) — permanently failed`);
+          await this._markDone(taskId);  // persist: stop retrying after restart too
           await this._setStatus(taskId, 'failed', {
             completed_at: new Date().toISOString(),
-            output_preview: `Permanently failed after ${prevFails} attempts. Last error: ${output.slice(0, 200)}`
+            output_preview: `Failed after ${prevFails} attempts [${errType}]. Last: ${output.slice(0, 200)}`
           });
+          await this._notify(`[IAQUA] Task FAILED permanently: "${task.title}"\nError type: ${errType}\n${output.slice(0, 300)}`);
         } else {
-          // Leave as planned so it retries, but wait for next tick
-          console.warn(`[TaskRunner] ✗ ${taskId} failed (attempt ${prevFails}/${this.MAX_RETRIES}) — will retry`);
+          // Exponential backoff: skip if OOM (longer wait), shorter for tool errors
+          const backoffMs = errType === 'oom'
+            ? (RETRY_BACKOFF[prevFails] || 300_000) * 2
+            : (RETRY_BACKOFF[prevFails] || 30_000);
+          this._retryAfter.set(taskId, Date.now() + backoffMs);
+          console.warn(`[TaskRunner] ✗ ${taskId} failed (attempt ${prevFails}/${this.MAX_RETRIES}, ${errType}) — retry in ${backoffMs/1000}s`);
           await this._setStatus(taskId, 'planned', {
-            output_preview: `Attempt ${prevFails} failed: ${output.slice(0, 150)}`
+            output_preview: `Attempt ${prevFails} failed [${errType}]: ${output.slice(0, 150)}`
           });
         }
       } else {
         this._failCounts.delete(taskId);
-        this._done.add(taskId);  // in-memory guard: never re-run this task
+        this._retryAfter.delete(taskId);
+        await this._markDone(taskId);  // persist: never re-run even after restart
         await this._setStatus(taskId, 'completed', {
           completed_at: new Date().toISOString(),
           output_preview: output.slice(0, 300),
-          result_summary: output.slice(0, 500)  // for TaskQueueUI "Recent Results"
+          result_summary: output.slice(0, 500)
         });
         await this._updateProgressField(taskId, 'completed — ' + output.slice(0, 120));
+        await this._notify(`[IAQUA] Task done: "${task.title}"\n${output.slice(0, 200)}`);
       }
 
       const finalStatus = failed ? 'failed' : 'completed';

@@ -643,6 +643,41 @@ class BotService extends EventEmitter {
     this._saveConfig().catch(() => {});
     this.emit('message', entry);
   }
+
+  /**
+   * Send a notification to all configured channels (Telegram + Discord).
+   * Used by TaskRunner on task completion/failure.
+   */
+  async notify(text) {
+    if (!this.config) return;
+    const errors = [];
+
+    // Telegram
+    if (this.config.telegram?.enabled && this.config.telegram?.token) {
+      const token    = this.config.telegram.token;
+      const chatIds  = this.config.telegram.allowed_chat_ids || [];
+      for (const chatId of chatIds) {
+        try {
+          await this._tgCall(token, 'sendMessage', {
+            chat_id: chatId,
+            text: text.slice(0, 4096),
+            parse_mode: 'Markdown'
+          });
+        } catch (e) { errors.push(`TG ${chatId}: ${e.message}`); }
+      }
+    }
+
+    // Discord
+    if (this.config.discord?.enabled && this._dsReady) {
+      const channelIds = this.config.discord.allowed_channel_ids || [];
+      for (const channelId of channelIds) {
+        try { await this._dsSend(channelId, text.slice(0, 2000)); }
+        catch (e) { errors.push(`DS ${channelId}: ${e.message}`); }
+      }
+    }
+
+    if (errors.length) console.warn('[BotService] notify partial errors:', errors.join(', '));
+  }
 }
 
 module.exports = BotService;
