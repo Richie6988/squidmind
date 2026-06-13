@@ -465,6 +465,8 @@ document.addEventListener('mousedown', function(e) {
     // ONLY close if the exact target is the .modal backdrop (not a child element)
     // This prevents accidental closes when clicking inside modal-content
     if (e.target.classList && e.target.classList.contains('modal')) {
+      // Skip modals that explicitly opt out of backdrop-close (e.g. ModelLoader panel)
+      if (e.target.dataset.noBackdropClose) return;
       // Verify this is a true backdrop click: no modal-content ancestor
       if (!e.target.querySelector(':scope > .modal-content')?.contains(e.target)) {
         e.target.classList.add('hidden');

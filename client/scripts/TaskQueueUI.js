@@ -86,10 +86,17 @@ const TaskQueueUI = {
 
   _makeDoneItem(t) {
     const ok      = t.lifecycle?.status === 'completed';
-    const icon    = ok ? '✅' : '❌';
+    const icon    = ok ? '✓' : '✗';
     const agent   = t.assignment?.assigned_name || t.assignment?.assigned_to || '—';
     const when    = t.lifecycle?.completed_at ? this._elapsed(t.lifecycle.completed_at) : '';
-    const summary = t.result_summary ? this._esc(t.result_summary.slice(0, 120)) + (t.result_summary.length > 120 ? '…' : '') : '<em style="opacity:.5">No result saved</em>';
+    // Image generation tasks: show thumbnail from output_preview url
+    const imgPreview = t.output_preview
+      ? `<div style="margin:4px 0;"><img src="${t.output_preview}" style="max-width:100%;max-height:140px;border:1px solid rgba(255,255,255,0.1);border-radius:3px;" onerror="this.style.display='none'"></div>`
+      : '';
+    const summaryText = t.result_summary
+      ? this._esc(t.result_summary.slice(0, 120)) + (t.result_summary.length > 120 ? '…' : '')
+      : (t.output_preview ? '' : '<em style="opacity:.5">—</em>');
+    const summary = imgPreview + (summaryText ? `<span>${summaryText}</span>` : '');
     return `
       <div class="tq-done-item" style="position:relative;">
         <button onclick="event.stopPropagation();TaskQueueUI.deleteTask('${t.task_id}')" title="Delete" style="position:absolute;top:4px;right:4px;background:rgba(239,68,68,0.12);border:1px solid rgba(239,68,68,0.25);color:#ef4444;border-radius:4px;padding:0 5px;font-size:8px;cursor:pointer;">🗑</button>

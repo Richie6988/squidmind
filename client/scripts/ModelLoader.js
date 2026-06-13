@@ -29,6 +29,9 @@ const ModelLoader = {
     }
     this.modal = document.createElement('div');
     this.modal.className = 'modal model-loader-modal';
+    this.modal.setAttribute('data-no-backdrop-close', '1');
+    // Prevent SquidModal backdrop clicks from propagating to this overlay
+    this.modal.addEventListener('click', e => { e.stopPropagation(); });
     this.modal.innerHTML = `
       <div class="modal-content" style="width:90vw; max-width:900px; max-height:88vh; display:flex; flex-direction:column;">
         <div class="modal-header">
@@ -919,8 +922,14 @@ const ModelLoader = {
     const f = (fileName || '').toLowerCase();
     const isFlux = /flux/i.test(f);
     if (isFlux) {
-      const isDev = /dev/i.test(f);
-      return { width: 1024, height: 1024, steps: isDev ? 20 : 8, cfg: 1.0, label: 'Flux optimal' };
+      const isDev  = /dev/i.test(f);
+      // Q2 quant has lower quality ceiling — 850x850 is sweet spot for speed/quality
+      // Q4+ can do 1024 but will force CPU anyway; 850 is a safe universal default
+      const quantMatch = f.match(/[_-]q(\d+)/i);
+      const quant = quantMatch ? parseInt(quantMatch[1]) : 0;
+      const defW  = (quant >= 4 || quant === 0) ? 850 : 1024;
+      const defH  = defW;
+      return { width: defW, height: defH, steps: isDev ? 20 : 8, cfg: 1.0, label: `Flux optimal (${defW}×${defH})` };
     }
     const isXL = /xl|sdxl/i.test(f);
     return isXL
@@ -955,7 +964,7 @@ const ModelLoader = {
     const S = (v) => String(v).replace(/[<>&"]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'})[c]);
 
     const promptChips = prompts.map((p) =>
-      '<button onclick="document.getElementById(\'imggen-prompt\').value=this.dataset.p;document.getElementById(\'imggen-prompt\').style.borderColor=\'#4facfe\'" ' +
+      '<button onclick="var ta=this.closest(\'.modal\').querySelector(\'#imggen-prompt\');if(ta){ta.value=this.dataset.p;ta.style.borderColor=\'#4facfe\';}" ' +
       'data-p="' + S(p) + '" ' +
       'title="' + S(p) + '" ' +
       'style="background:rgba(79,172,254,0.06);border:1px solid rgba(79,172,254,0.2);color:#94a3b8;border-radius:5px;padding:3px 7px;font-size:8px;cursor:pointer;max-width:155px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' +
@@ -965,8 +974,10 @@ const ModelLoader = {
     const cfgTitle  = isFlux ? 'Flux: keep at 1.0 (higher values ignored)' : 'SD: 7-12 for quality';
     const stepTitle = isFlux ? 'Flux schnell: 8, dev: 20. More = slower + marginal gain' : 'SD: 20-30 for quality';
 
+    // Remove any leftover imggen dialog (prevents duplicate #imggen-prompt ids)
+    document.querySelectorAll('.modal.imggen-modal').forEach(el => el.remove());
     const dlg = document.createElement('div');
-    dlg.className = 'modal';
+    dlg.className = 'modal imggen-modal';
     dlg.innerHTML =
       '<div class="modal-content" style="width:540px;max-height:90vh;overflow-y:auto;padding:20px;gap:10px;display:flex;flex-direction:column;">' +
         '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;">' +
@@ -989,6 +1000,12 @@ const ModelLoader = {
           '<label title="' + cfgTitle + '" style="font-size:9px;color:#64748b;display:flex;flex-direction:column;gap:3px;">CFG<input id="imggen-cfg" type="number" value="' + auto.cfg + '" min="0.1" max="30" step="0.1" style="width:55px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:6px;color:#e2e8f0;font-size:10px;padding:4px 6px;"></label>' +
           '<label title="Seed (-1 = random, set a value to reproduce exact result)" style="font-size:9px;color:#64748b;display:flex;flex-direction:column;gap:3px;">Seed<input id="imggen-seed" type="number" value="-1" min="-1" max="2147483647" style="width:78px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:6px;color:#e2e8f0;font-size:10px;padding:4px 6px;"></label>' +
         '</div>' +
+        '<div style="display:flex;align-items:center;gap:8px;margin-top:2px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);border-radius:7px;padding:6px 10px;">' +
+          '<span style="font-size:8px;color:#64748b;">Assign to agent (optional):</span>' +
+          '<select id="imggen-agent" style="flex:1;background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.1);border-radius:5px;color:#e2e8f0;font-size:9px;padding:4px 6px;font-family:inherit;">' +
+            '<option value="">— Generate now (direct) —</option>' +
+          '</select>' +
+        '</div>' +
         '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:2px;">' +
           '<button onclick="this.closest(\'.modal\').remove()" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);color:#94a3b8;border-radius:6px;padding:5px 12px;font-size:10px;cursor:pointer;">Cancel</button>' +
           '<button id="imggen-run" onclick="ModelLoader._runImageGen(\'' + modelId + '\', this.closest(\'.modal\'))" style="background:linear-gradient(135deg,#4facfe,#2563eb);border:none;color:#fff;border-radius:6px;padding:5px 16px;font-size:10px;cursor:pointer;font-weight:600;">Generate</button>' +
@@ -996,6 +1013,17 @@ const ModelLoader = {
         '<div id="imggen-result" style="display:none;margin-top:8px;text-align:center;"></div>' +
       '</div>';
     document.body.appendChild(dlg);
+    // Populate agent selector
+    window.ApiV2?._fetch('/agents').then(r => {
+      const sel = dlg.querySelector('#imggen-agent');
+      if (!sel) return;
+      Object.values(r.registry?.agents || {}).forEach(a => {
+        const opt = document.createElement('option');
+        opt.value = a.agent_id;
+        opt.textContent = (a.display_name || a.agent_id) + ' (' + (a.specialization || 'general') + ')';
+        sel.appendChild(opt);
+      });
+    }).catch(() => {});
   },
 
   _resetAutoParams(dlg) {
@@ -1016,12 +1044,13 @@ const ModelLoader = {
   async _runImageGen(modelId, dlg) {
     const prompt  = dlg.querySelector('#imggen-prompt')?.value.trim();
     const neg     = dlg.querySelector('#imggen-neg')?.value.trim() || '';
-    const width   = parseInt(dlg.querySelector('#imggen-w')?.value)     || 512;
-    const height  = parseInt(dlg.querySelector('#imggen-h')?.value)     || 512;
+    const width   = parseInt(dlg.querySelector('#imggen-w')?.value)     || 850;
+    const height  = parseInt(dlg.querySelector('#imggen-h')?.value)     || 850;
     const steps   = parseInt(dlg.querySelector('#imggen-steps')?.value) || 20;
     const cfg     = parseFloat(dlg.querySelector('#imggen-cfg')?.value) || 7;
     const seed    = parseInt(dlg.querySelector('#imggen-seed')?.value)  ?? -1;
-    if (!prompt) { alert('Enter a prompt first'); return; }
+    const agentId = dlg.querySelector('#imggen-agent')?.value || null;
+    if (!prompt) { await SquidModal.alert('Enter a prompt first'); return; }
     const runBtn  = dlg.querySelector('#imggen-run');
     const result  = dlg.querySelector('#imggen-result');
     runBtn.disabled = true; runBtn.textContent = 'Generating…';
@@ -1047,6 +1076,34 @@ const ModelLoader = {
     };
     _startFastPoll();
 
+    // If an agent is selected, create a task and let the agent handle generation
+    if (agentId) {
+      try {
+        const taskRes = await window.ApiV2._fetch('/tasks', {
+          method: 'POST',
+          body: JSON.stringify({
+            title: `Generate image: ${prompt.slice(0, 60)}`,
+            description: `Image generation task.\nModel: ${modelId}\nPrompt: ${prompt}\nNegative: ${neg}\nSize: ${width}x${height} steps:${steps} cfg:${cfg} seed:${seed}`,
+            assigned_to: agentId,
+            task_type: 'image_generation'
+          })
+        });
+        _stopFastPoll();
+        const taskId = taskRes.task?.task_id;
+        dlg.querySelector('#imggen-result').innerHTML =
+          '<div style="color:#06ffa5;font-size:9px;padding:8px;background:rgba(6,255,165,0.06);border-radius:6px;">' +
+          'Task dispatched to agent' + (taskId ? ' [' + taskId + ']' : '') + '.<br>' +
+          'Monitor progress in the Task Queue right panel.</div>';
+        runBtn.disabled = false; runBtn.textContent = 'Generate';
+        return;
+      } catch(e) {
+        _stopFastPoll();
+        dlg.querySelector('#imggen-result').innerHTML = '<div style="color:#f87171;font-size:9px;">' + e.message + '</div>';
+        runBtn.disabled = false; runBtn.textContent = 'Generate';
+        return;
+      }
+    }
+
     try {
       const data = await window.ApiV2._fetch('/models/generate-image', {
         method: 'POST',
@@ -1054,12 +1111,13 @@ const ModelLoader = {
       });
       _stopFastPoll();
       if (data.ok && data.url) {
-        const imgUrl = data.url.startsWith('http') ? data.url : data.url;
-        result.innerHTML = `<img src="${imgUrl}" style="max-width:100%;border-radius:8px;margin-top:8px;"
-          onerror="this.style.display='none';this.nextSibling.style.display='block'">
-          <div style="display:none;color:#f87171;font-size:9px;">Image load failed — check task output in right panel</div><br>
-          <a href="${imgUrl}" download style="font-size:9px;color:#4facfe;">↓ Download</a>
-          ${data.task_id ? `<span style="font-size:8px;color:#475569;margin-left:8px;">task: ${data.task_id}</span>` : ''}`;
+        // Image stored in TASKS/OUTPUT — show in task queue, not here
+        result.innerHTML =
+          '<div style="color:#06ffa5;font-size:9px;padding:8px;background:rgba(6,255,165,0.06);border-radius:6px;">' +
+          'Image generated' + (data.task_id ? ' [' + data.task_id + ']' : '') + '.<br>' +
+          'View in the Task Queue &rarr; Recent Results below.</div>';
+        // Trigger immediate TaskQueueUI refresh
+        if (typeof TaskQueueUI !== 'undefined') { TaskQueueUI._render(); }
       } else {
         result.innerHTML = `<div style="color:#f87171;font-size:9px;padding:8px;background:rgba(248,113,113,0.08);border-radius:6px;">${data.error || 'Unknown error'}</div>`;
       }
