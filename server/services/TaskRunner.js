@@ -361,9 +361,40 @@ class TaskRunner {
 
   async _saveOutput(taskId, text) {
     try {
-      const dir = path.join(AQUARIUM.TASKS, taskId, 'results');
-      await fs.mkdir(dir, { recursive: true });
-      await fs.writeFile(path.join(dir, 'output.txt'), text, 'utf8');
+      // Resolve the task to get project_id
+      const task = await this.rm._readTaskDetails(taskId);
+      const projectId = task?.context?.project_id || task?.project_id || null;
+
+      let outputPath;
+      if (projectId) {
+        // Output goes into project output folder
+        try {
+          const reg = await this.rm.read('projects/project_registry.json').catch(() => ({ projects: {} }));
+          const proj = reg.projects?.[projectId];
+          const folder = proj?.folder || projectId;
+          const projOutDir = path.join(AQUARIUM.PROJECTS, folder, 'output');
+          await fs.mkdir(projOutDir, { recursive: true });
+          outputPath = path.join(projOutDir, `${taskId}.txt`);
+        } catch {
+          // fallback to task folder
+        }
+      }
+
+      if (!outputPath) {
+        // No project — flat in task folder
+        const taskDir = path.join(AQUARIUM.TASKS, taskId);
+        await fs.mkdir(taskDir, { recursive: true });
+        outputPath = path.join(taskDir, 'output.txt');
+      }
+
+      await fs.writeFile(outputPath, text, 'utf8');
+
+      // Store result_file path in task details for UI retrieval
+      if (task) {
+        task.result_file = outputPath;
+        task.result_summary = text.slice(0, 500);
+        await this.rm._writeTaskDetails(taskId, task);
+      }
     } catch (e) {
       console.warn(`[TaskRunner] saveOutput failed for ${taskId}:`, e.message);
     }

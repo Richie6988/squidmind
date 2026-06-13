@@ -502,10 +502,24 @@ class OrchestratorTools {
         }
       } catch(e) { console.warn('[generateImage] task creation failed:', e.message); }
 
-      // Output always goes to aquarium/TASKS/output/<filename> — flat folder, no per-task subdirs
+      // Route output: project → PROJECTS/<folder>/output/, else → TASKS/<task_id>/
       const AQUARIUM = require('../aquarium');
-      const outputDir  = require('path').join(AQUARIUM.TASKS, 'OUTPUT');
-      const serveUrl   = `/api/files/read?path=${encodeURIComponent(require('path').join(AQUARIUM.TASKS, 'OUTPUT', safeFilename))}`;
+      let outputDir, serveBase;
+      if (project_id) {
+        try {
+          const reg = await this.rm.read('projects/project_registry.json').catch(() => ({ projects: {} }));
+          const proj = reg.projects?.[project_id];
+          const folder = proj?.folder || project_id;
+          outputDir = require('path').join(AQUARIUM.PROJECTS, folder, 'output');
+          serveBase = require('path').join(AQUARIUM.PROJECTS, folder, 'output', safeFilename);
+        } catch {}
+      }
+      if (!outputDir) {
+        // No project — flat in task folder
+        outputDir = taskId ? require('path').join(AQUARIUM.TASKS, taskId) : require('path').join(AQUARIUM.TASKS, 'generated');
+        serveBase = require('path').join(outputDir, safeFilename);
+      }
+      const serveUrl = `/api/files/read?path=${encodeURIComponent(serveBase)}`;
       await fs2.mkdir(outputDir, { recursive: true });
       const outputPath = path.join(outputDir, safeFilename);
 

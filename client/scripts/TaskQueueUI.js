@@ -598,10 +598,10 @@ ${task.description}`
       btn.disabled = true;
       try {
         const data = await window.ApiV2._fetch(`/tasks/${taskId}/result`);
-        if (data.result) {
+        if (data.content) {
           box.style.whiteSpace = 'pre-wrap';
           box.style.maxHeight  = '300px';
-          box.textContent = data.result;
+          box.textContent = data.content;
           btn.textContent = '✅ Loaded';
         } else {
           box.textContent = 'No result file found.';

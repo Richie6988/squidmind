@@ -179,11 +179,36 @@ router.get('/tasks/:id/result', async (req, res) => {
   try {
     const fs   = require('fs').promises;
     const path = require('path');
-    const filePath = path.join(rm.dataRoot, 'tasks', req.params.id, 'results', 'output.txt');
-    const text = await fs.readFile(filePath, 'utf8');
-    res.json({ success: true, task_id: req.params.id, result: text });
+    const AQUARIUM = require('../aquarium');
+    const taskId = req.params.id;
+
+    // Read task details to get result_file path
+    const task = await rm._readTaskDetails(taskId);
+
+    // Try result_file field first (new routing)
+    if (task?.result_file) {
+      try {
+        const text = await fs.readFile(task.result_file, 'utf8');
+        return res.json({ success: true, task_id: taskId, content: text, path: task.result_file });
+      } catch {}
+    }
+
+    // Fallback: flat output.txt in task folder (new flat structure)
+    const flatPath = path.join(AQUARIUM.TASKS, taskId, 'output.txt');
+    try {
+      const text = await fs.readFile(flatPath, 'utf8');
+      return res.json({ success: true, task_id: taskId, content: text, path: flatPath });
+    } catch {}
+
+    // Legacy fallback: old results/output.txt path
+    const legacyPath = path.join(AQUARIUM.TASKS, taskId, 'results', 'output.txt');
+    try {
+      const text = await fs.readFile(legacyPath, 'utf8');
+      return res.json({ success: true, task_id: taskId, content: text, path: legacyPath });
+    } catch {}
+
+    res.json({ success: true, task_id: taskId, content: task?.result_summary || null });
   } catch (err) {
-    if (err.code === 'ENOENT') return res.json({ success: true, task_id: req.params.id, result: null });
     res.status(500).json({ success: false, error: err.message });
   }
 });

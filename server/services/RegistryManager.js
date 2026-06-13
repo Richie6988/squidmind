@@ -806,7 +806,7 @@ class RegistryManager {
   async _writeTaskDetails(taskId, task) {
     const fs   = require('fs').promises;
     const dir  = this._taskDir(taskId);
-    await fs.mkdir(require('path').join(dir, 'results'), { recursive: true });
+    await fs.mkdir(dir, { recursive: true });
     await fs.writeFile(require('path').join(dir, 'details.json'), JSON.stringify(task, null, 2), 'utf8');
   }
 
