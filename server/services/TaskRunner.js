@@ -45,7 +45,7 @@ class TaskRunner {
     // Don't start BG tasks if CHAT is active or waiting — user interaction takes priority
     const brokerState = this.modelService.broker.getState();
     if (brokerState.state !== 'IDLE') return;  // someone holds the broker
-    if (this.modelService.broker.hasChatWaiting()) return;  // CHAT queued
+    if (this.modelService.broker.hasHighPriorityWaiting()) return;  // CHAT or IMAGE queued
 
     let reg;
     try {
@@ -207,7 +207,7 @@ class TaskRunner {
           let preempted = false;
           for await (const ev of this.modelService.chatWithPoseidon(posMsg, [], { _skipBroker: true, _bgMode: true })) {
             if (ev.type === 'text') output += ev.chunk;
-            if (this.modelService.broker.hasChatWaiting()) {
+            if (this.modelService.broker.hasHighPriorityWaiting()) {
               preempted = true;
               this.modelService.abortCurrentGeneration?.();
               break;

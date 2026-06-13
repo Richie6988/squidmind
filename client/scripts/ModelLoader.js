@@ -29,9 +29,7 @@ const ModelLoader = {
     }
     this.modal = document.createElement('div');
     this.modal.className = 'modal model-loader-modal';
-    this.modal.setAttribute('data-no-backdrop-close', '1');
-    // Prevent SquidModal backdrop clicks from propagating to this overlay
-    this.modal.addEventListener('click', e => { e.stopPropagation(); });
+    // Click on the backdrop (modal itself, not modal-content) closes it
     this.modal.innerHTML = `
       <div class="modal-content" style="width:90vw; max-width:900px; max-height:88vh; display:flex; flex-direction:column;">
         <div class="modal-header">

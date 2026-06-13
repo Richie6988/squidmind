@@ -65,6 +65,7 @@ const TaskQueueUI = {
         .filter(t => ['completed', 'failed'].includes(t.lifecycle?.status || t.status))
         .sort((a, b) => new Date(b.lifecycle?.completed_at || b.created_at || 0) - new Date(a.lifecycle?.completed_at || a.created_at || 0))
         .slice(0, 10);
+      this._doneTasks = doneTasks;
 
       container.innerHTML = '';
 
@@ -573,11 +574,17 @@ ${task.description}`
   // ── Delete (hard) ──────────────────────────────────────────────────────────
 
   async deleteTask(taskId) {
-    const task = this._tasks.find(t => t.task_id === taskId);
+    // Search both active and done task lists
+    const allTasks = [...(this._tasks || []), ...(this._doneTasks || [])];
+    const task = allTasks.find(t => t.task_id === taskId);
     const label = task?.title ? '"' + task.title + '"' : taskId;
-    if (!await SquidModal.confirm('Permanently delete task ' + label + '? This cannot be undone.')) return;
+    if (!await SquidModal.confirm('Permanently delete task ' + label + '?\nThis cannot be undone.')) return;
     try {
-      await window.ApiV2._fetch('/tasks/' + taskId, { method: 'DELETE' });
+      const res = await fetch('/api/v2/tasks/' + taskId, { method: 'DELETE', headers: { 'Content-Type': 'application/json' } });
+      if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || 'Delete failed'); }
+      // Remove from local state immediately so UI updates before next poll
+      this._tasks = (this._tasks || []).filter(t => t.task_id !== taskId);
+      this._doneTasks = (this._doneTasks || []).filter(t => t.task_id !== taskId);
       await this._render();
     } catch (err) {
       await SquidModal.alert('Delete failed: ' + err.message);

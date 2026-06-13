@@ -172,6 +172,13 @@ class ModelBroker extends EventEmitter {
   }
 
   /**
+   * hasHighPriorityWaiting()
+   * True if CHAT or IMAGE is waiting — BG tasks should yield.
+   */
+  hasHighPriorityWaiting() {
+    return this._queue.some(e => e.priority === PRIORITY.CHAT || e.priority === PRIORITY.IMAGE);
+  }
+  /**
    * isImageAllowed()
    * True only if slot free AND no LLM-priority tasks queued (CHAT/AGENT/BG).
    * IMAGE evicts the LLM from VRAM — it can't co-exist with queued LLM work.
