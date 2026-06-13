@@ -296,6 +296,7 @@ My response: "${ss.last_response_preview}"${tools}
       lines.push('  After creating tasks: stop. Do NOT execute them. Reply with the list of tasks created and their IDs.');
       lines.push('  Only execute inline (no task) if the user asks for something immediate and short (< 30s).');
       lines.push('  Rule: if a request involves a list or repeated action → batch into atomic tasks, assign agent, confirm to user.');
+      lines.push('IMAGE GENERATION: never run image gen inline in chat — it takes minutes and blocks everything. Instead: create_task({title, description: "Generate: <prompt>", task_type: "image_gen", cron_schedule: null, assignment: {assigned_to: "poseidon_main"}}). The TaskRunner will handle VRAM eviction and reload automatically.');
       lines.push('IMAGES: to show an image inline — use fetch_image_url(page_url, subject) on ANY webpage URL (Wikipedia, news, product pages, etc). It extracts og:image or best image. Returns {ok, url, markdown}. Output the markdown field.');
       lines.push('  Works on most sites. NEVER construct upload.wikimedia.org thumb URLs by hand — use fetch_image_url instead.');
       lines.push('  Pexels/Unsplash/Pixabay block bots — never use them');
@@ -1839,9 +1840,16 @@ Never describe a bash command you could call instead.`;
 
   async _readFile({ path: relPath }) {
     try {
-      const workspace = path.join(require('../aquarium').ROOT, '..');
-      const fullPath = path.resolve(workspace, relPath);
-      // Security: keep inside workspace
+      const AQUARIUM  = require('../aquarium');
+      const workspace = path.join(AQUARIUM.ROOT, '..');
+      // Aquarium-aware: PROJECTS/*, TASKS/*, BRAIN/*, etc. → resolve from AQUARIUM.ROOT
+      let fullPath;
+      const upper = relPath.toUpperCase();
+      if (/^(PROJECTS|TASKS|MODELS|AGENTS|SKILLS|BRAIN|LOGS|CHANNELS)(\/|$)/.test(upper)) {
+        fullPath = path.join(AQUARIUM.ROOT, relPath);
+      } else {
+        fullPath = path.resolve(workspace, relPath);
+      }
       if (!fullPath.startsWith(workspace)) return { ok: false, error: 'Path outside workspace' };
       const content = await fs.readFile(fullPath, 'utf8');
       return { ok: true, path: relPath, content: content.length > 10000 ? content.slice(0, 10000) + '\n... (truncated)' : content };
@@ -1852,8 +1860,15 @@ Never describe a bash command you could call instead.`;
 
   async _writeFile({ path: relPath, content }) {
     try {
-      const workspace = path.join(require('../aquarium').ROOT, '..');
-      const fullPath = path.resolve(workspace, relPath);
+      const AQUARIUM  = require('../aquarium');
+      const workspace = path.join(AQUARIUM.ROOT, '..');
+      let fullPath;
+      const upper = relPath.toUpperCase();
+      if (/^(PROJECTS|TASKS|MODELS|AGENTS|SKILLS|BRAIN|LOGS|CHANNELS)(\/|$)/.test(upper)) {
+        fullPath = path.join(AQUARIUM.ROOT, relPath);
+      } else {
+        fullPath = path.resolve(workspace, relPath);
+      }
       if (!fullPath.startsWith(workspace)) return { ok: false, error: 'Path outside workspace' };
       await fs.mkdir(path.dirname(fullPath), { recursive: true });
       await fs.writeFile(fullPath, content, 'utf8');

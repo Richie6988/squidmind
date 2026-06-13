@@ -105,7 +105,7 @@ const PoseidonChat = {
           <div class="pc-welcome">
             <div class="pc-welcome-icon">🔱</div>
             <div class="pc-welcome-title">POSEIDON</div>
-            <div class="pc-welcome-sub">AI Orchestrator — SquidMind v2</div>
+            <div class="pc-welcome-sub">AI Orchestrator — IAQUA v2</div>
           </div>
         </div>
 
@@ -216,7 +216,7 @@ const PoseidonChat = {
       msgs.innerHTML = `<div class="pc-welcome">
         <div class="pc-welcome-icon">🔱</div>
         <div class="pc-welcome-title">POSEIDON</div>
-        <div class="pc-welcome-sub">AI Orchestrator — SquidMind v2</div>
+        <div class="pc-welcome-sub">AI Orchestrator — IAQUA v2</div>
       </div>`;
       return;
     }

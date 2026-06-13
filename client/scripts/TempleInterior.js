@@ -1,6 +1,6 @@
 /**
  * TempleInterior v4 — Project workspace cockpit
- * Design: SquidMind ocean palette + Press Start 2P + Courier New
+ * Design: IAQUA ocean palette + Press Start 2P + Courier New
  * No emojis, no browser popups — pure SquidModal + pixel.css tokens
  */
 

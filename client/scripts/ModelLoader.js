@@ -366,7 +366,7 @@ const ModelLoader = {
           </div>
           <div class="agent-form-row"><label>&nbsp;</label>
             <span class="hint" style="font-size:8px; color:var(--accent);">
-              Recommended: 'auto' for both fields. SquidMind probes your free VRAM
+              Recommended: 'auto' for both fields. IAQUA probes your free VRAM
               at load time and picks: gpu_layers to fit ~70% of free VRAM, ctx to
               fill the remainder (min 4096, max 32768). Specify numbers to override.
             </span>
@@ -466,7 +466,7 @@ const ModelLoader = {
           <span class="ml-estimate-val ${speedClass}">${speedHint}</span>
         </div>
         <div class="ml-estimate-hint">
-          File size: ${fileSizeGb} GB. With 'auto' both fields, SquidMind reads your
+          File size: ${fileSizeGb} GB. With 'auto' both fields, IAQUA reads your
           free VRAM at load time and picks gpu_layers (~70% VRAM for weights) +
           contextLength (remaining for KV cache, min 4096). Resolved values are
           shown after load and used as starting point for retries on OOM.

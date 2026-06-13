@@ -64,7 +64,11 @@ class V2ModelService {
         return;
       }
       this.poseidonModelId = savedId;
-      console.log(`[V2ModelService] ✓ Restored Poseidon model from brain: ${savedId}`);
+      console.log(`[V2ModelService] ✓ Restored Poseidon model from brain: ${savedId} — pre-loading into VRAM...`);
+      // Eagerly load so first chat is instant (not lazy on first message)
+      this.ensureLoaded(savedId).catch(err =>
+        console.warn(`[V2ModelService] Startup pre-load failed for ${savedId}:`, err.message)
+      );
     } catch (err) {
       // non-fatal
     }
@@ -398,6 +402,15 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
     if (!entry) throw new Error(`Model ${modelId} not in library. Import it first.`);
     if (entry.status === 'missing') throw new Error(`Model file is missing: ${entry.file_path}`);
 
+    // Unload any currently loaded model before loading a new one.
+    // node-llama-cpp keeps weights in VRAM — two models can't coexist on a consumer GPU.
+    for (const [loadedId] of this.loaded) {
+      if (loadedId !== modelId) {
+        console.log(`[V2ModelService] Unloading ${loadedId} to free VRAM for ${modelId}`);
+        await this.unloadModel(loadedId).catch(() => {});
+      }
+    }
+
     const promise = this.loadModel(entry.file_name, entry.config || {});
     this._loadingPromises.set(modelId, promise);
     try {
@@ -516,13 +529,18 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
       // ── Step 4: Compute target contextLength from REAL remaining VRAM ─────
       if (config.contextLength === 'auto') {
         if (vramAfter && freeAfterGb > 0.3) {
-          const margin       = 0.25;  // 250 MB headroom for activations (flashAttention reduces pressure)
+          // Be aggressive — try the model's full trainCtx.
+          // The retry ladder below (target → /2 → /4 → MIN) handles OOM gracefully
+          // without reloading weights. Better to aim high and step down than to
+          // cap at 32768 and miss 128k capable models.
+          const margin       = 0.15;  // tight headroom — let retry ladder handle OOM
           const availKvGb    = Math.max(0, freeAfterGb - margin);
-          const bytesPerTok  = config.flashAttention ? 50 * 1024 : 100 * 1024;  // FA halves KV memory
+          const bytesPerTok  = config.flashAttention ? 40 * 1024 : 80 * 1024;
           const toksFit      = Math.floor(availKvGb * 1024 ** 3 / bytesPerTok);
-          const capped       = Math.min(toksFit, trainCtx, 32768);
-          config.contextLength = Math.max(V2ModelService.MIN_VIABLE_CTX, Math.floor(capped / 1024) * 1024);
-          console.log(`  [auto] contextLength: ${config.contextLength} (${availKvGb.toFixed(2)} GB for KV)`);
+          // Try up to trainCtx — no 32768 cap
+          const target       = Math.min(toksFit * 1.5, trainCtx);  // 50% optimistic since retry catches OOM
+          config.contextLength = Math.max(V2ModelService.MIN_VIABLE_CTX, Math.floor(target / 1024) * 1024);
+          console.log(`  [auto] contextLength: ${config.contextLength} (${availKvGb.toFixed(2)} GB for KV, trainCtx=${trainCtx})`);
         } else {
           config.contextLength = V2ModelService.MIN_VIABLE_CTX;
           console.log(`  [auto] contextLength: ${config.contextLength} (fallback, no VRAM info)`);

@@ -155,6 +155,39 @@ class TaskRunner {
       let output = '';
       let failed = false;
 
+      // ── IMAGE GEN TASK ────────────────────────────────────────────────────
+      const isImageTask = (task.task_type === 'image_gen') ||
+        /^generate[: ]/i.test(task.title) ||
+        /image[_\s]gen/i.test(task.task_type || '');
+
+      if (isImageTask) {
+        try {
+          const prompt = task.description || task.title.replace(/^generate[: ]*/i, '');
+          console.log(`[TaskRunner] 🎨 Image gen task ${taskId}: "${prompt.slice(0, 60)}"`);
+          const result = await this.modelService.generateImage({ prompt, task_id: taskId });
+          output = result?.image_path ? `Image saved: ${result.image_path}` : JSON.stringify(result);
+        } catch (e) {
+          output = `Image gen failed: ${e.message}`;
+          failed = true;
+        }
+        // Skip normal task flow
+        const status = failed ? 'failed' : 'completed';
+        const prevFails = this._failCounts.get(taskId) || 0;
+        if (failed && prevFails + 1 < this.MAX_RETRIES) {
+          this._failCounts.set(taskId, prevFails + 1);
+          await this._setStatus(taskId, 'open');
+          console.warn(`[TaskRunner] ✗ ${taskId} failed (attempt ${prevFails+1}/${this.MAX_RETRIES}) — will retry`);
+        } else {
+          this._done.add(taskId);
+          if (failed) { this._failCounts.set(taskId, this.MAX_RETRIES); }
+          await this._setStatus(taskId, status, { result_summary: output.slice(0, 500), completed_at: new Date().toISOString() });
+          console.log(`[TaskRunner] ${failed ? '✗✗' : '✓'} ${taskId} ${status} (${output.length} chars)`);
+        }
+        console.warn(`[TaskRunner] ✗ ${taskId} failed (${output.length} chars)`);
+        this._running.delete(taskId);
+        return;
+      }
+
       try {
         // ALL tasks go through Poseidon (single model, single sequence).
         // If assigned to an agent, inject its personality as a role prefix so
