@@ -1576,11 +1576,11 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
         console.log(`[V2ModelService] 💤 Dream complete — ${dreamResponse.length} chars generated`);
 
         await this.rm.log({
-          event_type: 'poseidon_decision', severity: 'info',
+          event_type: 'poseidon_dream', severity: 'info',
           actor: { type: 'system', id: 'poseidon_dream' },
           subject: { type: 'system', id: 'poseidon_main' },
-          action: 'Agentic dream cycle complete',
-          context: { response_chars: dreamResponse.length, reflection_preview: reflection.slice(0, 100) }
+          action: reflection.slice(0, 500) || dreamResponse.slice(0, 500),
+          context: { full_dream: dreamResponse, reflection, response_chars: dreamResponse.length }
         }).catch(() => {});
 
       } finally {

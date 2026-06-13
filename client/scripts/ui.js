@@ -143,23 +143,40 @@ console.log('[OK] UI exported to window');
 // LOGS PANEL
 // ══════════════════════════════════════════════════════════
 
-ui._allLogs    = [];   // raw entries from server
-ui._logFilter  = 'all';
+ui._allLogs   = [];
+ui._logFilter = 'all';
+ui._sevFilter = '';
+ui._liveTimer = null;
+
+ui.closeLogsModal = function() {
+  document.getElementById('logs-modal').classList.add('hidden');
+  clearInterval(ui._liveTimer);
+  ui._liveTimer = null;
+};
+
+ui.toggleLiveLog = function(cb) {
+  clearInterval(ui._liveTimer);
+  if (cb.checked) ui._liveTimer = setInterval(() => ui.reloadLogs(), 5000);
+};
+
+ui.reloadLogs = async function() {
+  const limit = document.getElementById('lm-limit')?.value || 200;
+  try {
+    const data = await window.ApiV2._fetch('/logs?limit=' + limit);
+    ui._allLogs = (data.entries || []).slice().reverse();
+    ui.filterLogs();
+  } catch (e) {
+    const list = document.getElementById('lm-list');
+    if (list) list.innerHTML = `<div class="lm-empty lm-empty-err">Failed: ${ui._esc(e.message)}</div>`;
+  }
+};
 
 ui.openLogsModal = async function() {
   const modal = document.getElementById('logs-modal');
   if (!modal) return;
   modal.classList.remove('hidden');
   document.getElementById('lm-list').innerHTML = '<div class="lm-empty">Loading...</div>';
-  try {
-    const data = await window.ApiV2._fetch('/logs?limit=200');
-    // newest first
-    ui._allLogs = (data.entries || []).slice().reverse();
-    ui.filterLogs();
-  } catch (e) {
-    document.getElementById('lm-list').innerHTML =
-      `<div class="lm-empty lm-empty-err">Failed: ${ui._esc(e.message)}</div>`;
-  }
+  await ui.reloadLogs();
 };
 
 ui.setLogFilter = function(btn, cat) {
@@ -169,23 +186,18 @@ ui.setLogFilter = function(btn, cat) {
   ui.filterLogs();
 };
 
-ui.setSevFilter = function(btn, sev) {
-  ui._sevFilter = sev;
-  document.querySelectorAll('.lm-sev-btn').forEach(b => b.classList.remove('lm-sev-active'));
-  if (sev) btn.classList.add('lm-sev-active');
-  ui.filterLogs();
-};
-ui._sevFilter = '';
-
 ui.filterLogs = function() {
   const search = (document.getElementById('lm-search')?.value || '').toLowerCase();
-  const cat    = ui._logFilter  || 'all';
-  const sev    = ui._sevFilter  || '';
+  const cat    = ui._logFilter || 'all';
+  const sev    = document.getElementById('lm-sev')?.value   || '';
+  const actor  = document.getElementById('lm-actor')?.value || '';
 
   const catMatches = (e) => {
     const et = (e.event_type || '').toLowerCase();
     const at = (e.actor?.type || '').toLowerCase();
+    const ai = (e.actor?.id   || '').toLowerCase();
     if (cat === 'all')      return true;
+    if (cat === 'dream')    return et === 'poseidon_dream' || ai === 'poseidon_dream';
     if (cat === 'poseidon') return et.startsWith('poseidon_') || et === 'user_input';
     if (cat === 'agent')    return et.startsWith('agent_') || at === 'agent';
     if (cat === 'task')     return et.startsWith('task_') || et === 'task_completed' || et === 'task_failed';
@@ -196,23 +208,19 @@ ui.filterLogs = function() {
     return true;
   };
 
-  const sevMatches = (e) => {
-    if (!sev) return true;
-    return (e.severity || 'info') === sev;
-  };
-
   const filtered = (ui._allLogs || []).filter(e => {
     if (!catMatches(e)) return false;
-    if (!sevMatches(e)) return false;
+    if (sev   && (e.severity || 'info') !== sev) return false;
+    if (actor && (e.actor?.id || '') !== actor)   return false;
     if (search) {
-      const hay = [e.event_type, e.action, e.actor?.id, e.subject?.id, e.actor?.type].join(' ').toLowerCase();
+      const hay = [e.event_type, e.action, e.actor?.id, e.subject?.id, e.context?.full_dream].join(' ').toLowerCase();
       if (!hay.includes(search)) return false;
     }
     return true;
   });
 
   const countEl = document.getElementById('lm-count');
-  if (countEl) countEl.textContent = filtered.length + ' entries';
+  if (countEl) countEl.textContent = filtered.length + ' / ' + ui._allLogs.length;
 
   const list = document.getElementById('lm-list');
   if (!list) return;
@@ -220,18 +228,22 @@ ui.filterLogs = function() {
     list.innerHTML = '<div class="lm-empty">No matching entries</div>';
     return;
   }
-
   list.innerHTML = filtered.map(e => ui._renderLogEntry(e)).join('');
 };
 
 ui._renderLogEntry = function(e) {
   const ts   = new Date(e.timestamp);
-  const time = ts.toLocaleTimeString('fr-FR', { hour:'2-digit', minute:'2-digit', second:'2-digit' });
-  const date = ts.toLocaleDateString('fr-FR', { day:'2-digit', month:'2-digit' });
-  const et   = e.event_type || 'unknown';
-  const sev  = e.severity   || 'info';
+  const now  = Date.now();
+  const ago  = Math.floor((now - ts) / 1000);
+  const rel  = ago < 60  ? ago + 's ago'
+             : ago < 3600 ? Math.floor(ago/60) + 'm ago'
+             : ago < 86400 ? Math.floor(ago/3600) + 'h ago'
+             : ts.toLocaleDateString('fr-FR', {day:'2-digit',month:'2-digit'});
+  const timeStr = ts.toLocaleTimeString('fr-FR', {hour:'2-digit',minute:'2-digit',second:'2-digit'});
 
-  // Icon + colour per event type
+  const et  = e.event_type || 'unknown';
+  const sev = e.severity   || 'info';
+
   const MAP = {
     system_startup:       ['⚡','lm-ev-system'],
     system_shutdown:      ['⏹','lm-ev-system'],
@@ -248,45 +260,57 @@ ui._renderLogEntry = function(e) {
     task_completed:       ['✓','lm-ev-ok'],
     task_failed:          ['✗','lm-ev-err'],
     task_cancelled:       ['⊘','lm-ev-warn'],
-    task_chunk_completed: ['◈','lm-ev-task'],
     project_created:      ['📁','lm-ev-proj'],
     project_updated:      ['✏','lm-ev-proj'],
     project_archived:     ['📦','lm-ev-proj'],
     user_input:           ['💬','lm-ev-poseidon'],
     poseidon_decision:    ['🔱','lm-ev-poseidon'],
+    poseidon_dream:       ['💤','lm-ev-dream'],
     tool_invoked:         ['⚙','lm-ev-tool'],
     tool_failed:          ['⚠','lm-ev-err'],
     json_update:          ['📝','lm-ev-system'],
     registry_repaired:    ['🔧','lm-ev-warn'],
     checkpoint_created:   ['💾','lm-ev-system'],
+    file_modified:        ['📄','lm-ev-system'],
   };
   const [icon, cls] = MAP[et] || ['◉', sev === 'error' ? 'lm-ev-err' : 'lm-ev-system'];
   const sevCls = sev === 'error' ? 'lm-sev-err' : sev === 'warning' ? 'lm-sev-warn' : '';
-  const actor  = e.actor?.id  !== 'poseidon_main' ? (e.actor?.id || '') : '';
-  const subj   = e.subject?.id || '';
+  const actorId = (e.actor?.id || '');
+  const subj    = e.subject?.id || '';
+  const isDream = et === 'poseidon_dream';
 
   const actionText = e.action || '';
-  const preview = actionText.length > 180 ? actionText.slice(0, 180) + '…' : actionText;
+  const preview = actionText.length > 200 ? actionText.slice(0, 200) + '…' : actionText;
 
-  return `<div class="lm-entry ${sevCls}" title="${ui._esc(actionText)}">
+  // Dream entries: show full content expandable
+  const fullContent = isDream && e.context?.full_dream
+    ? `<div class="lm-dream-full" style="display:none"><pre class="lm-dream-pre">${ui._esc(e.context.full_dream)}</pre></div>`
+    : (e.context?.full_dream ? `<div class="lm-dream-full" style="display:none"><pre class="lm-dream-pre">${ui._esc(e.context.full_dream)}</pre></div>` : '');
+  const expandBtn = (fullContent || actionText.length > 200)
+    ? `<button class="lm-expand-btn" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'block':'none';this.textContent=this.textContent==='▶'?'▼':'▶'">▶</button>`
+    : '';
+  const expandFull = fullContent || (actionText.length > 200
+    ? `<div class="lm-dream-full" style="display:none"><pre class="lm-dream-pre">${ui._esc(actionText)}</pre></div>` : '');
+
+  const uid = 'lm_' + Math.random().toString(36).slice(2);
+
+  return `<div class="lm-entry ${sevCls} ${isDream ? 'lm-entry-dream' : ''}" title="${ui._esc(timeStr)}">
     <div class="lm-entry-left">
       <span class="lm-ev-icon ${cls}">${icon}</span>
     </div>
     <div class="lm-entry-body">
       <div class="lm-entry-top">
         <span class="lm-ev-type">${ui._esc(et)}</span>
-        ${actor ? `<span class="lm-ev-actor">${ui._esc(actor)}</span>` : ''}
-        ${subj  ? `<span class="lm-ev-subj">→ ${ui._esc(subj)}</span>` : ''}
-        <span class="lm-time lm-time-inline">${date} ${time}</span>
+        ${actorId && actorId !== 'poseidon_main' ? `<span class="lm-ev-actor">${ui._esc(actorId)}</span>` : ''}
+        ${subj ? `<span class="lm-ev-subj">→ ${ui._esc(subj)}</span>` : ''}
+        <span class="lm-time lm-time-inline" title="${ui._esc(timeStr)}">${rel}</span>
       </div>
-      <div class="lm-action">${ui._esc(preview)}</div>
+      <div class="lm-action">${ui._esc(preview)} ${expandBtn}${expandFull}</div>
     </div>
   </div>`;
 };
 
-// legacy shim kept for safety
-async function loadLogs() { ui.openLogsModal(); }
-// Squid Interaction Functions
+
 ui.selectedSquid = null;
 
 console.log('[OK] UI panel manager loaded');

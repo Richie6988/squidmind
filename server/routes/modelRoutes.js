@@ -104,7 +104,7 @@ function buildRouter(v2ModelService) {
   // params: q, pipeline (text-generation|image-to-image|text-to-image|feature-extraction|any)
   //         minSize (0.5|1|3|7|13|30), maxSize same, sort (downloads|likes|trending)
   router.get('/hf-search', async (req, res) => {
-    const { q = '', limit = 24, sort = 'downloads', pipeline = '', minSize = '', maxSize = '' } = req.query;
+    const { q = '', limit = 30, sort = 'downloads', pipeline = '', minSize = '', maxSize = '', quant = '' } = req.query;
     try {
       // Build filter: always gguf + optional pipeline tag
       let filter = 'gguf';
@@ -125,6 +125,11 @@ function buildRouter(v2ModelService) {
         if (size_b !== null) {
           if (minSize && size_b < parseFloat(minSize)) return null;
           if (maxSize && size_b > parseFloat(maxSize)) return null;
+        }
+        // Quant filter — match filename tags in model id or tags
+        if (quant) {
+          const allText = (id + ' ' + (m.tags||[]).join(' ')).toUpperCase();
+          if (!allText.includes(quant.toUpperCase())) return null;
         }
         // Role
         let role = 'chat';

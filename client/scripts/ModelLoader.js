@@ -107,6 +107,23 @@ const ModelLoader = {
               <button class="ml-hf-size-pill" data-min="9" data-max="15" onclick="ModelLoader._hfSizeFilter(this)">9–14B</button>
               <button class="ml-hf-size-pill" data-min="15" data-max="" onclick="ModelLoader._hfSizeFilter(this)">15B+</button>
             </div>
+            <!-- Sort + Language + Quant row -->
+            <div class="ml-hf-size-row">
+              <span class="ml-hf-size-label">Sort:</span>
+              <button class="ml-hf-size-pill active" data-sort="downloads" onclick="ModelLoader._hfSortFilter(this)">&#x2193; Downloads</button>
+              <button class="ml-hf-size-pill" data-sort="trending" onclick="ModelLoader._hfSortFilter(this)">&#x1F525; Trending</button>
+              <button class="ml-hf-size-pill" data-sort="likes" onclick="ModelLoader._hfSortFilter(this)">&#x2665; Likes</button>
+              <button class="ml-hf-size-pill" data-sort="lastModified" onclick="ModelLoader._hfSortFilter(this)">&#x1F553; Recent</button>
+            </div>
+            <div class="ml-hf-size-row">
+              <span class="ml-hf-size-label">Quant:</span>
+              <button class="ml-hf-size-pill active" data-quant="" onclick="ModelLoader._hfQuantFilter(this)">Any</button>
+              <button class="ml-hf-size-pill" data-quant="Q4" onclick="ModelLoader._hfQuantFilter(this)">Q4</button>
+              <button class="ml-hf-size-pill" data-quant="Q5" onclick="ModelLoader._hfQuantFilter(this)">Q5</button>
+              <button class="ml-hf-size-pill" data-quant="Q8" onclick="ModelLoader._hfQuantFilter(this)">Q8</button>
+              <button class="ml-hf-size-pill" data-quant="F16" onclick="ModelLoader._hfQuantFilter(this)">F16</button>
+              <button class="ml-hf-size-pill" data-quant="IQ" onclick="ModelLoader._hfQuantFilter(this)">IQ (iMatrix)</button>
+            </div>
             <!-- Results -->
             <div id="ml-hf-results" class="ml-hf-results-list"></div>
             <!-- File picker panel -->
@@ -152,7 +169,7 @@ const ModelLoader = {
         .ml-hf-row-bottom{display:flex;align-items:center;gap:8px;}
         .ml-hf-id{font-size:10px;color:#e2e8f0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;}
         .ml-hf-size-hint{font-size:8px;color:#a78bfa;background:rgba(167,139,250,0.1);padding:1px 5px;border-radius:4px;white-space:nowrap;}
-        .ml-hf-stat{font-size:8px;color:#64748b;}
+        .ml-hf-stat{font-size:8px;color:#64748b;} .ml-hf-date{color:#475569;font-style:italic;}
         .ml-hf-src{font-size:8px;color:#4facfe;text-decoration:none;opacity:0.7;}
         .ml-hf-src:hover{opacity:1;text-decoration:underline;}
         .ml-hf-open-btn{background:rgba(79,172,254,0.1);border:1px solid rgba(79,172,254,0.25);color:#4facfe;border-radius:5px;padding:3px 8px;cursor:pointer;font-size:12px;transition:all .12s;flex-shrink:0;}
@@ -693,10 +710,25 @@ const ModelLoader = {
   _hfMinSize: '', _hfMaxSize: '',
 
   _hfSizeFilter(btn) {
-    this.modal.querySelectorAll('.ml-hf-size-pill').forEach(p => p.classList.remove('active'));
+    // Only toggle pills in the same row
+    btn.closest('.ml-hf-size-row').querySelectorAll('.ml-hf-size-pill').forEach(p => p.classList.remove('active'));
     btn.classList.add('active');
     this._hfMinSize = btn.dataset.min || '';
     this._hfMaxSize = btn.dataset.max || '';
+    this._hfSearch();
+  },
+
+  _hfSortFilter(btn) {
+    btn.closest('.ml-hf-size-row').querySelectorAll('.ml-hf-size-pill').forEach(p => p.classList.remove('active'));
+    btn.classList.add('active');
+    this._hfSort = btn.dataset.sort || 'downloads';
+    this._hfSearch();
+  },
+
+  _hfQuantFilter(btn) {
+    btn.closest('.ml-hf-size-row').querySelectorAll('.ml-hf-size-pill').forEach(p => p.classList.remove('active'));
+    btn.classList.add('active');
+    this._hfQuant = btn.dataset.quant || '';
     this._hfSearch();
   },
 
@@ -707,20 +739,24 @@ const ModelLoader = {
     el.innerHTML = '<div class="ml-hf-loading">Searching HuggingFace…</div>';
     this._hfCloseFiles();
     try {
-      let url = '/models/hf-search?q=' + encodeURIComponent(q) + '&limit=24';
+      const sort = this._hfSort || 'downloads';
+      let url = '/models/hf-search?q=' + encodeURIComponent(q) + '&limit=30&sort=' + sort;
       if (this._hfCurrentPipeline && this._hfCurrentPipeline !== 'any') url += '&pipeline=' + encodeURIComponent(this._hfCurrentPipeline);
       if (this._hfMinSize) url += '&minSize=' + this._hfMinSize;
       if (this._hfMaxSize) url += '&maxSize=' + this._hfMaxSize;
+      if (this._hfQuant)   url += '&quant=' + encodeURIComponent(this._hfQuant);
       const data = await window.ApiV2._fetch(url);
       if (!data.models?.length) { el.innerHTML = '<div class="ml-hf-empty">No results — try different filters.</div>'; return; }
       el.innerHTML = data.models.map(m => {
         const icons = {chat:'💬',code:'💻',dream:'🌙',embed:'📐',reason:'🧠',image:'🖼',audio:'🎵'};
         const roleIcon = icons[m.role] || '🤖';
         const dl = m.downloads > 1000000 ? (m.downloads/1000000).toFixed(1)+'M'
-                 : m.downloads > 1000 ? (m.downloads/1000).toFixed(0)+'k' : m.downloads;
+                 : m.downloads > 1000 ? (m.downloads/1000).toFixed(0)+'k' : (m.downloads||0);
+        const lk = m.likes > 1000 ? (m.likes/1000).toFixed(1)+'k' : (m.likes||0);
         const sz = m.size_hint ? `<span class="ml-hf-size-hint">${m.size_hint}</span>` : '';
         const src_link = `https://huggingface.co/${m.id}`;
         const capsHtml = (m.caps||[]).map(c => `<span class="ml-hf-cap">${c}</span>`).join('');
+        const updatedStr = m.updated ? new Date(m.updated).toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit',year:'2-digit'}) : '';
         return `<div class="ml-hf-row" onclick="ModelLoader._hfOpenRepo('${m.id}')">
           <span class="ml-hf-role-badge ml-hf-role-${m.role}">${roleIcon}</span>
           <div class="ml-hf-row-body">
@@ -728,6 +764,8 @@ const ModelLoader = {
             <div class="ml-hf-row-bottom">
               ${capsHtml}
               <span class="ml-hf-stat">↓${dl}</span>
+              <span class="ml-hf-stat">♥${lk}</span>
+              ${updatedStr ? `<span class="ml-hf-stat ml-hf-date">${updatedStr}</span>` : ''}
               <a class="ml-hf-src" href="${src_link}" target="_blank" onclick="event.stopPropagation()">↗ HF</a>
             </div>
           </div>

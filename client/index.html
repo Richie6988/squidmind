@@ -179,45 +179,51 @@
   <!-- LOGS MODAL -->
   <div id="logs-modal" class="modal hidden">
     <div class="lm-modal">
-      <!-- Header -->
       <div class="lm-header">
-        <div class="lm-title">
-          <span class="lm-icon">◈</span>
-          <span>SYSTEM LOGS</span>
-        </div>
+        <div class="lm-title"><span class="lm-icon">◈</span><span>SYSTEM LOGS</span></div>
         <div class="lm-header-right">
+          <span class="lm-count" id="lm-count">—</span>
+          <label class="lm-live-label"><input type="checkbox" id="lm-live" onchange="ui.toggleLiveLog(this)"> LIVE</label>
           <button class="lm-refresh" onclick="ui.openLogsModal()" title="Refresh">↺</button>
-          <button class="lm-close" onclick="document.getElementById('logs-modal').classList.add('hidden')">✕</button>
+          <button class="lm-close" onclick="ui.closeLogsModal()">✕</button>
         </div>
       </div>
-
-      <!-- Filter tabs + severity + search -->
       <div class="lm-filters">
         <div class="lm-filter-row">
-          <button class="lm-tab active" data-cat="all"      onclick="ui.setLogFilter(this,'all')">All</button>
-          <button class="lm-tab"        data-cat="poseidon" onclick="ui.setLogFilter(this,'poseidon')">🔱 Poseidon</button>
-          <button class="lm-tab"        data-cat="agent"    onclick="ui.setLogFilter(this,'agent')">🤖 Agents</button>
-          <button class="lm-tab"        data-cat="task"     onclick="ui.setLogFilter(this,'task')">✦ Tasks</button>
-          <button class="lm-tab"        data-cat="project"  onclick="ui.setLogFilter(this,'project')">📁 Projects</button>
-          <button class="lm-tab"        data-cat="model"    onclick="ui.setLogFilter(this,'model')">📦 Models</button>
-          <button class="lm-tab"        data-cat="error"    onclick="ui.setLogFilter(this,'error')">⚠ Errors</button>
-          <button class="lm-tab"        data-cat="system"   onclick="ui.setLogFilter(this,'system')">⚙ System</button>
+          <button class="lm-tab active" onclick="ui.setLogFilter(this,'all')">ALL</button>
+          <button class="lm-tab" onclick="ui.setLogFilter(this,'poseidon')">🔱 POSEIDON</button>
+          <button class="lm-tab" onclick="ui.setLogFilter(this,'dream')">💤 DREAM</button>
+          <button class="lm-tab" onclick="ui.setLogFilter(this,'task')">✦ TASKS</button>
+          <button class="lm-tab" onclick="ui.setLogFilter(this,'agent')">🤖 AGENTS</button>
+          <button class="lm-tab" onclick="ui.setLogFilter(this,'model')">📦 MODELS</button>
+          <button class="lm-tab" onclick="ui.setLogFilter(this,'project')">📁 PROJECTS</button>
+          <button class="lm-tab" onclick="ui.setLogFilter(this,'error')">⚠ ERRORS</button>
+          <button class="lm-tab" onclick="ui.setLogFilter(this,'system')">⚙ SYSTEM</button>
         </div>
         <div class="lm-filter-row lm-filter-row2">
-          <input class="lm-search" id="lm-search" type="text" placeholder="Search action, actor, subject…"
-                 oninput="ui.filterLogs()">
-          <button class="lm-sev-btn" data-sev="" onclick="ui.setSevFilter(this,'')">All severity</button>
-          <button class="lm-sev-btn" data-sev="error" onclick="ui.setSevFilter(this,'error')">🔴 Errors</button>
-          <button class="lm-sev-btn" data-sev="warning" onclick="ui.setSevFilter(this,'warning')">🟡 Warnings</button>
-          <button class="lm-sev-btn lm-sev-active" data-sev="clear" style="display:none" onclick="ui.setSevFilter(this,'')">✕ Clear</button>
-          <span class="lm-count" id="lm-count">—</span>
+          <input class="lm-search" id="lm-search" type="text" placeholder="Search…" oninput="ui.filterLogs()">
+          <select class="lm-sev-select" id="lm-sev" onchange="ui.filterLogs()">
+            <option value="">All severity</option>
+            <option value="error">🔴 Error</option>
+            <option value="warning">🟡 Warning</option>
+            <option value="info">ℹ Info</option>
+          </select>
+          <select class="lm-sev-select" id="lm-actor" onchange="ui.filterLogs()">
+            <option value="">All actors</option>
+            <option value="poseidon_main">Poseidon</option>
+            <option value="poseidon_dream">Dream</option>
+            <option value="human_user">User</option>
+            <option value="system">System</option>
+          </select>
+          <select class="lm-sev-select" id="lm-limit" onchange="ui.reloadLogs()">
+            <option value="100">Last 100</option>
+            <option value="200" selected>Last 200</option>
+            <option value="500">Last 500</option>
+            <option value="1000">Last 1000</option>
+          </select>
         </div>
       </div>
-
-      <!-- Log list -->
-      <div class="lm-list" id="lm-list">
-        <div class="lm-empty">Loading...</div>
-      </div>
+      <div class="lm-list" id="lm-list"><div class="lm-empty">Loading...</div></div>
     </div>
   </div>
 

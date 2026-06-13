@@ -6087,22 +6087,45 @@ option {
 .lm-ev-ok       { background: rgba(6,255,165,0.12);   color: #06ffa5; }
 .lm-ev-err      { background: rgba(239,68,68,0.15);   color: #f87171; }
 .lm-ev-warn     { background: rgba(245,158,11,0.12);  color: #fbbf24; }
+.lm-ev-dream    { background: rgba(139,92,246,0.15);  color: #c4b5fd; }
 
-.lm-entry-body { flex: 1; min-width: 0; }
-.lm-entry-top  { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 2px; }
-.lm-ev-type {
-  font-family: 'Courier New', monospace;
-  font-size: 10px; color: #64748b;
-  background: rgba(255,255,255,0.04);
-  padding: 1px 5px; border-radius: 3px;
-}
-.lm-ev-actor { font-family: 'Courier New', monospace; font-size: 10px; color: #4facfe; }
-.lm-ev-subj  { font-family: 'Courier New', monospace; font-size: 10px; color: #94a3b8; }
+.lm-entry-dream { border-left: 3px solid rgba(139,92,246,0.5); background: rgba(139,92,246,0.03); }
 .lm-action {
   font-family: 'Courier New', monospace;
   font-size: 11px; color: #cbd5e1;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  display: flex; align-items: baseline; gap: 5px;
 }
+.lm-expand-btn {
+  font-family: 'Courier New', monospace;
+  font-size: 8px; color: var(--ui-accent);
+  background: rgba(79,172,254,0.08); border: 1px solid rgba(79,172,254,0.2);
+  padding: 0 5px; cursor: pointer; flex-shrink: 0;
+}
+.lm-expand-btn:hover { background: rgba(79,172,254,0.2); }
+.lm-dream-full { margin-top: 6px; }
+.lm-dream-pre {
+  font-family: 'Courier New', monospace;
+  font-size: 10px; color: #c4b5fd;
+  background: rgba(139,92,246,0.06);
+  border: 1px solid rgba(139,92,246,0.2);
+  padding: 8px 10px; white-space: pre-wrap; word-break: break-word;
+  max-height: 300px; overflow-y: auto; line-height: 1.6;
+}
+.lm-sev-select {
+  font-family: 'Courier New', monospace;
+  font-size: 10px;
+  background: var(--ocean-mid); border: 1px solid var(--border);
+  color: var(--text-primary); padding: 3px 6px; cursor: pointer;
+}
+.lm-sev-select:focus { outline: none; border-color: var(--ui-accent); }
+.lm-live-label {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 7px; color: var(--ui-accent2);
+  display: flex; align-items: center; gap: 4px; cursor: pointer;
+}
+.lm-live-label input { accent-color: var(--ui-accent2); }
+
 .lm-entry-right {
   flex: 0 0 auto; text-align: right;
   display: flex; flex-direction: column; align-items: flex-end; gap: 1px;
