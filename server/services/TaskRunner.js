@@ -247,9 +247,36 @@ class TaskRunner {
       }
 
       // Build rich task message including project context and progress state
-      const projectPart = task.context?.project_id
-        ? `\nProject: ${task.context.project_id}`
-        : (task.project_name ? `\nProject: ${task.project_name}` : '');
+      const projectId   = task.context?.project_id || task.project_id || null;
+      const projectName = task.context?.project_name || task.project_name || null;
+      const projectPart = projectId || projectName
+        ? `\nProject: ${projectName || projectId}`
+        : '';
+
+      // Inject live project memory so agent knows current state
+      let projectMemoryPart = '';
+      if (projectId || projectName) {
+        try {
+          let pid = projectId;
+          if (!pid && projectName) {
+            const proj = await this.rm.resolveProjectByNameOrId(projectName);
+            pid = proj?.id;
+          }
+          if (pid) {
+            const mem = await this.rm.getProjectMemory(pid);
+            if (mem) {
+              const lines = [`\n[PROJECT MEMORY: ${mem.name}]`];
+              if (mem.vision) lines.push(`Vision: ${mem.vision}`);
+              if (mem.progress?.completion) lines.push(`Progress: ${mem.progress.completion}`);
+              if (mem.progress?.blockers?.length) lines.push(`Blockers: ${mem.progress.blockers.slice(0,2).map(b=>b.text||b).join('; ')}`);
+              if (mem.progress?.next_steps?.length) lines.push(`Next steps: ${(mem.progress.next_steps||[]).slice(0,3).join('; ')}`);
+              if (mem.progress?.recent_achievements?.length) lines.push(`Last done: ${mem.progress.recent_achievements[0]?.text || ''}`);
+              lines.push('[END PROJECT MEMORY]');
+              projectMemoryPart = lines.join('\n');
+            }
+          }
+        } catch {}
+      }
       const progressPart = task.progress
         ? `\nPrevious progress: ${task.progress}\n(Resume from where you left off — do NOT redo completed steps)`
         : '';
@@ -259,11 +286,12 @@ class TaskRunner {
       const titleLine  = `TASK [${taskId}]: ${task.title}`;
       const descLine   = descPart  ? descPart.slice(0, 400)   : '';
       const projLine   = projectPart;
-      const progLine   = progressPart ? progressPart.slice(0, 300) : '';
+      const memLine    = projectMemoryPart ? projectMemoryPart.slice(0, 400) : '';
+      const progLine   = progressPart ? progressPart.slice(0, 200) : '';
       const msg = [
-        titleLine, descLine, projLine, progLine,
-        '\n---\nUse your tools. Update progress after each step. End with a summary.'
-      ].join('').trim().slice(0, 1200);  // hard cap: ~300 tokens
+        titleLine, descLine, projLine, memLine, progLine,
+        '\n---\nUse your tools. Update progress after each step. When done, call update_project_memory to log achievements. End with a summary.'
+      ].join('').trim().slice(0, 1400);  // raised cap slightly for memory
 
       let output = '';
       let failed = false;
@@ -469,6 +497,9 @@ class TaskRunner {
         });
         await this._updateProgressField(taskId, 'completed — ' + output.slice(0, 120));
         await this._notify(`[IAQUA] Task done: "${task.title}"\n${output.slice(0, 200)}`);
+        // Update project memory if task belongs to a project
+        await this._updateProjectMemoryForTask(task, 'completed', output);
+      }
       }
 
       const finalStatus = failed ? 'failed' : 'completed';
@@ -555,21 +586,39 @@ class TaskRunner {
           task = flatReg.tasks?.[taskId] || null;
         } catch {}
       }
-      const projectId = task?.context?.project_id || task?.project_id || null;
+
+      // Resolve project via id OR name — handles Poseidon-created tasks that
+      // store project_name at top level but not always project_id
+      const projectId   = task?.context?.project_id || task?.project_id || null;
+      const projectName = task?.context?.project_name || task?.project_name || null;
 
       let outputPath;
-      if (projectId) {
+      let resolvedProjectFolder = null;
+
+      if (projectId || projectName) {
         try {
           const reg = await this.rm.read('projects/project_registry.json').catch(() => ({ projects: {} }));
-          const proj = reg.projects?.[projectId];
-          const folder = proj?.folder || projectId;
-          const projOutDir = path.join(AQUARIUM.PROJECTS, folder, 'output');
-          await fs.mkdir(projOutDir, { recursive: true });
-          outputPath = path.join(projOutDir, `${taskId}.txt`);
-        } catch {}
+          let proj = null;
+          if (projectId && reg.projects[projectId]) {
+            proj = reg.projects[projectId];
+          } else if (projectName) {
+            // Find by name (case-insensitive)
+            const upper = projectName.toUpperCase();
+            proj = Object.values(reg.projects || {}).find(p => p.name === upper || p.name === projectName);
+          }
+          if (proj) {
+            resolvedProjectFolder = proj.folder;
+            const projOutDir = path.join(AQUARIUM.PROJECTS, proj.folder, 'output');
+            await fs.mkdir(projOutDir, { recursive: true });
+            outputPath = path.join(projOutDir, `${taskId}.txt`);
+          }
+        } catch (e) {
+          console.warn(`[TaskRunner] _saveOutput project resolve failed:`, e.message);
+        }
       }
 
       if (!outputPath) {
+        // No project found — store in task's own folder
         const taskDir = path.join(AQUARIUM.TASKS, taskId);
         await fs.mkdir(taskDir, { recursive: true });
         outputPath = path.join(taskDir, 'output.txt');
@@ -577,10 +626,21 @@ class TaskRunner {
 
       await fs.writeFile(outputPath, text, 'utf8');
 
-      // Always write updated task with result_file to per-folder details.json
+      // Update task details with result_file path
       if (task) {
         task.result_file    = outputPath;
         task.result_summary = text.slice(0, 500);
+        // Back-fill project_id if we resolved it from name
+        if (resolvedProjectFolder && !task.project_id) {
+          const reg2 = await this.rm.read('projects/project_registry.json').catch(() => ({ projects: {} }));
+          const found = Object.entries(reg2.projects || {}).find(([, p]) => p.folder === resolvedProjectFolder);
+          if (found) {
+            task.project_id = found[0];
+            if (!task.context) task.context = {};
+            task.context.project_id = found[0];
+            task.context.project_name = found[1].name;
+          }
+        }
         await this.rm._writeTaskDetails(taskId, task);
         // Remove from flat registry if it was there
         try {
@@ -594,6 +654,63 @@ class TaskRunner {
       }
     } catch (e) {
       console.warn(`[TaskRunner] saveOutput failed for ${taskId}:`, e.message);
+    }
+  }
+
+  /**
+   * Auto-update project_memory.json when a task completes or fails.
+   * This is the core project memory maintenance loop.
+   */
+  async _updateProjectMemoryForTask(task, status, output) {
+    try {
+      // Resolve project from task
+      const projectId = task?.context?.project_id || task?.project_id || null;
+      const projectName = task?.context?.project_name || task?.project_name || null;
+
+      let proj = null;
+      if (projectId) {
+        const reg = await this.rm.read('projects/project_registry.json').catch(() => ({ projects: {} }));
+        if (reg.projects[projectId]) proj = { id: projectId, entry: reg.projects[projectId] };
+      }
+      if (!proj && projectName) {
+        proj = await this.rm.resolveProjectByNameOrId(projectName);
+      }
+      if (!proj) return; // task has no project — nothing to update
+
+      const pid = proj.id;
+      const by  = task.assignment?.assigned_name || task.assignment?.assigned_to || 'poseidon';
+
+      if (status === 'completed') {
+        // Add to recent achievements
+        await this.rm.updateProjectMemory(pid, 'achievement',
+          `[${task.task_id}] ${task.title}`, by);
+
+        // Agent sync message
+        if (task.assignment?.assigned_to && task.assignment.assigned_to !== 'poseidon_main') {
+          await this.rm.updateProjectMemory(pid, 'agent_sync',
+            `${by} completed: "${task.title}" — ${output.slice(0, 200)}`, by);
+        }
+      } else if (status === 'failed') {
+        await this.rm.updateProjectMemory(pid, 'blocker',
+          `[${task.task_id}] ${task.title} — FAILED`, by);
+      }
+
+      // Recompute project completion %
+      const reg2 = await this.rm.getTasksRegistry().catch(() => ({ tasks: {} }));
+      const allProjectTasks = Object.values(reg2.tasks || {}).filter(t =>
+        t.context?.project_id === pid || t.project_id === pid
+      );
+      const done   = allProjectTasks.filter(t => t.lifecycle?.status === 'completed' || t.status === 'completed').length;
+      const failed = allProjectTasks.filter(t => t.lifecycle?.status === 'failed' || t.status === 'failed').length;
+      await this.rm.updateProjectMemory(pid, 'progress', {
+        total: allProjectTasks.length,
+        done:  done + failed,
+        failed
+      }, by);
+
+      console.log(`[TaskRunner] Updated project memory for ${pid}: ${done}/${allProjectTasks.length} tasks done`);
+    } catch (e) {
+      console.warn('[TaskRunner] _updateProjectMemoryForTask failed:', e.message);
     }
   }
 }

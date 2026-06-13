@@ -290,6 +290,13 @@ My response: "${ss.last_response_preview}"${tools}
       lines.push('  list_files("PROJECTS")                  → list all project folders');
       lines.push('CRITICAL: NEVER use list_files("NEWS") — projects live in PROJECTS/ folder!');
       lines.push('MULTI-STEP TASKS: after each step call update_task(id, "progress", "step N/M done: ...") so context resets dont lose state.');
+      lines.push('PROJECT MEMORY PROTOCOL — MANDATORY for project tasks:');
+      lines.push('  BEFORE starting work on a project task: call read_project_memory(project_name) to see current state.');
+      lines.push('  AFTER completing a task: call update_project_memory(project_name, "achievement", "brief description").');
+      lines.push('  WHEN blocking issue found: call update_project_memory(project_name, "blocker", "description").');
+      lines.push('  WHEN making architecture/design decisions: call update_project_memory(project_name, "decision", "what and why").');
+      lines.push('  AFTER planning next steps: call update_project_memory(project_name, "next_steps", "step1, step2, step3").');
+      lines.push('  Agent sync: when one agent hands off to another, log via update_project_memory(name, "agent_sync", message).');
       lines.push('TASK DECOMPOSITION — MANDATORY:');
       lines.push('  RULE: any request involving multiple items, sources, files, URLs, agents = ONE task per item. NEVER one big task.');
       lines.push('  RULE: before create_task, mentally list all items. Create N separate tasks, one per item.');
@@ -742,7 +749,64 @@ Never describe a bash command you could call instead.`;
         handler: async (p) => self._updateProject(p)
       }),
 
-      list_skills: defineChatSessionFunction({
+      update_project_memory: defineChatSessionFunction({
+        description: 'Write to a project\'s living memory: log decisions, blockers, achievements, next steps, or agent sync notes. Use this to keep the project memory alive and useful for agents.',
+        params: {
+          type: 'object',
+          properties: {
+            project_name: { type: 'string', description: 'Project name or ID' },
+            section: {
+              type: 'string',
+              enum: ['achievement', 'decision', 'blocker', 'resolve_blocker', 'next_steps', 'agent_sync'],
+              description: 'achievement=completed milestone, decision=recorded design choice, blocker=current obstacle, resolve_blocker=remove a blocker, next_steps=update upcoming work list (array or string), agent_sync=inter-agent message'
+            },
+            content: { type: 'string', description: 'Content to write. For next_steps: comma-separated list' }
+          },
+          required: ['project_name', 'section', 'content']
+        },
+        handler: async ({ project_name, section, content }) => {
+          try {
+            const proj = await self.rm.resolveProjectByNameOrId(project_name);
+            if (!proj) return { ok: false, error: `Project "${project_name}" not found` };
+            const parsed = section === 'next_steps' && content.includes(',')
+              ? content.split(',').map(s => s.trim()).filter(Boolean)
+              : content;
+            const ok = await self.rm.updateProjectMemory(proj.id, section, parsed, 'poseidon_main');
+            return { ok, message: ok ? `Project memory updated: ${section}` : 'Memory update failed' };
+          } catch (e) { return { ok: false, error: e.message }; }
+        }
+      }),
+
+      read_project_memory: defineChatSessionFunction({
+        description: 'Read the full living memory of a project: progress, decisions, achievements, blockers, agent communications.',
+        params: {
+          type: 'object',
+          properties: {
+            project_name: { type: 'string', description: 'Project name or ID' }
+          },
+          required: ['project_name']
+        },
+        handler: async ({ project_name }) => {
+          try {
+            const proj = await self.rm.resolveProjectByNameOrId(project_name);
+            if (!proj) return { ok: false, error: `Project "${project_name}" not found` };
+            const mem = await self.rm.getProjectMemory(proj.id);
+            if (!mem) return { ok: false, error: 'No memory file found' };
+            return {
+              ok: true, project_id: proj.id, name: proj.entry.name,
+              progress: mem.progress,
+              recent_achievements: (mem.progress?.recent_achievements || []).slice(0, 5),
+              decisions: (mem.decisions || []).slice(0, 5),
+              blockers: mem.progress?.blockers || [],
+              next_steps: mem.progress?.next_steps || [],
+              agents_comms: (mem.agents_communication || []).slice(0, 5),
+              vision: mem.vision
+            };
+          } catch (e) { return { ok: false, error: e.message }; }
+        }
+      }),
+
+
         description: 'List all skills in aquarium/SKILLS/ with their summary, version, and triggers.',
         params: { type: 'object', properties: {} },
         handler: async () => self._listSkills()
@@ -2008,9 +2072,21 @@ Never describe a bash command you could call instead.`;
       if (section_path === 'projects') {
         const reg = await this.rm.read('projects/project_registry.json').catch(() => ({ projects: {} }));
         const active = Object.values(reg.projects || {}).filter(p => p.status !== 'archived');
-        return { ok: true, section_path, content: active.map(p =>
-          `${p.project_id}: ${p.name} | folder: aquarium/PROJECTS/${p.folder} | agents: ${(p.assigned_agents||[]).join(',')||'none'}`
-        ).join('\n') || '(no active projects)' };
+        const lines = [];
+        for (const p of active) {
+          lines.push(`${p.project_id}: ${p.name} | folder: aquarium/PROJECTS/${p.folder} | agents: ${(p.assigned_agents||[]).join(',')||'none'}`);
+          // Include live memory summary
+          try {
+            const mem = await this.rm.getProjectMemory(p.project_id);
+            if (mem) {
+              if (mem.progress?.completion) lines.push(`  progress: ${mem.progress.completion} (${mem.progress.tasks_done||0}/${mem.progress.tasks_total||0} tasks)`);
+              if (mem.progress?.blockers?.length) lines.push(`  BLOCKERS: ${mem.progress.blockers.slice(0,2).map(b=>b.text||b).join(' | ')}`);
+              if (mem.progress?.next_steps?.length) lines.push(`  next: ${(mem.progress.next_steps||[]).slice(0,3).join(' | ')}`);
+              if (mem.progress?.recent_achievements?.length) lines.push(`  done: ${mem.progress.recent_achievements[0]?.text || ''}`);
+            }
+          } catch {}
+        }
+        return { ok: true, section_path, content: lines.join('\n') || '(no active projects)' };
       }
       if (section_path === 'agents') {
         const reg = await this.rm.read('agents/agent_registry.json').catch(() => ({ agents: {} }));

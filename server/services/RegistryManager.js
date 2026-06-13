@@ -768,6 +768,135 @@ class RegistryManager {
     return { registry_entry: entry, memory };
   }
 
+  /** Resolve project entry by name OR id */
+  async resolveProjectByNameOrId(nameOrId) {
+    this.invalidateCache();
+    const reg = await this.getProjectRegistry();
+    const upper = (nameOrId || '').toUpperCase();
+    // Try by id first
+    if (reg.projects[nameOrId]) return { id: nameOrId, entry: reg.projects[nameOrId] };
+    // Try by name
+    const found = Object.entries(reg.projects || {}).find(
+      ([, p]) => p.name === upper || p.name === nameOrId
+    );
+    if (found) return { id: found[0], entry: found[1] };
+    return null;
+  }
+
+  /** Read project_memory.json for a given project */
+  async getProjectMemory(projectId) {
+    const reg = await this.getProjectRegistry();
+    const entry = reg.projects[projectId];
+    if (!entry?.memory_file) return null;
+    try {
+      return await this.read(`projects/${entry.memory_file}`);
+    } catch { return null; }
+  }
+
+  /**
+   * Update project_memory.json with task completion, agent activity, or Poseidon decisions.
+   * section: 'progress' | 'achievement' | 'decision' | 'blocker' | 'agent_sync' | 'next_steps'
+   */
+  async updateProjectMemory(projectId, section, content, by = 'system') {
+    const reg = await this.getProjectRegistry();
+    const entry = reg.projects?.[projectId];
+    if (!entry?.memory_file) return false;
+
+    const fs   = require('fs').promises;
+    const path = require('path');
+    const AQUARIUM = require('./aquarium');
+    const memPath = path.join(AQUARIUM.PROJECTS, entry.folder, 'project_memory.json');
+
+    let memory;
+    try {
+      memory = JSON.parse(await fs.readFile(memPath, 'utf8'));
+    } catch {
+      // Recreate if missing
+      memory = {
+        schema_version: '2.0.0', schema_type: 'project_memory',
+        project_id: projectId, name: entry.name,
+        vision: entry.vision || '',
+        goals: [], tasks: [],
+        progress: { completion: '0%', blockers: [], recent_achievements: [], next_steps: [] },
+        agents_communication: [], decisions: [],
+        created: new Date().toISOString()
+      };
+    }
+
+    const now = new Date().toISOString();
+    const stamp = { at: now, by };
+
+    switch (section) {
+      case 'achievement':
+        if (!memory.progress.recent_achievements) memory.progress.recent_achievements = [];
+        memory.progress.recent_achievements.unshift({ ...stamp, text: content });
+        memory.progress.recent_achievements = memory.progress.recent_achievements.slice(0, 20);
+        break;
+      case 'blocker':
+        if (!memory.progress.blockers) memory.progress.blockers = [];
+        memory.progress.blockers.unshift({ ...stamp, text: content });
+        break;
+      case 'resolve_blocker':
+        memory.progress.blockers = (memory.progress.blockers || []).filter(b => !b.text.includes(content));
+        break;
+      case 'decision':
+        if (!memory.decisions) memory.decisions = [];
+        memory.decisions.unshift({ ...stamp, text: content });
+        memory.decisions = memory.decisions.slice(0, 30);
+        break;
+      case 'next_steps':
+        if (!memory.progress.next_steps) memory.progress.next_steps = [];
+        if (Array.isArray(content)) {
+          memory.progress.next_steps = content;
+        } else {
+          memory.progress.next_steps.unshift(content);
+          memory.progress.next_steps = memory.progress.next_steps.slice(0, 10);
+        }
+        break;
+      case 'agent_sync':
+        if (!memory.agents_communication) memory.agents_communication = [];
+        memory.agents_communication.unshift({ ...stamp, message: content });
+        memory.agents_communication = memory.agents_communication.slice(0, 40);
+        break;
+      case 'progress': {
+        // Auto-compute completion from tasks
+        const all = typeof content === 'object' ? content : null;
+        if (all && typeof all.total === 'number') {
+          const pct = all.total > 0 ? Math.round((all.done / all.total) * 100) : 0;
+          memory.progress.completion = `${pct}%`;
+          memory.progress.tasks_total = all.total;
+          memory.progress.tasks_done  = all.done;
+          memory.progress.tasks_pending = all.total - all.done;
+          memory.progress.last_updated = now;
+        } else if (typeof content === 'string') {
+          memory.progress.completion = content;
+        }
+        break;
+      }
+      default:
+        memory[section] = content;
+    }
+
+    memory.updated_at = now;
+    await fs.mkdir(path.dirname(memPath), { recursive: true });
+    await fs.writeFile(memPath, JSON.stringify(memory, null, 2), 'utf8');
+
+    // Also update registry metrics
+    if (section === 'progress' && typeof content === 'object') {
+      entry.metrics = {
+        ...(entry.metrics || {}),
+        tasks_total: content.total || 0,
+        tasks_completed: content.done || 0,
+        tasks_pending: (content.total || 0) - (content.done || 0),
+        completion_percent: parseInt(memory.progress.completion) || 0,
+        last_updated: now
+      };
+      await this.write('projects/project_registry.json', reg);
+    }
+
+    return true;
+  }
+
   /**
    * Delete a project: remove from registry, free all assigned agents, log.
    * Does NOT delete task history — tasks keep their project_name for reference.

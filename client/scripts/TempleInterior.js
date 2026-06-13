@@ -644,44 +644,112 @@ const TempleInterior = {
   },
 
   // ═══ MEMORY TAB ══════════════════════════════════════════════════════════
+  // ═══ MEMORY TAB ════════════════════════════════════════════════════════
   async _renderMemory(container) {
     const c = container || document.getElementById('ti-left-body');
     if (!c) return;
     const folder = this._folder();
-    c.innerHTML = `
-<div class="ti-sec">PROJECT MEMORY
-  <button class="ti-sec-btn" onclick="TempleInterior._saveMemory('${folder}')">SAVE</button>
-</div>
-<div style="flex:1;display:flex;flex-direction:column;padding:6px;min-height:0;gap:5px;">
-  <textarea id="ti-mem-editor" class="ti-mem" placeholder="Loading..."></textarea>
-  <p class="ti-mem-hint">Shared context for all agents. JSON or free text. Persisted to project_memory.json.</p>
-</div>`;
+    const pid    = this.currentTemple?.project_id;
+
+    c.innerHTML = '<div style="padding:8px;font-family:\'Press Start 2P\',monospace;font-size:7px;color:#475569;">LOADING...</div>';
+
+    let mem = null;
     try {
-      const res  = await fetch(`/api/files/read?path=${encodeURIComponent(`PROJECTS/${folder}/project_memory.json`)}`);
-      const data = await res.json();
-      if (data.error) throw new Error(data.error);
-      const ed   = document.getElementById('ti-mem-editor');
-      if (ed) ed.value = typeof data.content === 'string' ? data.content : JSON.stringify(data.content || {}, null, 2);
-    } catch {
-      const ed = document.getElementById('ti-mem-editor');
-      if (ed) ed.value = JSON.stringify({
-        project: this.currentTemple?.name || '',
-        notes: '',
-        goals: [],
-        key_decisions: [],
-        sources: []
-      }, null, 2);
-    }
+      if (pid) {
+        const r = await window.ApiV2._fetch(`/projects/${pid}/memory`);
+        mem = r.memory;
+      }
+    } catch {}
+
+    // Build structured display
+    const fmt = (v) => this._esc(typeof v === 'object' ? JSON.stringify(v) : String(v || ''));
+    const listItems = (arr, maxLen = 60) => (arr || []).slice(0,10).map(item => {
+      const text = typeof item === 'object' ? (item.text || item.message || JSON.stringify(item)) : item;
+      const by   = item.by  ? ` <span style="color:#334155;">— ${item.by}</span>` : '';
+      const at   = item.at  ? ` <span style="color:#1e293b;font-size:6px;">${item.at.slice(0,10)}</span>` : '';
+      return `<div class="ti-mem-item">${this._esc(String(text).slice(0, maxLen))}${by}${at}</div>`;
+    }).join('') || '<div class="ti-mem-item" style="color:#334155;">none</div>';
+
+    c.innerHTML = `
+<div class="ti-mem-wrap">
+  <div class="ti-mem-header">
+    <span>PROJECT MEMORY</span>
+    <span class="ti-mem-progress">${mem?.progress?.completion || '0%'}</span>
+  </div>
+
+  <div class="ti-mem-section">
+    <div class="ti-mem-label">VISION</div>
+    <div class="ti-mem-value">${fmt(mem?.vision || 'Not set')}</div>
+  </div>
+
+  <div class="ti-mem-section">
+    <div class="ti-mem-label">PROGRESS
+      <span style="color:#475569;font-size:6px;margin-left:8px;">${mem?.progress?.tasks_done||0}/${mem?.progress?.tasks_total||0} tasks</span>
+    </div>
+    <div class="ti-mem-progress-bar">
+      <div class="ti-mem-progress-fill" style="width:${mem?.progress?.completion||'0%'}"></div>
+    </div>
+  </div>
+
+  ${mem?.progress?.blockers?.length ? `<div class="ti-mem-section ti-mem-warn">
+    <div class="ti-mem-label">BLOCKERS</div>
+    ${listItems(mem.progress.blockers, 80)}
+  </div>` : ''}
+
+  <div class="ti-mem-section">
+    <div class="ti-mem-label">NEXT STEPS</div>
+    ${(mem?.progress?.next_steps||[]).length
+      ? (mem.progress.next_steps||[]).slice(0,5).map((s,i) => `<div class="ti-mem-item"><span style="color:#4facfe;margin-right:6px;">${i+1}.</span>${this._esc(String(s).slice(0,70))}</div>`).join('')
+      : '<div class="ti-mem-item" style="color:#334155;">none defined</div>'}
+  </div>
+
+  <div class="ti-mem-section">
+    <div class="ti-mem-label">RECENT ACHIEVEMENTS</div>
+    ${listItems(mem?.progress?.recent_achievements, 70)}
+  </div>
+
+  <div class="ti-mem-section">
+    <div class="ti-mem-label">DECISIONS</div>
+    ${listItems(mem?.decisions, 80)}
+  </div>
+
+  <div class="ti-mem-section">
+    <div class="ti-mem-label">AGENT COMMS</div>
+    ${listItems(mem?.agents_communication, 80)}
+  </div>
+
+  <div class="ti-mem-section" style="gap:4px;">
+    <div class="ti-mem-label">ADD NOTE</div>
+    <select id="ti-mem-section-sel" style="font-family:\'Courier New\',monospace;font-size:9px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);color:#e2e8f0;padding:3px 5px;">
+      <option value="decision">Decision</option>
+      <option value="achievement">Achievement</option>
+      <option value="blocker">Blocker</option>
+      <option value="resolve_blocker">Resolve Blocker</option>
+      <option value="next_steps">Next Steps</option>
+      <option value="agent_sync">Agent Sync</option>
+    </select>
+    <input id="ti-mem-note" type="text" placeholder="Enter note..." style="font-family:\'Courier New\',monospace;font-size:9px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);color:#e2e8f0;padding:4px 8px;outline:none;">
+    <button class="ti-sec-btn" onclick="TempleInterior._addMemoryNote('${pid}')">ADD</button>
+  </div>
+</div>`;
+  },
+
+  async _addMemoryNote(pid) {
+    const section = document.getElementById('ti-mem-section-sel')?.value;
+    const content = document.getElementById('ti-mem-note')?.value.trim();
+    if (!pid || !section || !content) return;
+    try {
+      await window.ApiV2._fetch(`/projects/${pid}/memory`, {
+        method: 'PATCH',
+        body: JSON.stringify({ section, content, by: 'human_user' })
+      });
+      this._renderMemory();
+    } catch (e) { console.warn('Memory note failed:', e.message); }
   },
 
   async _saveMemory(folder) {
-    const ed = document.getElementById('ti-mem-editor');
-    if (!ed) return;
-    await fetch(`/api/v2/projects/${folder}/inputs`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ fileName: 'project_memory.json', content: ed.value, encoding: 'utf8' })
-    });
-    this._setStatus('Memory saved');
+    // Legacy: kept for compat
+    this._renderMemory();
   },
 
   // ═══ KANBAN ══════════════════════════════════════════════════════════════

@@ -498,6 +498,29 @@ router.get('/tasks/:id/stream', async (req, res) => {
   req.on('close', () => { ticks = MAX_TICKS + 1; });
 });
 
+// ── PROJECT MEMORY API ────────────────────────────────────────────────────────
+
+/** GET /projects/:id/memory — read project_memory.json */
+router.get('/projects/:id/memory', async (req, res) => {
+  try {
+    const mem = await rm.getProjectMemory(req.params.id);
+    if (!mem) return res.status(404).json({ success: false, error: 'Memory file not found' });
+    res.json({ success: true, memory: mem });
+  } catch (err) { res.status(500).json({ success: false, error: err.message }); }
+});
+
+/** PATCH /projects/:id/memory — update project memory (section + content) */
+router.patch('/projects/:id/memory', async (req, res) => {
+  try {
+    const { section, content, by } = req.body;
+    if (!section || content === undefined) {
+      return res.status(400).json({ success: false, error: 'section and content required' });
+    }
+    const ok = await rm.updateProjectMemory(req.params.id, section, content, by || 'human_user');
+    res.json({ success: ok });
+  } catch (err) { res.status(500).json({ success: false, error: err.message }); }
+});
+
   return router;
 }
 
