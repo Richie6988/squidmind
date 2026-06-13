@@ -161,15 +161,17 @@ class AgentWorker extends EventEmitter {
                    || this.brain.brain_config?.model_binding?.current_model_id;
     // 1. Preferred model explicitly configured and loaded
     if (preferred && this.modelService.loaded.has(preferred)) return preferred;
-    // 2. Poseidon's current model (most common: "use poseidon default")
-    if (this.modelService.poseidonModelId) return this.modelService.poseidonModelId;
-    // 3. Preferred model configured but not yet loaded — ensureLoaded will handle it
-    if (preferred) return preferred;
-    // 4. Last resort: first loaded model in the map (whatever is in memory)
+    // 2. Poseidon's current model — only if actually in VRAM
+    if (this.modelService.poseidonModelId && this.modelService.loaded.has(this.modelService.poseidonModelId)) {
+      return this.modelService.poseidonModelId;
+    }
+    // 3. Last resort: first loaded model in the map (whatever is in memory)
     const firstLoaded = [...this.modelService.loaded.keys()][0];
     if (firstLoaded) return firstLoaded;
-    // 5. Nothing loaded at all — check registry for the configured model
-    // Return null only if truly nothing is available
+    // 4. Preferred model configured but not yet loaded — ensureLoaded will handle it
+    if (preferred) return preferred;
+    // 5. Poseidon's model not loaded — ensureLoaded will handle it
+    if (this.modelService.poseidonModelId) return this.modelService.poseidonModelId;
     return null;
   }
 
