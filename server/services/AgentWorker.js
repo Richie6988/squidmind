@@ -290,7 +290,6 @@ class AgentWorker extends EventEmitter {
     this.generating = true;
     this.status     = 'running';
 
-    // Update agent status in registry
     try {
       await this.rm.updateAgentStatus(this.agentId, 'active');
     } catch {}
@@ -298,6 +297,12 @@ class AgentWorker extends EventEmitter {
     try {
       await this._ensureSession();
     } catch (err) {
+      // _ensureSession failed — broker may already be acquired, must cleanup
+      try { await this.session?.dispose?.(); } catch {}
+      try { await this.sequence?.dispose?.(); } catch {}
+      this.session  = null;
+      this.sequence = null;
+      if (this._brokerToken) { this.broker.release(this._brokerToken); this._brokerToken = null; }
       this.generating = false;
       this.status = 'error';
       yield { type: 'error', error: err.message };
@@ -384,8 +389,9 @@ class AgentWorker extends EventEmitter {
     // Cleanup — always runs even on error
     try { await this.rm.updateAgentStatus(this.agentId, 'sleeping'); } catch {}
 
-    // Dispose session → releases the sequence back to context pool so Poseidon can use it
+    // Dispose session + sequence explicitly → releases slot back to context pool
     try { await this.session?.dispose?.(); } catch {}
+    try { await this.sequence?.dispose?.(); } catch {}
     this.session  = null;
     this.sequence = null;
 
@@ -406,6 +412,8 @@ class AgentWorker extends EventEmitter {
       this._brokerToken = null;
     }
     try { await this.session?.dispose?.(); } catch {}
+    // Dispose the sequence explicitly — LlamaChatSession.dispose() may not release it
+    try { await this.sequence?.dispose?.(); } catch {}
     // IMPORTANT: do NOT dispose this._agentContext — it belongs to Poseidon
     // Only dispose if we actually own a dedicated context (legacy path)
     if (this._agentContext) {
