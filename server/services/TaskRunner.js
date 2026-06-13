@@ -26,10 +26,12 @@ class TaskRunner {
   async tick() {
     // Sequential: if any task is already running, skip this tick
     if (this._running.size > 0) return;
-    // Wait for model to be loaded before running any task — avoids POSEIDON_BG
-    // acquiring the broker while chatWithPoseidon is still loading the model,
-    // which would block all CHAT requests until the task finishes.
+    // Wait for model to be loaded before running any task
     if (this.modelService.loaded.size === 0) return;
+    // Don't start BG tasks if CHAT is active or waiting — user interaction takes priority
+    const brokerState = this.modelService.broker.getState();
+    if (brokerState.state !== 'IDLE') return;  // someone holds the broker
+    if (this.modelService.broker.hasChatWaiting()) return;  // CHAT queued
 
     let reg;
     try {
@@ -148,14 +150,22 @@ class TaskRunner {
           { timeoutMs: 10 * 60 * 1000 }
         );
         try {
-          // Fresh session for each background task (no context contamination)
+          // Dispose Poseidon session AND sequence before BG task — frees the single slot.
+          // Check both independently: session may be null but sequence still alive.
           const poseidonId = this.modelService.poseidonModelId;
           const posEntry = poseidonId ? this.modelService.loaded.get(poseidonId) : null;
-          if (posEntry?.session) {
-            try { if (posEntry.session.dispose) await posEntry.session.dispose(); } catch {}
-            posEntry.session = null;
-            posEntry._currentSequence = null;
+          if (posEntry) {
+            if (posEntry.session) {
+              try { await posEntry.session.dispose?.(); } catch {}
+              posEntry.session = null;
+            }
+            if (posEntry._currentSequence) {
+              try { await posEntry._currentSequence.dispose?.(); } catch {}
+              posEntry._currentSequence = null;
+            }
             posEntry.sessionTurns = 0;
+            // Small delay — llama.cpp sequence release is not always synchronous
+            await new Promise(r => setTimeout(r, 150));
           }
 
           // Build agent persona prefix if task is assigned to a named agent

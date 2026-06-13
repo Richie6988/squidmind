@@ -897,12 +897,10 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
     try {
       const ss = await this.rm.read('BRAIN/session_state.json');
       const isContinueCue = ss?.last_user_message && (
-        // Explicit continuation keywords
+        // Explicit continuation keywords only
         /^(continue|go ahead|proceed|keep going|resume|go on|do it|yes|go|ok|k|yep|sure)\.?$/i.test(userMessage.trim()) ||
-        // After emergency crash: always auto-resume on first turn
-        (entry.sessionTurns === 0 && ss.emergency) ||
-        // First turn with existing state (restart or page reload)
-        (entry.sessionTurns === 0 && ss.last_user_message && ss.context_pct < 90)
+        // After explicit emergency crash flag
+        (entry.sessionTurns === 0 && ss.emergency === true)
       );
       if (isContinueCue) {
         const tools = ss.tool_calls_this_turn?.length ? ' | last tools: ' + ss.tool_calls_this_turn.join(', ') : '';
