@@ -38,12 +38,18 @@ const TempleInterior = {
     this._switchLeft('files');
     this._switchRight('kanban');
     this._renderHeader();
+    // Apply temple accent color from project appearance
+    this._applyTempleColor(temple);
+    // Render always-visible agents section
+    const agentSection = document.getElementById('ti-agents-always');
+    if (agentSection) this._renderAgentsCompact(agentSection);
 
     this._pollTimer = setInterval(() => {
       this._renderHeader();
-      if (this._leftTab  === 'agents') this._renderAgents();
       if (this._rightTab === 'kanban') this._renderKanban();
       if (this._rightTab === 'tasks')  this._renderTasks();
+      const agSec = document.getElementById('ti-agents-always');
+      if (agSec) this._renderAgentsCompact(agSec);
     }, 5000);
   },
 
@@ -73,12 +79,18 @@ const TempleInterior = {
 <div class="ti-body">
 
   <div class="ti-left">
+    <!-- FILES tab with AGENTS always visible below, MEMORY tab -->
     <div class="ti-tabs">
       <button class="ti-tab" id="ti-lt-files"   onclick="TempleInterior._switchLeft('files')">FILES</button>
-      <button class="ti-tab" id="ti-lt-agents"  onclick="TempleInterior._switchLeft('agents')">AGENTS</button>
       <button class="ti-tab" id="ti-lt-memory"  onclick="TempleInterior._switchLeft('memory')">MEMORY</button>
     </div>
-    <div id="ti-left-body" style="display:flex;flex-direction:column;flex:1;min-height:0;overflow:hidden;"></div>
+    <!-- Files or Memory content (top half, scrollable) -->
+    <div id="ti-left-body" style="display:flex;flex-direction:column;flex:1;min-height:0;overflow:hidden;max-height:55%;"></div>
+    <!-- Agents — always visible (bottom section, fixed) -->
+    <div style="border-top:2px solid var(--border);flex-shrink:0;display:flex;flex-direction:column;height:45%;min-height:0;overflow:hidden;">
+      <div class="ti-sec" style="flex-shrink:0;">AGENTS</div>
+      <div id="ti-agents-always" style="flex:1;overflow:hidden;display:flex;flex-direction:column;"></div>
+    </div>
   </div>
 
   <div class="ti-center">
@@ -88,9 +100,8 @@ const TempleInterior = {
       </div>
       <div class="ti-ide-toolbar">
         <span class="ti-ide-fname" id="ti-ide-fname">—</span>
-        <button class="ti-tab-sm" onclick="TempleInterior._ideNewFile()">+ NEW</button>
         <button class="ti-tab-sm accent" onclick="TempleInterior._ideSave()">SAVE</button>
-        <button class="ti-tab-sm" onclick="TempleInterior._ideTogglePreview()" id="ti-prev-toggle">PREVIEW</button>
+        <button class="ti-tab-sm" onclick="TempleInterior._ideTogglePreview()" id="ti-prev-toggle" style="display:none;">PREVIEW</button>
       </div>
       <div class="ti-ide-main">
         <textarea id="ti-editor" class="ti-editor"
@@ -106,9 +117,6 @@ const TempleInterior = {
     <div class="ti-tabs">
       <button class="ti-tab" id="ti-rt-kanban" onclick="TempleInterior._switchRight('kanban')">KANBAN</button>
       <button class="ti-tab" id="ti-rt-tasks"  onclick="TempleInterior._switchRight('tasks')">TASKS</button>
-      <div class="ti-tabs-end">
-        <button class="ti-tab-sm" onclick="TempleInterior._newTaskModal()">+ TASK</button>
-      </div>
     </div>
     <div id="ti-right-body" style="display:flex;flex-direction:column;flex:1;min-height:0;overflow:hidden;"></div>
   </div>
@@ -136,14 +144,17 @@ const TempleInterior = {
   // ═══ TAB SWITCHING ═══════════════════════════════════════════════════════
   _switchLeft(tab) {
     this._leftTab = tab;
-    ['files','agents','memory'].forEach(t => {
+    ['files','memory'].forEach(t => {
       document.getElementById(`ti-lt-${t}`)?.classList.toggle('active', t === tab);
     });
     const body = document.getElementById('ti-left-body');
-    if (!body) return;
-    if (tab === 'files')  this._renderFiles(body);
-    if (tab === 'agents') this._renderAgents(body);
-    if (tab === 'memory') this._renderMemory(body);
+    if (body) {
+      if (tab === 'files')  this._renderFiles(body);
+      if (tab === 'memory') this._renderMemory(body);
+    }
+    // Agents section is always rendered
+    const agentSection = document.getElementById('ti-agents-always');
+    if (agentSection) this._renderAgentsCompact(agentSection);
   },
 
   _switchRight(tab) {
@@ -161,6 +172,90 @@ const TempleInterior = {
     this._renderHeader();
     this._switchLeft(this._leftTab);
     this._switchRight(this._rightTab);
+    const agSec = document.getElementById('ti-agents-always');
+    if (agSec) this._renderAgentsCompact(agSec);
+  },
+
+  // ═══ TEMPLE COLOR ════════════════════════════════════════════════════════
+  _applyTempleColor(temple) {
+    const root = document.getElementById('temple-interior');
+    if (!root) return;
+    const inside  = temple?.colors?.inside  || temple?.color || null;
+    const outside = temple?.colors?.outside || null;
+    if (inside) {
+      // Tint the arena background and left border accents
+      root.style.setProperty('--ti-temple-color', inside);
+      const arena = document.getElementById('ti-arena-always');
+      if (arena) arena.style.background = `radial-gradient(ellipse at center, ${inside}18, transparent 70%)`;
+    }
+    if (outside) {
+      root.style.borderTop = `3px solid ${outside}`;
+    }
+  },
+
+  // ═══ AGENTS (always-visible compact section) ═════════════════════════════
+  async _renderAgentsCompact(container) {
+    if (!container) return;
+
+    let assignedIds = [], regAgents = {}, workers = {};
+    try {
+      const pr = await window.ApiV2._fetch('/projects');
+      const proj = Object.values(pr.registry.projects || {}).find(p =>
+        p.project_id === this.currentTemple?.project_id || p.name === this.currentTemple?.name
+      );
+      assignedIds = proj?.assigned_agents || [];
+    } catch {}
+    try { regAgents = (await window.ApiV2._fetch('/agents')).registry.agents || {}; } catch {}
+    try { workers   = (await window.ApiV2._fetch('/agents/pool/status')).workers || {}; } catch {}
+
+    const agents = assignedIds.map(id => regAgents[id]).filter(Boolean);
+
+    // Arena + compact list
+    container.innerHTML = `
+<div id="ti-arena-always" style="position:relative;overflow:hidden;height:80px;background:radial-gradient(ellipse at center,rgba(79,172,254,0.04),transparent 70%);border-bottom:1px solid var(--border);flex-shrink:0;"></div>
+<div style="flex:1;overflow-y:auto;">
+  ${agents.length === 0
+    ? '<p class="ti-empty" style="font-size:8px;">No agents assigned</p>'
+    : agents.map(a => {
+        const w     = workers[a.agent_id] || {};
+        const isRun = w.status === 'running';
+        return `<div class="ti-agent-row ${isRun ? 'running' : ''}">
+          <div class="ti-agent-dot ${isRun ? 'run' : 'idle'}"></div>
+          <div style="flex:1;min-width:0;">
+            <div class="ti-agent-name">${this._esc(a.display_name || a.agent_id)}</div>
+            <div class="ti-agent-spec">${this._esc(a.specialization || '')}</div>
+          </div>
+          <span class="ti-agent-badge ${isRun ? 'run' : 'idle'}">${isRun ? 'RUN' : 'IDLE'}</span>
+          <button class="ti-sec-btn" onclick="TempleInterior._dispatchAgent('${a.agent_id}')" style="font-size:6px;padding:2px 5px;">SEND</button>
+          <button class="ti-sec-btn" onclick="TempleInterior.unassignSquid('${a.agent_id}')" style="font-size:6px;padding:2px 5px;border-color:var(--danger);color:var(--danger);">OUT</button>
+        </div>`;
+      }).join('')}
+</div>
+<div style="padding:5px;border-top:1px solid var(--border);flex-shrink:0;">
+  <button class="ti-sec-btn" style="width:100%;text-align:center;" onclick="TempleInterior._showAssigner()">ASSIGN AGENT</button>
+</div>`;
+
+    // Spawn walkers in arena
+    const arena = container.querySelector('#ti-arena-always');
+    if (arena && agents.length > 0) {
+      setTimeout(() => {
+        const W = arena.clientWidth || 260, H = arena.clientHeight || 80;
+        agents.forEach(a => {
+          const squid = (window.aquarium?.squids || []).find(s => (s.agent_id || s.id) === a.agent_id)
+            || { id: a.agent_id, name: a.display_name || a.agent_id, appearance: a.appearance || {} };
+          const walker = document.createElement('div');
+          walker.className = 'ti-walker';
+          const cvs = document.createElement('canvas');
+          cvs.width = 40; cvs.height = 44;
+          const lbl = document.createElement('div');
+          lbl.className = 'ti-walker-name';
+          lbl.textContent = (a.display_name || a.agent_id).slice(0, 8).toUpperCase();
+          walker.appendChild(cvs); walker.appendChild(lbl);
+          arena.appendChild(walker);
+          this._animateSquid(walker, cvs, squid, W, H);
+        });
+      }, 60);
+    }
   },
 
   // ═══ FILES TAB ═══════════════════════════════════════════════════════════
@@ -474,8 +569,9 @@ const TempleInterior = {
   <p class="ti-mem-hint">Shared context for all agents. JSON or free text. Persisted to project_memory.json.</p>
 </div>`;
     try {
-      const res  = await fetch(`/api/files/read?path=${encodeURIComponent(`aquarium/PROJECTS/${folder}/project_memory.json`)}`);
+      const res  = await fetch(`/api/files/read?path=${encodeURIComponent(`PROJECTS/${folder}/project_memory.json`)}`);
       const data = await res.json();
+      if (data.error) throw new Error(data.error);
       const ed   = document.getElementById('ti-mem-editor');
       if (ed) ed.value = typeof data.content === 'string' ? data.content : JSON.stringify(data.content || {}, null, 2);
     } catch {
@@ -650,31 +746,65 @@ const TempleInterior = {
     this._renderTasks(); this._renderKanban(); this._renderHeader();
   },
 
-  // ═══ NEW TASK MODAL ═══════════════════════════════════════════════════════
+  // ═══ NEW TASK MODAL (full cron + agent + priority) ════════════════════════
   async _newTaskModal() {
-    const pid = this.currentTemple?.project_id;
+    const pid   = this.currentTemple?.project_id;
     const pname = this.currentTemple?.name;
     let agents = [];
     try { agents = Object.values((await window.ApiV2._fetch('/agents')).registry.agents || {}); } catch {}
 
     const modal = document.createElement('div');
     modal.className = 'modal';
-    modal.innerHTML = `<div class="modal-content" style="width:460px;">
+    modal.innerHTML = `<div class="modal-content" style="width:520px;">
       <div class="modal-header"><h2>NEW TASK — ${this._esc(pname||'')}</h2>
         <button class="btn-close" onclick="this.closest('.modal').remove()">x</button></div>
-      <div class="modal-body" style="display:flex;flex-direction:column;gap:10px;">
-        <div class="agent-form-row"><label>Title *</label>
-          <input id="ntm-title" type="text" placeholder="What needs to be done?"></div>
-        <div class="agent-form-row"><label>Description</label>
-          <textarea id="ntm-desc" rows="3"></textarea></div>
-        <div style="display:flex;gap:10px;">
-          <div class="agent-form-row" style="flex:1;"><label>Assign to</label>
+      <div class="modal-body">
+        <div class="agent-form-row">
+          <label>Title *</label>
+          <input id="ntm-title" type="text" placeholder="What needs to be done?">
+        </div>
+        <div class="agent-form-row">
+          <label>Description / Instructions</label>
+          <textarea id="ntm-desc" rows="4" placeholder="Detailed instructions for the agent..."></textarea>
+        </div>
+        <div style="display:flex;gap:12px;">
+          <div class="agent-form-row" style="flex:1;">
+            <label>Assign to agent</label>
             <select id="ntm-agent">
-              <option value="">— unassigned —</option>
+              <option value="">— unassigned (Poseidon) —</option>
               ${agents.map(a => `<option value="${a.agent_id}">${this._esc(a.display_name||a.agent_id)}</option>`).join('')}
-            </select></div>
-          <div class="agent-form-row" style="flex:1;"><label>Cron (optional)</label>
-            <input id="ntm-cron" type="text" placeholder="0 8 * * *"></div>
+            </select>
+          </div>
+          <div class="agent-form-row" style="flex:1;">
+            <label>Priority</label>
+            <select id="ntm-priority">
+              <option value="medium">Medium</option>
+              <option value="high">High</option>
+              <option value="critical">Critical</option>
+              <option value="low">Low</option>
+            </select>
+          </div>
+        </div>
+        <div class="agent-form-section" style="margin-top:8px;">
+          <h3>RECURRING SCHEDULE (CRON)</h3>
+          <div style="display:flex;gap:12px;align-items:flex-end;">
+            <div class="agent-form-row" style="flex:2;">
+              <label>Cron expression <span style="font-size:8px;color:var(--ui-muted);">(leave empty for one-time)</span></label>
+              <input id="ntm-cron" type="text" placeholder="e.g. 0 8 * * * — daily at 8am" style="font-family:'Courier New',monospace;">
+            </div>
+            <div class="agent-form-row" style="flex:1;">
+              <label>Quick presets</label>
+              <select id="ntm-cron-preset" onchange="document.getElementById('ntm-cron').value=this.value;this.value='';">
+                <option value="">— select —</option>
+                <option value="0 8 * * *">Daily at 8am</option>
+                <option value="0 8 * * 1">Weekly Mon 8am</option>
+                <option value="0 */4 * * *">Every 4 hours</option>
+                <option value="0 9 1 * *">Monthly 1st</option>
+                <option value="*/30 * * * *">Every 30 min</option>
+              </select>
+            </div>
+          </div>
+          <p style="font-family:'Courier New',monospace;font-size:9px;color:var(--ui-muted);margin-top:4px;">Format: minute hour day month weekday (0-6=Sun-Sat)</p>
         </div>
       </div>
       <div class="agent-form-footer">
@@ -791,6 +921,9 @@ const TempleInterior = {
 
     const fnEl = document.getElementById('ti-ide-fname');
     if (fnEl) fnEl.textContent = f.name + (f.type ? ` [${f.type.toUpperCase()}]` : '');
+    // Show PREVIEW button only for HTML files
+    const prevBtn = document.getElementById('ti-prev-toggle');
+    if (prevBtn) prevBtn.style.display = /\.html?$/i.test(f.name) ? '' : 'none';
     this._renderIdeTabs();
   },
 

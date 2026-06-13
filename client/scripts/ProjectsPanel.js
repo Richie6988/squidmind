@@ -294,6 +294,8 @@ const ProjectsPanel = {
       const fakeTemple = {
         name: projectName,
         project_id: p?.project_id,
+        colors: p?.colors || null,
+        color: p?.color || null,
         files: [],
         tasks: []
       };
