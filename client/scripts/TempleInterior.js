@@ -51,7 +51,7 @@ const TempleInterior = {
       const agSec = document.getElementById('ti-agents-always');
       if (agSec) this._renderAgentsCompact(agSec);
       // Also refresh task list in right panel if visible
-      if (this._rightTab !== 'kanban') this._renderTasks();
+      if (this._rightTab !== 'kanban' && this._rightTab !== 'output') this._renderTasks();
     }, 3000);
   },
 
@@ -117,7 +117,8 @@ const TempleInterior = {
 
   <div class="ti-right">
     <div class="ti-tabs">
-      <button class="ti-tab active" id="ti-rt-kanban">KANBAN</button>
+      <button class="ti-tab active" id="ti-rt-kanban" onclick="TempleInterior._switchRight('kanban')">KANBAN</button>
+      <button class="ti-tab" id="ti-rt-output" onclick="TempleInterior._switchRight('output')">OUTPUT</button>
     </div>
     <div id="ti-right-body" style="display:flex;flex-direction:column;flex:1;min-height:0;overflow:hidden;"></div>
   </div>
@@ -158,10 +159,20 @@ const TempleInterior = {
     if (agentSection) this._renderAgentsCompact(agentSection);
   },
 
-  _switchRight(_tab) {
-    this._rightTab = 'kanban';
+  _switchRight(tab) {
+    this._rightTab = tab || 'kanban';
+    // Update tab button states
+    ['kanban','output'].forEach(t => {
+      const btn = document.getElementById(`ti-rt-${t}`);
+      if (btn) btn.classList.toggle('active', t === this._rightTab);
+    });
     const body = document.getElementById('ti-right-body');
-    if (body) this._renderKanban(body);
+    if (!body) return;
+    if (this._rightTab === 'output') {
+      this._renderOutput(body);
+    } else {
+      this._renderKanban(body);
+    }
   },
 
   _refreshAll() {
@@ -721,6 +732,83 @@ const TempleInterior = {
     this._renderKanban();
   },
 
+  // ═══ OUTPUT FILES TAB ════════════════════════════════════════════════════
+  async _renderOutput(container) {
+    const c = container || (this._rightTab === 'output' ? document.getElementById('ti-right-body') : null);
+    if (!c) return;
+
+    c.innerHTML = '<div style="padding:12px;font-family:\'Press Start 2P\',monospace;font-size:8px;color:#475569;">LOADING OUTPUT FILES...</div>';
+
+    try {
+      // Fetch completed tasks that have result_file or result_summary
+      const r = await window.ApiV2._fetch('/tasks');
+      const allTasks = this._filterProjectTasks(Object.values(r.registry?.tasks || {}));
+      const doneTasks = allTasks.filter(t => {
+        const s = t.lifecycle?.status || t.status;
+        return s === 'completed' || s === 'failed';
+      }).sort((a, b) => {
+        const ta = a.lifecycle?.completed_at || a.created_at || '';
+        const tb = b.lifecycle?.completed_at || b.created_at || '';
+        return tb.localeCompare(ta); // newest first
+      });
+
+      if (!doneTasks.length) {
+        c.innerHTML = '<div style="padding:20px;font-family:\'Press Start 2P\',monospace;font-size:8px;color:#334155;text-align:center;">NO OUTPUT YET</div>';
+        return;
+      }
+
+      c.innerHTML = `
+<div class="ti-output-wrap">
+  <div class="ti-output-list" id="ti-out-list">
+    ${doneTasks.map(t => {
+      const s = t.lifecycle?.status || t.status;
+      const isFail = s === 'failed';
+      const ts = (t.lifecycle?.completed_at || t.created_at || '').slice(0, 16).replace('T', ' ');
+      return `<div class="ti-out-row ${isFail ? 'ti-out-fail' : ''}" onclick="TempleInterior._viewOutput('${t.task_id}')">
+        <div class="ti-out-row-top">
+          <span class="ti-out-status">${isFail ? '!' : '+'}</span>
+          <span class="ti-out-title">${this._esc(t.title)}</span>
+        </div>
+        <div class="ti-out-row-bot">
+          <span class="ti-out-ts">${ts}</span>
+          ${t.result_summary ? `<span class="ti-out-preview">${this._esc(String(t.result_summary).slice(0, 60))}</span>` : ''}
+        </div>
+      </div>`;
+    }).join('')}
+  </div>
+  <div class="ti-out-viewer" id="ti-out-viewer" style="display:none;">
+    <div class="ti-out-viewer-hdr">
+      <span id="ti-out-viewer-title"></span>
+      <button onclick="document.getElementById('ti-out-viewer').style.display='none';document.getElementById('ti-out-list').style.display='flex';" style="font-family:'Press Start 2P',monospace;font-size:6px;background:none;border:1px solid rgba(255,255,255,0.1);color:#94a3b8;padding:3px 8px;cursor:pointer;">BACK</button>
+    </div>
+    <pre id="ti-out-viewer-body" class="ti-out-pre"></pre>
+  </div>
+</div>`;
+    } catch (e) {
+      c.innerHTML = `<div style="padding:12px;color:#ef4444;font-size:9px;font-family:'Courier New',monospace;">Error: ${this._esc(e.message)}</div>`;
+    }
+  },
+
+  async _viewOutput(taskId) {
+    const list   = document.getElementById('ti-out-list');
+    const viewer = document.getElementById('ti-out-viewer');
+    const title  = document.getElementById('ti-out-viewer-title');
+    const body   = document.getElementById('ti-out-viewer-body');
+    if (!viewer || !body) return;
+
+    body.textContent = 'Loading...';
+    if (list) list.style.display = 'none';
+    viewer.style.display = 'flex';
+
+    try {
+      const r = await window.ApiV2._fetch(`/tasks/${taskId}/result`);
+      title.textContent = taskId;
+      body.textContent = r.content || r.result || '(empty)';
+    } catch (e) {
+      body.textContent = 'Error: ' + e.message;
+    }
+  },
+
   // ═══ TASKS LIST ══════════════════════════════════════════════════════════
   async _renderTasks(container) {
     const c = container || (this._rightTab === 'tasks' ? document.getElementById('ti-right-body') : null);
@@ -1146,9 +1234,12 @@ const TempleInterior = {
   _filterProjectTasks(tasks) {
     const pid   = this.currentTemple?.project_id;
     const pname = this.currentTemple?.name;
+    // If no project context, show all tasks (global view from aquarium)
+    if (!pid && !pname) return tasks;
     return tasks.filter(t =>
       t.context?.project_id === pid ||
       t.project_id          === pid ||
+      t.context?.project_name === pname ||
       t.project_name        === pname
     );
   },

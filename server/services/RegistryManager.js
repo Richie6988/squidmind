@@ -853,6 +853,8 @@ class RegistryManager {
       parent_task_id: taskData.parent_task_id || null,
       title: taskData.title,
       description: taskData.description || '',
+      project_name: taskData.project_name || null,   // top-level for _filterProjectTasks
+      project_id: taskData.project_id || null,       // top-level mirror
       origin: taskData.origin || {
         type: 'human_direct',
         source: 'human_user',
@@ -868,6 +870,7 @@ class RegistryManager {
       },
       context: {
         project_id: taskData.project_id || null,
+        project_name: taskData.project_name || null,
         related_task_ids: [],
         blocks_task_ids: [],
         blocked_by_task_ids: taskData.blocked_by || [],

@@ -336,6 +336,88 @@ router.get('/file/{*filePath}', async (req, res) => {
   }
 });
 
+/**
+ * GET /tasks/:id/stream — SSE endpoint for live task output.
+ * Polls the output file and pushes new bytes every 1s until task is terminal.
+ */
+router.get('/tasks/:id/stream', async (req, res) => {
+  const taskId = req.params.id;
+  const path = require('path');
+  const fs   = require('fs');
+  const AQUARIUM = require('../aquarium');
+
+  res.writeHead(200, {
+    'Content-Type':  'text/event-stream',
+    'Cache-Control': 'no-cache',
+    'Connection':    'keep-alive',
+    'X-Accel-Buffering': 'no'
+  });
+  res.flushHeaders?.();
+
+  const TERMINAL = new Set(['completed','failed','cancelled','archived']);
+  let offset = 0;
+  let ticks  = 0;
+  const MAX_TICKS = 600; // 10 min max
+
+  const send = (evt, data) => {
+    try {
+      res.write(`event: ${evt}\ndata: ${JSON.stringify(data)}\n\n`);
+    } catch {}
+  };
+
+  const getOutputPath = async () => {
+    try {
+      const task = await rm._readTaskDetails(taskId);
+      if (task?.result_file && fs.existsSync(task.result_file)) return task.result_file;
+      // Flat fallback
+      const flat = path.join(AQUARIUM.TASKS, taskId, 'output.txt');
+      if (fs.existsSync(flat)) return flat;
+    } catch {}
+    return null;
+  };
+
+  const poll = async () => {
+    ticks++;
+    if (ticks > MAX_TICKS) { send('done', { reason: 'timeout' }); return res.end(); }
+
+    // Check task status
+    let task = null;
+    try { task = await rm._readTaskDetails(taskId); } catch {}
+    const status = task?.lifecycle?.status || task?.status || 'open';
+
+    // Stream new output bytes
+    const outPath = await getOutputPath();
+    if (outPath) {
+      try {
+        const stat = fs.statSync(outPath);
+        if (stat.size > offset) {
+          const fd = fs.openSync(outPath, 'r');
+          const buf = Buffer.alloc(stat.size - offset);
+          fs.readSync(fd, buf, 0, buf.length, offset);
+          fs.closeSync(fd);
+          offset = stat.size;
+          send('chunk', { text: buf.toString('utf8') });
+        }
+      } catch {}
+    }
+
+    if (TERMINAL.has(status)) {
+      send('done', { status, task_id: taskId });
+      return res.end();
+    }
+
+    // Schedule next poll
+    setTimeout(poll, 1000);
+  };
+
+  // Start polling
+  send('open', { task_id: taskId });
+  setTimeout(poll, 500);
+
+  // Clean up on client disconnect
+  req.on('close', () => { ticks = MAX_TICKS + 1; });
+});
+
   return router;
 }
 

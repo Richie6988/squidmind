@@ -1482,12 +1482,12 @@ Never describe a bash command you could call instead.`;
     try {
       this.rm.invalidateCache();
       const reg = await this.rm.read('tasks/tasks_registry.json');
-      
+
       const nextId = reg.metadata?.next_id || 1;
       const taskId = `task_${String(nextId).padStart(4, '0')}`;
-      
       reg.tasks = reg.tasks || {};
-      // Resolve agent name for display
+
+      // Resolve agent name
       let agentName = null;
       if (assigned_agent_id) {
         try {
@@ -1496,13 +1496,24 @@ Never describe a bash command you could call instead.`;
         } catch {}
       }
 
-      const initStatus = assigned_agent_id ? 'open' : 'open'; // always open for auto-runner
-      reg.tasks[taskId] = {
+      // Resolve project_id from name (for kanban filter compatibility)
+      let projectId = null;
+      if (project) {
+        try {
+          const pReg = await this.rm.read('projects/project_registry.json');
+          const pEntry = Object.values(pReg.projects || {}).find(p => p.name === project || p.project_id === project);
+          projectId = pEntry?.project_id || null;
+        } catch {}
+      }
+
+      const initStatus = 'open';
+      const taskObj = {
         task_id: taskId,
         title,
         description: description || '',
         project_name: project || null,
-        status: initStatus,  // top-level mirror for TaskRunner
+        project_id: projectId,
+        status: initStatus,
         priority: {
           label: priority || 'medium',
           computed_score: priority === 'critical' ? 20 : priority === 'high' ? 15 : priority === 'low' ? 5 : 10,
@@ -1511,26 +1522,28 @@ Never describe a bash command you could call instead.`;
         created_at: new Date().toISOString(),
         created_by: 'poseidon_main',
         lifecycle: { status: initStatus },
-        assignment: {
-          assigned_to: assigned_agent_id || null,
-          assigned_name: agentName
-        }
+        context: { project_id: projectId, project_name: project || null },
+        assignment: { assigned_to: assigned_agent_id || null, assigned_name: agentName }
       };
+
+      // Write per-folder details.json so getTasksRegistry() scan picks it up
+      await this.rm._writeTaskDetails(taskId, taskObj);
+
+      // Update flat registry metadata only (next_id)
       reg.metadata = reg.metadata || {};
       reg.metadata.next_id = nextId + 1;
       reg.metadata.last_id_used = nextId;
-      
-      await this.rm.write('tasks/tasks_registry.json', reg);
-      
+      await this.rm.write('tasks/tasks_registry.json', { metadata: reg.metadata, tasks: {} });
+
       await this.rm.log({
         event_type: 'task_created',
         actor: { type: 'system', id: 'poseidon_main' },
         subject: { type: 'task', id: taskId },
         action: `Poseidon created task: ${title}`,
-        context: { project, assigned_to: assigned_agent_id, priority }
+        context: { project, project_id: projectId, assigned_to: assigned_agent_id, priority }
       });
-      
-      return { ok: true, task_id: taskId, title, message: `Created task ${taskId}: "${title}"${assigned_agent_id ? ` assigned to ${agentName || assigned_agent_id}` : ''}.` };
+
+      return { ok: true, task_id: taskId, title, message: `Created task ${taskId}: "${title}"${assigned_agent_id ? ` assigned to ${agentName || assigned_agent_id}` : ''}${project ? ` (project: ${project})` : ''}.` };
     } catch (err) {
       return { ok: false, error: err.message };
     }

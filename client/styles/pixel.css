@@ -1792,7 +1792,60 @@ input[type="color"]::-webkit-color-swatch {
 .ti-quickadd input:focus { outline: none; border-color: var(--ui-accent); }
 .ti-quickadd input::placeholder { color: var(--ui-muted); }
 
-/* ── Arena for free-roaming squids ── */
+/* ── OUTPUT tab ── */
+.ti-output-wrap {
+  display: flex; flex-direction: column; flex: 1; min-height: 0; overflow: hidden;
+}
+.ti-output-list {
+  display: flex; flex-direction: column; gap: 2px;
+  padding: 6px; overflow-y: auto; flex: 1;
+}
+.ti-out-row {
+  padding: 7px 10px; cursor: pointer;
+  border: 1px solid rgba(255,255,255,0.05);
+  background: rgba(255,255,255,0.02);
+  transition: background 0.12s, border-color 0.12s;
+}
+.ti-out-row:hover { background: rgba(79,172,254,0.07); border-color: rgba(79,172,254,0.2); }
+.ti-out-fail { border-left: 2px solid rgba(239,68,68,0.5); }
+.ti-out-row-top { display: flex; align-items: center; gap: 6px; margin-bottom: 3px; }
+.ti-out-status {
+  font-family: 'Press Start 2P', monospace; font-size: 7px;
+  width: 14px; text-align: center; color: var(--success); flex-shrink: 0;
+}
+.ti-out-fail .ti-out-status { color: var(--danger); }
+.ti-out-title {
+  font-family: 'Press Start 2P', monospace; font-size: 7px;
+  color: #cbd5e1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ti-out-row-bot { display: flex; align-items: center; gap: 8px; }
+.ti-out-ts { font-family: 'Courier New', monospace; font-size: 8px; color: #475569; flex-shrink: 0; }
+.ti-out-preview {
+  font-family: 'Courier New', monospace; font-size: 8px; color: #64748b;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1;
+}
+.ti-out-viewer {
+  display: flex; flex-direction: column; flex: 1; min-height: 0; padding: 6px;
+}
+.ti-out-viewer-hdr {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 4px 0 8px;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  margin-bottom: 6px;
+}
+#ti-out-viewer-title {
+  font-family: 'Press Start 2P', monospace; font-size: 7px; color: var(--ui-accent);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ti-out-pre {
+  flex: 1; overflow-y: auto; margin: 0;
+  font-family: 'Courier New', monospace; font-size: 10px; color: #94a3b8;
+  line-height: 1.6; white-space: pre-wrap; word-break: break-word;
+  background: rgba(0,0,0,0.2); padding: 8px;
+  border: 1px solid rgba(255,255,255,0.06);
+}
+
+
 .agents-workspace { position: relative; }
 
 
