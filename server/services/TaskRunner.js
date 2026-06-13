@@ -500,7 +500,6 @@ class TaskRunner {
         // Update project memory if task belongs to a project
         await this._updateProjectMemoryForTask(task, 'completed', output);
       }
-      }
 
       const finalStatus = failed ? 'failed' : 'completed';
 

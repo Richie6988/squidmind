@@ -805,8 +805,7 @@ Never describe a bash command you could call instead.`;
           } catch (e) { return { ok: false, error: e.message }; }
         }
       }),
-
-
+      list_skills: defineChatSessionFunction({
         description: 'List all skills in aquarium/SKILLS/ with their summary, version, and triggers.',
         params: { type: 'object', properties: {} },
         handler: async () => self._listSkills()

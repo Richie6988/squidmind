@@ -273,31 +273,43 @@ const TempleInterior = {
   <button class="ti-sec-btn" style="width:100%;text-align:center;" onclick="TempleInterior._showAssigner()">ASSIGN AGENT</button>
 </div>`;
 
-    // ── Animated arena canvas ──────────────────────────────────────────
+    // ── Arena: continuous animated canvas ─────────────────────────────
     const arena = container.querySelector('#ti-arena-always');
     const arenaCvs = container.querySelector('#ti-arena-canvas');
     if (arena && arenaCvs) {
       setTimeout(() => {
         arenaCvs.width  = arena.clientWidth  || 260;
         arenaCvs.height = arena.clientHeight || 130;
+        const AW = arenaCvs.width, AH = arenaCvs.height;
         const aCtx = arenaCvs.getContext('2d');
-        // Draw arena background once
-        this._drawArenaBg(aCtx, arenaCvs.width, arenaCvs.height);
 
-        const W = arenaCvs.width, H = arenaCvs.height;
-        agents.forEach((a, idx) => {
+        // Cancel previous loop if any
+        if (this._arenaRaf) { cancelAnimationFrame(this._arenaRaf); this._arenaRaf = null; }
+        // Init arena particles once
+        if (!arena._pts) arena._pts = Array.from({ length: 20 }, () => ({
+          x: Math.random() * AW, y: Math.random() * AH,
+          r: 0.5 + Math.random() * 1.2,
+          dy: -0.04 - Math.random() * 0.07,
+          dx: (Math.random() - 0.5) * 0.03,
+          ph: Math.random() * Math.PI * 2,
+          sp: 0.3 + Math.random() * 0.5,
+          col: Math.random() > 0.5 ? '79,172,254' : '6,255,165'
+        }));
+
+        // Spawn agent walkers
+        const W = AW, H = AH;
+        agents.forEach(a => {
           const squid = (window.aquarium?.squids || []).find(s => (s.agent_id || s.id) === a.agent_id)
             || { id: a.agent_id, name: a.display_name || a.agent_id, appearance: a.appearance || {} };
           const walker = document.createElement('div');
           walker.className = 'ti-walker';
           const cvs = document.createElement('canvas');
-          cvs.width = 52; cvs.height = 58;
+          cvs.width = 54; cvs.height = 60;
           const lbl = document.createElement('div');
           lbl.className = 'ti-walker-name';
           lbl.textContent = (a.display_name || a.agent_id).slice(0, 10).toUpperCase();
-          // Running badge
-          const w = workers[a.agent_id] || {};
-          if (w.status === 'running' || a.status === 'active') {
+          const wkr = workers[a.agent_id] || {};
+          if (wkr.status === 'running' || a.status === 'active') {
             const badge = document.createElement('div');
             badge.className = 'ti-walker-badge';
             badge.textContent = 'RUN';
@@ -308,31 +320,83 @@ const TempleInterior = {
           arena.appendChild(walker);
           this._animateSquid(walker, cvs, squid, W, H);
         });
+
+        // Continuous arena background loop
+        const tick = () => {
+          const t = Date.now() / 1000;
+          aCtx.clearRect(0, 0, AW, AH);
+
+          // Deep ocean gradient
+          const bg = aCtx.createLinearGradient(0, 0, 0, AH);
+          bg.addColorStop(0, '#060e1c'); bg.addColorStop(1, '#02070f');
+          aCtx.fillStyle = bg; aCtx.fillRect(0, 0, AW, AH);
+
+          // Animated hex grid
+          const sz = 16, rw = sz * 2, rh = Math.sqrt(3) * sz;
+          const ncols = Math.ceil(AW / (rw * 0.75)) + 2;
+          const nrows = Math.ceil(AH / rh) + 2;
+          aCtx.save();
+          for (let row = 0; row < nrows; row++) {
+            for (let col = 0; col < ncols; col++) {
+              const hx = col * rw * 0.75 - rw * 0.3;
+              const hy = row * rh + (col % 2 === 0 ? 0 : rh / 2) - rh * 0.3;
+              const d  = Math.sqrt((hx - AW / 2) ** 2 + (hy - AH) ** 2);
+              const al = Math.max(0, 0.018 + 0.016 * Math.sin(t * 0.45 + d * 0.01 + col * 0.3));
+              aCtx.strokeStyle = `rgba(79,172,254,${al})`;
+              aCtx.lineWidth = 0.45;
+              aCtx.beginPath();
+              for (let i = 0; i < 6; i++) {
+                const a = (Math.PI / 3) * i - Math.PI / 6;
+                const px = hx + sz * Math.cos(a), py = hy + sz * Math.sin(a);
+                i === 0 ? aCtx.moveTo(px, py) : aCtx.lineTo(px, py);
+              }
+              aCtx.closePath(); aCtx.stroke();
+            }
+          }
+          aCtx.restore();
+
+          // Subtle light ray from top
+          aCtx.save();
+          aCtx.globalCompositeOperation = 'screen';
+          const rx = AW * 0.4 + Math.sin(t * 0.07) * AW * 0.1;
+          const rg = aCtx.createLinearGradient(rx, 0, rx, AH * 0.7);
+          rg.addColorStop(0, 'rgba(79,172,254,0.06)');
+          rg.addColorStop(1, 'rgba(79,172,254,0)');
+          aCtx.fillStyle = rg;
+          aCtx.beginPath();
+          aCtx.moveTo(rx - 5, 0); aCtx.lineTo(rx + 5, 0);
+          aCtx.lineTo(rx + 40, AH * 0.7); aCtx.lineTo(rx - 40, AH * 0.7);
+          aCtx.fill();
+          aCtx.globalCompositeOperation = 'source-over';
+          aCtx.restore();
+
+          // Floating particles
+          aCtx.save();
+          for (const p of arena._pts) {
+            p.x += p.dx + Math.sin(t * p.sp * 0.35 + p.ph) * 0.05;
+            p.y += p.dy;
+            if (p.y < -4) { p.y = AH + 4; p.x = Math.random() * AW; }
+            if (p.x < 0) p.x = AW; if (p.x > AW) p.x = 0;
+            aCtx.globalAlpha = 0.06 + 0.2 * Math.abs(Math.sin(t * p.sp * 0.4 + p.ph));
+            aCtx.fillStyle = `rgb(${p.col})`;
+            aCtx.beginPath(); aCtx.arc(p.x, p.y, p.r, 0, Math.PI * 2); aCtx.fill();
+          }
+          aCtx.globalAlpha = 1;
+          aCtx.restore();
+
+          // Floor shadow
+          const fl = aCtx.createLinearGradient(0, AH * 0.72, 0, AH);
+          fl.addColorStop(0, 'rgba(0,0,0,0)'); fl.addColorStop(1, 'rgba(1,4,10,0.55)');
+          aCtx.fillStyle = fl; aCtx.fillRect(0, AH * 0.72, AW, AH * 0.28);
+
+          this._arenaRaf = requestAnimationFrame(tick);
+        };
+        tick();
       }, 80);
     }
   },
 
-  _drawArenaBg(ctx, W, H) {
-    // Deep ocean floor for arena
-    const grad = ctx.createLinearGradient(0, 0, 0, H);
-    grad.addColorStop(0, '#07111e');
-    grad.addColorStop(1, '#04080f');
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, W, H);
-    // Subtle grid floor
-    ctx.strokeStyle = 'rgba(79,172,254,0.04)';
-    ctx.lineWidth = 0.5;
-    for (let x = 0; x < W; x += 24) {
-      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
-    }
-    for (let y = 0; y < H; y += 24) {
-      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
-    }
-    // Floor line
-    ctx.strokeStyle = 'rgba(79,172,254,0.1)';
-    ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.moveTo(0, H - 1); ctx.lineTo(W, H - 1); ctx.stroke();
-  },
+  _drawArenaBg() { /* superseded by inline tick loop in _renderAgentsCompact */ },
 
   async _editAgent(agentId) {
     // Open AgentForm in edit mode for this agent
@@ -1433,7 +1497,9 @@ const TempleInterior = {
 
   // ═══ HELPERS ═════════════════════════════════════════════════════════════
   _folder() {
-    return (this.currentTemple?.project_id || 'PROJECT_001').toUpperCase().replace(/^project_/i, 'PROJECT_');
+    // Use the actual folder name from registry (set by project creation)
+    // NOT the project_id (which is PROJECT_001 etc.) — they differ!
+    return (this.currentTemple?.folder || this.currentTemple?.project_id || 'PROJECT_001').toUpperCase().replace(/^project_/i, 'PROJECT_');
   },
 
   _filterProjectTasks(tasks) {

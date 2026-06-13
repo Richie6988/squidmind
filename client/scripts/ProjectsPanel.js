@@ -294,6 +294,7 @@ const ProjectsPanel = {
       const fakeTemple = {
         name: projectName,
         project_id: p?.project_id,
+        folder: p?.folder,          // ← needed for _folder() to find the right output dir
         colors: p?.colors || null,
         color: p?.color || null,
         files: [],
