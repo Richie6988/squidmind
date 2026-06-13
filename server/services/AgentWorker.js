@@ -21,9 +21,9 @@ function buildAgentSystemPrompt(brain, agentEntry, skillSummaries = []) {
   const id    = agentEntry.agent_id;
   const name  = brain.identity?.display_name || agentEntry.display_name || id;
   const role  = brain.identity?.role         || agentEntry.specialization || 'general agent';
+  // LEAN system prompt — keeps token count low for small context windows
   const base  = brain.brain_config?.system_prompt
-    || `You are ${name}, an autonomous AI agent specializing in ${role}.`;
-
+    || `You are ${name}, an autonomous agent specializing in ${role}.`;
   const lines = [base, ''];
 
   // ── Identity ──
@@ -74,23 +74,8 @@ function buildAgentSystemPrompt(brain, agentEntry, skillSummaries = []) {
     lines.push('');
   }
 
-  // ── Agentic execution rules ──
-  lines.push('# EXECUTION RULES');
-  lines.push('1. Never invent facts or fabricate file contents.');
-  lines.push('2. Always report tool failures honestly.');
-  lines.push('3. Use your tools. Never describe what you would do — do it.');
-  lines.push('4. After EACH meaningful step: if you have an update_task tool, update task progress field.');
-  lines.push('5. File paths use aquarium layout: PROJECTS/<FOLDER>/input/ and PROJECTS/<FOLDER>/output/');
-  lines.push('6. Use list_files("PROJECTS") to discover project folders before reading/writing files.');
-  lines.push('7. When done: write a clear completion summary (what was done, what files were created/modified).');
-  lines.push('');
-
-  // ── Aquarium skills available ──
-  if (skillSummaries.length > 0) {
-    lines.push('# SKILL RECIPES (use these for known task types)');
-    skillSummaries.forEach(s => lines.push(`- ${s}`));
-    lines.push('');
-  }
+  // Lean rules — 4 lines max to keep token count low
+  lines.push('RULES: Use tools directly. Report failures. Update progress after each step. End with a summary.');
 
   return lines.join('\n');
 }
@@ -224,13 +209,14 @@ class AgentWorker extends EventEmitter {
       const pathM  = require('path');
       const AQUARIUM = require('../aquarium');
       if (fsSync.existsSync(AQUARIUM.SKILLS)) {
+        // Keep skill list minimal — agents have small context windows
         skillSummaries = fsSync.readdirSync(AQUARIUM.SKILLS)
           .filter(f => f.endsWith('.json'))
-          .slice(0, 12)
+          .slice(0, 5)  // max 5 skills, shortest format
           .map(f => {
             try {
               const s = JSON.parse(fsSync.readFileSync(pathM.join(AQUARIUM.SKILLS, f), 'utf8'));
-              return `${s.skill_id}: ${s.summary || s.name} (triggers: ${(s.triggers || []).slice(0,2).join(', ')})`;
+              return `${s.skill_id}: ${s.summary || s.name}`;  // no triggers = shorter
             } catch { return null; }
           })
           .filter(Boolean);
@@ -271,7 +257,8 @@ class AgentWorker extends EventEmitter {
     this._agentContext = null;  // we do NOT own the context — Poseidon does
     this.sequence      = sequence;
     const ctxTokens   = contextLength;
-    const budgetChars = Math.floor(ctxTokens * 0.5) * 4;
+    // 20% budget for system prompt — leaves 80% for tools schema + task + reply
+    const budgetChars = Math.floor(ctxTokens * 0.20) * 4;
     const trimmedPrompt = systemPromptWithSkills.length > budgetChars
       ? systemPromptWithSkills.slice(0, budgetChars) + '\n[prompt trimmed to fit context]'
       : systemPromptWithSkills;

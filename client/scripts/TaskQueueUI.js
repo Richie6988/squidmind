@@ -223,7 +223,8 @@ const TaskQueueUI = {
 
     // Splice dragged item to new position
     const [item] = list.splice(fromIdx, 1);
-    const insertAt = fromIdx < toIdx ? toIdx : toIdx;
+    // After removing fromIdx, target index shifts down if we moved forward
+    const insertAt = fromIdx < toIdx ? toIdx - 1 : toIdx;
     list.splice(insertAt, 0, item);
     this._tasks = list;
 

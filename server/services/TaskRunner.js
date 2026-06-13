@@ -119,15 +119,15 @@ class TaskRunner {
         : '';
       const descPart = task.description ? `\nDetails: ${task.description}` : '';
 
+      // Trim components to prevent context overflow on small models (16k ctx)
+      const titleLine  = `TASK [${taskId}]: ${task.title}`;
+      const descLine   = descPart  ? descPart.slice(0, 400)   : '';
+      const projLine   = projectPart;
+      const progLine   = progressPart ? progressPart.slice(0, 300) : '';
       const msg = [
-        `TASK [${taskId}]: ${task.title}`,
-        descPart,
-        projectPart,
-        progressPart,
-        '\n---',
-        'Execute this task using your tools. Update progress field after each step.',
-        'End with a clear completion summary.'
-      ].join('').trim();
+        titleLine, descLine, projLine, progLine,
+        '\n---\nUse your tools. Update progress after each step. End with a summary.'
+      ].join('').trim().slice(0, 1200);  // hard cap: ~300 tokens
 
       let output = '';
       let failed = false;
