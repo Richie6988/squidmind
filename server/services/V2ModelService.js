@@ -797,7 +797,8 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
         dreaming: e.dreaming || false
       })),
       poseidon_model_id: this.poseidonModelId,
-      dream_model_id: this.dreamModelId || null
+      dream_model_id: this.dreamModelId || null,
+      broker: this.broker.getState()
     };
   }
 

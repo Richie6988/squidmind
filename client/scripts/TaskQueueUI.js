@@ -80,7 +80,11 @@ const TaskQueueUI = {
       }
 
       if (this._tasks.length === 0 && doneTasks.length === 0) {
-        container.innerHTML += '<p class="hint" style="font-size:9px;color:var(--text-secondary);">No tasks queued — create tasks and assign agents to auto-run them.</p>';
+        const hint = document.createElement('p');
+        hint.className = 'hint';
+        hint.style.cssText = 'font-size:9px;color:var(--text-secondary);';
+        hint.textContent = 'No tasks queued — create tasks and assign agents to auto-run them.';
+        container.appendChild(hint);
         return;
       }
 
