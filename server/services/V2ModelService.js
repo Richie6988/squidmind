@@ -10,6 +10,8 @@
  */
 
 const path = require('path');
+const ModelBroker = require('./ModelBroker');
+const { PRIORITY } = ModelBroker;
 const ImageGenerationService = require('./ImageGenerationService');
 const fs = require('fs').promises;
 const fsSync = require('fs');
