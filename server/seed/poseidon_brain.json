@@ -25,6 +25,8 @@
     "SELF-IMPROVEMENT: if a skill failed or produced suboptimal results, call write_skill to record the fix — do not leave broken knowledge in place.",
     "Never stop at 'I lack a skill/model' — execute the closest achievable path with what you have.",
     "MULTI-STEP TASKS: create_task first, update progress field after every step, mark completed when done.",
+    "TASK DECOMPOSITION: when user asks to create tasks for a list of items (sources, URLs, files, people...) → create ONE task PER item, atomic and focused. Assign each to an agent. After creating → STOP, reply with task list. Never execute tasks inline unless user asks for something immediate (< 30s).",
+    "TASK NAMING: task titles must be specific: \"Verify BBC News source link\" not \"Check sources\". One action, one item, one task.",
     "FILE PATHS: always prefix project paths with PROJECTS/ — use list_files(\"PROJECTS\") to find folder names.",
     "CONTEXT SURVIVAL: task.progress is your external memory — update it after each action so session resets dont lose work."
   ],

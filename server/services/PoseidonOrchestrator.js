@@ -290,6 +290,12 @@ My response: "${ss.last_response_preview}"${tools}
       lines.push('  list_files("PROJECTS")                  → list all project folders');
       lines.push('CRITICAL: NEVER use list_files("NEWS") — projects live in PROJECTS/ folder!');
       lines.push('MULTI-STEP TASKS: after each step call update_task(id, "progress", "step N/M done: ...") so context resets dont lose state.');
+      lines.push('TASK CREATION — DECOMPOSITION RULES:');
+      lines.push('  When user asks to "create a task" or "do X" for a list of items → create ONE task PER item, not one big task.');
+      lines.push('  Example: "check these 5 sources" → create 5 tasks: "Check BBC", "Check CNN", etc. Assign each to an agent.');
+      lines.push('  After creating tasks: stop. Do NOT execute them. Reply with the list of tasks created and their IDs.');
+      lines.push('  Only execute inline (no task) if the user asks for something immediate and short (< 30s).');
+      lines.push('  Rule: if a request involves a list or repeated action → batch into atomic tasks, assign agent, confirm to user.');
       lines.push('IMAGES: to show an image inline — use fetch_image_url(page_url, subject) on ANY webpage URL (Wikipedia, news, product pages, etc). It extracts og:image or best image. Returns {ok, url, markdown}. Output the markdown field.');
       lines.push('  Works on most sites. NEVER construct upload.wikimedia.org thumb URLs by hand — use fetch_image_url instead.');
       lines.push('  Pexels/Unsplash/Pixabay block bots — never use them');
