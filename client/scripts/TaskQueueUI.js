@@ -157,8 +157,7 @@ const TaskQueueUI = {
           <span class="tq-dot ${statusDot.cls} ${isRunning ? 'tq-dot-pulse' : ''}" title="${statusDot.label}">⬤</span>
           <span class="tq-title tq-title-link" title="Click to view/edit details">${this._esc(t.title)}</span>
           ${canRun ? `<button class="tq-run-btn" onclick="TaskQueueUI.runTask('${t.task_id}')" title="▶ Run now">▶</button>` : ''}
-          <button class="tq-cancel" onclick="TaskQueueUI.cancelTask('${t.task_id}')" title="Cancel">✕</button>
-          <button class="tq-delete" onclick="TaskQueueUI.deleteTask('${t.task_id}')" title="Delete permanently" style="background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.3);color:#ef4444;border-radius:4px;padding:0 5px;font-size:9px;cursor:pointer;margin-left:2px;">🗑</button>
+          <button class="tq-cancel" onclick="TaskQueueUI.deleteTask('${t.task_id}')" title="Delete task">✕</button>
         </div>
         <div class="tq-row2">
           ${typeBadge}

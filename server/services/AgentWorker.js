@@ -247,11 +247,27 @@ class AgentWorker extends EventEmitter {
       (ev) => toolEvents.push(ev)
     );
 
-    // Create a DEDICATED context so the agent doesn't compete with Poseidon's sequence slot
-    const { context: agentCtx, sequence, contextLength } = await this.modelService.createAgentContext(modelId);
-    this._agentContext = agentCtx;  // store for disposal
+    // Share Poseidon's loaded context rather than creating a new one.
+    // Creating a second context on the same model OOMs on consumer GPUs (7-8GB VRAM).
+    // We reuse entry.context and get a sequence from it. This is safe because
+    // the wait-loop above ensures Poseidon is idle before we grab the sequence.
+    // The agent disposes the sequence when done, NOT the context (which belongs to Poseidon).
+    let sequence;
+    let contextLength;
+    try {
+      sequence      = entry.context.getSequence();
+      contextLength = entry.context.contextSize || entry.config?.contextLength || 4096;
+      console.log(`[AgentWorker] Sharing Poseidon context for ${this.agentId} on ${modelId} (ctx=${contextLength})`);
+    } catch (seqErr) {
+      // If getSequence fails (no free slot), wait a bit and retry once
+      console.warn(`[AgentWorker] getSequence failed, waiting 3s: ${seqErr.message}`);
+      await new Promise(r => setTimeout(r, 3000));
+      sequence      = entry.context.getSequence();
+      contextLength = entry.context.contextSize || entry.config?.contextLength || 4096;
+    }
+    this._agentContext = null;  // we do NOT own the context — Poseidon does
     this.sequence      = sequence;
-    const ctxTokens   = entry.config?.contextLength || 8192;
+    const ctxTokens   = contextLength;
     const budgetChars = Math.floor(ctxTokens * 0.5) * 4;
     const trimmedPrompt = systemPromptWithSkills.length > budgetChars
       ? systemPromptWithSkills.slice(0, budgetChars) + '\n[prompt trimmed to fit context]'
@@ -379,14 +395,18 @@ class AgentWorker extends EventEmitter {
     this.status     = 'idle';
   }
 
-  /** Dispose session (frees context sequence) */
+  /** Dispose session — releases the sequence back to Poseidon's context pool */
   async dispose() {
     try { await this.session?.dispose?.(); } catch {}
-    try { await this._agentContext?.dispose?.(); } catch {}
-    this.session      = null;
-    this.sequence     = null;
+    // IMPORTANT: do NOT dispose this._agentContext — it belongs to Poseidon
+    // Only dispose if we actually own a dedicated context (legacy path)
+    if (this._agentContext) {
+      try { await this._agentContext.dispose(); } catch {}
+    }
+    this.session       = null;
+    this.sequence      = null;
     this._agentContext = null;
-    this._functions   = null;
+    this._functions    = null;
   }
 }
 
