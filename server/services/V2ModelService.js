@@ -858,7 +858,7 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
    * @param {Array<{role,content}>} history - prior turns
    * @yields {string} chunk of generated text
    */
-  async *chatWithPoseidon(userMessage, historyIn = []) {
+  async *chatWithPoseidon(userMessage, historyIn = [], { _skipBroker = false } = {}) {
     let history = historyIn.slice(); // mutable copy
     if (!this.poseidonModelId) {
       throw new Error('No model assigned to Poseidon. Import a model and assign it first.');
@@ -877,8 +877,10 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
     if (!entry) {
       throw new Error('Poseidon model failed to load');
     }
-    // Acquire the model slot (CHAT priority — preempts background work)
-    const brokerToken = await this.broker.acquire(PRIORITY.CHAT, 'poseidon_chat', { timeoutMs: 5 * 60_000 });
+    // Acquire the model slot unless caller already holds it (e.g. TaskRunner BG)
+    const brokerToken = _skipBroker
+      ? null
+      : await this.broker.acquire(PRIORITY.CHAT, 'poseidon_chat', { timeoutMs: 5 * 60_000 });
     entry.generating = true;
     entry.lastUsedAt = Date.now();
     entry.totalRequests++;
@@ -1312,7 +1314,7 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
       throw err;
     } finally {
       entry.generating = false;
-      this.broker.release(brokerToken);
+      if (brokerToken) this.broker.release(brokerToken);
       entry.lastUsedAt = Date.now();
 
       // Update registry
