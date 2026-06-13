@@ -161,17 +161,15 @@ class AgentWorker extends EventEmitter {
                    || this.brain.brain_config?.model_binding?.current_model_id;
     // 1. Preferred model explicitly configured and loaded
     if (preferred && this.modelService.loaded.has(preferred)) return preferred;
-    // 2. Poseidon's current model — only if actually in VRAM
-    if (this.modelService.poseidonModelId && this.modelService.loaded.has(this.modelService.poseidonModelId)) {
-      return this.modelService.poseidonModelId;
-    }
-    // 3. Last resort: first loaded model in the map (whatever is in memory)
+    // 2. Poseidon's current model (most common: "use poseidon default")
+    if (this.modelService.poseidonModelId) return this.modelService.poseidonModelId;
+    // 3. Preferred model configured but not yet loaded — ensureLoaded will handle it
+    if (preferred) return preferred;
+    // 4. Last resort: first loaded model in the map (whatever is in memory)
     const firstLoaded = [...this.modelService.loaded.keys()][0];
     if (firstLoaded) return firstLoaded;
-    // 4. Preferred model configured but not yet loaded — ensureLoaded will handle it
-    if (preferred) return preferred;
-    // 5. Poseidon's model not loaded — ensureLoaded will handle it
-    if (this.modelService.poseidonModelId) return this.modelService.poseidonModelId;
+    // 5. Nothing loaded at all — check registry for the configured model
+    // Return null only if truly nothing is available
     return null;
   }
 
@@ -240,16 +238,9 @@ class AgentWorker extends EventEmitter {
 
     // Share Poseidon's loaded context rather than creating a new one.
     // Creating a second context on the same model OOMs on consumer GPUs (7-8GB VRAM).
-    // We reuse entry.context and get a sequence from it. The broker guarantees we
-    // hold exclusive access, but Poseidon's session keeps its sequence alive between
-    // chat turns. Dispose it now so the slot is free — it will be recreated lazily
-    // on the next chat (entry.session = null triggers the lazy-init path).
-    if (entry.session) {
-      try { await entry.session.dispose?.(); } catch {}
-      entry.session = null;
-      console.log(`[AgentWorker] Released Poseidon session to free sequence for ${this.agentId}`);
-    }
-
+    // We reuse entry.context and get a sequence from it. This is safe because
+    // the wait-loop above ensures Poseidon is idle before we grab the sequence.
+    // The agent disposes the sequence when done, NOT the context (which belongs to Poseidon).
     let sequence;
     let contextLength;
     try {
@@ -257,7 +248,11 @@ class AgentWorker extends EventEmitter {
       contextLength = entry.context.contextSize || entry.config?.contextLength || 4096;
       console.log(`[AgentWorker] Sharing Poseidon context for ${this.agentId} on ${modelId} (ctx=${contextLength})`);
     } catch (seqErr) {
-      throw new Error(`getSequence failed after disposing Poseidon session: ${seqErr.message}`);
+      // If getSequence fails (no free slot), wait a bit and retry once
+      console.warn(`[AgentWorker] getSequence failed, waiting 3s: ${seqErr.message}`);
+      await new Promise(r => setTimeout(r, 3000));
+      sequence      = entry.context.getSequence();
+      contextLength = entry.context.contextSize || entry.config?.contextLength || 4096;
     }
     this._agentContext = null;  // we do NOT own the context — Poseidon does
     this.sequence      = sequence;
@@ -290,6 +285,7 @@ class AgentWorker extends EventEmitter {
     this.generating = true;
     this.status     = 'running';
 
+    // Update agent status in registry
     try {
       await this.rm.updateAgentStatus(this.agentId, 'active');
     } catch {}
@@ -297,12 +293,6 @@ class AgentWorker extends EventEmitter {
     try {
       await this._ensureSession();
     } catch (err) {
-      // _ensureSession failed — broker may already be acquired, must cleanup
-      try { await this.session?.dispose?.(); } catch {}
-      try { await this.sequence?.dispose?.(); } catch {}
-      this.session  = null;
-      this.sequence = null;
-      if (this._brokerToken) { this.broker.release(this._brokerToken); this._brokerToken = null; }
       this.generating = false;
       this.status = 'error';
       yield { type: 'error', error: err.message };
@@ -386,23 +376,21 @@ class AgentWorker extends EventEmitter {
       yield { type: 'end', agent_id: this.agentId };
     }
 
-    // Cleanup — always runs even on error
-    try { await this.rm.updateAgentStatus(this.agentId, 'sleeping'); } catch {}
-
-    // Dispose session + sequence explicitly → releases slot back to context pool
-    try { await this.session?.dispose?.(); } catch {}
-    try { await this.sequence?.dispose?.(); } catch {}
-    this.session  = null;
-    this.sequence = null;
+    // Update task completion in registry
+    try {
+      await this.rm.updateAgentStatus(this.agentId, 'sleeping');
+    } catch {}
 
     this.generating = false;
     this.status     = 'idle';
 
-    // Release broker — lets CHAT (Poseidon) or next agent proceed
+    // Release model slot — lets next agent/task/dream proceed
     if (this._brokerToken) {
       this.broker.release(this._brokerToken);
       this._brokerToken = null;
     }
+    // Null sequence so image gen eviction can't hit a dangling pointer
+    this.sequence = null;
   }
 
   /** Dispose session — releases the sequence back to Poseidon's context pool */
@@ -412,8 +400,6 @@ class AgentWorker extends EventEmitter {
       this._brokerToken = null;
     }
     try { await this.session?.dispose?.(); } catch {}
-    // Dispose the sequence explicitly — LlamaChatSession.dispose() may not release it
-    try { await this.sequence?.dispose?.(); } catch {}
     // IMPORTANT: do NOT dispose this._agentContext — it belongs to Poseidon
     // Only dispose if we actually own a dedicated context (legacy path)
     if (this._agentContext) {

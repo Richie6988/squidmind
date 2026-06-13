@@ -136,36 +136,49 @@ class TaskRunner {
       let failed = false;
 
       try {
-        if (agentId && agentId !== 'poseidon_main') {
-          const gen = await this.agentPool.dispatch(agentId, msg);
-          for await (const ev of gen) {
+        // ALL tasks go through Poseidon (single model, single sequence).
+        // If assigned to an agent, inject its personality as a role prefix so
+        // Poseidon adopts the sub-personality for this task.
+        const bgToken = await this.modelService.broker.acquire(
+          PRIORITY.POSEIDON_BG, `bg_task_${taskId}`,
+          { timeoutMs: 10 * 60 * 1000 }
+        );
+        try {
+          // Fresh session for each background task (no context contamination)
+          const poseidonId = this.modelService.poseidonModelId;
+          const posEntry = poseidonId ? this.modelService.loaded.get(poseidonId) : null;
+          if (posEntry?.session) {
+            try { if (posEntry.session.dispose) await posEntry.session.dispose(); } catch {}
+            posEntry.session = null;
+            posEntry._currentSequence = null;
+            posEntry.sessionTurns = 0;
+          }
+
+          // Build agent persona prefix if task is assigned to a named agent
+          let agentPrefix = '';
+          if (agentId && agentId !== 'poseidon_main') {
+            try {
+              const registry = await this.rm.getAgentRegistry();
+              const agentEntry = registry.agents?.[agentId];
+              if (agentEntry) {
+                const brain = await this.rm.read(`agents/${agentEntry.brain_file}`);
+                const persona = brain?.personality?.description || brain?.system_prompt || '';
+                const name    = brain?.name || agentEntry.name || agentId;
+                if (persona) {
+                  agentPrefix = `[AGENT ROLE: ${name}]\n${persona.slice(0, 400)}\n---\n`;
+                } else {
+                  agentPrefix = `[AGENT ROLE: ${name}]\n---\n`;
+                }
+              }
+            } catch {}
+          }
+
+          const posMsg = `[BACKGROUND AUTO-TASK ${taskId}]\n${agentPrefix}${msg}`;
+          for await (const ev of this.modelService.chatWithPoseidon(posMsg, [])) {
             if (ev.type === 'text') output += ev.chunk;
-            if (ev.type === 'error') { failed = true; output += '\nERROR: ' + ev.error; }
           }
-        } else {
-          // Poseidon handles it directly — acquire POSEIDON_BG slot through broker
-          // broker.acquire blocks until CHAT/AGENT slots are free
-          const bgToken = await this.modelService.broker.acquire(
-            PRIORITY.POSEIDON_BG, `bg_task_${taskId}`,
-            { timeoutMs: 10 * 60 * 1000 }
-          );
-          try {
-            // Fresh session for each background task (no context contamination)
-            const poseidonId = this.modelService.poseidonModelId;
-            const posEntry = poseidonId ? this.modelService.loaded.get(poseidonId) : null;
-            if (posEntry?.session) {
-              try { if (posEntry.session.dispose) await posEntry.session.dispose(); } catch {}
-              posEntry.session = null;
-              posEntry._currentSequence = null;
-              posEntry.sessionTurns = 0;
-            }
-            const posMsg = `[BACKGROUND AUTO-TASK ${taskId}]\n${msg}`;
-            for await (const ev of this.modelService.chatWithPoseidon(posMsg, [])) {
-              if (ev.type === 'text') output += ev.chunk;
-            }
-          } finally {
-            this.modelService.broker.release(bgToken);
-          }
+        } finally {
+          this.modelService.broker.release(bgToken);
         }
       } catch (e) {
         output = `Execution error: ${e.message}`;

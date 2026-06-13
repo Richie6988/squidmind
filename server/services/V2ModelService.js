@@ -54,16 +54,6 @@ class V2ModelService {
    */
   async _restorePoseidonModel() {
     try {
-      // If a model is already loaded in memory (e.g. by an agent task that ran
-      // before this restore fires), prefer it — avoids VRAM exhaustion trying to
-      // load a second model that won't fit.
-      if (this.loaded.size > 0) {
-        const [firstId] = this.loaded.keys();
-        this.poseidonModelId = firstId;
-        console.log(`[V2ModelService] ✓ Poseidon assigned to already-loaded model: ${firstId}`);
-        return;
-      }
-
       const brain = await this.rm.getPoseidonBrain();
       const savedId = brain?.current_state?.loaded_model_id;
       if (!savedId) return;
@@ -879,16 +869,8 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
     
     // Auto-load if not yet loaded
     if (!this.loaded.has(this.poseidonModelId)) {
-      // If another model is already in VRAM, use it instead of trying to load
-      // a second one that likely won't fit (e.g. Qwen loaded by agent, Mistral assigned to Poseidon).
-      if (this.loaded.size > 0) {
-        const [fallbackId] = this.loaded.keys();
-        console.warn(`[V2ModelService] Poseidon model ${this.poseidonModelId} not loaded — falling back to ${fallbackId} (already in VRAM)`);
-        this.poseidonModelId = fallbackId;
-      } else {
-        console.log(`[V2ModelService] Auto-loading ${this.poseidonModelId} for Poseidon chat...`);
-        await this.ensureLoaded(this.poseidonModelId);
-      }
+      console.log(`[V2ModelService] Auto-loading ${this.poseidonModelId} for Poseidon chat...`);
+      await this.ensureLoaded(this.poseidonModelId);
     }
     
     const entry = this.loaded.get(this.poseidonModelId);
