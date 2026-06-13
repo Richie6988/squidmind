@@ -434,18 +434,15 @@ class AgentWorkerPool {
 
     const brain = await this.rm.read(`agents/${entry.brain_file}`);
 
-    // Reuse worker if already idle (session warm), otherwise recreate
     const existing = this._workers.get(agentId);
-    if (existing && existing.status === 'idle') {
-      existing.brain      = brain;   // refresh brain data
-      existing.agentEntry = entry;
-      return existing;
-    }
+
+    // Never reuse a session between tasks — same context = same output
+    // Each task gets a fresh LlamaChatSession (new conversation history)
     if (existing && existing.status === 'running') {
       throw new Error(`Agent ${agentId} is already running a task.`);
     }
 
-    // Dispose stale worker
+    // Dispose any previous worker (releases sequence back to context pool)
     if (existing) await existing.dispose().catch(() => {});
 
     const worker = new AgentWorker(

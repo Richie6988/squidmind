@@ -16,10 +16,11 @@ class TaskRunner {
     this.rm           = rm;
     this.modelService = modelService;
     this.agentPool    = agentPool;
-    this._running     = new Set();
-    this._lastCronRun = new Map(); // taskId → last run timestamp
-    this._failCounts  = new Map(); // taskId → consecutive failure count
-    this.MAX_RETRIES  = 3;         // mark permanently failed after this many consecutive failures
+    this._running       = new Set();
+    this._done          = new Set();  // in-memory: tasks completed this session (never re-run)
+    this._lastCronRun   = new Map();
+    this._failCounts    = new Map();
+    this.MAX_RETRIES    = 3;
   }
 
   async tick() {
@@ -61,8 +62,10 @@ class TaskRunner {
       .filter(t => {
         const s = t.lifecycle?.status || t.status || 'open';
         const tooManyFails = (this._failCounts.get(t.task_id) || 0) >= this.MAX_RETRIES;
-        // Never re-run terminal or already-running tasks
-        return !TERMINAL.has(s) && !this._running.has(t.task_id) && !tooManyFails;
+        return !TERMINAL.has(s)
+          && !this._running.has(t.task_id)
+          && !this._done.has(t.task_id)   // never re-run completed tasks
+          && !tooManyFails;
       })
       .sort((a, b) => (b.sort_order || 0) - (a.sort_order || 0)); // highest sort_order first
 
@@ -178,6 +181,7 @@ class TaskRunner {
         this._failCounts.set(taskId, prevFails);
         if (prevFails >= this.MAX_RETRIES) {
           console.warn(`[TaskRunner] ✗✗ ${taskId} hit ${this.MAX_RETRIES} failures — marking permanently failed`);
+          this._done.add(taskId);  // stop retrying
           await this._setStatus(taskId, 'failed', {
             completed_at: new Date().toISOString(),
             output_preview: `Permanently failed after ${prevFails} attempts. Last error: ${output.slice(0, 200)}`
@@ -190,10 +194,12 @@ class TaskRunner {
           });
         }
       } else {
-        this._failCounts.delete(taskId); // reset on success
+        this._failCounts.delete(taskId);
+        this._done.add(taskId);  // in-memory guard: never re-run this task
         await this._setStatus(taskId, 'completed', {
           completed_at: new Date().toISOString(),
-          output_preview: output.slice(0, 300)
+          output_preview: output.slice(0, 300),
+          result_summary: output.slice(0, 500)  // for TaskQueueUI "Recent Results"
         });
         await this._updateProgressField(taskId, 'completed — ' + output.slice(0, 120));
       }

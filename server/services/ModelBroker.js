@@ -94,10 +94,20 @@ class ModelBroker extends EventEmitter {
         return;
       }
 
-      // Dream is refused if anything is queued or slot is taken by higher prio work
+      // Dream: refused if anything is queued
       if (priority === PRIORITY.DREAM) {
         reject(new Error('BROKER_DREAM_REFUSED: slot busy or queue non-empty'));
         return;
+      }
+
+      // Image: refused if LLM tasks are queued (would starve forever)
+      // generateImage catches this and schedules a retry
+      if (priority === PRIORITY.IMAGE) {
+        const llmQueued = this._queue.some(e => e.priority <= PRIORITY.POSEIDON_BG);
+        if (llmQueued) {
+          reject(new Error('BROKER_IMAGE_REFUSED: LLM tasks queued'));
+          return;
+        }
       }
 
       // Queue the request
@@ -147,13 +157,21 @@ class ModelBroker extends EventEmitter {
 
   /**
    * isDreamAllowed()
-   * Returns true only if:
-   *   - slot is free
-   *   - queue is empty (no pending work)
-   * Callers should also check idle time themselves.
+   * True only if slot free AND queue empty.
    */
   isDreamAllowed() {
     return !this._token && this._queue.length === 0;
+  }
+
+  /**
+   * isImageAllowed()
+   * True only if slot free AND no LLM-priority tasks queued (CHAT/AGENT/BG).
+   * IMAGE evicts the LLM from VRAM — it can't co-exist with queued LLM work.
+   */
+  isImageAllowed() {
+    if (this._token) return false;
+    const llmQueued = this._queue.some(e => e.priority <= PRIORITY.POSEIDON_BG);
+    return !llmQueued;
   }
 
   /**

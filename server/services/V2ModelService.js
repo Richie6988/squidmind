@@ -1608,7 +1608,25 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
     }
 
     // Acquire IMAGE slot — waits for any LLM work to finish first
-    const imgToken = await this.broker.acquire(PRIORITY.IMAGE, 'image_gen', { timeoutMs: 60 * 60 * 1000 });
+    // Wait until no LLM tasks are queued, then acquire IMAGE slot
+    // Retries every 30s — image gen should not starve the LLM task queue
+    let imgToken = null;
+    const imgDeadline = Date.now() + 60 * 60 * 1000; // 1h max wait
+    while (!imgToken) {
+      try {
+        imgToken = await this.broker.acquire(PRIORITY.IMAGE, 'image_gen', { timeoutMs: 60_000 });
+      } catch (e) {
+        if (e.message.includes('BROKER_IMAGE_REFUSED')) {
+          // LLM tasks still queued — wait for them to drain
+          const queueDepth = this.broker.getState().queue.length;
+          console.log(`[V2ModelService] Image gen waiting for LLM queue to drain (${queueDepth} queued)...`);
+          if (Date.now() > imgDeadline) throw new Error('Image gen timed out waiting for LLM queue');
+          await new Promise(r => setTimeout(r, 30_000));
+          continue;
+        }
+        throw e; // other errors propagate
+      }
+    }
     let result;
     try {
       // Evict LLM from VRAM so image gen gets the full budget
