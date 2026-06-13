@@ -114,7 +114,6 @@ const TaskQueueUI = {
 
   _makeItem(t, idx) {
     const el = document.createElement('div');
-    el.className = 'task-queue-item' + (isRunning ? ' tq-is-running' : '');
     el.dataset.taskId = t.task_id;
     el.draggable = true;
 
@@ -129,6 +128,8 @@ const TaskQueueUI = {
     const canRun      = false;  // tasks auto-run — manual run removed
     const isCron      = !!t.cron_schedule;
     const projectName = t.project_name || t.context?.project_id || null;
+
+    el.className = 'task-queue-item' + (isRunning ? ' tq-is-running' : '');
 
     // Task type badge
     let typeBadge = '';

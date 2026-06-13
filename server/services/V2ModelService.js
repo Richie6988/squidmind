@@ -1618,11 +1618,31 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
         for (const id of loadedIds) {
           try {
             const e = this.loaded.get(id);
-            try { if (e?.session?.dispose)  await e.session.dispose();  } catch {}
-            try { if (e?.context?.dispose)  await e.context.dispose();  } catch {}
-            try { if (e?.model?.dispose)    await e.model.dispose();    } catch {}
+            // SAFE EVICTION ORDER: session → null refs → context → model
+            // Nulling references BEFORE dispose prevents dangling pointer segfaults
+            // in AgentWorker sequences that reference this context
+            if (e) {
+              // 1. Dispose session (releases internal sequence reference)
+              try { if (e.session?.dispose) await e.session.dispose(); } catch {}
+              e.session  = null;
+              e._currentSequence = null;
+
+              // 2. Small grace period — lets any in-flight sequence ops complete
+              await new Promise(r => setTimeout(r, 100));
+
+              // 3. Dispose context (all sequences must be released first)
+              try { if (e.context?.dispose) await e.context.dispose(); } catch {}
+              e.context  = null;
+
+              // 4. Dispose model weights (frees VRAM)
+              try { if (e.model?.dispose) await e.model.dispose(); } catch {}
+              e.model    = null;
+            }
             this.loaded.delete(id);
-          } catch {}
+          } catch (evictErr) {
+            console.warn(`[V2ModelService] Eviction error for ${id}:`, evictErr.message);
+            this.loaded.delete(id); // remove entry even if dispose failed
+          }
         }
         this.poseidonModelId = null;
       }

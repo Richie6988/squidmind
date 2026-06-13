@@ -402,6 +402,8 @@ class AgentWorker extends EventEmitter {
       this.broker.release(this._brokerToken);
       this._brokerToken = null;
     }
+    // Null sequence so image gen eviction can't hit a dangling pointer
+    this.sequence = null;
   }
 
   /** Dispose session — releases the sequence back to Poseidon's context pool */
