@@ -240,9 +240,16 @@ class AgentWorker extends EventEmitter {
 
     // Share Poseidon's loaded context rather than creating a new one.
     // Creating a second context on the same model OOMs on consumer GPUs (7-8GB VRAM).
-    // We reuse entry.context and get a sequence from it. This is safe because
-    // the wait-loop above ensures Poseidon is idle before we grab the sequence.
-    // The agent disposes the sequence when done, NOT the context (which belongs to Poseidon).
+    // We reuse entry.context and get a sequence from it. The broker guarantees we
+    // hold exclusive access, but Poseidon's session keeps its sequence alive between
+    // chat turns. Dispose it now so the slot is free — it will be recreated lazily
+    // on the next chat (entry.session = null triggers the lazy-init path).
+    if (entry.session) {
+      try { await entry.session.dispose?.(); } catch {}
+      entry.session = null;
+      console.log(`[AgentWorker] Released Poseidon session to free sequence for ${this.agentId}`);
+    }
+
     let sequence;
     let contextLength;
     try {
@@ -250,11 +257,7 @@ class AgentWorker extends EventEmitter {
       contextLength = entry.context.contextSize || entry.config?.contextLength || 4096;
       console.log(`[AgentWorker] Sharing Poseidon context for ${this.agentId} on ${modelId} (ctx=${contextLength})`);
     } catch (seqErr) {
-      // If getSequence fails (no free slot), wait a bit and retry once
-      console.warn(`[AgentWorker] getSequence failed, waiting 3s: ${seqErr.message}`);
-      await new Promise(r => setTimeout(r, 3000));
-      sequence      = entry.context.getSequence();
-      contextLength = entry.context.contextSize || entry.config?.contextLength || 4096;
+      throw new Error(`getSequence failed after disposing Poseidon session: ${seqErr.message}`);
     }
     this._agentContext = null;  // we do NOT own the context — Poseidon does
     this.sequence      = sequence;
@@ -378,21 +381,22 @@ class AgentWorker extends EventEmitter {
       yield { type: 'end', agent_id: this.agentId };
     }
 
-    // Update task completion in registry
-    try {
-      await this.rm.updateAgentStatus(this.agentId, 'sleeping');
-    } catch {}
+    // Cleanup — always runs even on error
+    try { await this.rm.updateAgentStatus(this.agentId, 'sleeping'); } catch {}
+
+    // Dispose session → releases the sequence back to context pool so Poseidon can use it
+    try { await this.session?.dispose?.(); } catch {}
+    this.session  = null;
+    this.sequence = null;
 
     this.generating = false;
     this.status     = 'idle';
 
-    // Release model slot — lets next agent/task/dream proceed
+    // Release broker — lets CHAT (Poseidon) or next agent proceed
     if (this._brokerToken) {
       this.broker.release(this._brokerToken);
       this._brokerToken = null;
     }
-    // Null sequence so image gen eviction can't hit a dangling pointer
-    this.sequence = null;
   }
 
   /** Dispose session — releases the sequence back to Poseidon's context pool */
