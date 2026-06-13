@@ -17,6 +17,8 @@ class TaskRunner {
     this.agentPool    = agentPool;
     this._running     = new Set();
     this._lastCronRun = new Map(); // taskId → last run timestamp
+    this._failCounts  = new Map(); // taskId → consecutive failure count
+    this.MAX_RETRIES  = 3;         // mark permanently failed after this many consecutive failures
   }
 
   async tick() {
@@ -56,7 +58,8 @@ class TaskRunner {
     const runnable = allTasks
       .filter(t => {
         const s = t.lifecycle?.status || t.status || 'open';
-        return (s === 'open' || s === 'planned' || s === 'queued') && !this._running.has(t.task_id);
+        const tooManyFails = (this._failCounts.get(t.task_id) || 0) >= this.MAX_RETRIES;
+        return (s === 'open' || s === 'planned' || s === 'queued') && !this._running.has(t.task_id) && !tooManyFails;
       })
       .sort((a, b) => (b.sort_order || 0) - (a.sort_order || 0)); // highest sort_order first
 
@@ -134,7 +137,18 @@ class TaskRunner {
             if (ev.type === 'error') { failed = true; output += '\nERROR: ' + ev.error; }
           }
         } else {
-          // Poseidon handles it — inject as background auto-task
+          // Poseidon handles it — use fresh session for background tasks
+          // to prevent context accumulation from repeated failures
+          const poseidonId = this.modelService.poseidonModelId;
+          const posEntry = poseidonId ? this.modelService.loaded.get(poseidonId) : null;
+          if (posEntry?.session && !posEntry.generating) {
+            // Wipe session so this task runs in clean context
+            try { if (posEntry.session.dispose) await posEntry.session.dispose(); } catch {}
+            posEntry.session = null;
+            posEntry._currentSequence = null;
+            posEntry.sessionTurns = 0;
+            console.log(`[TaskRunner] Fresh session for background task ${taskId}`);
+          }
           const posMsg = `[BACKGROUND AUTO-TASK ${taskId}]\n${msg}`;
           for await (const ev of this.modelService.chatWithPoseidon(posMsg, [])) {
             if (ev.type === 'text') output += ev.chunk;
@@ -149,16 +163,32 @@ class TaskRunner {
         await this._saveOutput(taskId, output);
       }
 
-      const finalStatus = failed ? 'failed' : 'completed';
-      await this._setStatus(taskId, finalStatus, {
-        completed_at: new Date().toISOString(),
-        output_preview: output.slice(0, 300)
-      });
-
-      // Update progress field with completion note
-      if (!failed) {
+      if (failed) {
+        const prevFails = (this._failCounts.get(taskId) || 0) + 1;
+        this._failCounts.set(taskId, prevFails);
+        if (prevFails >= this.MAX_RETRIES) {
+          console.warn(`[TaskRunner] ✗✗ ${taskId} hit ${this.MAX_RETRIES} failures — marking permanently failed`);
+          await this._setStatus(taskId, 'failed', {
+            completed_at: new Date().toISOString(),
+            output_preview: `Permanently failed after ${prevFails} attempts. Last error: ${output.slice(0, 200)}`
+          });
+        } else {
+          // Leave as planned so it retries, but wait for next tick
+          console.warn(`[TaskRunner] ✗ ${taskId} failed (attempt ${prevFails}/${this.MAX_RETRIES}) — will retry`);
+          await this._setStatus(taskId, 'planned', {
+            output_preview: `Attempt ${prevFails} failed: ${output.slice(0, 150)}`
+          });
+        }
+      } else {
+        this._failCounts.delete(taskId); // reset on success
+        await this._setStatus(taskId, 'completed', {
+          completed_at: new Date().toISOString(),
+          output_preview: output.slice(0, 300)
+        });
         await this._updateProgressField(taskId, 'completed — ' + output.slice(0, 120));
       }
+
+      const finalStatus = failed ? 'failed' : 'completed';
 
       await this.rm.log({
         event_type: 'task_completed', severity: failed ? 'warning' : 'info',

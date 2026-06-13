@@ -172,9 +172,18 @@ class AgentWorker extends EventEmitter {
   _resolveModelId() {
     const preferred = this.brain.brain_config?.model_binding?.preferred_model_id
                    || this.brain.brain_config?.model_binding?.current_model_id;
+    // 1. Preferred model explicitly configured and loaded
     if (preferred && this.modelService.loaded.has(preferred)) return preferred;
-    // Fall back to Poseidon's model
-    return this.modelService.poseidonModelId;
+    // 2. Poseidon's current model (most common: "use poseidon default")
+    if (this.modelService.poseidonModelId) return this.modelService.poseidonModelId;
+    // 3. Preferred model configured but not yet loaded — ensureLoaded will handle it
+    if (preferred) return preferred;
+    // 4. Last resort: first loaded model in the map (whatever is in memory)
+    const firstLoaded = [...this.modelService.loaded.keys()][0];
+    if (firstLoaded) return firstLoaded;
+    // 5. Nothing loaded at all — check registry for the configured model
+    // Return null only if truly nothing is available
+    return null;
   }
 
   /** Ensure a LlamaChatSession exists for this agent */
