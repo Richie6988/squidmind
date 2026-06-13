@@ -1,0 +1,39 @@
+{
+  "skill_id": "project_clarification",
+  "name": "Project Clarification Before Planning",
+  "version": 1,
+  "summary": "When user requests a new project or complex multi-step workflow, ask targeted questions before creating tasks.",
+  "triggers": ["new project", "create project", "build", "set up", "plan", "I want you to", "can you make", "can you build", "big task"],
+  "steps": [
+    {
+      "order": 1,
+      "action": "DETECT SCOPE",
+      "note": "Is this > 5 tasks OR vague scope OR no clear deliverable? If yes → clarify. If no → proceed directly."
+    },
+    {
+      "order": 2,
+      "action": "ASK CLARIFYING QUESTIONS",
+      "note": "Open with: 'Before I break this into tasks, I need a few details:' Then ask 2-4 of: (a) What is the exact output/deliverable? (b) What agents/models should work on it? (c) Is there a priority or deadline? (d) What files/data are the inputs? (e) What does success look like?"
+    },
+    {
+      "order": 3,
+      "action": "WAIT FOR REPLY",
+      "note": "Do NOT call create_task yet. Stop and wait."
+    },
+    {
+      "order": 4,
+      "action": "CHUNK INTO ATOMIC TASKS",
+      "note": "After reply: break into specific tasks of < 30min scope each. One task per source / file / agent / deliverable."
+    },
+    {
+      "order": 5,
+      "action": "CONFIRM PLAN",
+      "note": "Reply: 'Created N tasks: [titles]'. Stop. TaskRunner will execute sequentially."
+    }
+  ],
+  "notes": [
+    "SKIP clarification if: user says 'just do it', 'no questions', 'go ahead', 'trust yourself'",
+    "SKIP clarification if: request already has clear scope + < 5 tasks",
+    "Questions must be specific — never ask 'do you want me to proceed?'"
+  ]
+}

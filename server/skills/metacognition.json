@@ -1,0 +1,40 @@
+{
+  "skill_id": "metacognition",
+  "name": "Self-Improvement Metacognition Loop",
+  "version": 2,
+  "summary": "After every task: reflect on what worked, what failed, what was improvised. Update skills to capture improvements.",
+  "triggers": ["after task", "self-improve", "reflect", "skill update", "what did I learn"],
+  "steps": [
+    {
+      "order": 1,
+      "action": "SELF-OBSERVE after completing any task",
+      "note": "Ask internally: (1) Did I improvise any steps? (2) Did I retry anything? (3) Did I encounter unexpected errors? (4) Was the output exactly what was requested?"
+    },
+    {
+      "order": 2,
+      "action": "IF YES to any → call write_skill immediately",
+      "note": "Capture: what went wrong, what fix worked, what to do differently next time. Include AVOID: notes for anti-patterns."
+    },
+    {
+      "order": 3,
+      "action": "IF skill already exists → increment version",
+      "note": "write_skill auto-increments version. Version >= 2 = battle-tested. Version >= 5 = mastered."
+    },
+    {
+      "order": 4,
+      "action": "EVERY ~5 turns → call list_skills",
+      "note": "Scan for: (a) thin skills with < 3 steps, (b) skills not used recently, (c) skills that contradicted each other. Upgrade or delete."
+    },
+    {
+      "order": 5,
+      "action": "DREAM metacognition (idle)",
+      "note": "During dream cycles: read all skills, identify gaps, write 1-2 new or improved skills based on session patterns."
+    }
+  ],
+  "notes": [
+    "The goal is compounding improvement: every session you should know slightly more than the last",
+    "A failed task with a write_skill call is better than a successful task with no reflection",
+    "Skills are your long-term memory. Without them, you reset every session.",
+    "Quality signal: if you had to guess at a step, the skill for that domain is missing or incomplete"
+  ]
+}

@@ -336,6 +336,86 @@ router.get('/file/{*filePath}', async (req, res) => {
   }
 });
 
+// ── SKILLS API ────────────────────────────────────────────────────────────────
+
+/** GET /skills — list all skills from aquarium/SKILLS/ */
+router.get('/skills', async (req, res) => {
+  try {
+    const fs   = require('fs');
+    const path = require('path');
+    const AQUARIUM = require('../aquarium');
+    const dir = AQUARIUM.SKILLS;
+    if (!fs.existsSync(dir)) return res.json({ success: true, skills: [] });
+    const files = fs.readdirSync(dir).filter(f => f.endsWith('.json'));
+    const skills = [];
+    for (const f of files) {
+      try {
+        const s = JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8'));
+        skills.push(s);
+      } catch {}
+    }
+    skills.sort((a, b) => (b.version || 1) - (a.version || 1));
+    res.json({ success: true, skills });
+  } catch (err) { res.status(500).json({ success: false, error: err.message }); }
+});
+
+/** GET /skills/:id — read single skill */
+router.get('/skills/:id', async (req, res) => {
+  try {
+    const fs   = require('fs');
+    const path = require('path');
+    const AQUARIUM = require('../aquarium');
+    const file = path.join(AQUARIUM.SKILLS, req.params.id + '.json');
+    if (!fs.existsSync(file)) return res.status(404).json({ success: false, error: 'Skill not found' });
+    res.json({ success: true, skill: JSON.parse(fs.readFileSync(file, 'utf8')) });
+  } catch (err) { res.status(500).json({ success: false, error: err.message }); }
+});
+
+/** PUT /skills/:id — create or update a skill */
+router.put('/skills/:id', async (req, res) => {
+  try {
+    const fs   = require('fs').promises;
+    const path = require('path');
+    const AQUARIUM = require('../aquarium');
+    await fs.mkdir(AQUARIUM.SKILLS, { recursive: true });
+    const file = path.join(AQUARIUM.SKILLS, req.params.id + '.json');
+    let version = 1;
+    try { version = (JSON.parse(require('fs').readFileSync(file, 'utf8')).version || 1) + 1; } catch {}
+    const skill = { ...req.body, skill_id: req.params.id, version, updated_at: new Date().toISOString() };
+    await fs.writeFile(file, JSON.stringify(skill, null, 2), 'utf8');
+    // Also seed to server/skills/
+    const seedFile = path.join(require('path').join(__dirname, '../skills'), req.params.id + '.json');
+    await fs.writeFile(seedFile, JSON.stringify(skill, null, 2), 'utf8').catch(() => {});
+    res.json({ success: true, skill });
+  } catch (err) { res.status(500).json({ success: false, error: err.message }); }
+});
+
+/** DELETE /skills/:id */
+router.delete('/skills/:id', async (req, res) => {
+  try {
+    const fs   = require('fs').promises;
+    const path = require('path');
+    const AQUARIUM = require('../aquarium');
+    const file = path.join(AQUARIUM.SKILLS, req.params.id + '.json');
+    await fs.unlink(file);
+    res.json({ success: true, deleted: req.params.id });
+  } catch (err) { res.status(500).json({ success: false, error: err.message }); }
+});
+
+
+router.get('/file/{*filePath}', async (req, res) => {
+  try {
+    rm.invalidateCache();
+    const filePath = Array.isArray(req.params.filePath)
+      ? req.params.filePath.join('/')
+      : req.params.filePath;
+    const data = await rm.read(filePath);
+    res.json({ success: true, filePath, data });
+  } catch (err) {
+    res.status(404).json({ success: false, error: err.message });
+  }
+});
+
 /**
  * GET /tasks/:id/stream — SSE endpoint for live task output.
  * Polls the output file and pushes new bytes every 1s until task is terminal.

@@ -296,6 +296,16 @@ My response: "${ss.last_response_preview}"${tools}
       lines.push('  RULE: task title must be specific: "Scrape BBC News https://bbc.com/news" not "Check all sources".');
       lines.push('  RULE: after creating tasks → STOP. Do NOT execute. Reply: "Created N tasks: [list]".');
       lines.push('  RULE: inline execution only for single, immediate actions (read one file, answer one question).');
+      lines.push('');
+      lines.push('CLARIFICATION GATE — MANDATORY BEFORE ANY PROJECT OR BIG PLAN:');
+      lines.push('  WHEN the user asks for a new project, complex workflow, or more than ~5 tasks:');
+      lines.push('  → DO NOT immediately create tasks. First ask 2-4 targeted clarifying questions.');
+      lines.push('  → Ask about: scope, output format, deadline, which agents, what success looks like.');
+      lines.push('  → Open with: "Before I break this into tasks, I need a few details:"');
+      lines.push('  → Wait for user reply, THEN chunk into specific tasks.');
+      lines.push('  WHEN the request is already specific (clear scope + deliverable, < 5 tasks): proceed directly.');
+      lines.push('  WHEN the user says "just do it" / "no questions" / "go ahead": skip clarification immediately.');
+      lines.push('');
       lines.push('  VIOLATION EXAMPLE: create_task("Verify and scrape all NEWS sources") ← WRONG. Too big, not atomic.');
       lines.push('  CORRECT EXAMPLE: create_task("Scrape BBC News") + create_task("Scrape CNN") + create_task("Scrape Reuters") ← RIGHT.');
       lines.push('IMAGE GENERATION: never run image gen inline in chat — it takes minutes and blocks everything. Instead: create_task({title, description: "Generate: <prompt>", task_type: "image_gen", cron_schedule: null, assignment: {assigned_to: "poseidon_main"}}). The TaskRunner will handle VRAM eviction and reload automatically.');

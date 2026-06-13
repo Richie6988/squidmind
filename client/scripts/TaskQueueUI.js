@@ -108,7 +108,13 @@ const TaskQueueUI = {
       if (doneTasks.length === 0) {
         resultsEl.innerHTML = '<p class="hint" style="font-size:9px;color:var(--text-secondary);padding:8px;">No results yet.</p>';
       } else {
-        resultsEl.innerHTML = doneTasks.map(t => this._makeDoneItem(t)).join('');
+        // Image tasks pinned at top, then rest sorted by recency
+        const isImg = t => (t.task_type === 'image_gen') || /^generate[: ]/i.test(t.title) || !!t.output_preview;
+        const imgTasks  = doneTasks.filter(t => isImg(t) && t.lifecycle?.status === 'completed');
+        const restTasks = doneTasks.filter(t => !isImg(t) || t.lifecycle?.status !== 'completed');
+        resultsEl.innerHTML =
+          (imgTasks.length  ? `<div class="tq-img-pinned">${imgTasks.map(t => this._makeImageCard(t)).join('')}</div>` : '') +
+          restTasks.map(t => this._makeDoneItem(t)).join('');
       }
     } catch (err) {
       queueEl.innerHTML = `<p class="hint" style="font-size:9px;color:var(--danger);">Failed: ${this._esc(err.message)}</p>`;
@@ -140,6 +146,25 @@ const TaskQueueUI = {
         <div class="tq-done-summary">${summary}</div>
         </div>
       </div>`;
+  },
+
+  _makeImageCard(t) {
+    const when  = t.lifecycle?.completed_at ? this._elapsed(t.lifecycle.completed_at) : '';
+    const src   = t.output_preview || '';
+    const label = t.title.replace(/^generate[: ]*/i, '');
+    return `<div class="tq-img-card" onclick="TaskQueueUI.openTaskResult('${t.task_id}')">
+      <div class="tq-img-thumb-wrap">
+        ${src
+          ? `<img class="tq-img-thumb" src="${src}" onerror="this.closest('.tq-img-card').querySelector('.tq-img-placeholder').style.display='flex';this.style.display='none'" alt="${this._esc(label)}">`
+          : ''}
+        <div class="tq-img-placeholder" style="${src ? 'display:none' : ''}">NO IMAGE</div>
+      </div>
+      <div class="tq-img-meta">
+        <span class="tq-img-label">${this._esc(label)}</span>
+        <span class="tq-img-when">${when}</span>
+      </div>
+      <button onclick="event.stopPropagation();TaskQueueUI.deleteTask('${t.task_id}')" class="tq-img-del">X</button>
+    </div>`;
   },
 
   _makeItem(t, idx) {
