@@ -52,6 +52,20 @@ class TaskRunner {
       if (Array.isArray(ids)) ids.forEach(id => this._done.add(id));
       console.log(`[TaskRunner] Loaded ${this._done.size} completed tasks from _done.json`);
     } catch { /* file doesn't exist yet — start fresh */ }
+
+    // Also pre-populate from flat registry tasks already in terminal state
+    // (handles tasks created before per-folder migration)
+    try {
+      const TERMINAL_STATUSES = new Set(['completed','failed','cancelled','archived']);
+      const flatPath = require('path').join(AQUARIUM.TASKS, 'tasks_registry.json');
+      const raw = await fs.readFile(flatPath, 'utf8');
+      const reg = JSON.parse(raw);
+      for (const [id, task] of Object.entries(reg.tasks || {})) {
+        const s = task.lifecycle?.status || task.status || '';
+        if (TERMINAL_STATUSES.has(s)) this._done.add(id);
+      }
+    } catch {}
+
     this._doneLoaded = true;
   }
 
@@ -432,12 +446,37 @@ class TaskRunner {
 
   async _setStatus(taskId, status, extra = {}) {
     try {
-      // Use _readTaskDetails / _writeTaskDetails — avoids flat-registry path bug
-      const task = await this.rm._readTaskDetails(taskId);
-      if (!task) return;
+      // Try per-folder details.json first
+      let task = await this.rm._readTaskDetails(taskId);
+
+      // FALLBACK: task may still be in flat tasks_registry.json (created before migration)
+      if (!task) {
+        try {
+          const flatReg = await this.rm.read('tasks/tasks_registry.json');
+          task = flatReg.tasks?.[taskId] || null;
+        } catch {}
+      }
+
+      if (!task) {
+        console.warn(`[TaskRunner] _setStatus: task ${taskId} not found anywhere — skipping`);
+        return;
+      }
+
       task.lifecycle = { ...(task.lifecycle || {}), status, ...extra };
       task.status    = status;
+
+      // Always write per-folder (migrates flat-registry tasks on first update)
       await this.rm._writeTaskDetails(taskId, task);
+
+      // If task was in flat registry, remove it from there to avoid duplication
+      try {
+        const flatReg = await this.rm.read('tasks/tasks_registry.json');
+        if (flatReg.tasks?.[taskId]) {
+          delete flatReg.tasks[taskId];
+          await this.rm.write('tasks/tasks_registry.json', flatReg);
+        }
+      } catch {}
+
       this.rm.invalidateCache();
     } catch (e) {
       console.warn(`[TaskRunner] setStatus failed for ${taskId}:`, e.message);
@@ -446,7 +485,13 @@ class TaskRunner {
 
   async _updateProgressField(taskId, progressText) {
     try {
-      const task = await this.rm._readTaskDetails(taskId);
+      let task = await this.rm._readTaskDetails(taskId);
+      if (!task) {
+        try {
+          const flatReg = await this.rm.read('tasks/tasks_registry.json');
+          task = flatReg.tasks?.[taskId] || null;
+        } catch {}
+      }
       if (!task) return;
       task.progress = progressText;
       await this.rm._writeTaskDetails(taskId, task);
@@ -455,13 +500,18 @@ class TaskRunner {
 
   async _saveOutput(taskId, text) {
     try {
-      // Resolve the task to get project_id
-      const task = await this.rm._readTaskDetails(taskId);
+      // Resolve task (per-folder first, then flat registry fallback)
+      let task = await this.rm._readTaskDetails(taskId);
+      if (!task) {
+        try {
+          const flatReg = await this.rm.read('tasks/tasks_registry.json');
+          task = flatReg.tasks?.[taskId] || null;
+        } catch {}
+      }
       const projectId = task?.context?.project_id || task?.project_id || null;
 
       let outputPath;
       if (projectId) {
-        // Output goes into project output folder
         try {
           const reg = await this.rm.read('projects/project_registry.json').catch(() => ({ projects: {} }));
           const proj = reg.projects?.[projectId];
@@ -469,13 +519,10 @@ class TaskRunner {
           const projOutDir = path.join(AQUARIUM.PROJECTS, folder, 'output');
           await fs.mkdir(projOutDir, { recursive: true });
           outputPath = path.join(projOutDir, `${taskId}.txt`);
-        } catch {
-          // fallback to task folder
-        }
+        } catch {}
       }
 
       if (!outputPath) {
-        // No project — flat in task folder
         const taskDir = path.join(AQUARIUM.TASKS, taskId);
         await fs.mkdir(taskDir, { recursive: true });
         outputPath = path.join(taskDir, 'output.txt');
@@ -483,11 +530,20 @@ class TaskRunner {
 
       await fs.writeFile(outputPath, text, 'utf8');
 
-      // Store result_file path in task details for UI retrieval
+      // Always write updated task with result_file to per-folder details.json
       if (task) {
-        task.result_file = outputPath;
+        task.result_file    = outputPath;
         task.result_summary = text.slice(0, 500);
         await this.rm._writeTaskDetails(taskId, task);
+        // Remove from flat registry if it was there
+        try {
+          const flatReg = await this.rm.read('tasks/tasks_registry.json');
+          if (flatReg.tasks?.[taskId]) {
+            delete flatReg.tasks[taskId];
+            await this.rm.write('tasks/tasks_registry.json', flatReg);
+          }
+        } catch {}
+        this.rm.invalidateCache();
       }
     } catch (e) {
       console.warn(`[TaskRunner] saveOutput failed for ${taskId}:`, e.message);

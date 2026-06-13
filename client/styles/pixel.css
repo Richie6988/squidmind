@@ -1808,6 +1808,16 @@ input[type="color"]::-webkit-color-swatch {
 }
 .ti-out-row:hover { background: rgba(79,172,254,0.07); border-color: rgba(79,172,254,0.2); }
 .ti-out-fail { border-left: 2px solid rgba(239,68,68,0.5); }
+.ti-out-running { border-left: 2px solid rgba(6,255,165,0.5); background: rgba(6,255,165,0.03); }
+.ti-out-status-run { color: var(--success); animation: ti-out-pulse 1s ease-in-out infinite; }
+@keyframes ti-out-pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+.ti-out-live {
+  font-family: 'Press Start 2P', monospace; font-size: 6px;
+  color: var(--success); background: rgba(6,255,165,0.1);
+  border: 1px solid rgba(6,255,165,0.3); padding: 1px 5px;
+  animation: ti-out-pulse 1s ease-in-out infinite;
+  flex-shrink: 0;
+}
 .ti-out-row-top { display: flex; align-items: center; gap: 6px; margin-bottom: 3px; }
 .ti-out-status {
   font-family: 'Press Start 2P', monospace; font-size: 7px;

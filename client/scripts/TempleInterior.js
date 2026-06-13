@@ -636,20 +636,46 @@ const TempleInterior = {
     if (!c) return;
 
     let tasks = [];
+    let brokerOwner = '';  // e.g. "bg_task_task_0008"
     try {
-      const r = await window.ApiV2._fetch('/tasks');
+      const [r, ms] = await Promise.all([
+        window.ApiV2._fetch('/tasks'),
+        window.ApiV2._fetch('/models/status').catch(() => ({}))
+      ]);
       tasks = this._filterProjectTasks(Object.values(r.registry?.tasks || {}));
-    } catch {}
+      brokerOwner = ms?.broker?.owner || ms?.status?.broker?.owner || '';
+    } catch {
+      try {
+        const r = await window.ApiV2._fetch('/tasks');
+        tasks = this._filterProjectTasks(Object.values(r.registry?.tasks || {}));
+      } catch {}
+    }
+
+    // Extract running task_id from broker owner string (e.g. "bg_task_task_0008")
+    const brokerTaskMatch = brokerOwner.match(/bg_task_(task_\w+)/);
+    const brokerRunningId = brokerTaskMatch ? brokerTaskMatch[1] : null;
 
     const cols = {
-      todo: tasks.filter(t => ['open','planned','queued'].includes(t.lifecycle?.status || t.status || 'open')),
-      prog: tasks.filter(t => (t.lifecycle?.status || t.status) === 'in_progress'),
-      done: tasks.filter(t => ['completed','failed','cancelled'].includes(t.lifecycle?.status || t.status))
+      todo: tasks.filter(t => {
+        const s = t.lifecycle?.status || t.status || 'open';
+        // If broker is actively running this task, move it visually to PROGRESS even if status hasn't flushed yet
+        if (brokerRunningId === t.task_id) return false;
+        return ['open','planned','queued'].includes(s);
+      }),
+      prog: tasks.filter(t => {
+        const s = t.lifecycle?.status || t.status || 'open';
+        return s === 'in_progress' || brokerRunningId === t.task_id;
+      }),
+      done: tasks.filter(t => {
+        const s = t.lifecycle?.status || t.status;
+        return ['completed','failed','cancelled'].includes(s) && brokerRunningId !== t.task_id;
+      })
     };
 
     const makeCard = (task) => {
       const status = task.lifecycle?.status || task.status || 'open';
-      const isRun  = status === 'in_progress';
+      // Consider broker-running state even if status hasn't updated yet
+      const isRun  = status === 'in_progress' || brokerRunningId === task.task_id;
       const isFail = status === 'failed' || status === 'cancelled';
       const isDone = status === 'completed';
       const cls    = isRun ? 'prog' : isDone ? 'done' : isFail ? 'fail' : '';
@@ -737,49 +763,57 @@ const TempleInterior = {
     const c = container || (this._rightTab === 'output' ? document.getElementById('ti-right-body') : null);
     if (!c) return;
 
-    c.innerHTML = '<div style="padding:12px;font-family:\'Press Start 2P\',monospace;font-size:8px;color:#475569;">LOADING OUTPUT FILES...</div>';
+    c.innerHTML = '<div style="padding:12px;font-family:\'Press Start 2P\',monospace;font-size:8px;color:#475569;">LOADING...</div>';
 
     try {
-      // Fetch completed tasks that have result_file or result_summary
       const r = await window.ApiV2._fetch('/tasks');
       const allTasks = this._filterProjectTasks(Object.values(r.registry?.tasks || {}));
+
       const doneTasks = allTasks.filter(t => {
         const s = t.lifecycle?.status || t.status;
         return s === 'completed' || s === 'failed';
       }).sort((a, b) => {
         const ta = a.lifecycle?.completed_at || a.created_at || '';
         const tb = b.lifecycle?.completed_at || b.created_at || '';
-        return tb.localeCompare(ta); // newest first
+        return tb.localeCompare(ta);
       });
 
-      if (!doneTasks.length) {
+      const runningTasks = allTasks.filter(t => (t.lifecycle?.status || t.status) === 'in_progress');
+
+      if (!doneTasks.length && !runningTasks.length) {
         c.innerHTML = '<div style="padding:20px;font-family:\'Press Start 2P\',monospace;font-size:8px;color:#334155;text-align:center;">NO OUTPUT YET</div>';
         return;
       }
 
-      c.innerHTML = `
-<div class="ti-output-wrap">
+      const self = this;
+      const renderRow = (t, isRunning) => {
+        const s = t.lifecycle?.status || t.status;
+        const isFail = s === 'failed';
+        const ts = (t.lifecycle?.completed_at || t.lifecycle?.started_at || t.created_at || '').slice(0, 16).replace('T', ' ');
+        const icon = isRunning ? '>' : (isFail ? '!' : '+');
+        const cls  = isRunning ? 'ti-out-running' : (isFail ? 'ti-out-fail' : '');
+        return `<div class="ti-out-row ${cls}" onclick="TempleInterior._viewOutput('${t.task_id}', ${isRunning})">
+          <div class="ti-out-row-top">
+            <span class="ti-out-status${isRunning ? ' ti-out-status-run' : ''}">${icon}</span>
+            <span class="ti-out-title">${self._esc(t.title)}</span>
+            ${isRunning ? '<span class="ti-out-live">LIVE</span>' : ''}
+          </div>
+          <div class="ti-out-row-bot">
+            <span class="ti-out-ts">${ts}</span>
+            ${t.result_summary ? `<span class="ti-out-preview">${self._esc(String(t.result_summary).slice(0, 60))}</span>` : ''}
+          </div>
+        </div>`;
+      };
+
+      c.innerHTML = `<div class="ti-output-wrap">
   <div class="ti-output-list" id="ti-out-list">
-    ${doneTasks.map(t => {
-      const s = t.lifecycle?.status || t.status;
-      const isFail = s === 'failed';
-      const ts = (t.lifecycle?.completed_at || t.created_at || '').slice(0, 16).replace('T', ' ');
-      return `<div class="ti-out-row ${isFail ? 'ti-out-fail' : ''}" onclick="TempleInterior._viewOutput('${t.task_id}')">
-        <div class="ti-out-row-top">
-          <span class="ti-out-status">${isFail ? '!' : '+'}</span>
-          <span class="ti-out-title">${this._esc(t.title)}</span>
-        </div>
-        <div class="ti-out-row-bot">
-          <span class="ti-out-ts">${ts}</span>
-          ${t.result_summary ? `<span class="ti-out-preview">${this._esc(String(t.result_summary).slice(0, 60))}</span>` : ''}
-        </div>
-      </div>`;
-    }).join('')}
+    ${runningTasks.map(t => renderRow(t, true)).join('')}
+    ${doneTasks.map(t => renderRow(t, false)).join('')}
   </div>
-  <div class="ti-out-viewer" id="ti-out-viewer" style="display:none;">
+  <div class="ti-out-viewer" id="ti-out-viewer" style="display:none;flex-direction:column;flex:1;min-height:0;padding:6px;">
     <div class="ti-out-viewer-hdr">
       <span id="ti-out-viewer-title"></span>
-      <button onclick="document.getElementById('ti-out-viewer').style.display='none';document.getElementById('ti-out-list').style.display='flex';" style="font-family:'Press Start 2P',monospace;font-size:6px;background:none;border:1px solid rgba(255,255,255,0.1);color:#94a3b8;padding:3px 8px;cursor:pointer;">BACK</button>
+      <button onclick="TempleInterior._closeOutputViewer()" style="font-family:'Press Start 2P',monospace;font-size:6px;background:none;border:1px solid rgba(255,255,255,0.1);color:#94a3b8;padding:3px 8px;cursor:pointer;">BACK</button>
     </div>
     <pre id="ti-out-viewer-body" class="ti-out-pre"></pre>
   </div>
@@ -789,23 +823,49 @@ const TempleInterior = {
     }
   },
 
-  async _viewOutput(taskId) {
+  _closeOutputViewer() {
+    const list   = document.getElementById('ti-out-list');
+    const viewer = document.getElementById('ti-out-viewer');
+    if (this._outSse) { try { this._outSse.close(); } catch {} this._outSse = null; }
+    if (list)   list.style.display   = 'flex';
+    if (viewer) viewer.style.display = 'none';
+  },
+
+  async _viewOutput(taskId, isLive) {
     const list   = document.getElementById('ti-out-list');
     const viewer = document.getElementById('ti-out-viewer');
     const title  = document.getElementById('ti-out-viewer-title');
     const body   = document.getElementById('ti-out-viewer-body');
     if (!viewer || !body) return;
-
+    if (this._outSse) { try { this._outSse.close(); } catch {} this._outSse = null; }
     body.textContent = 'Loading...';
     if (list) list.style.display = 'none';
     viewer.style.display = 'flex';
-
-    try {
-      const r = await window.ApiV2._fetch(`/tasks/${taskId}/result`);
-      title.textContent = taskId;
-      body.textContent = r.content || r.result || '(empty)';
-    } catch (e) {
-      body.textContent = 'Error: ' + e.message;
+    if (isLive) {
+      title.textContent = taskId + ' [LIVE]';
+      body.textContent = '';
+      const sse = new EventSource('/api/v2/tasks/' + taskId + '/stream');
+      this._outSse = sse;
+      sse.addEventListener('chunk', e => {
+        const d = JSON.parse(e.data);
+        body.textContent += d.text || '';
+        body.scrollTop = body.scrollHeight;
+      });
+      sse.addEventListener('done', e => {
+        const d = JSON.parse(e.data);
+        title.textContent = taskId + ' [' + (d.status || 'done').toUpperCase() + ']';
+        sse.close(); this._outSse = null;
+        setTimeout(() => this._renderOutput(), 1500);
+      });
+      sse.onerror = () => { sse.close(); this._outSse = null; };
+    } else {
+      try {
+        const res = await window.ApiV2._fetch('/tasks/' + taskId + '/result');
+        title.textContent = taskId;
+        body.textContent = res.content || res.result || '(empty)';
+      } catch (err) {
+        body.textContent = 'Error: ' + err.message;
+      }
     }
   },
 
