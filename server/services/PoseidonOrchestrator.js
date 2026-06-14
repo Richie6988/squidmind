@@ -80,7 +80,7 @@ class PoseidonOrchestrator {
    * which should fix the 'context shift strategy' errors with qwen3-5-9b
    * at ctx=15000.
    */
-  async buildSystemPrompt() {
+  async buildSystemPrompt(bgMode = false) {
     this.rm.invalidateCache();
     const brain = await this.rm.getPoseidonBrain();
     
@@ -544,19 +544,47 @@ Never describe a bash command you could call instead.`;
     lines.push('');
     lines.push('## Session info');
     lines.push(`- After multi-step work, call log_decision so next-life-you knows what happened.`);
-    
-    return lines.join('\n');
+
+    const fullPrompt = lines.join('\n');
+
+    // BG mode: aggressively strip optional sections to fit small context windows.
+    // Removes: tool reference docs, session info, verbose skill descriptions.
+    if (bgMode) {
+      const bgLines = [];
+      let skip = false;
+      for (const line of fullPrompt.split('\n')) {
+        // Skip verbose reference sections
+        if (line.startsWith('## TOOLS REFERENCE') || line.startsWith('## PATH ALIASES') ||
+            line.startsWith('## TOOL USAGE') || line.startsWith('## Session info') ||
+            line.startsWith('## SKILLS METACOGNITION')) {
+          skip = true;
+        }
+        // Resume at next ## section
+        if (skip && line.startsWith('## ') && !line.startsWith('## TOOLS REFERENCE') &&
+            !line.startsWith('## PATH ALIASES') && !line.startsWith('## TOOL USAGE') &&
+            !line.startsWith('## Session info') && !line.startsWith('## SKILLS METACOGNITION')) {
+          skip = false;
+        }
+        if (!skip) bgLines.push(line);
+      }
+      const compact = bgLines.join('\n');
+      console.log(`[Poseidon] BG system prompt: ${compact.length} chars (was ${fullPrompt.length})`);
+      return compact;
+    }
+
+    return fullPrompt;
   }
 
   // ===================================================================
   // TOOL DEFINITIONS - bound to node-llama-cpp function-calling protocol
   // ===================================================================
 
-  async buildFunctions() {
+  async buildFunctions(mode = 'chat') {
     const { defineChatSessionFunction } = await this._llamaCpp();
     const self = this;
 
-    return {
+    // ── Full toolset (used in chat) ───────────────────────────────────────
+    const allFunctions = {
       create_agent: defineChatSessionFunction({
         description: 'Create a new agent (AI worker) with a fresh brain file. Returns the new agent_id.',
         params: {
@@ -1334,6 +1362,29 @@ Never describe a bash command you could call instead.`;
         }
       })
     };
+
+    // ── Background task mode: slim toolset to save context tokens ─────────
+    // BG tasks only need execution + file + web + project memory tools.
+    // Removes all admin/meta tools (create/delete agent, list_agents, skills,
+    // logs, brain editing, github, dispatch_to_agent, etc.)
+    if (mode === 'bg') {
+      const BG_TOOLS = new Set([
+        'read_file', 'write_file', 'list_files', 'edit_file',
+        'web_search', 'web_fetch', 'fetch_and_save', 'fetch_image_url',
+        'create_task', 'update_task', 'list_tasks',
+        'update_project_memory', 'read_project_memory',
+        'list_models', 'generate_image',
+        'get_datetime',
+      ]);
+      const slim = {};
+      for (const [k, v] of Object.entries(allFunctions)) {
+        if (BG_TOOLS.has(k)) slim[k] = v;
+      }
+      console.log(`[Poseidon] BG mode: ${Object.keys(slim).length} tools (was ${Object.keys(allFunctions).length})`);
+      return slim;
+    }
+
+    return allFunctions;
   }
 
   // ===================================================================

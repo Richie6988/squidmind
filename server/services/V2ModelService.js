@@ -566,10 +566,13 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
 
       // ── Step 5: CREATE CONTEXT — retry DOWN without reloading the model ───
       // Retry ladder: start at desired ctx, step down if createContext OOMs.
-      // We NEVER reload the model — just try smaller contexts.
+      // Try 32k first — llama.cpp spills KV cache to CPU RAM when VRAM is tight,
+      // enabling larger context with no extra GPU cost (slower but functional).
+      // We NEVER reload model weights — only the KV context is resized.
       const ctxLadder = (() => {
-        const target = config.contextLength;
-        const steps  = [target, Math.floor(target / 2), Math.floor(target / 4), V2ModelService.MIN_VIABLE_CTX, 2048];
+        const target   = config.contextLength;
+        const expanded = Math.min(32768, trainCtx);
+        const steps    = [expanded, target, Math.floor(target * 0.75), Math.floor(target / 2), V2ModelService.MIN_VIABLE_CTX, 2048];
         return [...new Set(steps.map(v => Math.max(2048, Math.min(v, trainCtx))))];
       })();
 
@@ -984,13 +987,24 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
       const llamaCpp = await import('node-llama-cpp');
 
       // Reuse the same session across chats so we don't burn through sequences.
+      // Rebuild session if mode changes (chat→bg or bg→chat) — different toolsets
+      const neededMode = _bgMode ? 'bg' : 'chat';
+      if (entry.session && entry._sessionMode && entry._sessionMode !== neededMode) {
+        console.log(`[V2ModelService] Session mode change ${entry._sessionMode}→${neededMode}, rebuilding session`);
+        try { if (entry._currentSequence?.dispose) await entry._currentSequence.dispose(); } catch {}
+        try { if (entry.session?.dispose) await entry.session.dispose(); } catch {}
+        entry.session = null; entry._currentSequence = null; entry.sessionTurns = 0;
+        await new Promise(r => setTimeout(r, 300));
+      }
+
       if (!entry.session) {
         const orchestrator = this.orchestrator;
         let systemPrompt, functions;
         if (orchestrator) {
-          systemPrompt = await orchestrator.buildSystemPrompt();
+          systemPrompt = await orchestrator.buildSystemPrompt(_bgMode);
           try {
-            functions = await orchestrator.buildFunctions();
+            // BG tasks use a slim toolset (~16 tools vs 39) to save critical context tokens
+            functions = await orchestrator.buildFunctions(_bgMode ? 'bg' : 'chat');
           } catch (err) {
             console.warn('[V2ModelService] Function-calling setup failed:', err.message, '- continuing without functions');
             functions = undefined;
@@ -1023,22 +1037,26 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
         // cost 3-4k tokens with 27 tools. On tight contexts, truncate descriptions
         // to the first sentence (max 90 chars) — keeps meaning, halves the cost.
         if (functions && ctxTokens < 32768) {  // always compress on consumer GPUs
+          const isVerySmall = ctxTokens < 16384;
           let saved = 0;
           for (const fn of Object.values(functions)) {
             if (fn.description && fn.description.length > 90) {
-              const maxDesc = ctxTokens < 20000 ? 60 : 90;
+              // Very small ctx: 50 chars. Normal small: 60 chars
+              const maxDesc = isVerySmall ? 50 : 60;
               const firstSentence = fn.description.split(/(?<=[.!?])\s/)[0] || fn.description;
               const slim = firstSentence.slice(0, maxDesc);
               saved += fn.description.length - slim.length;
               fn.description = slim;
             }
-            // Also slim param descriptions
             const props = fn.params?.properties || {};
             for (const p of Object.values(props)) {
-              const maxParam = ctxTokens < 20000 ? 40 : 60;
-              if (p.description && p.description.length > maxParam) {
-                saved += p.description.length - maxParam;
-                p.description = p.description.slice(0, maxParam);
+              if (isVerySmall) {
+                // Strip param descriptions entirely — keep only type + required flag
+                saved += (p.description?.length || 0);
+                delete p.description;
+              } else if (p.description && p.description.length > 40) {
+                saved += p.description.length - 40;
+                p.description = p.description.slice(0, 40);
               }
             }
           }
@@ -1071,6 +1089,7 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
         entry._functions         = functions;
         entry._currentSequence   = sequence;
         entry.sessionTurns       = 0;
+        entry._sessionMode       = neededMode;
         entry._lastSystemPromptChars = systemPrompt.length;
         const wrapper = entry.session.chatWrapper?.constructor?.name || 'unknown';
         console.log(`[V2ModelService] Session created for ${this.poseidonModelId} (${wrapper}, ctx=${ctxTokens}, prompt=${promptTokens}tok${functions ? `, ${Object.keys(functions).length} tools` : ', no tools (ctx too small)'})`);

@@ -120,7 +120,7 @@ const PoseidonChat = {
             <input type="file" id="pc-file-input" style="display:none" accept="image/*,.pdf,.txt,.md,.json,.csv,.js,.ts,.py,.html,.css" multiple>
             <textarea id="pc-input" class="pc-input" placeholder="Message Poseidon... (paste images/files)" rows="1"></textarea>
             <div class="pc-input-actions">
-              <button class="pc-mic" id="pc-mic" title="Voice input (hold to record)" onclick="PoseidonChat._toggleMic()" style="background:none;border:1px solid rgba(255,255,255,0.1);color:#64748b;border-radius:6px;padding:5px 8px;cursor:pointer;font-size:14px;line-height:1;transition:all .15s;" onmouseenter="this.style.borderColor='#ef4444';this.style.color='#ef4444'" onmouseleave="this.style.borderColor='rgba(255,255,255,0.1)';this.style.color='#64748b'">🎤</button>
+              <button class="pc-mic" id="pc-mic" title="Voice input">🎤</button>
               <button class="pc-send" id="pc-send" title="Send">
                 <svg id="pc-send-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
               </button>
@@ -135,6 +135,10 @@ const PoseidonChat = {
     const ta   = this.modal.querySelector('#pc-input');
     const send = this.modal.querySelector('#pc-send');
     this._attachments = [];  // [{name, type, content, preview}]
+
+    // Wire mic button
+    const micBtn = this.modal.querySelector('#pc-mic');
+    if (micBtn) micBtn.addEventListener('click', () => this._toggleMic());
 
     // Wire attachment button
     const attachBtn  = this.modal.querySelector('#pc-attach-btn');
