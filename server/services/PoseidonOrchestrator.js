@@ -2071,20 +2071,21 @@ Never describe a bash command you could call instead.`;
       if (section_path === 'projects') {
         const reg = await this.rm.read('projects/project_registry.json').catch(() => ({ projects: {} }));
         const active = Object.values(reg.projects || {}).filter(p => p.status !== 'archived');
+        // Load all memories in parallel (not serial) to avoid blocking prompt generation
+        const memories = await Promise.all(
+          active.map(p => this.rm.getProjectMemory(p.project_id).catch(() => null))
+        );
         const lines = [];
-        for (const p of active) {
+        active.forEach((p, i) => {
           lines.push(`${p.project_id}: ${p.name} | folder: aquarium/PROJECTS/${p.folder} | agents: ${(p.assigned_agents||[]).join(',')||'none'}`);
-          // Include live memory summary
-          try {
-            const mem = await this.rm.getProjectMemory(p.project_id);
-            if (mem) {
-              if (mem.progress?.completion) lines.push(`  progress: ${mem.progress.completion} (${mem.progress.tasks_done||0}/${mem.progress.tasks_total||0} tasks)`);
-              if (mem.progress?.blockers?.length) lines.push(`  BLOCKERS: ${mem.progress.blockers.slice(0,2).map(b=>b.text||b).join(' | ')}`);
-              if (mem.progress?.next_steps?.length) lines.push(`  next: ${(mem.progress.next_steps||[]).slice(0,3).join(' | ')}`);
-              if (mem.progress?.recent_achievements?.length) lines.push(`  done: ${mem.progress.recent_achievements[0]?.text || ''}`);
-            }
-          } catch {}
-        }
+          const mem = memories[i];
+          if (mem) {
+            if (mem.progress?.completion) lines.push(`  progress: ${mem.progress.completion} (${mem.progress.tasks_done||0}/${mem.progress.tasks_total||0} tasks)`);
+            if (mem.progress?.blockers?.length) lines.push(`  BLOCKERS: ${mem.progress.blockers.slice(0,2).map(b=>b.text||b).join(' | ')}`);
+            if (mem.progress?.next_steps?.length) lines.push(`  next: ${(mem.progress.next_steps||[]).slice(0,3).join(' | ')}`);
+            if (mem.progress?.recent_achievements?.length) lines.push(`  done: ${mem.progress.recent_achievements[0]?.text || ''}`);
+          }
+        });
         return { ok: true, section_path, content: lines.join('\n') || '(no active projects)' };
       }
       if (section_path === 'agents') {

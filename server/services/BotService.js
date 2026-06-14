@@ -650,33 +650,48 @@ class BotService extends EventEmitter {
    */
   async notify(text) {
     if (!this.config) return;
-    const errors = [];
 
-    // Telegram
-    if (this.config.telegram?.enabled && this.config.telegram?.token) {
-      const token    = this.config.telegram.token;
-      const chatIds  = this.config.telegram.allowed_chat_ids || [];
-      for (const chatId of chatIds) {
-        try {
-          await this._tgCall(token, 'sendMessage', {
-            chat_id: chatId,
-            text: text.slice(0, 4096),
-            parse_mode: 'Markdown'
-          });
-        } catch (e) { errors.push(`TG ${chatId}: ${e.message}`); }
+    // Throttle: batch rapid task completions to avoid flooding the bot.
+    // Queue messages; flush at most once every 30 seconds.
+    if (!this._notifyQueue) this._notifyQueue = [];
+    this._notifyQueue.push(text);
+
+    if (this._notifyTimer) return; // already scheduled
+    this._notifyTimer = setTimeout(async () => {
+      const msgs = this._notifyQueue.splice(0);
+      this._notifyTimer = null;
+      if (!msgs.length) return;
+
+      // If multiple messages, collapse into a digest
+      const payload = msgs.length === 1
+        ? msgs[0]
+        : `[IAQUA Digest — ${msgs.length} events]\n` + msgs.map(m => '• ' + m.split('\n')[0]).join('\n');
+
+      const errors = [];
+      // Telegram
+      if (this.config.telegram?.enabled && this.config.telegram?.token) {
+        const token   = this.config.telegram.token;
+        const chatIds = this.config.telegram.allowed_chat_ids || [];
+        for (const chatId of chatIds) {
+          try {
+            await this._tgCall(token, 'sendMessage', {
+              chat_id: chatId,
+              text: payload.slice(0, 4096),
+              parse_mode: 'Markdown'
+            });
+          } catch (e) { errors.push(`TG ${chatId}: ${e.message}`); }
+        }
       }
-    }
-
-    // Discord
-    if (this.config.discord?.enabled && this._dsReady) {
-      const channelIds = this.config.discord.allowed_channel_ids || [];
-      for (const channelId of channelIds) {
-        try { await this._dsSend(channelId, text.slice(0, 2000)); }
-        catch (e) { errors.push(`DS ${channelId}: ${e.message}`); }
+      // Discord
+      if (this.config.discord?.enabled && this._dsReady) {
+        const channelIds = this.config.discord.allowed_channel_ids || [];
+        for (const channelId of channelIds) {
+          try { await this._dsSend(channelId, payload.slice(0, 2000)); }
+          catch (e) { errors.push(`DS ${channelId}: ${e.message}`); }
+        }
       }
-    }
-
-    if (errors.length) console.warn('[BotService] notify partial errors:', errors.join(', '));
+      if (errors.length) console.warn('[BotService] notify partial errors:', errors.join(', '));
+    }, 30_000); // 30s window
   }
 }
 

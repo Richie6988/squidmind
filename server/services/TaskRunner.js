@@ -19,6 +19,7 @@ function classifyError(msg) {
   if (!msg) return 'unknown';
   const m = msg.toLowerCase();
   if (m.includes('out of memory') || m.includes('oom') || m.includes('vram') || m.includes('no context')) return 'oom';
+  if (m.includes('no sequences left') || m.includes('sequences left') || m.includes('sequence') && m.includes('left')) return 'sequence';
   if (m.includes('preempted')) return 'preempted';
   if (m.includes('hallucin') || m.includes('invalid tool') || m.includes('tool not found')) return 'tool_error';
   if (m.includes('timeout') || m.includes('timed out')) return 'timeout';
@@ -372,8 +373,9 @@ class TaskRunner {
               posEntry._currentSequence = null;
             }
             posEntry.sessionTurns = 0;
-            // Small delay — llama.cpp sequence release is not always synchronous
-            await new Promise(r => setTimeout(r, 150));
+            // Wait for llama.cpp native release — dispose() is async but
+            // the native slot release can lag; 500ms is safe on most hardware.
+            await new Promise(r => setTimeout(r, 500));
           }
 
           // Build agent persona prefix if task is assigned to a named agent
@@ -445,7 +447,7 @@ class TaskRunner {
               posEnt._currentSequence = null;
             }
             posEnt.sessionTurns = 0;
-            await new Promise(r => setTimeout(r, 200));  // ensure llama.cpp frees the slot
+            await new Promise(r => setTimeout(r, 500));  // ensure llama.cpp frees the slot
           }
           this.modelService.broker.release(bgToken);
         }
@@ -459,31 +461,43 @@ class TaskRunner {
         failed = true;
       }
 
-      if (output.trim().length > 0) {
+      if (output.trim().length > 0 && !output.startsWith('Execution error:')) {
         await this._saveOutput(taskId, output);
       }
 
       if (failed) {
-        const prevFails = (this._failCounts.get(taskId) || 0) + 1;
-        this._failCounts.set(taskId, prevFails);
         const errType = classifyError(output);
-        if (prevFails >= this.MAX_RETRIES) {
+
+        // Resource contention errors (sequence slot, OOM) are NEVER permanent failures —
+        // they're transient and should retry indefinitely with long backoff.
+        const isResourceError = errType === 'sequence' || errType === 'oom';
+
+        const prevFails = (this._failCounts.get(taskId) || 0) + 1;
+        if (!isResourceError) {
+          this._failCounts.set(taskId, prevFails);
+        }
+        // Only non-resource errors count toward permanent failure
+        const effectiveFails = isResourceError ? 0 : prevFails;
+
+        if (!isResourceError && effectiveFails >= this.MAX_RETRIES) {
           console.warn(`[TaskRunner] ✗✗ ${taskId} hit ${this.MAX_RETRIES} failures (${errType}) — permanently failed`);
-          await this._markDone(taskId);  // persist: stop retrying after restart too
+          await this._markDone(taskId);
           await this._setStatus(taskId, 'failed', {
             completed_at: new Date().toISOString(),
             output_preview: `Failed after ${prevFails} attempts [${errType}]. Last: ${output.slice(0, 200)}`
           });
-          await this._notify(`[IAQUA] Task FAILED permanently: "${task.title}"\nError type: ${errType}\n${output.slice(0, 300)}`);
+          await this._notify(`[IAQUA] Task FAILED: "${task.title}"\n[${errType}] ${output.slice(0, 200)}`);
         } else {
-          // Exponential backoff: skip if OOM (longer wait), shorter for tool errors
-          const backoffMs = errType === 'oom'
-            ? (RETRY_BACKOFF[prevFails] || 300_000) * 2
-            : (RETRY_BACKOFF[prevFails] || 30_000);
+          const backoffMs = isResourceError
+            ? 60_000 + Math.random() * 30_000   // 60-90s jitter for resource errors
+            : errType === 'oom'
+              ? (RETRY_BACKOFF[prevFails] || 300_000) * 2
+              : (RETRY_BACKOFF[prevFails] || 30_000);
           this._retryAfter.set(taskId, Date.now() + backoffMs);
-          console.warn(`[TaskRunner] ✗ ${taskId} failed (attempt ${prevFails}/${this.MAX_RETRIES}, ${errType}) — retry in ${backoffMs/1000}s`);
+          const label = isResourceError ? `[${errType}] resource contention` : `attempt ${prevFails}/${this.MAX_RETRIES} [${errType}]`;
+          console.warn(`[TaskRunner] ✗ ${taskId} ${label} — retry in ${Math.round(backoffMs/1000)}s`);
           await this._setStatus(taskId, 'planned', {
-            output_preview: `Attempt ${prevFails} failed [${errType}]: ${output.slice(0, 150)}`
+            output_preview: `${label}: retry in ${Math.round(backoffMs/1000)}s`
           });
         }
       } else {

@@ -1045,13 +1045,22 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
           if (saved > 0) console.log(`[V2ModelService] Tool descriptions compressed: ~${Math.round(saved/4)} tokens saved (ctx=${ctxTokens})`);
         }
 
-        // Retry getSequence with a short delay — previous session dispose may not be
-        // synchronous in llama.cpp and the slot may not be available immediately.
+        // Retry getSequence with backoff — llama.cpp sequence disposal is not always
+        // synchronous; the slot may still be held for a few hundred ms after dispose().
+        // If a lingering _currentSequence exists on the entry, dispose it first.
+        if (entry._currentSequence) {
+          try { await entry._currentSequence.dispose?.(); } catch {}
+          entry._currentSequence = null;
+          await new Promise(r => setTimeout(r, 300));
+        }
         let sequence;
-        for (let _seq_try = 0; _seq_try < 3; _seq_try++) {
+        for (let _seq_try = 0; _seq_try < 6; _seq_try++) {
           try { sequence = entry.context.getSequence(); break; } catch (e) {
-            if (_seq_try < 2) { await new Promise(r => setTimeout(r, 200)); }
-            else throw e;
+            const wait = 300 + _seq_try * 250;   // 300, 550, 800, 1050, 1300, give up
+            if (_seq_try < 5) {
+              console.warn(`[V2ModelService] getSequence attempt ${_seq_try+1} failed (${e.message}) — retrying in ${wait}ms`);
+              await new Promise(r => setTimeout(r, wait));
+            } else throw e;
           }
         }
         entry.session    = new llamaCpp.LlamaChatSession({

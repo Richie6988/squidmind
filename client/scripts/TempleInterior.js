@@ -1487,24 +1487,30 @@ const TempleInterior = {
       ctx.beginPath(); ctx.ellipse(shadowX, shadowY, glowR, glowR * 0.35, 0, 0, Math.PI * 2); ctx.fill();
 
       // ── Squid body ──────────────────────────────────────────────────
-      if (typeof Squid !== 'undefined') {
+      // Cache one Squid instance per walker to avoid per-frame allocation
+      if (!ctx.__cachedSq && typeof Squid !== 'undefined') {
         try {
-          const sq = new Squid({ id:'__tw__', name:'', status:'idle', appearance:{...app}, x:CW/2, y:CH/2-2+bob });
-          sq.animFrame = wp; sq.bobOffset = 0; sq.isDragging = true; sq.isSleeping = false;
-          sq.isHovered = false; sq.alpha = 1; sq.insideTemple = null; sq.jumpHeight = 0;
-          sq.heartParticles = []; sq._confetti = null; sq.baseSize = size/40;
-          // Add glow via shadowBlur
+          ctx.__cachedSq = new Squid({ id:'__tw__', name:'', status:'idle', appearance:{...app}, x:CW/2, y:CW/2 });
+          ctx.__cachedSq.isDragging = true; ctx.__cachedSq.isSleeping = false;
+          ctx.__cachedSq.isHovered = false; ctx.__cachedSq.insideTemple = null;
+          ctx.__cachedSq.jumpHeight = 0; ctx.__cachedSq.heartParticles = [];
+          ctx.__cachedSq._confetti = null; ctx.__cachedSq.baseSize = size / 40;
+          ctx.__cachedSq.alpha = 1;
+        } catch { ctx.__cachedSq = null; }
+      }
+      if (ctx.__cachedSq) {
+        try {
+          const sq = ctx.__cachedSq;
+          sq.x = CW/2; sq.y = CH/2 - 2 + bob;
+          sq.animFrame = wp; sq.bobOffset = 0;
           ctx.save();
-          ctx.shadowColor = primary;
-          ctx.shadowBlur = 8 + glowPulse * 20;
-          if (!fR) {
-            ctx.translate(CW,0); ctx.scale(-1,1); sq.x = CW - sq.x;
-            sq.draw(ctx);
-          } else { sq.draw(ctx); }
+          ctx.shadowColor = primary; ctx.shadowBlur = 8 + glowPulse * 18;
+          if (!fR) { ctx.translate(CW, 0); ctx.scale(-1, 1); sq.x = CW - sq.x; }
+          sq.draw(ctx);
           ctx.restore();
           this._rafMap[sqid] = requestAnimationFrame(loop);
           return;
-        } catch(e) {}
+        } catch { ctx.__cachedSq = null; }
       }
       // Fallback: hand-drawn squid with glow
       ctx.save();
