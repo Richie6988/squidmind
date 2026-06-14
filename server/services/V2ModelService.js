@@ -1674,19 +1674,14 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
       return { ok: false, error: `Model file not found: ${entry.file_path || entry.file_name}. Re-scan the library.` };
     }
 
-    // Auto-generate outputPath from task_id if not provided
+    // Auto-generate outputPath → always goes to TASKS/IMAGES/ for centralized storage
     if (!outputPath) {
       const AQUARIUM = require('../aquarium');
-      const fname = `generated_${Date.now()}.png`;
-      if (task_id) {
-        const taskDir = path.join(AQUARIUM.TASKS, task_id);
-        await require('fs').promises.mkdir(taskDir, { recursive: true });
-        outputPath = path.join(taskDir, fname);
-      } else {
-        const genDir = path.join(AQUARIUM.TASKS, 'generated');
-        await require('fs').promises.mkdir(genDir, { recursive: true });
-        outputPath = path.join(genDir, fname);
-      }
+      const fname = task_id
+        ? `${task_id}_${Date.now()}.png`
+        : `generated_${Date.now()}.png`;
+      await require('fs').promises.mkdir(AQUARIUM.IMAGES, { recursive: true });
+      outputPath = path.join(AQUARIUM.IMAGES, fname);
     }
 
     // Acquire IMAGE slot — waits for any LLM work to finish first

@@ -134,15 +134,17 @@ const TaskQueueUI = {
       : (t.output_preview ? '' : '<em style="opacity:.5">—</em>');
     const summary = imgPreview + (summaryText ? `<span>${summaryText}</span>` : '');
     return `
-      <div class="tq-done-item" style="position:relative;">
-        <button onclick="event.stopPropagation();TaskQueueUI.deleteTask('${t.task_id}')" title="Delete" style="position:absolute;top:4px;right:4px;background:rgba(239,68,68,0.12);border:1px solid rgba(239,68,68,0.25);color:#ef4444;border-radius:4px;padding:0 5px;font-size:8px;cursor:pointer;">🗑</button>
+      <div class="tq-done-item" style="position:relative;padding-right:28px;">
+        <button onclick="event.stopPropagation();TaskQueueUI.deleteTask('${t.task_id}')" title="Delete" style="position:absolute;top:4px;right:4px;background:rgba(239,68,68,0.12);border:1px solid rgba(239,68,68,0.25);color:#ef4444;border-radius:4px;padding:0 5px;font-size:8px;cursor:pointer;line-height:18px;">✕</button>
         <div style="cursor:pointer" onclick="TaskQueueUI.openTaskResult('${t.task_id}')">
         <div class="tq-done-row1">
           <span class="tq-done-icon">${icon}</span>
           <span class="tq-done-title">${this._esc(t.title)}</span>
-          <span class="tq-done-when">${when}</span>
         </div>
-        <div class="tq-done-agent">${this._esc(agent)}</div>
+        <div class="tq-done-agent" style="display:flex;gap:8px;align-items:center;">
+          <span>${this._esc(agent)}</span>
+          ${when ? `<span style="color:#334155;font-size:7px;">${when}</span>` : ''}
+        </div>
         <div class="tq-done-summary">${summary}</div>
         </div>
       </div>`;

@@ -1449,9 +1449,9 @@ const TempleInterior = {
     const hexToRgb = (hex) => { try { return `${parseInt(hex.slice(1,3),16)},${parseInt(hex.slice(3,5),16)},${parseInt(hex.slice(5,7),16)}`; } catch { return '79,172,254'; } };
     const mg  = size + 6;
     let px = mg + Math.random()*(cW-mg*2), py = mg + Math.random()*(cH-mg*2);
-    let vx = (Math.random()-.5)*1.1, vy = (Math.random()-.5)*.5;
-    let frame = 0, idle = 0, nextIdle = 60 + Math.floor(Math.random()*80);
-    const stride = 28;
+    let vx = (Math.random()-.5)*0.25, vy = (Math.random()-.5)*0.12;
+    let frame = 0, idle = 0, nextIdle = 120 + Math.floor(Math.random()*180);
+    const stride = 55;
     const loop = () => {
       frame++;
       if (idle > 0) { idle--; vx *= .87; vy *= .87; }
@@ -1461,7 +1461,7 @@ const TempleInterior = {
         vx += (Math.random()-.5)*.11; vy += (Math.random()-.5)*.07;
         vx *= .97; vy *= .97;
         const spd = Math.sqrt(vx*vx+vy*vy);
-        if (spd > .85) { vx *= .85/spd; vy *= .85/spd; }
+        if (spd > .22) { vx *= .22/spd; vy *= .22/spd; }
         if (spd < .12) { vx += (Math.random()-.5)*.28; vy += (Math.random()-.5)*.15; }
       }
       px += vx; py += vy;
@@ -1613,18 +1613,39 @@ const TempleInterior = {
     if (!projectId) { await SquidModal.alert('No project_id on this temple.'); return; }
     try {
       const pr = await window.ApiV2._fetch('/projects');
-      const proj = pr.registry.projects[projectId];
+      const allProjects = pr.registry.projects;
+
+      // Check if agent is already assigned to another project
+      for (const [pid, p] of Object.entries(allProjects)) {
+        if (pid === projectId) continue;
+        if (Array.isArray(p.assigned_agents) && p.assigned_agents.includes(squidId)) {
+          const confirmed = await SquidModal.confirm(
+            `Agent is already assigned to "${p.name}".\nMove to "${this.currentTemple?.name}"?`
+          );
+          if (!confirmed) return;
+          // Remove from previous project
+          await window.ApiV2._fetch('/field', { method: 'PATCH', body: JSON.stringify({
+            filePath: 'projects/project_registry.json',
+            fieldPath: `projects.${pid}.assigned_agents`,
+            newValue: p.assigned_agents.filter(a => a !== squidId),
+            reason: 'moved to another project'
+          })});
+          break;
+        }
+      }
+
+      const proj = allProjects[projectId];
       if (!proj) throw new Error('Project not found: ' + projectId);
-      const assigned = [...(proj.assigned_agents||[])];
+      const assigned = [...(proj.assigned_agents || [])];
       if (!assigned.includes(squidId)) {
         assigned.push(squidId);
-        await window.ApiV2._fetch('/field', { method:'PATCH', body: JSON.stringify({
+        await window.ApiV2._fetch('/field', { method: 'PATCH', body: JSON.stringify({
           filePath: 'projects/project_registry.json',
           fieldPath: `projects.${projectId}.assigned_agents`,
           newValue: assigned, reason: 'assigned via temple'
         })});
       }
-      const squid = window.aquarium?.squids?.find(s => (s.agent_id||s.id) === squidId);
+      const squid = window.aquarium?.squids?.find(s => (s.agent_id || s.id) === squidId);
       if (squid) { squid.currentProject = this.currentTemple?.name; squid.insideTemple = this.currentTemple?.name; }
       this._switchLeft('agents');
     } catch (e) { await SquidModal.alert('Failed: ' + e.message); }

@@ -216,19 +216,35 @@ router.get('/tasks/:id/result', async (req, res) => {
 // DELETE /tasks/:id — hard delete task folder + remove from registry index
 router.delete('/tasks/:id', async (req, res) => {
   try {
-    const path = require('path');
-    const fsp  = require('fs').promises;
+    const path     = require('path');
+    const fsp      = require('fs').promises;
     const AQUARIUM = require('../aquarium');
-    const taskId = req.params.id;
-    // Remove task folder from AQUARIUM.TASKS
+    const taskId   = req.params.id;
+
+    // 1. Remove per-folder task directory (covers per-folder format)
     const taskDir = path.join(AQUARIUM.TASKS, taskId);
     try { await fsp.rm(taskDir, { recursive: true, force: true }); } catch {}
+
+    // 2. Remove from flat tasks_registry.json (covers flat-registry tasks)
+    rm.invalidateCache();
+    try {
+      const flatPath = path.join(AQUARIUM.TASKS, 'tasks_registry.json');
+      const raw = await fsp.readFile(flatPath, 'utf8').catch(() => null);
+      if (raw) {
+        const reg = JSON.parse(raw);
+        if (reg.tasks?.[taskId]) {
+          delete reg.tasks[taskId];
+          await fsp.writeFile(flatPath, JSON.stringify(reg, null, 2), 'utf8');
+        }
+      }
+    } catch {}
+
     rm.invalidateCache();
     await rm.log({
       event_type: 'task_deleted', severity: 'info',
-      actor: { type: 'human', id: 'user' },
-      subject: { type: 'task', id: taskId },
-      action: `Hard-deleted task ${taskId}`
+      actor:   { type: 'human', id: 'user' },
+      subject: { type: 'task',  id: taskId },
+      action:  `Hard-deleted task ${taskId}`
     });
     res.json({ success: true, task_id: taskId });
   } catch (err) { res.status(500).json({ success: false, error: err.message }); }

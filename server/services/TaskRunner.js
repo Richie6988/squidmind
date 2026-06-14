@@ -326,11 +326,11 @@ class TaskRunner {
           console.log(`[TaskRunner] Image gen ${taskId}: model="${reqModelId}" prompt="${prompt.slice(0,60)}"`);
 
           const result = await this.modelService.generateImage({
-            modelId:        reqModelId,   // V2ModelService will auto-detect if null
+            modelId:        reqModelId,
             model_id:       reqModelId,
             prompt,
             negativePrompt: negPrompt,
-            outputPath:     null,          // auto-generate from task_id
+            outputPath:     null,
             task_id:        taskId,
             width, height, steps, cfg, seed
           });
@@ -341,8 +341,10 @@ class TaskRunner {
             imageServeUrl = `/api/files/read?path=${encodeURIComponent(result.outputPath)}`;
             output = `Image saved: ${result.outputPath}`;
           } else {
-            output = result?.error ? `Image gen failed: ${result.error}` : JSON.stringify(result);
-            failed = !result?.ok;
+            // Include full error detail so it's visible in the task output
+            const errDetail = result?.error || result?.stderr || JSON.stringify(result);
+            output = `Image gen failed [model: ${resolvedModelId || reqModelId || 'unknown'}]: ${errDetail}`;
+            failed = true;
           }
         } catch (e) {
           output = `Image gen failed: ${e.message}`;

@@ -182,103 +182,44 @@ const aquarium = {
     const t = Date.now() / 1000;
     const cx = this.ctx;
 
-    // ── Layer 1: Depth gradient ────────────────────────────────────────────
+    // Deep ocean gradient
     const grad = cx.createLinearGradient(0, 0, 0, H);
     grad.addColorStop(0,    '#0c1e38');
-    grad.addColorStop(0.45, '#071528');
+    grad.addColorStop(0.5,  '#071528');
     grad.addColorStop(1,    '#030c1a');
     cx.fillStyle = grad;
     cx.fillRect(0, 0, W, H);
 
-    // ── Layer 2: God-rays (screen blend, 4 rays) ───────────────────────────
-    cx.save();
-    cx.globalCompositeOperation = 'screen';
-    for (let r = 0; r < 4; r++) {
-      const ox  = W * (0.12 + r * 0.26) + Math.sin(t * 0.055 + r * 1.8) * 38;
-      const len = H * (0.58 + 0.14 * Math.sin(t * 0.07 + r * 0.7));
-      const rw  = 22 + r * 18 + Math.sin(t * 0.09 + r) * 10;
-      const al  = 0.028 + 0.014 * Math.sin(t * 0.11 + r * 1.3);
-      const rg  = cx.createLinearGradient(ox, 0, ox, len);
-      rg.addColorStop(0,   `rgba(90,180,255,${al * 3.5})`);
-      rg.addColorStop(0.35,`rgba(60,140,240,${al * 1.1})`);
-      rg.addColorStop(1,   'rgba(30,80,200,0)');
-      cx.fillStyle = rg;
-      cx.beginPath();
-      cx.moveTo(ox - 4, 0); cx.lineTo(ox + 4, 0);
-      cx.lineTo(ox + rw, len); cx.lineTo(ox - rw, len);
-      cx.closePath(); cx.fill();
-    }
-    cx.globalCompositeOperation = 'source-over';
-    cx.restore();
-
-    // ── Layer 3: Hex grid floor ────────────────────────────────────────────
-    this._bgHexGrid(W, H, t);
-
-    // ── Layer 4: Seaweed ──────────────────────────────────────────────────
+    // Seaweed at edges
     this._bgSeaweed(W, H, t);
 
-    // ── Layer 5: Bioluminescent particles (30, with glow) ─────────────────
-    if (!this._bgParts) this._bgParts = Array.from({ length: 30 }, () => ({
-      x: Math.random(), y: Math.random(),
-      r: 0.5 + Math.random() * 1.8,
-      dx: (Math.random() - 0.5) * 0.00009,
-      dy: -0.00004 - Math.random() * 0.0001,
-      ph: Math.random() * Math.PI * 2,
-      sp: 0.3 + Math.random() * 0.55,
-      col: ['0,255,190', '79,172,254', '120,80,255', '0,220,160'][Math.floor(Math.random() * 4)]
-    }));
-    cx.save();
-    for (const p of this._bgParts) {
-      p.x += p.dx + Math.sin(t * p.sp * 0.28 + p.ph) * 0.00007;
-      p.y += p.dy;
-      if (p.y < -0.02) { p.y = 1.02; p.x = Math.random(); }
-      if (p.x < 0) p.x = 1; if (p.x > 1) p.x = 0;
-      const glow = 0.12 + 0.45 * Math.abs(Math.sin(t * p.sp * 0.5 + p.ph));
-      cx.globalAlpha = glow;
-      cx.shadowColor = `rgb(${p.col})`;
-      cx.shadowBlur  = p.r * 7;
-      cx.fillStyle   = `rgb(${p.col})`;
-      cx.beginPath(); cx.arc(p.x * W, p.y * H, p.r, 0, Math.PI * 2); cx.fill();
-    }
-    cx.shadowBlur = 0; cx.globalAlpha = 1;
-    cx.restore();
-
-    // ── Layer 6: Rising bubbles (16) ──────────────────────────────────────
-    if (!this._bgBubs) this._bgBubs = Array.from({ length: 16 }, () => ({
-      x: Math.random(), y: 0.5 + Math.random() * 0.6,
-      r: 0.7 + Math.random() * 2.2,
-      sp: 0.00022 + Math.random() * 0.0006,
-      wb: Math.random() * Math.PI * 2, ws: 0.009 + Math.random() * 0.012,
-      al: 0.12 + Math.random() * 0.28
+    // Small random bubbles drifting up — the only animation
+    if (!this._bgBubs) this._bgBubs = Array.from({ length: 18 }, () => ({
+      x: Math.random(), y: 0.3 + Math.random() * 0.8,
+      r: 0.5 + Math.random() * 1.6,
+      sp: 0.00015 + Math.random() * 0.0005,
+      wb: Math.random() * Math.PI * 2, ws: 0.007 + Math.random() * 0.01,
+      al: 0.08 + Math.random() * 0.2
     }));
     cx.save();
     for (const b of this._bgBubs) {
-      b.y -= b.sp; b.wb += b.ws; b.x += Math.sin(b.wb) * 0.00022;
+      b.y -= b.sp; b.wb += b.ws; b.x += Math.sin(b.wb) * 0.00018;
       if (b.y < -0.02) { b.y = 1.02; b.x = Math.random(); }
-      cx.globalAlpha = b.al * Math.max(0, Math.min(1, b.y * 4));
-      cx.strokeStyle = 'rgba(140,220,255,0.85)'; cx.lineWidth = 0.7;
+      const fade = Math.max(0, Math.min(1, b.y * 5));
+      cx.globalAlpha = b.al * fade;
+      cx.strokeStyle = 'rgba(160,220,255,0.75)'; cx.lineWidth = 0.6;
       cx.beginPath(); cx.arc(b.x * W, b.y * H, b.r, 0, Math.PI * 2); cx.stroke();
-      cx.fillStyle = 'rgba(220,245,255,0.6)';
-      cx.beginPath(); cx.arc(b.x * W - b.r * 0.3, b.y * H - b.r * 0.3, b.r * 0.28, 0, Math.PI * 2); cx.fill();
+      // Tiny specular dot
+      cx.fillStyle = 'rgba(230,245,255,0.5)';
+      cx.beginPath(); cx.arc(b.x * W - b.r * 0.35, b.y * H - b.r * 0.35, b.r * 0.25, 0, Math.PI * 2); cx.fill();
     }
     cx.globalAlpha = 1;
     cx.restore();
 
-    // ── Layer 7: Surface ripple ────────────────────────────────────────────
-    cx.save();
-    cx.globalAlpha = 0.22; cx.strokeStyle = 'rgba(100,180,255,0.55)'; cx.lineWidth = 1.4;
-    cx.beginPath();
-    for (let x = 0; x <= W; x += 2) {
-      const y = 1.6 + Math.sin(x * 0.018 + t * 1.1) * 2 + Math.sin(x * 0.03 + t * 0.65) * 1.1;
-      x === 0 ? cx.moveTo(x, y) : cx.lineTo(x, y);
-    }
-    cx.stroke(); cx.globalAlpha = 1;
-    cx.restore();
-
-    // ── Layer 8: Vignette ─────────────────────────────────────────────────
-    const vig = cx.createRadialGradient(W / 2, H * 0.5, H * 0.2, W / 2, H * 0.5, H * 0.9);
+    // Subtle vignette
+    const vig = cx.createRadialGradient(W / 2, H / 2, H * 0.25, W / 2, H / 2, H * 0.85);
     vig.addColorStop(0, 'rgba(0,0,0,0)');
-    vig.addColorStop(1, 'rgba(1,4,10,0.6)');
+    vig.addColorStop(1, 'rgba(1,4,10,0.55)');
     cx.fillStyle = vig; cx.fillRect(0, 0, W, H);
   },
 

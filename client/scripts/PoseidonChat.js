@@ -120,6 +120,7 @@ const PoseidonChat = {
             <input type="file" id="pc-file-input" style="display:none" accept="image/*,.pdf,.txt,.md,.json,.csv,.js,.ts,.py,.html,.css" multiple>
             <textarea id="pc-input" class="pc-input" placeholder="Message Poseidon... (paste images/files)" rows="1"></textarea>
             <div class="pc-input-actions">
+              <button class="pc-mic" id="pc-mic" title="Voice input (hold to record)" onclick="PoseidonChat._toggleMic()" style="background:none;border:1px solid rgba(255,255,255,0.1);color:#64748b;border-radius:6px;padding:5px 8px;cursor:pointer;font-size:14px;line-height:1;transition:all .15s;" onmouseenter="this.style.borderColor='#ef4444';this.style.color='#ef4444'" onmouseleave="this.style.borderColor='rgba(255,255,255,0.1)';this.style.color='#64748b'">🎤</button>
               <button class="pc-send" id="pc-send" title="Send">
                 <svg id="pc-send-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
               </button>
@@ -814,6 +815,72 @@ const PoseidonChat = {
     return String(s ?? '').replace(/[<>&"]/g, c =>
       ({ '<':'&lt;', '>':'&gt;', '&':'&amp;', '"':'&quot;' })[c]);
   }
+
+  // ── Speech-to-text via Web Speech API ────────────────────────────────────
+  _toggleMic() {
+    const btn = document.getElementById('pc-mic');
+    if (!btn) return;
+
+    // Stop if already recording
+    if (this._recognition) {
+      this._recognition.stop();
+      return;
+    }
+
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) {
+      // Fallback: alert user
+      const btn2 = document.getElementById('pc-mic');
+      if (btn2) { btn2.title = 'Speech recognition not supported in this browser'; btn2.textContent = '🚫'; }
+      return;
+    }
+
+    const rec = new SR();
+    rec.lang = 'fr-FR,en-US';   // Try French first, then English
+    rec.interimResults = true;
+    rec.maxAlternatives = 1;
+    rec.continuous = false;
+
+    this._recognition = rec;
+    if (btn) { btn.textContent = '🔴'; btn.style.borderColor = '#ef4444'; btn.style.color = '#ef4444'; btn.title = 'Recording… click to stop'; }
+
+    const ta = this._getInput();
+    const originalValue = ta ? ta.value : '';
+
+    rec.onresult = (e) => {
+      const transcript = Array.from(e.results).map(r => r[0].transcript).join(' ');
+      if (ta) {
+        ta.value = (originalValue ? originalValue + ' ' : '') + transcript;
+        ta.style.height = 'auto';
+        ta.style.height = Math.min(ta.scrollHeight, 200) + 'px';
+      }
+    };
+
+    rec.onerror = (e) => {
+      console.warn('[Mic] Error:', e.error);
+      this._stopMic();
+    };
+
+    rec.onend = () => {
+      this._stopMic();
+      // Auto-focus input after recording
+      const ta2 = this._getInput();
+      if (ta2) ta2.focus();
+    };
+
+    try { rec.start(); } catch (e) { console.warn('[Mic]', e.message); this._stopMic(); }
+  },
+
+  _stopMic() {
+    if (this._recognition) { try { this._recognition.stop(); } catch {} this._recognition = null; }
+    const btn = document.getElementById('pc-mic');
+    if (btn) { btn.textContent = '🎤'; btn.style.borderColor = 'rgba(255,255,255,0.1)'; btn.style.color = '#64748b'; btn.title = 'Voice input'; }
+  },
+
+  _getInput() {
+    return this.modal?.querySelector('#pc-input') || document.getElementById('pc-input');
+  },
+
 };
 
 window.PoseidonChat = PoseidonChat;

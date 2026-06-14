@@ -3,6 +3,8 @@
   "schema_type": "agent_registry",
   "metadata": {
     "total_agents": 0,
+    "next_id": 1,
+    "id_format": "agent_NNN",
     "last_updated_at": "2026-01-01T00:00:00.000Z"
   },
   "agents": {}

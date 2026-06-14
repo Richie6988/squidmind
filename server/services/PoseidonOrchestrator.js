@@ -290,6 +290,7 @@ My response: "${ss.last_response_preview}"${tools}
       lines.push('  list_files("PROJECTS")                  → list all project folders');
       lines.push('CRITICAL: NEVER use list_files("NEWS") — projects live in PROJECTS/ folder!');
       lines.push('MULTI-STEP TASKS: after each step call update_task(id, "progress", "step N/M done: ...") so context resets dont lose state.');
+      lines.push('DATA OUTPUT RULE — MANDATORY: when a task produces structured data (prices, stats, lists, research, any tabular data), you MUST write_file with the actual data in an appropriate format: .csv for tables, .json for structured data, .md only for reports/docs. NEVER summarize data without also saving the raw data. Example: crypto prices → write a .csv with columns date,coin,open,high,low,close,volume. A task whose output is only a .md summary when it should have produced data is INCOMPLETE.');
       lines.push('PROJECT MEMORY PROTOCOL — MANDATORY for project tasks:');
       lines.push('  BEFORE starting work on a project task: call read_project_memory(project_name) to see current state.');
       lines.push('  AFTER completing a task: call update_project_memory(project_name, "achievement", "brief description").');

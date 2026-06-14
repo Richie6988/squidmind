@@ -135,6 +135,7 @@ const AQUARIUM = {
   AGENTS:   path.join(AQ_ROOT, isAquarium ? 'AGENTS'   : 'agents'),
   PROJECTS: path.join(AQ_ROOT, isAquarium ? 'PROJECTS' : 'projects'),
   TASKS:    path.join(AQ_ROOT, isAquarium ? 'TASKS'    : 'tasks'),
+  IMAGES:   path.join(AQ_ROOT, isAquarium ? 'TASKS/IMAGES' : 'tasks/images'),
   LOGS:     path.join(AQ_ROOT, isAquarium ? 'LOGS'     : 'logs'),
   TOOLS:    path.join(AQ_ROOT, isAquarium ? 'TOOLS'    : 'tools'),
   // Skills: use aquarium/SKILLS/ at runtime; server/skills/ is the seeded source in the repo

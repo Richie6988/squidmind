@@ -120,15 +120,29 @@ class RegistryManager {
    */
   async generateNextId(registryPath) {
     const registry = await this.read(registryPath);
-    const nextNum = registry.metadata.next_id;
-    const format = registry.metadata.id_format;
+    if (!registry.metadata) registry.metadata = {};
+
+    // Safe fallbacks — seed file may be missing these fields
+    const nextNum = registry.metadata.next_id ?? 1;
+    const format  = registry.metadata.id_format ?? this._defaultIdFormat(registryPath);
     const id = format.replace('NNN', String(nextNum).padStart(3, '0'));
-    
-    // Update registry counters
+
+    // Update registry counters and persist
     registry.metadata.last_id_used = nextNum;
     registry.metadata.next_id = nextNum + 1;
-    
+    registry.metadata.id_format = format;   // ensure it's persisted for next call
+    await this.write(registryPath, registry);
+
     return id;
+  }
+
+  /** Derive a default id_format from the registry path when the field is missing */
+  _defaultIdFormat(registryPath) {
+    if (registryPath.includes('agent'))   return 'agent_NNN';
+    if (registryPath.includes('project')) return 'project_NNN';
+    if (registryPath.includes('task'))    return 'task_NNN';
+    if (registryPath.includes('model'))   return 'model_NNN';
+    return 'item_NNN';
   }
 
   // ==================== GENERIC FIELD UPDATES ====================
@@ -612,8 +626,10 @@ class RegistryManager {
 
     // Update brain file: status + log wake event
     const brain = await this.read(`agents/${entry.brain_file}`);
+    if (!brain.current_state) brain.current_state = {};
     brain.current_state.status = 'active';
     brain.current_state.last_action_at = now;
+    if (!brain.history) brain.history = {};
     if (!brain.history.wake_sleep_events) brain.history.wake_sleep_events = [];
     brain.history.wake_sleep_events.push({
       event: 'wake',
@@ -673,6 +689,8 @@ class RegistryManager {
 
     // Update brain
     const brain = await this.read(`agents/${entry.brain_file}`);
+    if (!brain.current_state) brain.current_state = {};
+    if (!brain.history) brain.history = {};
     brain.current_state.status = 'sleeping';
     if (!brain.history.wake_sleep_events) brain.history.wake_sleep_events = [];
     brain.history.wake_sleep_events.push({
