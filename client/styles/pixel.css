@@ -1524,6 +1524,34 @@ input[type="color"]::-webkit-color-swatch {
 .ti-agent-badge.run  { color: var(--success); border-color: var(--success); background: rgba(6,255,165,0.08); }
 
 /* ── Memory editor ── */
+.ti-mem-wrap { display:flex; flex-direction:column; gap:0; flex:1; overflow-y:auto; }
+.ti-mem-header {
+  display:flex; align-items:center; justify-content:space-between;
+  padding:6px 12px; border-bottom:1px solid rgba(255,255,255,0.06);
+  font-family:'Press Start 2P',monospace; font-size:7px; color:#4facfe;
+  background:rgba(79,172,254,0.04);
+}
+.ti-mem-progress { color:#06ffa5; font-size:8px; }
+.ti-mem-section {
+  padding:6px 12px 5px; border-bottom:1px solid rgba(255,255,255,0.04);
+  display:flex; flex-direction:column; gap:3px;
+}
+.ti-mem-section.ti-mem-warn { border-left:2px solid rgba(239,68,68,0.5); background:rgba(239,68,68,0.03); }
+.ti-mem-label {
+  font-family:'Press Start 2P',monospace; font-size:5.5px; color:#334155;
+  letter-spacing:.5px; text-transform:uppercase; display:flex; align-items:center; gap:4px;
+}
+.ti-mem-value { font-family:'Courier New',monospace; font-size:9px; color:#94a3b8; line-height:1.4; }
+.ti-mem-progress-bar {
+  height:3px; background:rgba(255,255,255,0.06); border-radius:2px; overflow:hidden;
+}
+.ti-mem-progress-fill { height:100%; background:linear-gradient(90deg,#4facfe,#06ffa5); border-radius:2px; transition:width .5s; }
+.ti-mem-item {
+  font-family:'Courier New',monospace; font-size:8px; color:#64748b;
+  padding:2px 0; border-bottom:1px solid rgba(255,255,255,0.03); line-height:1.35;
+}
+.ti-mem-item:last-child { border-bottom:none; }
+
 .ti-mem {
   width: 100%;
   flex: 1;

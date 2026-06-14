@@ -326,24 +326,65 @@ const TempleInterior = {
           const t = Date.now() / 1000;
           aCtx.clearRect(0, 0, AW, AH);
 
-          // Deep ocean gradient
+          // Rich deep-ocean gradient
           const bg = aCtx.createLinearGradient(0, 0, 0, AH);
-          bg.addColorStop(0, '#060e1c'); bg.addColorStop(1, '#02070f');
+          bg.addColorStop(0,   '#0c1e3a');
+          bg.addColorStop(0.5, '#071528');
+          bg.addColorStop(1,   '#030c1a');
           aCtx.fillStyle = bg; aCtx.fillRect(0, 0, AW, AH);
 
+          // Caustic light blobs (screen blend)
+          aCtx.save();
+          aCtx.globalCompositeOperation = 'screen';
+          for (let c2 = 0; c2 < 6; c2++) {
+            const cx2 = AW * (0.1 + c2 * 0.17) + Math.sin(t * 0.2 + c2 * 0.9) * 18;
+            const cy2 = AH * 0.3 + Math.sin(t * 0.15 + c2 * 1.1) * AH * 0.3;
+            const cr  = 14 + Math.sin(t * 0.25 + c2) * 8;
+            const ca  = 0.08 + 0.04 * Math.sin(t * 0.3 + c2);
+            const cg2 = aCtx.createRadialGradient(cx2, cy2, 0, cx2, cy2, cr);
+            cg2.addColorStop(0, `rgba(100,200,255,${ca})`);
+            cg2.addColorStop(1, 'rgba(0,0,0,0)');
+            aCtx.fillStyle = cg2;
+            aCtx.beginPath(); aCtx.arc(cx2, cy2, cr, 0, Math.PI * 2); aCtx.fill();
+          }
+          aCtx.globalCompositeOperation = 'source-over';
+          aCtx.restore();
+
+          // Light shaft from top-center
+          aCtx.save();
+          aCtx.globalCompositeOperation = 'screen';
+          for (let r2 = 0; r2 < 3; r2++) {
+            const rx = AW * (0.25 + r2 * 0.28) + Math.sin(t * 0.06 + r2) * 20;
+            const rlen = AH * 0.85;
+            const rw2 = 10 + r2 * 15;
+            const alp2 = 0.04 + 0.02 * Math.sin(t * 0.11 + r2);
+            const rg = aCtx.createLinearGradient(rx, 0, rx, rlen);
+            rg.addColorStop(0,   `rgba(100,190,255,${alp2 * 3})`);
+            rg.addColorStop(0.5, `rgba(60,140,240,${alp2})`);
+            rg.addColorStop(1,   'rgba(40,100,200,0)');
+            aCtx.fillStyle = rg;
+            aCtx.beginPath();
+            aCtx.moveTo(rx - 3, 0); aCtx.lineTo(rx + 3, 0);
+            aCtx.lineTo(rx + rw2, rlen); aCtx.lineTo(rx - rw2, rlen);
+            aCtx.fill();
+          }
+          aCtx.globalCompositeOperation = 'source-over';
+          aCtx.restore();
+
           // Animated hex grid
-          const sz = 16, rw = sz * 2, rh = Math.sqrt(3) * sz;
+          aCtx.save();
+          const sz = 18, rw = sz * 2, rh = Math.sqrt(3) * sz;
           const ncols = Math.ceil(AW / (rw * 0.75)) + 2;
           const nrows = Math.ceil(AH / rh) + 2;
-          aCtx.save();
           for (let row = 0; row < nrows; row++) {
             for (let col = 0; col < ncols; col++) {
               const hx = col * rw * 0.75 - rw * 0.3;
               const hy = row * rh + (col % 2 === 0 ? 0 : rh / 2) - rh * 0.3;
               const d  = Math.sqrt((hx - AW / 2) ** 2 + (hy - AH) ** 2);
-              const al = Math.max(0, 0.018 + 0.016 * Math.sin(t * 0.45 + d * 0.01 + col * 0.3));
+              const pulse = Math.sin(t * 0.4 + d * 0.012 + col * 0.3);
+              const al = Math.max(0, 0.03 + 0.025 * pulse);
               aCtx.strokeStyle = `rgba(79,172,254,${al})`;
-              aCtx.lineWidth = 0.45;
+              aCtx.lineWidth = 0.55;
               aCtx.beginPath();
               for (let i = 0; i < 6; i++) {
                 const a = (Math.PI / 3) * i - Math.PI / 6;
@@ -351,43 +392,50 @@ const TempleInterior = {
                 i === 0 ? aCtx.moveTo(px, py) : aCtx.lineTo(px, py);
               }
               aCtx.closePath(); aCtx.stroke();
+              if (pulse > 0.82) {
+                aCtx.shadowColor = 'rgba(79,172,254,0.9)';
+                aCtx.shadowBlur  = 6;
+                const ng = aCtx.createRadialGradient(hx, hy, 0, hx, hy, 5);
+                ng.addColorStop(0, `rgba(120,200,255,0.5)`);
+                ng.addColorStop(1, 'rgba(79,172,254,0)');
+                aCtx.fillStyle = ng;
+                aCtx.beginPath(); aCtx.arc(hx, hy, 5, 0, Math.PI * 2); aCtx.fill();
+                aCtx.shadowBlur = 0;
+              }
             }
           }
           aCtx.restore();
 
-          // Subtle light ray from top
-          aCtx.save();
-          aCtx.globalCompositeOperation = 'screen';
-          const rx = AW * 0.4 + Math.sin(t * 0.07) * AW * 0.1;
-          const rg = aCtx.createLinearGradient(rx, 0, rx, AH * 0.7);
-          rg.addColorStop(0, 'rgba(79,172,254,0.06)');
-          rg.addColorStop(1, 'rgba(79,172,254,0)');
-          aCtx.fillStyle = rg;
-          aCtx.beginPath();
-          aCtx.moveTo(rx - 5, 0); aCtx.lineTo(rx + 5, 0);
-          aCtx.lineTo(rx + 40, AH * 0.7); aCtx.lineTo(rx - 40, AH * 0.7);
-          aCtx.fill();
-          aCtx.globalCompositeOperation = 'source-over';
-          aCtx.restore();
-
-          // Floating particles
+          // Floating bioluminescent particles
           aCtx.save();
           for (const p of arena._pts) {
-            p.x += p.dx + Math.sin(t * p.sp * 0.35 + p.ph) * 0.05;
+            p.x += p.dx + Math.sin(t * p.sp * 0.35 + p.ph) * 0.06;
             p.y += p.dy;
             if (p.y < -4) { p.y = AH + 4; p.x = Math.random() * AW; }
             if (p.x < 0) p.x = AW; if (p.x > AW) p.x = 0;
-            aCtx.globalAlpha = 0.06 + 0.2 * Math.abs(Math.sin(t * p.sp * 0.4 + p.ph));
-            aCtx.fillStyle = `rgb(${p.col})`;
+            const glow = 0.15 + 0.5 * Math.abs(Math.sin(t * p.sp * 0.45 + p.ph));
+            aCtx.globalAlpha = glow;
+            aCtx.shadowColor = `rgb(${p.col})`;
+            aCtx.shadowBlur  = p.r * 5;
+            aCtx.fillStyle   = `rgb(${p.col})`;
             aCtx.beginPath(); aCtx.arc(p.x, p.y, p.r, 0, Math.PI * 2); aCtx.fill();
           }
+          aCtx.shadowBlur = 0;
           aCtx.globalAlpha = 1;
           aCtx.restore();
 
-          // Floor shadow
-          const fl = aCtx.createLinearGradient(0, AH * 0.72, 0, AH);
-          fl.addColorStop(0, 'rgba(0,0,0,0)'); fl.addColorStop(1, 'rgba(1,4,10,0.55)');
-          aCtx.fillStyle = fl; aCtx.fillRect(0, AH * 0.72, AW, AH * 0.28);
+          // Edge vignette + floor
+          const fl = aCtx.createLinearGradient(0, AH * 0.65, 0, AH);
+          fl.addColorStop(0, 'rgba(0,0,0,0)'); fl.addColorStop(1, 'rgba(2,6,16,0.7)');
+          aCtx.fillStyle = fl; aCtx.fillRect(0, AH * 0.65, AW, AH * 0.35);
+
+          // Side edge glow
+          for (const [ex, ey] of [[0, AH/2], [AW, AH/2]]) {
+            const eg = aCtx.createRadialGradient(ex, ey, 0, ex, ey, AW * 0.25);
+            eg.addColorStop(0, 'rgba(79,172,254,0.05)');
+            eg.addColorStop(1, 'rgba(0,0,0,0)');
+            aCtx.fillStyle = eg; aCtx.fillRect(0, 0, AW, AH);
+          }
 
           this._arenaRaf = requestAnimationFrame(tick);
         };

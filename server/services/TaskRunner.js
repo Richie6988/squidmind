@@ -541,6 +541,11 @@ class TaskRunner {
 
       task.lifecycle = { ...(task.lifecycle || {}), status, ...extra };
       task.status    = status;
+      // Mirror key fields to task root so registry queries find them at top level
+      if (extra.result_summary !== undefined) task.result_summary = extra.result_summary;
+      if (extra.result_file    !== undefined) task.result_file    = extra.result_file;
+      if (extra.output_preview !== undefined) task.output_preview = extra.output_preview;
+      if (extra.completed_at   !== undefined) task.completed_at   = extra.completed_at;
 
       // Always write per-folder (migrates flat-registry tasks on first update)
       await this.rm._writeTaskDetails(taskId, task);
