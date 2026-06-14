@@ -315,7 +315,7 @@ My response: "${ss.last_response_preview}"${tools}
       lines.push('');
       lines.push('  VIOLATION EXAMPLE: create_task("Verify and scrape all NEWS sources") ← WRONG. Too big, not atomic.');
       lines.push('  CORRECT EXAMPLE: create_task("Scrape BBC News") + create_task("Scrape CNN") + create_task("Scrape Reuters") ← RIGHT.');
-      lines.push('IMAGE GENERATION: never run image gen inline in chat — it takes minutes and blocks everything. Instead: create_task({title, description: "Generate: <prompt>", task_type: "image_gen", cron_schedule: null, assignment: {assigned_to: "poseidon_main"}}). The TaskRunner will handle VRAM eviction and reload automatically.');
+      lines.push('IMAGE GENERATION: call generate_image(prompt, model_id?) directly — it creates a high-priority task that jumps to front of the queue. Your LLM is evicted from VRAM automatically so sd-diffusion gets full GPU, then you reload automatically. Partial model names like "flux" are auto-resolved — you do NOT need list_models first. Never manually create_task for image gen.');
       lines.push('IMAGES: to show an image inline — use fetch_image_url(page_url, subject) on ANY webpage URL (Wikipedia, news, product pages, etc). It extracts og:image or best image. Returns {ok, url, markdown}. Output the markdown field.');
       lines.push('  Works on most sites. NEVER construct upload.wikimedia.org thumb URLs by hand — use fetch_image_url instead.');
       lines.push('  Pexels/Unsplash/Pixabay block bots — never use them');
@@ -1204,42 +1204,106 @@ Never describe a bash command you could call instead.`;
       // ============ IMAGE GENERATION ============
 
       generate_image: defineChatSessionFunction({
-        description: 'Generate an image from a text prompt using a FLUX/SD image model. ' +
-          'Creates a tracked task visible in the right panel with progress. ' +
-          'Output saved to TASKS/{task_id}/output/. Returns markdown with embedded image URL. ' +
-          'For Flux: use cfg_scale=1.0, steps=4. For SD1.5/SDXL: cfg_scale=7, steps=20. ' +
-          'Call list_models first to find available image models (model_type=image). ' +
-          'project_id is optional — if omitted, saves to aquarium/generated/.',
+        description: 'Generate an image from a text prompt. ' +
+          'Creates a HIGH-PRIORITY task (jumps to front of queue) — image gen runs separately ' +
+          'after Poseidon\'s LLM is evicted to free VRAM, then Poseidon reloads automatically. ' +
+          'For Flux: cfg_scale=1.0, steps=4-8. For SD1.5/SDXL: cfg_scale=7, steps=20. ' +
+          'If unsure of model_id, call list_models(filter_type="image") first, or pass a partial ' +
+          'name like "flux" and it will be resolved automatically.',
         params: {
           type: 'object',
           properties: {
-            model_id:        { type: 'string',  description: 'ID of image model (model_type: image). Use list_models to find one.' },
+            model_id:        { type: 'string',  description: 'Image model ID or partial name (e.g. "flux"). Use list_models to find.' },
             prompt:          { type: 'string',  description: 'Detailed text description of the image' },
-            project_id:      { type: 'string',  description: 'Project ID to link the task to (optional)' },
-            filename:        { type: 'string',  description: 'Output filename e.g. banner.png (optional, auto-generated if omitted)' },
+            project_id:      { type: 'string',  description: 'Project ID to link output to (optional)' },
+            filename:        { type: 'string',  description: 'Output filename e.g. poster.png (optional)' },
             negative_prompt: { type: 'string',  description: 'Things to avoid (optional, leave empty for Flux)' },
-            width:           { type: 'integer', description: 'Width in pixels (default 512)' },
+            width:           { type: 'integer', description: 'Width in pixels (default 512 for Flux-q2, 1024 for q4+)' },
             height:          { type: 'integer', description: 'Height in pixels (default 512)' },
-            steps:           { type: 'integer', description: 'Steps: 4 for Flux, 20 for SD (default 4)' },
+            steps:           { type: 'integer', description: 'Inference steps: 4-8 for Flux-schnell, 20 for SD' },
             cfg_scale:       { type: 'number',  description: 'CFG scale: 1.0 for Flux, 7 for SD (default 1.0)' },
             seed:            { type: 'integer', description: 'Seed for reproducibility (-1 = random)' }
           },
-          required: ['model_id', 'prompt']
+          required: ['prompt']
         },
         handler: async (params) => {
-          // Auto-resolve image model if not specified
-          if (!params.model_id) {
-            try {
-              self.rm.invalidateCache();
-              const reg = await self.rm.read('models/model_registry.json');
-              const imgModel = Object.values(reg.models || {}).find(m =>
-                (m.model_type || m.config?.model_type) === 'image'
-              );
-              if (imgModel) params.model_id = imgModel.model_id;
-              else return { ok: false, error: 'No image model found in library. Import a FLUX or SD model first and tag it as model_type: image.' };
-            } catch(e) { return { ok: false, error: e.message }; }
+          try {
+            self.rm.invalidateCache();
+            const reg = await self.rm.read('models/model_registry.json').catch(() => ({ models: {} }));
+            const imgModels = Object.values(reg.models || {}).filter(m =>
+              (m.model_type || m.config?.model_type) === 'image' ||
+              (m.config?.model_category || m.model_category) === 'image'
+            );
+            if (!imgModels.length) {
+              return { ok: false, error: 'No image model found in library. Import a FLUX or SD model and tag it as image category.' };
+            }
+
+            // Fuzzy-resolve model_id: exact → prefix → substring → first available
+            let resolvedModel = null;
+            const rawId = (params.model_id || '').toLowerCase().trim();
+            if (rawId) {
+              resolvedModel = imgModels.find(m => m.model_id === rawId)
+                || imgModels.find(m => m.model_id.startsWith(rawId))
+                || imgModels.find(m => m.model_id.includes(rawId))
+                || imgModels.find(m => rawId.includes(m.model_id.slice(0, 6)));
+            }
+            if (!resolvedModel) resolvedModel = imgModels[0];
+            const modelId = resolvedModel.model_id;
+
+            // Determine good defaults based on model name
+            const mname = modelId.toLowerCase();
+            const isFlux = mname.includes('flux');
+            const isQ2   = mname.includes('q2');
+            const defaultSteps = isFlux ? (isQ2 ? 6 : 8) : 20;
+            const defaultCfg   = isFlux ? 1.0 : 7.0;
+            const defaultW     = isQ2 ? 512 : (isFlux ? 768 : 512);
+
+            // Build task description with all image params
+            const imageParams = {
+              model_id:        modelId,
+              prompt:          params.prompt,
+              negative_prompt: params.negative_prompt || '',
+              width:           params.width  || defaultW,
+              height:          params.height || defaultW,
+              steps:           params.steps  || defaultSteps,
+              cfg_scale:       params.cfg_scale ?? defaultCfg,
+              seed:            params.seed   ?? -1,
+              filename:        params.filename || `image_${Date.now()}.png`,
+              project_id:      params.project_id || null,
+            };
+
+            // Create image_gen task at max sort_order so it runs FIRST
+            const taskObj = await self.rm.createTask({
+              title:       `Generate: ${params.prompt.slice(0, 60)}`,
+              description: JSON.stringify(imageParams),   // TaskRunner parses this for image tasks
+              task_type:   'image_gen',
+              project_id:  params.project_id || null,
+            });
+            const taskId = taskObj?.task_id;
+
+            // Bump sort_order to jump to front of queue
+            if (taskId) {
+              const det = await self.rm._readTaskDetails(taskId);
+              if (det) {
+                det.sort_order = 9999;
+                det.image_params = imageParams;   // structured params for TaskRunner
+                await self.rm._writeTaskDetails(taskId, det);
+              }
+            }
+
+            const notice = resolvedModel.model_id !== rawId && rawId
+              ? ` (resolved "${rawId}" → "${modelId}")`
+              : '';
+
+            return {
+              ok: true,
+              task_id: taskId,
+              model_id: modelId,
+              message: `Image generation queued as ${taskId}${notice}. Poseidon's LLM will be evicted to free VRAM, image generated, then Poseidon reloads. Watch the task queue — result will appear pinned when done.`
+            };
+          } catch(e) {
+            return { ok: false, error: e.message };
           }
-          return self.tools.generateImage(params);
         }
       }),
 

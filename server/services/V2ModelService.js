@@ -1769,6 +1769,8 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
     } finally {
       this.broker.release(imgToken);
     }
+    // Augment result with the actual modelId used (for skill auto-update)
+    if (result && typeof result === 'object') result.resolvedModelId = modelId;
     return result;
   }
 

@@ -304,10 +304,39 @@ class TaskRunner {
 
       if (isImageTask) {
         let imageServeUrl = null;
+        let resolvedModelId = null;
         try {
-          const prompt = task.description || task.title.replace(/^generate[: ]*/i, '');
-          console.log(`[TaskRunner] Image gen task ${taskId}: "${prompt.slice(0, 60)}"`);
-          const result = await this.modelService.generateImage({ prompt, task_id: taskId });
+          // Read structured image_params (set by Poseidon generate_image tool)
+          // or fall back to parsing description / title
+          let ip = task.image_params || null;
+          if (!ip && task.description) {
+            try { ip = JSON.parse(task.description); } catch {}
+          }
+
+          const prompt       = ip?.prompt || task.description || task.title.replace(/^generate[: ]*/i, '');
+          const negPrompt    = ip?.negative_prompt || '';
+          const width        = ip?.width  || 512;
+          const height       = ip?.height || 512;
+          const steps        = ip?.steps  || 6;
+          const cfg          = ip?.cfg_scale ?? 1.0;
+          const seed         = ip?.seed ?? -1;
+          const filename     = ip?.filename || `image_${Date.now()}.png`;
+          const reqModelId   = ip?.model_id || null;
+
+          console.log(`[TaskRunner] Image gen ${taskId}: model="${reqModelId}" prompt="${prompt.slice(0,60)}"`);
+
+          const result = await this.modelService.generateImage({
+            modelId:        reqModelId,   // V2ModelService will auto-detect if null
+            model_id:       reqModelId,
+            prompt,
+            negativePrompt: negPrompt,
+            outputPath:     null,          // auto-generate from task_id
+            task_id:        taskId,
+            width, height, steps, cfg, seed
+          });
+
+          resolvedModelId = result?.resolvedModelId || reqModelId;
+
           if (result?.ok && result.outputPath) {
             imageServeUrl = `/api/files/read?path=${encodeURIComponent(result.outputPath)}`;
             output = `Image saved: ${result.outputPath}`;
@@ -319,7 +348,8 @@ class TaskRunner {
           output = `Image gen failed: ${e.message}`;
           failed = true;
         }
-        // Skip normal task flow
+
+        // Persist completion
         const status = failed ? 'failed' : 'completed';
         const prevFails = this._failCounts.get(taskId) || 0;
         if (failed && prevFails + 1 < this.MAX_RETRIES) {
@@ -328,23 +358,37 @@ class TaskRunner {
           const backoff = RETRY_BACKOFF[attempt] || RETRY_BACKOFF[RETRY_BACKOFF.length - 1];
           this._retryAfter.set(taskId, Date.now() + backoff);
           await this._setStatus(taskId, 'open');
-          console.warn(`[TaskRunner] ✗ ${taskId} failed (attempt ${attempt}/${this.MAX_RETRIES}) — retry in ${backoff/1000}s`);
+          console.warn(`[TaskRunner] ✗ image ${taskId} (attempt ${attempt}/${this.MAX_RETRIES}) — retry in ${backoff/1000}s`);
         } else {
           await this._markDone(taskId);
           if (failed) { this._failCounts.set(taskId, this.MAX_RETRIES); }
-          // Store output_preview so image appears pinned in the results pane
           const extra = {
             result_summary: output.slice(0, 500),
-            completed_at: new Date().toISOString(),
+            completed_at:   new Date().toISOString(),
             ...(imageServeUrl ? { output_preview: imageServeUrl } : {})
           };
           await this._setStatus(taskId, status, extra);
-          console.log(`[TaskRunner] ${failed ? '✗✗' : '✓'} ${taskId} ${status}`);
-          if (failed) {
-            await this._notify(`[IAQUA] Task FAILED: "${task.title}"\n${output.slice(0, 300)}`);
-          } else {
-            await this._notify(`[IAQUA] Task done: "${task.title}"\n${output.slice(0, 200)}`);
+          console.log(`[TaskRunner] ${failed ? '✗✗' : '✓'} image ${taskId} ${status}`);
+
+          if (!failed && resolvedModelId) {
+            // Auto-update Poseidon's generate_image skill with the confirmed working model id
+            try {
+              const skillPath = require('path').join(require('../aquarium').SKILLS, 'generate_image.json');
+              const fs = require('fs');
+              let skill = {};
+              try { skill = JSON.parse(fs.readFileSync(skillPath, 'utf8')); } catch {}
+              skill.skill_id   = skill.skill_id || 'generate_image';
+              skill.name       = skill.name || 'Generate Image';
+              skill.version    = (skill.version || 0) + 1;
+              skill.updated_at = new Date().toISOString();
+              skill.notes      = (skill.notes || '') + `\n[${new Date().toISOString().slice(0,10)}] Confirmed working model: ${resolvedModelId}`;
+              skill.confirmed_image_model = resolvedModelId;
+              fs.writeFileSync(skillPath, JSON.stringify(skill, null, 2), 'utf8');
+              console.log(`[TaskRunner] Updated generate_image skill with model: ${resolvedModelId}`);
+            } catch {}
           }
+
+          await this._notify(`[IAQUA] ${failed ? 'Image FAILED' : 'Image done'}: "${task.title.slice(0,60)}"\n${imageServeUrl ? imageServeUrl : output.slice(0,200)}`);
         }
         this._running.delete(taskId);
         return;
