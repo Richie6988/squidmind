@@ -115,18 +115,13 @@ class TaskRunner {
   }
 
   async tick() {
-    // Sequential: if any task is already running, skip this tick
     if (this._running.size > 0) return;
-    // Wait for _done to be loaded from disk before running any task
-    if (!this._doneLoaded) { console.log('[TaskRunner] tick: waiting for _done to load'); return; }
-    // Wait for model to be loaded before running any task
-    if (this.modelService.loaded.size === 0) { console.log('[TaskRunner] tick: no model loaded'); return; }
-    // Don't start BG tasks if chat modal is open or recently closed
-    if (Date.now() < this._chatOpenUntil) { console.log(`[TaskRunner] tick: chat cooldown (${Math.ceil((this._chatOpenUntil - Date.now())/1000)}s remaining)`); return; }
-    // Don't start BG tasks if CHAT is active or waiting — user interaction takes priority
+    if (!this._doneLoaded) return;
+    if (this.modelService.loaded.size === 0) return;
+    if (Date.now() < this._chatOpenUntil) return;
     const brokerState = this.modelService.broker.getState();
-    if (brokerState.state !== 'IDLE') { console.log(`[TaskRunner] tick: broker busy (${brokerState.state} by ${brokerState.owner})`); return; }
-    if (this.modelService.broker.hasHighPriorityWaiting()) { console.log('[TaskRunner] tick: high-priority waiter'); return; }
+    if (brokerState.state !== 'IDLE') return;
+    if (this.modelService.broker.hasHighPriorityWaiting()) return;
 
     let reg;
     try {
@@ -228,28 +223,8 @@ class TaskRunner {
         return (a.task_id || '').localeCompare(b.task_id || '');
       });
 
-    if (runnable.length === 0) {
-      const nonRunnable = allTasks.filter(t => {
-        const s = t.lifecycle?.status || t.status || 'open';
-        return !this._done.has(t.task_id) && !['completed','cancelled','archived'].includes(s);
-      });
-      if (nonRunnable.length > 0) {
-        console.log(`[TaskRunner] tick: 0 runnable — ${nonRunnable.length} blocked tasks:`);
-        nonRunnable.slice(0,5).forEach(t => {
-          const s = t.lifecycle?.status || t.status || '?';
-          const fails = this._failCounts.get(t.task_id) || 0;
-          const retry = this._retryAfter.get(t.task_id) || 0;
-          const retryIn = retry > Date.now() ? Math.ceil((retry - Date.now())/1000) + 's' : 'ok';
-          const inDone  = this._done.has(t.task_id);
-          console.log(`  ${t.task_id} status=${s} fails=${fails}/${this.MAX_RETRIES} retry=${retryIn} done=${inDone}`);
-        });
-      } else {
-        console.log(`[TaskRunner] tick: 0 runnable tasks (${allTasks.length} total, ${allTasks.filter(t=>this._done.has(t.task_id)).length} done)`);
-      }
-      return;
-    }
+    if (runnable.length === 0) return;
     const task = runnable[0];
-    console.log(`[TaskRunner] tick: dispatching ${task.task_id} "${task.title?.slice(0,40)}"`);
     this._runTask(task).catch(e =>
       console.error(`[TaskRunner] Task ${task.task_id} error:`, e.message)
     );
