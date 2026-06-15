@@ -500,16 +500,21 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
       // ~160 MB/layer at Q4_K_M. Clamp to [20, 80].
       const estLayers = Math.max(20, Math.min(80, Math.round(fileSizeGb * 1024 / 160)));
 
+      // Always recalculate gpuLayers dynamically based on CURRENT VRAM.
+      // The stored registry value may be stale (computed under different VRAM conditions).
+      // Force 'auto' mode every load so we always use the optimal split.
+      config.gpuLayers = 'auto';
+
       if (config.gpuLayers === 'auto' || config.gpuLayers === 'max') {
         if (vramBefore && freeBeforeGb > 0.5) {
           const frac    = Math.min(1.0, (freeBeforeGb * 0.72) / fileSizeGb);
           const computed = Math.round(estLayers * frac);
-          // Reserve 2 layers on CPU to free ~320MB VRAM for a larger KV context.
-          // CPU layers add ~1-3% decode latency but allow 8k+ more context tokens.
-          const reserved = 2;
+          // Reserve 4 layers on CPU to free ~640MB VRAM for a larger KV context.
+          // CPU layers add ~2-4% decode latency but allow 15k+ more context tokens.
+          const reserved = 4;
           const gpuTarget = config.gpuLayers === 'max' ? estLayers : Math.max(1, computed - reserved);
           config.gpuLayers = gpuTarget;
-          console.log(`  [auto] gpuLayers: ${config.gpuLayers} / ${estLayers} (${reserved} reserved on CPU for KV headroom)`);
+          console.log(`  [auto] gpuLayers: ${config.gpuLayers} / ${estLayers} (${reserved} layers on CPU → ~${reserved*160}MB freed for KV)`);
         } else {
           config.gpuLayers = 0;
           console.log(`  [auto] gpuLayers: 0 (no VRAM info, CPU only)`);
@@ -556,7 +561,8 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
           const bytesPerTok = config.flashAttention
             ? (isGQA ? 38 * 1024 : 60 * 1024)
             : 100 * 1024;
-          // Leave 500MB headroom for CUDA runtime, activations, cuBLAS workspace
+          // Leave 500MB headroom for CUDA runtime, activations, cuBLAS workspace.
+          // CPU-reserved layer VRAM is already reflected in freeAfterGb (they weren't loaded to GPU).
           const margin     = 0.50;
           const availKvGb  = Math.max(0, freeAfterGb - margin);
           const toksFit     = Math.floor(availKvGb * 1024 ** 3 / bytesPerTok);

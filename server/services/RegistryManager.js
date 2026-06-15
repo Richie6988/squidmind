@@ -122,20 +122,28 @@ class RegistryManager {
     const registry = await this.read(registryPath);
     if (!registry.metadata) registry.metadata = {};
 
-    // Safe fallbacks — seed file may be missing these fields
-    const nextNum = registry.metadata.next_id ?? 1;
-    const format  = registry.metadata.id_format ?? this._defaultIdFormat(registryPath);
+    const format = registry.metadata.id_format ?? this._defaultIdFormat(registryPath);
+
+    // Compute true next ID by scanning existing entries — never trust stale metadata counter.
+    // This handles: old seed with wrong next_id, corrupted counter, manual edits.
+    const entities = registry.agents || registry.projects || registry.tasks || registry.models || {};
+    let maxNum = 0;
+    for (const id of Object.keys(entities)) {
+      const match = id.match(/(\d+)$/);
+      if (match) maxNum = Math.max(maxNum, parseInt(match[1], 10));
+    }
+    const storedNext = registry.metadata.next_id ?? 1;
+    const nextNum = Math.max(maxNum + 1, storedNext);
+
     const id = format.replace('NNN', String(nextNum).padStart(3, '0'));
 
-    // Update registry counters and persist
     registry.metadata.last_id_used = nextNum;
     registry.metadata.next_id = nextNum + 1;
-    registry.metadata.id_format = format;   // ensure it's persisted for next call
+    registry.metadata.id_format = format;
     await this.write(registryPath, registry);
 
     return id;
   }
-
   /** Derive a default id_format from the registry path when the field is missing */
   _defaultIdFormat(registryPath) {
     if (registryPath.includes('agent'))   return 'agent_NNN';

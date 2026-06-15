@@ -1152,12 +1152,9 @@ const ModelLoader = {
     const f = (fileName || '').toLowerCase();
     const isFlux = /flux/i.test(f);
     if (isFlux) {
-      const isDev  = /dev/i.test(f);
-      const quantMatch = f.match(/[_-]q(\d+)/i);
-      const quant = quantMatch ? parseInt(quantMatch[1]) : 0;
-      const defW  = (quant >= 4 || quant === 0) ? 950 : 1024;
-      const defH  = defW;
-      return { width: defW, height: defH, steps: isDev ? 20 : 8, cfg: 1.0, label: `Flux optimal (${defW}×${defH})` };
+      const isDev = /dev/i.test(f);
+      // Use 950×950 for all Flux models (Q2/Q4/Q8 alike)
+      return { width: 950, height: 950, steps: isDev ? 20 : 8, cfg: 1.0, label: `Flux optimal (950×950)` };
     }
     const isXL = /xl|sdxl/i.test(f);
     return isXL
