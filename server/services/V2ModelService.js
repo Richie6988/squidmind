@@ -1378,8 +1378,12 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
       }
       // Session wipe done (or not needed)
     } catch (err) {
+      // Log every error — 0s broker release with no log makes debugging impossible
+      const isKnown = /no sequences|sequence|context|too long|compress|prompt|system message/i.test(err.message);
+      console.error(`[V2ModelService] chatWithPoseidon error (${isKnown ? 'session' : 'unknown'}):`, err.message);
+      if (!isKnown) console.error(err.stack?.split('\n').slice(0,4).join('\n'));
       // Catch all session/context/prompt errors and reset session state fully
-      const isSessionErr = /no sequences|sequence|context|too long|compress|prompt|system message/i.test(err.message);
+      const isSessionErr = isKnown;
       if (isSessionErr) {
         console.warn(`[V2ModelService] Session error, emergency checkpoint + reset:`, err.message);
         // Save what we can BEFORE losing the session — work is never silently lost

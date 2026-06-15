@@ -378,7 +378,11 @@ const PoseidonChat = {
               }
               fullText += (evType === 'message' || evType === 'text') ? (p.text || '') : '';
             });
-          } catch {}
+          } catch (evErr) {
+            // Re-throw server 'error' events — don't silently swallow them
+            if (evType === 'error') throw evErr;
+            // Other parse/handler errors are non-fatal, skip the chunk
+          }
         }
         this._scrollToBottom(msgs);
       }

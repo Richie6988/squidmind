@@ -535,6 +535,7 @@ function buildPoseidonChatRoute(v2ModelService) {
         turn: v2ModelService.loaded.get(v2ModelService.poseidonModelId)?.sessionTurns ?? 0,
       })}\n\n`);
     } catch (err) {
+      console.error('[Chat SSE] chatWithPoseidon error:', err.message, err.stack?.split('\n').slice(1,3).join(' '));
       res.write(`event: error\ndata: ${JSON.stringify({ error: err.message })}\n\n`);
     } finally {
       res.end();
