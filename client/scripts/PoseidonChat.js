@@ -818,7 +818,7 @@ const PoseidonChat = {
   _esc(s) {
     return String(s ?? '').replace(/[<>&"]/g, c =>
       ({ '<':'&lt;', '>':'&gt;', '&':'&amp;', '"':'&quot;' })[c]);
-  }
+  },
 
   // ── Speech-to-text via Web Speech API ────────────────────────────────────
   _toggleMic() {

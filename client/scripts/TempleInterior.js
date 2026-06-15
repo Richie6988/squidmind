@@ -970,11 +970,14 @@ const TempleInterior = {
   },
 
   _kDragStart(event) {
-    const id = event.currentTarget.dataset.taskId;
+    const el = event.currentTarget;
+    if (!el) return;
+    const id = el.dataset.taskId;
     this._dragTaskId = id;
     event.dataTransfer.setData('text/plain', id);
     event.dataTransfer.effectAllowed = 'move';
-    setTimeout(() => event.currentTarget.classList.add('dragging'), 0);
+    // Capture element ref before setTimeout — event.currentTarget is null after handler returns
+    setTimeout(() => el.classList.add('dragging'), 0);
   },
 
   async _kDrop(event, newStatus) {

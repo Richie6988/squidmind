@@ -542,11 +542,19 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
       if (config.contextLength === 'auto') {
         if (vramAfter && freeAfterGb > 0.3) {
           // Conservative but not capped at 32768.
-          // bytesPerTok empirically ~100KB/tok GPU (Q4) with flash attention ~60KB/tok.
-          // Leave 300MB headroom for activations and overhead.
-          const margin      = 0.30;
-          const availKvGb   = Math.max(0, freeAfterGb - margin);
-          const bytesPerTok = config.flashAttention ? 60 * 1024 : 100 * 1024;
+          // bytes/tok KV cache estimate:
+          // Q4_K_M + FlashAttention + GQA models (Qwen3, Llama3): ~38KB/tok
+          // Q4_K_M + FlashAttention standard MHA: ~60KB/tok
+          // Q4_K_M no FlashAttention: ~80-100KB/tok
+          // Detect GQA heuristic: model name contains qwen or llama3 → smaller KV
+          const modelName = (this.poseidonModelId || '').toLowerCase();
+          const isGQA = /qwen|llama[-_]?3|mistral|gemma/.test(modelName);
+          const bytesPerTok = config.flashAttention
+            ? (isGQA ? 38 * 1024 : 60 * 1024)
+            : 100 * 1024;
+          // Leave 300MB headroom for activations and overhead
+          const margin     = 0.30;
+          const availKvGb  = Math.max(0, freeAfterGb - margin);
           const toksFit     = Math.floor(availKvGb * 1024 ** 3 / bytesPerTok);
           // Cap at trainCtx but no artificial 32768 cap — real models go to 128k
           const target      = Math.min(toksFit, trainCtx);
@@ -565,14 +573,11 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
       }
 
       // ── Step 5: CREATE CONTEXT — retry DOWN without reloading the model ───
-      // Retry ladder: start at desired ctx, step down if createContext OOMs.
-      // Try 32k first — llama.cpp spills KV cache to CPU RAM when VRAM is tight,
-      // enabling larger context with no extra GPU cost (slower but functional).
-      // We NEVER reload model weights — only the KV context is resized.
+      // The [auto] calculation already computed the max ctx that fits in VRAM.
+      // Only step DOWN on OOM — never up (trying larger first fragments VRAM).
       const ctxLadder = (() => {
-        const target   = config.contextLength;
-        const expanded = Math.min(32768, trainCtx);
-        const steps    = [expanded, target, Math.floor(target * 0.75), Math.floor(target / 2), V2ModelService.MIN_VIABLE_CTX, 2048];
+        const target = config.contextLength;
+        const steps  = [target, Math.floor(target * 0.75), Math.floor(target / 2), V2ModelService.MIN_VIABLE_CTX, 2048];
         return [...new Set(steps.map(v => Math.max(2048, Math.min(v, trainCtx))))];
       })();
 

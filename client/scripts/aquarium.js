@@ -156,6 +156,8 @@ const aquarium = {
     // loop for everyone.
     for (const squid of this.squids) {
       try {
+        // Squids assigned to a project live inside their temple — don't draw in aquarium
+        if (squid.insideTemple || squid.currentProject) continue;
         squid.update(deltaTime);
         squid.draw(this.ctx);
       } catch (err) {
