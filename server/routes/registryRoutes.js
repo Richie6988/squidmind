@@ -8,7 +8,7 @@ const express = require('express');
 const path = require('path');
 const RegistryManager = require('../services/RegistryManager');
 
-function buildRouter(sharedRm) {
+function buildRouter(sharedRm, servicesRef = {}) {
   const router = express.Router();
   const AQUARIUM = require('../aquarium');
   const rm = sharedRm || new RegistryManager(AQUARIUM.ROOT);
@@ -240,6 +240,9 @@ router.delete('/tasks/:id', async (req, res) => {
     } catch {}
 
     rm.invalidateCache();
+    // Tell TaskRunner to never run this task again (in-memory _done set + persist)
+    const taskRunner = servicesRef.taskRunner;
+    if (taskRunner?.markDeleted) taskRunner.markDeleted(taskId);
     await rm.log({
       event_type: 'task_deleted', severity: 'info',
       actor:   { type: 'human', id: 'user' },

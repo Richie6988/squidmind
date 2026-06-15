@@ -37,7 +37,9 @@ if (healthReport.errors.length > 0) {
 const sharedRm = new RegistryManager(dataRoot);
 
 const buildRegistryRoutes = require('./routes/registryRoutes');
-app.use('/api/v2', buildRegistryRoutes(sharedRm));
+// Services ref — populated after initialization, used by routes that need late-bound services
+const servicesRef = { taskRunner: null };
+app.use('/api/v2', buildRegistryRoutes(sharedRm, servicesRef));
 
 // === V2 EMERGENCY REPAIR ENDPOINT ===
 app.post('/api/v2/repair', (req, res) => {
@@ -171,6 +173,7 @@ heartbeat.setModelService(v2ModelService);
 // Task auto-runner — fires on every heartbeat tick
 const TaskRunner = require('./services/TaskRunner');
 const taskRunner = new TaskRunner(sharedRm, v2ModelService, agentWorkerPool, botService);
+servicesRef.taskRunner = taskRunner;
 heartbeat.setTaskRunner(taskRunner);
 taskRunner.loadDone().catch(e => console.warn('[TaskRunner] loadDone error:', e.message));
 

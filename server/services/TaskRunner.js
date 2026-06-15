@@ -81,6 +81,17 @@ class TaskRunner {
   }
 
   /** Add task to _done and persist */
+  /** Called when a task is hard-deleted from the UI — prevents TaskRunner from ever running it */
+  markDeleted(taskId) {
+    this._done.add(taskId);
+    this._running.delete(taskId);
+    this._failCounts.delete(taskId);
+    this._retryAfter.delete(taskId);
+    // Persist so it survives restart
+    this._markDone(taskId).catch(() => {});
+    console.log(`[TaskRunner] Task ${taskId} marked as deleted (will not run)`);
+  }
+
   async _markDone(taskId) {
     this._done.add(taskId);
     await this._saveDone();
@@ -171,14 +182,31 @@ class TaskRunner {
     }
 
     // ── One-shot tasks: pick highest priority open/planned task ───────────
-    const TERMINAL = new Set(['completed','failed','cancelled','archived','in_progress']);
+    // TERMINAL = statuses that are NEVER retried.
+    // NOTE: 'failed' is NOT terminal here — only permanently failed (fails >= MAX_RETRIES) tasks
+    // are excluded via the tooManyFails check below. This allows tasks set to 'failed' by
+    // external code (session crash, manual set) to be retried if fail count is still low.
+    const TERMINAL = new Set(['completed','cancelled','archived','in_progress']);
 
     // Reset stale in_progress tasks (stuck from previous server run, not in _running)
+    // Also clean up orphaned failed tasks whose disk entry was deleted
     for (const t of allTasks) {
       const s = t.lifecycle?.status || t.status;
+      const fails = this._failCounts.get(t.task_id) || 0;
       if (s === 'in_progress' && !this._running.has(t.task_id) && !this._done.has(t.task_id)) {
         console.log(`[TaskRunner] Resetting stale in_progress task ${t.task_id} → planned`);
         this._setStatus(t.task_id, 'planned').catch(() => {});
+      }
+      // Failed with 0 counted retries = set externally (session crash, manual) — retry it
+      if (s === 'failed' && fails === 0 && !this._done.has(t.task_id)) {
+        console.log(`[TaskRunner] Resetting externally-failed ${t.task_id} → planned (fails=${fails})`);
+        this._setStatus(t.task_id, 'planned').catch(() => {});
+      }
+      // If a task has been retried MAX_RETRIES times, mark done so it stops blocking
+      if (s === 'failed' && fails >= this.MAX_RETRIES) {
+        console.log(`[TaskRunner] Permanently failed ${t.task_id} — adding to done set`);
+        this._done.add(t.task_id);
+        this._markDone(t.task_id).catch(() => {});
       }
     }
 
