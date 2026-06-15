@@ -323,9 +323,15 @@ class TaskRunner {
       let failed = false;
 
       // ── IMAGE GEN TASK ────────────────────────────────────────────────────
-      const isImageTask = (task.task_type === 'image_gen') ||
-        /^generate[: ]/i.test(task.title) ||
-        /image[_\s]gen/i.test(task.task_type || '');
+      // Detect by task_type first (most reliable), then by title pattern
+      const isImageTask = (task.task_type === 'image_gen')
+        || /image[_\s]gen/i.test(task.task_type || '')
+        || /^generate[: ]/i.test(task.title)
+        || /^image[: ]/i.test(task.title)           // "Image: ..." format
+        || /^draw[: ]/i.test(task.title)
+        || /^illustrate[: ]/i.test(task.title)
+        || /^render[: ]/i.test(task.title)
+        || !!(task.image_params);                   // has explicit image params
 
       if (isImageTask) {
         let imageServeUrl = null;
