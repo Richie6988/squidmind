@@ -136,6 +136,7 @@ const AQUARIUM = {
   PROJECTS: path.join(AQ_ROOT, isAquarium ? 'PROJECTS' : 'projects'),
   TASKS:    path.join(AQ_ROOT, isAquarium ? 'TASKS'    : 'tasks'),
   IMAGES:   path.join(AQ_ROOT, isAquarium ? 'TASKS/IMAGES' : 'tasks/images'),
+  OUTPUT:   path.join(AQ_ROOT, isAquarium ? 'TASKS/OUTPUT' : 'tasks/output'),
   LOGS:     path.join(AQ_ROOT, isAquarium ? 'LOGS'     : 'logs'),
   TOOLS:    path.join(AQ_ROOT, isAquarium ? 'TOOLS'    : 'tools'),
   // Skills: use aquarium/SKILLS/ at runtime; server/skills/ is the seeded source in the repo
@@ -210,6 +211,7 @@ const AQUARIUM = {
   // Seed skills — upsert: copy each skill if missing OR seed version > aquarium version
   try {
     fs.mkdirSync(AQUARIUM.SKILLS, { recursive: true });
+    fs.mkdirSync(AQUARIUM.OUTPUT, { recursive: true });
     if (fs.existsSync(SKILLS_SEED)) {
       let n = 0;
       for (const f of fs.readdirSync(SKILLS_SEED)) {

@@ -135,7 +135,7 @@ const TaskQueueUI = {
     const summary = imgPreview + (summaryText ? `<span>${summaryText}</span>` : '');
     return `
       <div class="tq-done-item" style="position:relative;padding-right:28px;">
-        <button onclick="event.stopPropagation();TaskQueueUI.deleteTask('${t.task_id}')" title="Delete" style="position:absolute;top:4px;right:4px;background:rgba(239,68,68,0.12);border:1px solid rgba(239,68,68,0.25);color:#ef4444;border-radius:4px;padding:0 5px;font-size:8px;cursor:pointer;line-height:18px;">✕</button>
+        <button onclick="event.stopPropagation();TaskQueueUI.dismissResult('${t.task_id}')" title="Dismiss" style="position:absolute;top:4px;right:4px;background:rgba(239,68,68,0.12);border:1px solid rgba(239,68,68,0.25);color:#ef4444;border-radius:4px;padding:0 5px;font-size:8px;cursor:pointer;line-height:18px;">✕</button>
         <div style="cursor:pointer" onclick="TaskQueueUI.openTaskResult('${t.task_id}')">
         <div class="tq-done-row1">
           <span class="tq-done-icon">${icon}</span>
@@ -165,7 +165,7 @@ const TaskQueueUI = {
         <span class="tq-img-label">${this._esc(label)}</span>
         <span class="tq-img-when">${when}</span>
       </div>
-      <button onclick="event.stopPropagation();TaskQueueUI.deleteTask('${t.task_id}')" class="tq-img-del">X</button>
+      <button onclick="event.stopPropagation();TaskQueueUI.dismissResult('${t.task_id}')" class="tq-img-del">X</button>
     </div>`;
   },
 
@@ -689,25 +689,28 @@ ${task.description}`
   // ── Delete (hard) ──────────────────────────────────────────────────────────
 
   async deleteTask(taskId) {
-    const allTasks = [...(this._tasks || []), ...(this._doneTasks || [])];
-    const task = allTasks.find(t => t.task_id === taskId);
+    // Active queued tasks only — actually deletes from server
+    const task = (this._tasks || []).find(t => t.task_id === taskId);
     const label = task?.title ? '"' + task.title + '"' : taskId;
-    if (!await SquidModal.confirm('Permanently delete task ' + label + '?\nThis cannot be undone.')) return;
+    if (!await SquidModal.confirm('Cancel and delete task ' + label + '?\nThis cannot be undone.')) return;
     try {
       const res = await fetch('/api/v2/tasks/' + taskId, { method: 'DELETE', headers: { 'Content-Type': 'application/json' } });
       if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || 'Delete failed'); }
       this._tasks = (this._tasks || []).filter(t => t.task_id !== taskId);
-      this._doneTasks = (this._doneTasks || []).filter(t => t.task_id !== taskId);
       await this._render();
-    } catch (err) {
-      await SquidModal.alert('Delete failed: ' + err.message);
-    }
+    } catch (err) { await SquidModal.alert('Delete failed: ' + err.message); }
+  },
+
+  dismissResult(taskId) {
+    // Dismiss from RESULTS view only — does NOT delete from server/disk
+    this._doneTasks = (this._doneTasks || []).filter(t => t.task_id !== taskId);
+    this._render();
   },
 
   async deleteAllQueued() {
     const count = this._tasks?.length || 0;
     if (!count) return;
-    if (!await SquidModal.confirm(`Delete ALL ${count} queued tasks?\nThis cannot be undone.`)) return;
+    if (!await SquidModal.confirm(`Cancel and delete ALL ${count} queued tasks?\nThis cannot be undone.`)) return;
     const ids = (this._tasks || []).map(t => t.task_id);
     let failed = 0;
     for (const id of ids) {
@@ -718,19 +721,12 @@ ${task.description}`
     await this._render();
   },
 
-  async deleteAllResults() {
-    const count = this._doneTasks?.length || 0;
-    if (!count) return;
-    if (!await SquidModal.confirm(`Delete ALL ${count} completed results?\nThis cannot be undone.`)) return;
-    const ids = (this._doneTasks || []).map(t => t.task_id);
-    let failed = 0;
-    for (const id of ids) {
-      try { await fetch('/api/v2/tasks/' + id, { method: 'DELETE' }); } catch { failed++; }
-    }
+  dismissAllResults() {
+    // Clear results from view only — does NOT delete from server/disk
     this._doneTasks = [];
-    if (failed) await SquidModal.alert(`${ids.length - failed} deleted, ${failed} failed.`);
-    await this._render();
+    this._render();
   },
+
   // ── Cancel ──────────────────────────────────────────────────────────────────
 
   async cancelTask(taskId) {

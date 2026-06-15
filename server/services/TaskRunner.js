@@ -667,7 +667,18 @@ class TaskRunner {
 
   async _saveOutput(taskId, text) {
     try {
-      // Resolve task (per-folder first, then flat registry fallback)
+      // All task outputs go to TASKS/OUTPUT/<taskId>.<ext> — flat, easy to browse
+      await fs.mkdir(AQUARIUM.OUTPUT, { recursive: true });
+
+      // Detect content type for extension
+      const isCode = /^```\w|^import |^function |^const |^class |^def |^#!\//.test(text.trim());
+      const isJson = text.trim().startsWith('{') || text.trim().startsWith('[');
+      const ext = isCode ? 'txt' : isJson ? 'json' : 'txt';
+
+      const outputPath = path.join(AQUARIUM.OUTPUT, `${taskId}.${ext}`);
+      await fs.writeFile(outputPath, text, 'utf8');
+
+      // Update task details with result_file path
       let task = await this.rm._readTaskDetails(taskId);
       if (!task) {
         try {
@@ -675,63 +686,11 @@ class TaskRunner {
           task = flatReg.tasks?.[taskId] || null;
         } catch {}
       }
-
-      // Resolve project via id OR name — handles Poseidon-created tasks that
-      // store project_name at top level but not always project_id
-      const projectId   = task?.context?.project_id || task?.project_id || null;
-      const projectName = task?.context?.project_name || task?.project_name || null;
-
-      let outputPath;
-      let resolvedProjectFolder = null;
-
-      if (projectId || projectName) {
-        try {
-          const reg = await this.rm.read('projects/project_registry.json').catch(() => ({ projects: {} }));
-          let proj = null;
-          if (projectId && reg.projects[projectId]) {
-            proj = reg.projects[projectId];
-          } else if (projectName) {
-            // Find by name (case-insensitive)
-            const upper = projectName.toUpperCase();
-            proj = Object.values(reg.projects || {}).find(p => p.name === upper || p.name === projectName);
-          }
-          if (proj) {
-            resolvedProjectFolder = proj.folder;
-            const projOutDir = path.join(AQUARIUM.PROJECTS, proj.folder, 'output');
-            await fs.mkdir(projOutDir, { recursive: true });
-            outputPath = path.join(projOutDir, `${taskId}.txt`);
-          }
-        } catch (e) {
-          console.warn(`[TaskRunner] _saveOutput project resolve failed:`, e.message);
-        }
-      }
-
-      if (!outputPath) {
-        // No project found — store in task's own folder
-        const taskDir = path.join(AQUARIUM.TASKS, taskId);
-        await fs.mkdir(taskDir, { recursive: true });
-        outputPath = path.join(taskDir, 'output.txt');
-      }
-
-      await fs.writeFile(outputPath, text, 'utf8');
-
-      // Update task details with result_file path
       if (task) {
         task.result_file    = outputPath;
         task.result_summary = text.slice(0, 500);
-        // Back-fill project_id if we resolved it from name
-        if (resolvedProjectFolder && !task.project_id) {
-          const reg2 = await this.rm.read('projects/project_registry.json').catch(() => ({ projects: {} }));
-          const found = Object.entries(reg2.projects || {}).find(([, p]) => p.folder === resolvedProjectFolder);
-          if (found) {
-            task.project_id = found[0];
-            if (!task.context) task.context = {};
-            task.context.project_id = found[0];
-            task.context.project_name = found[1].name;
-          }
-        }
         await this.rm._writeTaskDetails(taskId, task);
-        // Remove from flat registry if it was there
+        // Remove from flat registry if it was there (migrated to per-folder)
         try {
           const flatReg = await this.rm.read('tasks/tasks_registry.json');
           if (flatReg.tasks?.[taskId]) {

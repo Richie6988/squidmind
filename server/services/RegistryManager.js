@@ -999,9 +999,34 @@ class RegistryManager {
 
   async _writeTaskDetails(taskId, task) {
     const fs   = require('fs').promises;
+    const path = require('path');
     const dir  = this._taskDir(taskId);
     await fs.mkdir(dir, { recursive: true });
-    await fs.writeFile(require('path').join(dir, 'details.json'), JSON.stringify(task, null, 2), 'utf8');
+    await fs.writeFile(path.join(dir, 'details.json'), JSON.stringify(task, null, 2), 'utf8');
+
+    // Also keep flat registry in sync — minimal index entry for quick broker scans
+    try {
+      const AQUARIUM  = require('./aquarium');
+      const flatPath  = path.join(AQUARIUM.TASKS, 'tasks_registry.json');
+      let flatReg = { metadata: {}, tasks: {} };
+      try { flatReg = JSON.parse(await fs.readFile(flatPath, 'utf8')); } catch {}
+      flatReg.tasks[taskId] = {
+        task_id:    task.task_id || taskId,
+        title:      task.title || '',
+        status:     task.lifecycle?.status || task.status || 'open',
+        sort_order: task.sort_order || 0,
+        task_type:  task.task_type || 'text',
+        project_id: task.context?.project_id || task.project_id || null,
+        project_name: task.context?.project_name || task.project_name || null,
+        assigned_to:  task.assignment?.assigned_to || null,
+        created_at:   task.created_at || null,
+        completed_at: task.lifecycle?.completed_at || task.completed_at || null,
+        result_file:  task.result_file || null,
+        result_summary: task.result_summary ? task.result_summary.slice(0, 200) : null,
+        output_preview: task.output_preview || null,
+      };
+      await fs.writeFile(flatPath, JSON.stringify(flatReg, null, 2), 'utf8');
+    } catch {}
   }
 
   async getTasksRegistry() {

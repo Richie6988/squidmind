@@ -1713,14 +1713,12 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
       return { ok: false, error: `Model file not found: ${entry.file_path || entry.file_name}. Re-scan the library.` };
     }
 
-    // Auto-generate outputPath → always goes to TASKS/IMAGES/ for centralized storage
+    // All outputs go to TASKS/OUTPUT/ — flat, named after task ID
     if (!outputPath) {
       const AQUARIUM = require('../aquarium');
-      const fname = task_id
-        ? `${task_id}_${Date.now()}.png`
-        : `generated_${Date.now()}.png`;
-      await require('fs').promises.mkdir(AQUARIUM.IMAGES, { recursive: true });
-      outputPath = path.join(AQUARIUM.IMAGES, fname);
+      const fname = task_id ? `${task_id}.png` : `generated_${Date.now()}.png`;
+      await require('fs').promises.mkdir(AQUARIUM.OUTPUT, { recursive: true });
+      outputPath = path.join(AQUARIUM.OUTPUT, fname);
     }
 
     // Acquire IMAGE slot — waits for any LLM work to finish first
