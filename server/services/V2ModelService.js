@@ -423,7 +423,19 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
       }
     }
 
-    const promise = this.loadModel(entry.file_name, entry.config || {});
+    const promise = this.loadModel(entry.file_name, entry.config || {}).catch(err => {
+      // Detect unknown architecture errors and give actionable guidance
+      if (/unknown model architecture|unknown arch/i.test(err.message)) {
+        const arch = err.message.match(/unknown model architecture: '([^']+)'/)?.[1] || 'unknown';
+        throw new Error(
+          `Architecture '${arch}' not supported by current llama.cpp build.\n` +
+          `Run this in your IAQUA folder to rebuild with Gemma4/Llama4 support:\n` +
+          `  npx node-llama-cpp source build\n` +
+          `(Takes ~5-10 min, GPU required for CUDA build)`
+        );
+      }
+      throw err;
+    });
     this._loadingPromises.set(modelId, promise);
     try {
       return await promise;

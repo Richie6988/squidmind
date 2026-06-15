@@ -395,7 +395,7 @@ const ModelLoader = {
         method: 'PATCH',
         body: JSON.stringify({ model_category: newCategory })
       });
-      await this.loadLibrary();
+      await this.open();
     } catch (e) {
       const msg = e.message || String(e);
       console.warn('[ModelLoader] catDrop failed:', msg);
