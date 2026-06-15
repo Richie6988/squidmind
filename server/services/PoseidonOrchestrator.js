@@ -1285,7 +1285,7 @@ Never describe a bash command you could call instead.`;
             const isQ2   = mname.includes('q2');
             const defaultSteps = isFlux ? (isQ2 ? 6 : 8) : 20;
             const defaultCfg   = isFlux ? 1.0 : 7.0;
-            const defaultW     = isQ2 ? 512 : (isFlux ? 768 : 512);
+            const defaultW     = isQ2 ? 950 : (isFlux ? 1024 : 512);
 
             // Build task description with all image params
             const imageParams = {

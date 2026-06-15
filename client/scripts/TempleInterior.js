@@ -243,204 +243,108 @@ const TempleInterior = {
 
     const agents = assignedIds.filter(id => id && id !== 'poseidon_main').map(id => regAgents[id]).filter(Boolean);
 
-    // ── Arena: animated canvas aquarium for agents ─────────────────────
-    container.innerHTML = `
+    // ── If arena canvas already exists, only update the agent list (don't destroy animation) ──
+    const existingArena = container.querySelector('#ti-arena-always');
+    let listContainer   = container.querySelector('#ti-agent-list');
+
+    if (!existingArena) {
+      // First render: build full structure including arena canvas
+      container.innerHTML = `
 <div id="ti-arena-always" style="position:relative;overflow:hidden;height:130px;background:linear-gradient(180deg,#07111e 0%,#04080f 100%);border-bottom:1px solid rgba(79,172,254,0.12);flex-shrink:0;cursor:crosshair;">
   <canvas id="ti-arena-canvas" style="position:absolute;inset:0;width:100%;height:100%;"></canvas>
 </div>
-<div style="flex:1;overflow-y:auto;">
-  ${agents.length === 0
-    ? '<p class=\"ti-empty\" style=\"font-size:8px;padding:10px 8px;\">No agents assigned</p>'
-    : agents.map(a => {
-        const w     = workers[a.agent_id] || {};
-        const isRun = w.status === 'running' || a.status === 'active';
-        const taskId = a.current_task_id || '';
-        const dotPulse = isRun ? 'animation:ti-dot-pulse .9s ease-in-out infinite;' : '';
-        return `<div class=\"ti-agent-row ${isRun ? 'running' : ''}\">
-          <div class=\"ti-agent-dot ${isRun ? 'run' : 'idle'}\" style=\"${dotPulse}\"></div>
-          <div style=\"flex:1;min-width:0;\">
-            <div class=\"ti-agent-name\">${this._esc(a.display_name || a.agent_id)}</div>
-            <div class=\"ti-agent-spec\">${taskId ? '<span style=\"color:var(--ui-accent2);\">▶ ' + this._esc(taskId) + '</span>' : this._esc(a.specialization || '')}</div>
-          </div>
-          <span class=\"ti-agent-badge ${isRun ? 'run' : 'idle'}\">${isRun ? 'RUN' : 'IDLE'}</span>
-          <button class=\"ti-sec-btn\" onclick=\"TempleInterior._editAgent('${a.agent_id}')\" style=\"font-size:6px;padding:2px 5px;border-color:rgba(79,172,254,0.4);color:#4facfe;\">EDIT</button>
-          <button class=\"ti-sec-btn\" onclick=\"TempleInterior._dispatchAgent('${a.agent_id}')\" style=\"font-size:6px;padding:2px 5px;\">SEND</button>
-          <button class=\"ti-sec-btn\" onclick=\"TempleInterior.unassignSquid('${a.agent_id}')\" style=\"font-size:6px;padding:2px 5px;border-color:var(--danger);color:var(--danger);\">OUT</button>
-        </div>`;
-      }).join('')}
-</div>
+<div id="ti-agent-list" style="flex:1;overflow-y:auto;"></div>
 <div style="padding:5px;border-top:1px solid var(--border);flex-shrink:0;">
   <button class="ti-sec-btn" style="width:100%;text-align:center;" onclick="TempleInterior._showAssigner()">ASSIGN AGENT</button>
 </div>`;
+      listContainer = container.querySelector('#ti-agent-list');
 
-    // ── Arena: continuous animated canvas ─────────────────────────────
-    const arena = container.querySelector('#ti-arena-always');
-    const arenaCvs = container.querySelector('#ti-arena-canvas');
-    if (arena && arenaCvs) {
-      setTimeout(() => {
-        arenaCvs.width  = arena.clientWidth  || 260;
-        arenaCvs.height = arena.clientHeight || 130;
-        const AW = arenaCvs.width, AH = arenaCvs.height;
-        const aCtx = arenaCvs.getContext('2d');
-
-        // Cancel previous loop if any
-        if (this._arenaRaf) { cancelAnimationFrame(this._arenaRaf); this._arenaRaf = null; }
-        // Init arena particles once
-        if (!arena._pts) arena._pts = Array.from({ length: 20 }, () => ({
-          x: Math.random() * AW, y: Math.random() * AH,
-          r: 0.5 + Math.random() * 1.2,
-          dy: -0.04 - Math.random() * 0.07,
-          dx: (Math.random() - 0.5) * 0.03,
-          ph: Math.random() * Math.PI * 2,
-          sp: 0.3 + Math.random() * 0.5,
-          col: Math.random() > 0.5 ? '79,172,254' : '6,255,165'
-        }));
-
-        // Spawn agent walkers
-        const W = AW, H = AH;
-        agents.forEach(a => {
-          const squid = (window.aquarium?.squids || []).find(s => (s.agent_id || s.id) === a.agent_id)
-            || { id: a.agent_id, name: a.display_name || a.agent_id, appearance: a.appearance || {} };
-          const walker = document.createElement('div');
-          walker.className = 'ti-walker';
-          const cvs = document.createElement('canvas');
-          cvs.width = 54; cvs.height = 60;
-          const lbl = document.createElement('div');
-          lbl.className = 'ti-walker-name';
-          lbl.textContent = (a.display_name || a.agent_id).slice(0, 10).toUpperCase();
-          const wkr = workers[a.agent_id] || {};
-          if (wkr.status === 'running' || a.status === 'active') {
-            const badge = document.createElement('div');
-            badge.className = 'ti-walker-badge';
-            badge.textContent = 'RUN';
-            walker.appendChild(badge);
+      // Start arena animation (only once)
+      const arena  = container.querySelector('#ti-arena-always');
+      const arenaCvs = container.querySelector('#ti-arena-canvas');
+      if (arena && arenaCvs) {
+        setTimeout(() => {
+          arenaCvs.width  = arena.clientWidth  || 260;
+          arenaCvs.height = arena.clientHeight || 130;
+          const aCtx = arenaCvs.getContext('2d');
+          const AW = arenaCvs.width, AH = arenaCvs.height;
+          if (!arena._pts) {
+            arena._pts = Array.from({ length: 12 }, () => ({
+              x: Math.random() * AW, y: Math.random() * AH,
+              r: 0.6 + Math.random() * 1.4,
+              dx: (Math.random() - 0.5) * 0.08, dy: -0.04 - Math.random() * 0.09,
+              sp: 0.3 + Math.random() * 0.5, ph: Math.random() * Math.PI * 2,
+              col: ['0,255,190','79,172,254','140,80,255'][Math.floor(Math.random() * 3)]
+            }));
           }
-          walker.appendChild(cvs);
-          walker.appendChild(lbl);
-          arena.appendChild(walker);
-          this._animateSquid(walker, cvs, squid, W, H);
-        });
 
-        // Continuous arena background loop
-        const tick = () => {
-          const t = Date.now() / 1000;
-          aCtx.clearRect(0, 0, AW, AH);
-
-          // Rich deep-ocean gradient
-          const bg = aCtx.createLinearGradient(0, 0, 0, AH);
-          bg.addColorStop(0,   '#0c1e3a');
-          bg.addColorStop(0.5, '#071528');
-          bg.addColorStop(1,   '#030c1a');
-          aCtx.fillStyle = bg; aCtx.fillRect(0, 0, AW, AH);
-
-          // Caustic light blobs (screen blend)
-          aCtx.save();
-          aCtx.globalCompositeOperation = 'screen';
-          for (let c2 = 0; c2 < 6; c2++) {
-            const cx2 = AW * (0.1 + c2 * 0.17) + Math.sin(t * 0.2 + c2 * 0.9) * 18;
-            const cy2 = AH * 0.3 + Math.sin(t * 0.15 + c2 * 1.1) * AH * 0.3;
-            const cr  = 14 + Math.sin(t * 0.25 + c2) * 8;
-            const ca  = 0.08 + 0.04 * Math.sin(t * 0.3 + c2);
-            const cg2 = aCtx.createRadialGradient(cx2, cy2, 0, cx2, cy2, cr);
-            cg2.addColorStop(0, `rgba(100,200,255,${ca})`);
-            cg2.addColorStop(1, 'rgba(0,0,0,0)');
-            aCtx.fillStyle = cg2;
-            aCtx.beginPath(); aCtx.arc(cx2, cy2, cr, 0, Math.PI * 2); aCtx.fill();
-          }
-          aCtx.globalCompositeOperation = 'source-over';
-          aCtx.restore();
-
-          // Light shaft from top-center
-          aCtx.save();
-          aCtx.globalCompositeOperation = 'screen';
-          for (let r2 = 0; r2 < 3; r2++) {
-            const rx = AW * (0.25 + r2 * 0.28) + Math.sin(t * 0.06 + r2) * 20;
-            const rlen = AH * 0.85;
-            const rw2 = 10 + r2 * 15;
-            const alp2 = 0.04 + 0.02 * Math.sin(t * 0.11 + r2);
-            const rg = aCtx.createLinearGradient(rx, 0, rx, rlen);
-            rg.addColorStop(0,   `rgba(100,190,255,${alp2 * 3})`);
-            rg.addColorStop(0.5, `rgba(60,140,240,${alp2})`);
-            rg.addColorStop(1,   'rgba(40,100,200,0)');
-            aCtx.fillStyle = rg;
-            aCtx.beginPath();
-            aCtx.moveTo(rx - 3, 0); aCtx.lineTo(rx + 3, 0);
-            aCtx.lineTo(rx + rw2, rlen); aCtx.lineTo(rx - rw2, rlen);
-            aCtx.fill();
-          }
-          aCtx.globalCompositeOperation = 'source-over';
-          aCtx.restore();
-
-          // Animated hex grid
-          aCtx.save();
-          const sz = 18, rw = sz * 2, rh = Math.sqrt(3) * sz;
-          const ncols = Math.ceil(AW / (rw * 0.75)) + 2;
-          const nrows = Math.ceil(AH / rh) + 2;
-          for (let row = 0; row < nrows; row++) {
-            for (let col = 0; col < ncols; col++) {
-              const hx = col * rw * 0.75 - rw * 0.3;
-              const hy = row * rh + (col % 2 === 0 ? 0 : rh / 2) - rh * 0.3;
-              const d  = Math.sqrt((hx - AW / 2) ** 2 + (hy - AH) ** 2);
-              const pulse = Math.sin(t * 0.4 + d * 0.012 + col * 0.3);
-              const al = Math.max(0, 0.03 + 0.025 * pulse);
-              aCtx.strokeStyle = `rgba(79,172,254,${al})`;
-              aCtx.lineWidth = 0.55;
-              aCtx.beginPath();
-              for (let i = 0; i < 6; i++) {
-                const a = (Math.PI / 3) * i - Math.PI / 6;
-                const px = hx + sz * Math.cos(a), py = hy + sz * Math.sin(a);
-                i === 0 ? aCtx.moveTo(px, py) : aCtx.lineTo(px, py);
-              }
-              aCtx.closePath(); aCtx.stroke();
-              if (pulse > 0.82) {
-                aCtx.shadowColor = 'rgba(79,172,254,0.9)';
-                aCtx.shadowBlur  = 6;
-                const ng = aCtx.createRadialGradient(hx, hy, 0, hx, hy, 5);
-                ng.addColorStop(0, `rgba(120,200,255,0.5)`);
-                ng.addColorStop(1, 'rgba(79,172,254,0)');
-                aCtx.fillStyle = ng;
-                aCtx.beginPath(); aCtx.arc(hx, hy, 5, 0, Math.PI * 2); aCtx.fill();
-                aCtx.shadowBlur = 0;
-              }
+          // Start arena animation loop
+          const tick = () => {
+            const t = Date.now() / 1000;
+            aCtx.clearRect(0, 0, AW, AH);
+            const bg = aCtx.createLinearGradient(0, 0, 0, AH);
+            bg.addColorStop(0, '#0c1e3a'); bg.addColorStop(1, '#030c1a');
+            aCtx.fillStyle = bg; aCtx.fillRect(0, 0, AW, AH);
+            // Bioluminescent particles
+            aCtx.save();
+            for (const p of arena._pts) {
+              p.x += p.dx + Math.sin(t * p.sp * 0.35 + p.ph) * 0.06;
+              p.y += p.dy;
+              if (p.y < -4) { p.y = AH + 4; p.x = Math.random() * AW; }
+              if (p.x < 0) p.x = AW; if (p.x > AW) p.x = 0;
+              const glow = 0.15 + 0.5 * Math.abs(Math.sin(t * p.sp * 0.45 + p.ph));
+              aCtx.globalAlpha = glow;
+              aCtx.shadowColor = `rgb(${p.col})`; aCtx.shadowBlur = p.r * 5;
+              aCtx.fillStyle = `rgb(${p.col})`;
+              aCtx.beginPath(); aCtx.arc(p.x, p.y, p.r, 0, Math.PI * 2); aCtx.fill();
             }
-          }
-          aCtx.restore();
+            aCtx.shadowBlur = 0; aCtx.globalAlpha = 1; aCtx.restore();
+            this._arenaRaf = requestAnimationFrame(tick);
+          };
+          if (this._arenaRaf) cancelAnimationFrame(this._arenaRaf);
+          tick();
 
-          // Floating bioluminescent particles
-          aCtx.save();
-          for (const p of arena._pts) {
-            p.x += p.dx + Math.sin(t * p.sp * 0.35 + p.ph) * 0.06;
-            p.y += p.dy;
-            if (p.y < -4) { p.y = AH + 4; p.x = Math.random() * AW; }
-            if (p.x < 0) p.x = AW; if (p.x > AW) p.x = 0;
-            const glow = 0.15 + 0.5 * Math.abs(Math.sin(t * p.sp * 0.45 + p.ph));
-            aCtx.globalAlpha = glow;
-            aCtx.shadowColor = `rgb(${p.col})`;
-            aCtx.shadowBlur  = p.r * 5;
-            aCtx.fillStyle   = `rgb(${p.col})`;
-            aCtx.beginPath(); aCtx.arc(p.x, p.y, p.r, 0, Math.PI * 2); aCtx.fill();
-          }
-          aCtx.shadowBlur = 0;
-          aCtx.globalAlpha = 1;
-          aCtx.restore();
+          // Add squid walkers
+          agents.forEach((a) => {
+            const squid = (window.aquarium?.squids || []).find(s => (s.agent_id || s.id) === a.agent_id)
+              || { id: a.agent_id, name: a.display_name || a.agent_id, appearance: a.appearance || {} };
+            const walker = document.createElement('div');
+            walker.className = 'ti-walker';
+            walker.dataset.agentId = a.agent_id;
+            const cvs = document.createElement('canvas');
+            cvs.width = 52; cvs.height = 58;
+            const lbl = document.createElement('div');
+            lbl.className = 'ti-walker-name';
+            lbl.textContent = (a.display_name || a.agent_id).slice(0, 10).toUpperCase();
+            arena.appendChild(walker);
+            walker.appendChild(cvs);
+            walker.appendChild(lbl);
+            this._animateSquid(walker, cvs, squid, AW, AH);
+          });
+        }, 80);
+      }
+    }
 
-          // Edge vignette + floor
-          const fl = aCtx.createLinearGradient(0, AH * 0.65, 0, AH);
-          fl.addColorStop(0, 'rgba(0,0,0,0)'); fl.addColorStop(1, 'rgba(2,6,16,0.7)');
-          aCtx.fillStyle = fl; aCtx.fillRect(0, AH * 0.65, AW, AH * 0.35);
-
-          // Side edge glow
-          for (const [ex, ey] of [[0, AH/2], [AW, AH/2]]) {
-            const eg = aCtx.createRadialGradient(ex, ey, 0, ex, ey, AW * 0.25);
-            eg.addColorStop(0, 'rgba(79,172,254,0.05)');
-            eg.addColorStop(1, 'rgba(0,0,0,0)');
-            aCtx.fillStyle = eg; aCtx.fillRect(0, 0, AW, AH);
-          }
-
-          this._arenaRaf = requestAnimationFrame(tick);
-        };
-        tick();
-      }, 80);
+    // ── Always update agent list (without destroying arena canvas) ──
+    if (listContainer) {
+      listContainer.innerHTML = agents.length === 0
+        ? '<p class="ti-empty" style="font-size:8px;padding:10px 8px;">No agents assigned</p>'
+        : agents.map(a => {
+            const w     = workers[a.agent_id] || {};
+            const isRun = w.status === 'running' || a.status === 'active';
+            const taskId = a.current_task_id || '';
+            return `<div class="ti-agent-row ${isRun ? 'running' : ''}">
+              <div class="ti-agent-dot ${isRun ? 'run' : 'idle'}" style="${isRun ? 'animation:ti-dot-pulse .9s ease-in-out infinite;' : ''}"></div>
+              <div style="flex:1;min-width:0;">
+                <div class="ti-agent-name">${this._esc(a.display_name || a.agent_id)}</div>
+                <div class="ti-agent-spec">${taskId ? '<span style="color:var(--ui-accent2);">▶ ' + this._esc(taskId) + '</span>' : this._esc(a.specialization || '')}</div>
+              </div>
+              <span class="ti-agent-badge ${isRun ? 'run' : 'idle'}">${isRun ? 'RUN' : 'IDLE'}</span>
+              <button class="ti-sec-btn" onclick="TempleInterior._editAgent('${a.agent_id}')" style="font-size:6px;padding:2px 5px;border-color:rgba(79,172,254,0.4);color:#4facfe;">EDIT</button>
+              <button class="ti-sec-btn" onclick="TempleInterior._dispatchAgent('${a.agent_id}')" style="font-size:6px;padding:2px 5px;">SEND</button>
+              <button class="ti-sec-btn" onclick="TempleInterior.unassignSquid('${a.agent_id}')" style="font-size:6px;padding:2px 5px;border-color:var(--danger);color:var(--danger);">OUT</button>
+            </div>`;
+          }).join('');
     }
   },
 

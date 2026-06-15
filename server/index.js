@@ -443,7 +443,7 @@ app.get('/api/v2/projects/:projectId/outputs', async (req, res) => {
     const files = entries.filter(e => e.isFile()).map(e => ({
       name: e.name,
       path: path.join(outputDir, e.name),
-      size: (() => { try { const s = require('fs').statSync(path.join(outputDir, e.name)); return `${(s.size/1024).toFixed(1)} KB`; } catch { return ''; } })()
+      size: (() => { try { return require('fs').statSync(path.join(outputDir, e.name)).size; } catch { return 0; } })()
     }));
     res.json({ success: true, files, dir: outputDir });
   } catch {
@@ -462,7 +462,7 @@ app.get('/api/v2/projects/:projectId/inputs', async (req, res) => {
     const files = entries.filter(e => e.isFile()).map(e => ({
       name: e.name,
       path: path.join(inputDir, e.name),
-      size: (() => { try { const s = require('fs').statSync(path.join(inputDir, e.name)); return `${(s.size/1024).toFixed(1)} KB`; } catch { return ''; } })()
+      size: (() => { try { return require('fs').statSync(path.join(inputDir, e.name)).size; } catch { return 0; } })()
     }));
     res.json({ success: true, files });
   } catch (e) {

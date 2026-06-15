@@ -504,8 +504,12 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
         if (vramBefore && freeBeforeGb > 0.5) {
           const frac    = Math.min(1.0, (freeBeforeGb * 0.72) / fileSizeGb);
           const computed = Math.round(estLayers * frac);
-          config.gpuLayers = config.gpuLayers === 'max' ? estLayers : Math.max(1, computed);
-          console.log(`  [auto] gpuLayers: ${config.gpuLayers} / ${estLayers}`);
+          // Reserve 2 layers on CPU to free ~320MB VRAM for a larger KV context.
+          // CPU layers add ~1-3% decode latency but allow 8k+ more context tokens.
+          const reserved = 2;
+          const gpuTarget = config.gpuLayers === 'max' ? estLayers : Math.max(1, computed - reserved);
+          config.gpuLayers = gpuTarget;
+          console.log(`  [auto] gpuLayers: ${config.gpuLayers} / ${estLayers} (${reserved} reserved on CPU for KV headroom)`);
         } else {
           config.gpuLayers = 0;
           console.log(`  [auto] gpuLayers: 0 (no VRAM info, CPU only)`);
@@ -552,8 +556,8 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
           const bytesPerTok = config.flashAttention
             ? (isGQA ? 38 * 1024 : 60 * 1024)
             : 100 * 1024;
-          // Leave 300MB headroom for activations and overhead
-          const margin     = 0.30;
+          // Leave 500MB headroom for CUDA runtime, activations, cuBLAS workspace
+          const margin     = 0.50;
           const availKvGb  = Math.max(0, freeAfterGb - margin);
           const toksFit     = Math.floor(availKvGb * 1024 ** 3 / bytesPerTok);
           // Cap at trainCtx but no artificial 32768 cap — real models go to 128k

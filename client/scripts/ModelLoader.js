@@ -1155,7 +1155,7 @@ const ModelLoader = {
       const isDev  = /dev/i.test(f);
       const quantMatch = f.match(/[_-]q(\d+)/i);
       const quant = quantMatch ? parseInt(quantMatch[1]) : 0;
-      const defW  = (quant >= 4 || quant === 0) ? 850 : 1024;
+      const defW  = (quant >= 4 || quant === 0) ? 950 : 1024;
       const defH  = defW;
       return { width: defW, height: defH, steps: isDev ? 20 : 8, cfg: 1.0, label: `Flux optimal (${defW}×${defH})` };
     }

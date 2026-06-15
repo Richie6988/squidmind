@@ -459,9 +459,12 @@ class RegistryManager {
   }
 
   async createAgent(agentData) {
+    // Generate ID FIRST — this increments next_id on disk.
+    // Then read registry fresh so we have the post-increment metadata.
+    const agentId  = await this.generateNextId('agents/agent_registry.json');
+    this.invalidateCache();
     const registry = await this.getAgentRegistry();
-    const agentId = await this.generateNextId('agents/agent_registry.json');
-    const idNum    = agentId.split('_')[1];
+    const idNum    = agentId.split('_').pop();
     const nameSlug = RegistryManager.toSlug(agentData.display_name || agentData.name || 'agent');
     const brainFile = `${nameSlug}_${idNum}.json`;
     const now = new Date().toISOString();

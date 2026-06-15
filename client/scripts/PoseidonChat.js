@@ -122,7 +122,7 @@ const PoseidonChat = {
             <div class="pc-input-actions">
               <button class="pc-mic" id="pc-mic" title="Voice input">🎤</button>
               <button class="pc-send" id="pc-send" title="Send">
-                <svg id="pc-send-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                <svg id="pc-send-icon" width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
               </button>
               <button class="pc-stop-btn" id="pc-stop" title="Stop generation" style="display:none">■ Stop</button>
             </div>
