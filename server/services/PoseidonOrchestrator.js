@@ -132,7 +132,24 @@ My response: "${ss.last_response_preview}"${tools}
       this._sectionToolsPointer(brain),
       this._sectionCurrentState(brain, agentReg, projectReg, taskReg)
     ];
-    return sections.join('\n\n' + '─'.repeat(60) + '\n\n');
+    const fullPrompt = sections.join('\n\n' + '─'.repeat(60) + '\n\n');
+
+    // BG mode: strip verbose sections to save context tokens (~30% reduction)
+    if (bgMode) {
+      const BG_SKIP = ['## TOOLS REFERENCE', '## PATH ALIASES', '## TOOL USAGE', '## Session info', '## SKILLS METACOGNITION'];
+      const bgLines = [];
+      let skip = false;
+      for (const line of fullPrompt.split('\n')) {
+        if (BG_SKIP.some(s => line.startsWith(s))) { skip = true; }
+        if (skip && line.startsWith('## ') && !BG_SKIP.some(s => line.startsWith(s))) { skip = false; }
+        if (!skip) bgLines.push(line);
+      }
+      const compact = bgLines.join('\n');
+      console.log(`[Poseidon] BG system prompt: ${compact.length} chars (was ${fullPrompt.length})`);
+      return compact;
+    }
+
+    return fullPrompt;
   }
   
   /**
@@ -545,34 +562,7 @@ Never describe a bash command you could call instead.`;
     lines.push('## Session info');
     lines.push(`- After multi-step work, call log_decision so next-life-you knows what happened.`);
 
-    const fullPrompt = lines.join('\n');
-
-    // BG mode: aggressively strip optional sections to fit small context windows.
-    // Removes: tool reference docs, session info, verbose skill descriptions.
-    if (bgMode) {
-      const bgLines = [];
-      let skip = false;
-      for (const line of fullPrompt.split('\n')) {
-        // Skip verbose reference sections
-        if (line.startsWith('## TOOLS REFERENCE') || line.startsWith('## PATH ALIASES') ||
-            line.startsWith('## TOOL USAGE') || line.startsWith('## Session info') ||
-            line.startsWith('## SKILLS METACOGNITION')) {
-          skip = true;
-        }
-        // Resume at next ## section
-        if (skip && line.startsWith('## ') && !line.startsWith('## TOOLS REFERENCE') &&
-            !line.startsWith('## PATH ALIASES') && !line.startsWith('## TOOL USAGE') &&
-            !line.startsWith('## Session info') && !line.startsWith('## SKILLS METACOGNITION')) {
-          skip = false;
-        }
-        if (!skip) bgLines.push(line);
-      }
-      const compact = bgLines.join('\n');
-      console.log(`[Poseidon] BG system prompt: ${compact.length} chars (was ${fullPrompt.length})`);
-      return compact;
-    }
-
-    return fullPrompt;
+    return lines.join('\n');
   }
 
   // ===================================================================
