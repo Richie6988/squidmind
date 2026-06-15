@@ -500,10 +500,10 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
       // ~160 MB/layer at Q4_K_M. Clamp to [20, 80].
       const estLayers = Math.max(20, Math.min(80, Math.round(fileSizeGb * 1024 / 160)));
 
-      // Always recalculate gpuLayers dynamically based on CURRENT VRAM.
-      // The stored registry value may be stale (computed under different VRAM conditions).
-      // Force 'auto' mode every load so we always use the optimal split.
-      config.gpuLayers = 'auto';
+      // Always recalculate gpuLayers AND contextLength dynamically based on CURRENT VRAM.
+      // The stored registry values may be stale (computed under different VRAM conditions).
+      config.gpuLayers     = 'auto';
+      config.contextLength = 'auto';
 
       if (config.gpuLayers === 'auto' || config.gpuLayers === 'max') {
         if (vramBefore && freeBeforeGb > 0.5) {
@@ -547,39 +547,31 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
       const freeAfterGb = vramAfter ? vramAfter.free / (1024 ** 3) : 0;
       if (vramAfter) console.log(`  VRAM after weights: ${freeAfterGb.toFixed(2)} GB free`);
 
-      // ── Step 4: Compute target contextLength from REAL remaining VRAM ─────
-      if (config.contextLength === 'auto') {
-        if (vramAfter && freeAfterGb > 0.3) {
-          // Conservative but not capped at 32768.
-          // bytes/tok KV cache estimate:
-          // Q4_K_M + FlashAttention + GQA models (Qwen3, Llama3): ~38KB/tok
-          // Q4_K_M + FlashAttention standard MHA: ~60KB/tok
-          // Q4_K_M no FlashAttention: ~80-100KB/tok
-          // Detect GQA heuristic: model name contains qwen or llama3 → smaller KV
-          const modelName = (this.poseidonModelId || '').toLowerCase();
-          const isGQA = /qwen|llama[-_]?3|mistral|gemma/.test(modelName);
-          const bytesPerTok = config.flashAttention
-            ? (isGQA ? 38 * 1024 : 60 * 1024)
-            : 100 * 1024;
-          // Leave 500MB headroom for CUDA runtime, activations, cuBLAS workspace.
-          // CPU-reserved layer VRAM is already reflected in freeAfterGb (they weren't loaded to GPU).
-          const margin     = 0.50;
-          const availKvGb  = Math.max(0, freeAfterGb - margin);
-          const toksFit     = Math.floor(availKvGb * 1024 ** 3 / bytesPerTok);
-          // Cap at trainCtx but no artificial 32768 cap — real models go to 128k
-          const target      = Math.min(toksFit, trainCtx);
-          config.contextLength = Math.max(V2ModelService.MIN_VIABLE_CTX, Math.floor(target / 1024) * 1024);
-          console.log(`  [auto] contextLength: ${config.contextLength} (${availKvGb.toFixed(2)} GB for KV, trainCtx=${trainCtx})`);
-        } else {
-          config.contextLength = V2ModelService.MIN_VIABLE_CTX;
-          console.log(`  [auto] contextLength: ${config.contextLength} (fallback, no VRAM info)`);
-        }
-      }
+      // ── Step 4: Compute contextLength from REAL remaining VRAM ─────────
+      // Always recompute — never trust the stored value (stale, wrong GPU, etc.)
+      {
+        const modelName = (this.poseidonModelId || fileName.replace(/\.gguf$/i, '')).toLowerCase();
+        const isGQA = /qwen|llama[-_]?3|mistral|gemma/.test(modelName);
+        const bytesPerTok = config.flashAttention
+          ? (isGQA ? 38 * 1024 : 60 * 1024)
+          : 100 * 1024;
+        const margin = 0.50;
 
-      // Never exceed model's own trainCtx
-      if (config.contextLength > trainCtx) {
-        config.contextLength = trainCtx;
-        console.log(`  clamped contextLength to trainCtx=${trainCtx}`);
+        if (vramAfter && freeAfterGb > margin + 0.1) {
+          const availKvGb = freeAfterGb - margin;
+          const toksFit   = Math.floor(availKvGb * 1024 ** 3 / bytesPerTok);
+          const computed  = Math.max(V2ModelService.MIN_VIABLE_CTX, Math.floor(toksFit / 1024) * 1024);
+          config.contextLength = Math.min(computed, trainCtx);
+          console.log(`  [auto] contextLength: ${config.contextLength} (availKv=${availKvGb.toFixed(2)}GB, ${bytesPerTok/1024}KB/tok, isGQA=${isGQA}, toksFit=${toksFit})`);
+        } else if (!vramAfter) {
+          // No VRAM info — use a conservative default
+          config.contextLength = 8192;
+          console.log(`  [auto] contextLength: ${config.contextLength} (no VRAM info, conservative default)`);
+        } else {
+          // Very little VRAM left — use minimum viable
+          config.contextLength = V2ModelService.MIN_VIABLE_CTX;
+          console.log(`  [auto] contextLength: ${config.contextLength} (low VRAM: ${freeAfterGb.toFixed(2)}GB free)`);
+        }
       }
 
       // ── Step 5: CREATE CONTEXT — retry DOWN without reloading the model ───
@@ -923,9 +915,18 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
       await this.ensureLoaded(this.poseidonModelId);
     }
     
-    const entry = this.loaded.get(this.poseidonModelId);
-    if (!entry) {
-      throw new Error('Poseidon model failed to load');
+    let entry = this.loaded.get(this.poseidonModelId);
+    if (!entry) throw new Error('Poseidon model failed to load');
+
+    // If loaded entry has a tiny context (stale load with wrong config), evict and reload
+    const entryCtx = entry.config?.contextLength || entry.context?.contextSize || 0;
+    if (entryCtx > 0 && entryCtx < 8192) {
+      console.log(`[V2ModelService] Entry ctx=${entryCtx} too small — evicting and reloading with VRAM-optimal ctx`);
+      await this.unloadModel(this.poseidonModelId).catch(() => {});
+      await this.ensureLoaded(this.poseidonModelId);
+      entry = this.loaded.get(this.poseidonModelId);
+      if (!entry) throw new Error('Poseidon model failed to reload');
+      console.log(`[V2ModelService] Reloaded with ctx=${entry.config?.contextLength}`);
     }
     // Acquire the model slot unless caller already holds it (e.g. TaskRunner BG)
     const brokerToken = _skipBroker
