@@ -201,7 +201,23 @@ class TaskRunner {
       });
 
     if (runnable.length === 0) {
-      console.log(`[TaskRunner] tick: 0 runnable tasks (${allTasks.length} total, ${allTasks.filter(t=>this._done.has(t.task_id)).length} done)`);
+      const nonRunnable = allTasks.filter(t => {
+        const s = t.lifecycle?.status || t.status || 'open';
+        return !this._done.has(t.task_id) && !['completed','cancelled','archived'].includes(s);
+      });
+      if (nonRunnable.length > 0) {
+        console.log(`[TaskRunner] tick: 0 runnable — ${nonRunnable.length} blocked tasks:`);
+        nonRunnable.slice(0,5).forEach(t => {
+          const s = t.lifecycle?.status || t.status || '?';
+          const fails = this._failCounts.get(t.task_id) || 0;
+          const retry = this._retryAfter.get(t.task_id) || 0;
+          const retryIn = retry > Date.now() ? Math.ceil((retry - Date.now())/1000) + 's' : 'ok';
+          const inDone  = this._done.has(t.task_id);
+          console.log(`  ${t.task_id} status=${s} fails=${fails}/${this.MAX_RETRIES} retry=${retryIn} done=${inDone}`);
+        });
+      } else {
+        console.log(`[TaskRunner] tick: 0 runnable tasks (${allTasks.length} total, ${allTasks.filter(t=>this._done.has(t.task_id)).length} done)`);
+      }
       return;
     }
     const task = runnable[0];
