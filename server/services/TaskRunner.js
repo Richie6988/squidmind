@@ -95,9 +95,11 @@ class TaskRunner {
   /** Called by route when chat modal opens or closes */
   setChatActive(isOpen) {
     if (isOpen) {
+      // Block BG tasks while user is actively chatting
       this._chatOpenUntil = Date.now() + 30_000;
     } else {
-      this._chatOpenUntil = Date.now() + 30_000;
+      // Chat closed — allow BG tasks after a short grace period (session cleanup)
+      this._chatOpenUntil = Date.now() + 3_000;
     }
   }
 
