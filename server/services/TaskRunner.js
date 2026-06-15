@@ -107,15 +107,15 @@ class TaskRunner {
     // Sequential: if any task is already running, skip this tick
     if (this._running.size > 0) return;
     // Wait for _done to be loaded from disk before running any task
-    if (!this._doneLoaded) return;
+    if (!this._doneLoaded) { console.log('[TaskRunner] tick: waiting for _done to load'); return; }
     // Wait for model to be loaded before running any task
-    if (this.modelService.loaded.size === 0) return;
+    if (this.modelService.loaded.size === 0) { console.log('[TaskRunner] tick: no model loaded'); return; }
     // Don't start BG tasks if chat modal is open or recently closed
-    if (Date.now() < this._chatOpenUntil) return;
+    if (Date.now() < this._chatOpenUntil) { console.log(`[TaskRunner] tick: chat cooldown (${Math.ceil((this._chatOpenUntil - Date.now())/1000)}s remaining)`); return; }
     // Don't start BG tasks if CHAT is active or waiting — user interaction takes priority
     const brokerState = this.modelService.broker.getState();
-    if (brokerState.state !== 'IDLE') return;  // someone holds the broker
-    if (this.modelService.broker.hasHighPriorityWaiting()) return;  // CHAT or IMAGE queued
+    if (brokerState.state !== 'IDLE') { console.log(`[TaskRunner] tick: broker busy (${brokerState.state} by ${brokerState.owner})`); return; }
+    if (this.modelService.broker.hasHighPriorityWaiting()) { console.log('[TaskRunner] tick: high-priority waiter'); return; }
 
     let reg;
     try {
@@ -200,8 +200,12 @@ class TaskRunner {
         return (a.task_id || '').localeCompare(b.task_id || '');
       });
 
-    if (runnable.length === 0) return;
+    if (runnable.length === 0) {
+      console.log(`[TaskRunner] tick: 0 runnable tasks (${allTasks.length} total, ${allTasks.filter(t=>this._done.has(t.task_id)).length} done)`);
+      return;
+    }
     const task = runnable[0];
+    console.log(`[TaskRunner] tick: dispatching ${task.task_id} "${task.title?.slice(0,40)}"`);
     this._runTask(task).catch(e =>
       console.error(`[TaskRunner] Task ${task.task_id} error:`, e.message)
     );
