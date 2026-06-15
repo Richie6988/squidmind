@@ -275,6 +275,16 @@ class BotService extends EventEmitter {
     const entry = { at: new Date().toISOString(), platform: 'telegram', from: username, text, reply: null, ok: false };
 
     try {
+      // ── Slash commands — handled locally, never sent to Poseidon LLM ──────
+      if (text.startsWith('/')) {
+        const reply = await this._handleSlashCommand(text, 'telegram');
+        for (const chunk of this._splitMessage(reply, 4096)) {
+          await this._tgCall(token, 'sendMessage', { chat_id: chatId, text: chunk });
+        }
+        entry.reply = reply.slice(0, 300); entry.ok = true;
+        return;
+      }
+
       const reply = await this._runPoseidon(text, `telegram:${chatId}`);
 
       // Telegram message limit = 4096 chars; chunk if needed
@@ -476,6 +486,16 @@ class BotService extends EventEmitter {
     const entry = { at: new Date().toISOString(), platform: 'discord', from: username, text, reply: null, ok: false };
 
     try {
+      // ── Slash commands ──────────────────────────────────────────────────────
+      if (text.startsWith('/')) {
+        const reply = await this._handleSlashCommand(text, 'discord');
+        for (const chunk of this._splitMessage(reply, 1900)) {
+          await this._dsSend(channelId, `<@${userId}> ${chunk}`);
+        }
+        entry.reply = reply.slice(0, 300); entry.ok = true;
+        return;
+      }
+
       const reply = await this._runPoseidon(text, `discord:${channelId}`);
       // Discord message limit = 2000 chars
       const chunks = this._splitMessage(reply, 1900);
@@ -568,6 +588,231 @@ class BotService extends EventEmitter {
     lines.push('RULE: Always write files inside the aquarium paths above. Never use relative paths like "./output" or "/tmp".');
     lines.push('RULE: For project files use the project folder paths listed above.');
     return lines.join('\n');
+  }
+
+  /**
+   * Handle /slash commands from Telegram or Discord.
+   * These are handled locally (no LLM call) for speed and reliability.
+   *
+   * Commands:
+   *   /help               — list all commands
+   *   /models             — list all models in library with status
+   *   /load <name>        — load a model (fuzzy match on model_id or file_name)
+   *   /unload             — unload current model (frees VRAM)
+   *   /status             — show loaded model, ctx, VRAM, tasks, agents
+   *   /ctx                — show current context window info
+   *   /tasks              — show last 5 tasks status
+   *   /restart            — unload + reload current Poseidon model
+   */
+  async _handleSlashCommand(text, platform) {
+    const [cmd, ...args] = text.split(/\s+/);
+    const arg = args.join(' ').trim();
+
+    switch (cmd.toLowerCase()) {
+
+      case '/help':
+        return [
+          '🔱 *IAQUA Bot Commands*',
+          '',
+          '`/models`        — list all models in library',
+          '`/load <name>`   — load a model (fuzzy name match)',
+          '`/unload`        — unload current model (free VRAM)',
+          '`/restart`       — unload + reload current Poseidon model',
+          '`/status`        — system status (model, ctx, VRAM, tasks)',
+          '`/ctx`           — context window details',
+          '`/tasks`         — recent task status',
+          '',
+          'Any other message is sent to Poseidon for processing.',
+        ].join('\n');
+
+      case '/models': {
+        try {
+          this.rm.invalidateCache();
+          const reg = await this.rm.read('models/model_registry.json');
+          const models = Object.values(reg.models || {});
+          if (!models.length) return '📦 No models in library. Import a GGUF model first.';
+          const loaded = this.modelService.loaded;
+          const posId  = this.modelService.poseidonModelId;
+          const lines  = ['📦 *Model Library*', ''];
+          for (const m of models) {
+            const isLoaded  = loaded.has(m.model_id);
+            const isPos     = m.model_id === posId;
+            const ctx       = isLoaded ? loaded.get(m.model_id)?.config?.contextLength : null;
+            const statusIcon = isLoaded ? (isPos ? '🧠' : '✅') : '💤';
+            const ctxStr    = ctx ? ` [ctx=${ctx}]` : '';
+            const catStr    = m.config?.model_category ? ` (${m.config.model_category})` : '';
+            lines.push(`${statusIcon} \`${m.model_id}\`${catStr}${ctxStr}`);
+            lines.push(`   ${m.file_name} — ${m.file_size_gb || '?'}GB`);
+          }
+          lines.push('', '🧠 = active Poseidon  ✅ = loaded  💤 = not loaded');
+          return lines.join('\n');
+        } catch (e) { return `❌ Error reading model library: ${e.message}`; }
+      }
+
+      case '/load': {
+        if (!arg) return '❌ Usage: `/load <model_name_or_id>`\nExample: `/load qwen3` or `/load flux`';
+        try {
+          this.rm.invalidateCache();
+          const reg = await this.rm.read('models/model_registry.json');
+          const models = Object.values(reg.models || {});
+          const query  = arg.toLowerCase();
+          // Fuzzy match: exact id → startsWith → includes in id → includes in filename
+          const found  = models.find(m => m.model_id === query)
+            || models.find(m => m.model_id.startsWith(query))
+            || models.find(m => m.model_id.includes(query))
+            || models.find(m => (m.file_name || '').toLowerCase().includes(query));
+          if (!found) return `❌ No model matching \`${arg}\`\nUse /models to list available models.`;
+
+          // Check if already loaded
+          if (this.modelService.loaded.has(found.model_id)) {
+            const e = this.modelService.loaded.get(found.model_id);
+            return `ℹ️ \`${found.model_id}\` is already loaded (ctx=${e.config?.contextLength || '?'})`;
+          }
+
+          // If it's a text model, set it as Poseidon and load
+          const isImage = found.config?.model_type === 'image' || found.config?.model_category === 'image';
+          if (isImage) {
+            return `ℹ️ \`${found.model_id}\` is an image model — it will be loaded on-demand for image generation. Use Poseidon to generate images instead.`;
+          }
+
+          // Kick off load (non-blocking reply, then load)
+          const loadMsg = `⏳ Loading \`${found.model_id}\` (${found.file_size_gb || '?'}GB)...\nThis may take 10-30 seconds.`;
+          // Set as Poseidon model if no model is set or explicitly requested
+          const setPoseidon = !this.modelService.poseidonModelId || arg.toLowerCase() === this.modelService.poseidonModelId;
+
+          // Fire-and-forget load with status update
+          (async () => {
+            try {
+              if (setPoseidon) await this.modelService.setPoseidonModel(found.model_id);
+              await this.modelService.ensureLoaded(found.model_id);
+              const e   = this.modelService.loaded.get(found.model_id);
+              const ctx = e?.config?.contextLength || '?';
+              const msg = `✅ \`${found.model_id}\` ready (ctx=${ctx})${setPoseidon ? ' — set as Poseidon' : ''}`;
+              await this.notify(msg);
+            } catch (err) {
+              await this.notify(`❌ Load failed for \`${found.model_id}\`: ${err.message}`);
+            }
+          })();
+
+          return loadMsg;
+        } catch (e) { return `❌ Load error: ${e.message}`; }
+      }
+
+      case '/unload': {
+        const posId = this.modelService.poseidonModelId;
+        const loaded = [...this.modelService.loaded.keys()];
+        if (!loaded.length) return 'ℹ️ No models are currently loaded.';
+        try {
+          for (const id of loaded) await this.modelService.unloadModel(id).catch(() => {});
+          return `✅ Unloaded ${loaded.length} model(s): ${loaded.join(', ')}\nVRAM freed.`;
+        } catch (e) { return `❌ Unload error: ${e.message}`; }
+      }
+
+      case '/restart': {
+        const posId = this.modelService.poseidonModelId;
+        if (!posId) return '❌ No Poseidon model assigned. Use `/load <name>` first.';
+        (async () => {
+          try {
+            await this.notify(`⏳ Restarting \`${posId}\`...`);
+            await this.modelService.unloadModel(posId).catch(() => {});
+            await this.modelService.ensureLoaded(posId);
+            const e   = this.modelService.loaded.get(posId);
+            const ctx = e?.config?.contextLength || '?';
+            await this.notify(`✅ \`${posId}\` reloaded (ctx=${ctx})`);
+          } catch (err) {
+            await this.notify(`❌ Restart failed: ${err.message}`);
+          }
+        })();
+        return `⏳ Restarting \`${posId}\`... You'll get a notification when ready.`;
+      }
+
+      case '/status': {
+        try {
+          const lines = ['🔱 *IAQUA System Status*', ''];
+          // Model
+          const posId  = this.modelService.poseidonModelId;
+          const entry  = posId ? this.modelService.loaded.get(posId) : null;
+          if (entry) {
+            const ctx     = entry.config?.contextLength || '?';
+            const ctxUsed = entry.contextUsedTokens || 0;
+            const ctxPct  = entry.contextPct || 0;
+            const uptime  = entry.loadedAt ? Math.round((Date.now() - entry.loadedAt) / 60000) : 0;
+            lines.push(`🧠 *Model:* \`${posId}\``);
+            lines.push(`   Context: ${ctxUsed}/${ctx} tokens (${ctxPct}%)`);
+            lines.push(`   Uptime: ${uptime}m | Requests: ${entry.totalRequests || 0}`);
+          } else {
+            lines.push('🧠 *Model:* none loaded');
+          }
+          // VRAM
+          try {
+            const llama = await this.modelService._ensureLib();
+            if (llama.getVramState) {
+              const v = await llama.getVramState();
+              const free  = (v.free  / 1024**3).toFixed(2);
+              const total = (v.total / 1024**3).toFixed(2);
+              lines.push(`💾 *VRAM:* ${free}/${total} GB free`);
+            }
+          } catch {}
+          // Tasks
+          try {
+            const tReg = await this.rm.getTasksRegistry();
+            const tasks = Object.values(tReg.tasks || {});
+            const running  = tasks.filter(t => (t.lifecycle?.status || t.status) === 'in_progress').length;
+            const queued   = tasks.filter(t => ['open','planned'].includes(t.lifecycle?.status || t.status)).length;
+            const failed   = tasks.filter(t => (t.lifecycle?.status || t.status) === 'failed').length;
+            lines.push(`📋 *Tasks:* ${running} running | ${queued} queued | ${failed} failed`);
+          } catch {}
+          // Agents
+          try {
+            const aReg = await this.rm.getAgentRegistry();
+            const agents = Object.values(aReg.agents || {});
+            const active = agents.filter(a => a.status === 'active').length;
+            lines.push(`🦑 *Agents:* ${agents.length} total | ${active} active`);
+          } catch {}
+          return lines.join('\n');
+        } catch (e) { return `❌ Status error: ${e.message}`; }
+      }
+
+      case '/ctx': {
+        const posId = this.modelService.poseidonModelId;
+        const entry = posId ? this.modelService.loaded.get(posId) : null;
+        if (!entry) return '❌ No model loaded.';
+        const ctx     = entry.config?.contextLength || entry.context?.contextSize || '?';
+        const used    = entry.contextUsedTokens || 0;
+        const pct     = entry.contextPct || 0;
+        const sess    = entry.sessionTurns || 0;
+        const gpu     = entry.config?.gpuLayers ?? '?';
+        return [
+          `📊 *Context Window — ${posId}*`,
+          `Total: ${ctx} tokens`,
+          `Used:  ${used} (${pct}%)`,
+          `Turns: ${sess}`,
+          `GPU layers: ${gpu}`,
+          `Flash attention: ${entry.config?.flashAttention ? 'yes' : 'no'}`,
+        ].join('\n');
+      }
+
+      case '/tasks': {
+        try {
+          const tReg  = await this.rm.getTasksRegistry();
+          const tasks = Object.values(tReg.tasks || {})
+            .sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0))
+            .slice(0, 8);
+          if (!tasks.length) return 'ℹ️ No tasks found.';
+          const icon = { completed: '✅', failed: '❌', in_progress: '⚙️', open: '⏳', planned: '📋' };
+          const lines = ['📋 *Recent Tasks*', ''];
+          for (const t of tasks) {
+            const s = t.lifecycle?.status || t.status || 'open';
+            lines.push(`${icon[s] || '•'} \`${t.task_id}\` ${t.title?.slice(0, 40) || ''}${t.title?.length > 40 ? '…' : ''}`);
+            if (t.result_summary) lines.push(`   └ ${t.result_summary.slice(0, 80)}`);
+          }
+          return lines.join('\n');
+        } catch (e) { return `❌ Tasks error: ${e.message}`; }
+      }
+
+      default:
+        return `❓ Unknown command: \`${cmd}\`\nType /help for available commands.`;
+    }
   }
 
   async _runPoseidon(text, conversationKey) {
