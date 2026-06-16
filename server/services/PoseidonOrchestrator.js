@@ -299,13 +299,15 @@ My response: "${ss.last_response_preview}"${tools}
       lines.push('  read_my_brain("skills.<id>") → read a specific skill steps');
       lines.push('NOTE: file paths use aquarium layout: MODELS/, AGENTS/, PROJECTS/, TASKS/, BRAIN/, SKILLS/, CHANNELS/');
       lines.push('PATH ALIASES (use these with list_files / read_file / write_file):');
-      lines.push('  list_files("PROJECTS/PROJECT_001")      → browse project 001 folder');
-      lines.push('  list_files("PROJECTS/PROJECT_001/input") → project input files');
-      lines.push('  read_file("PROJECTS/PROJECT_001/input/sources.json") → read a file');
-      lines.push('  write_file("PROJECTS/PROJECT_001/input/out.json", content) → write output');
-      lines.push('  list_files("TASKS/OUTPUT")              → generated images / task outputs');
+      lines.push('  Project folder = PROJECTS/<NAME>/ where NAME = uppercase project name (e.g. PROJECTS/CRYPTO_ANALYSIS/)');
+      lines.push('  list_files("PROJECTS/CRYPTO_ANALYSIS")         → browse project folder');
+      lines.push('  list_files("PROJECTS/CRYPTO_ANALYSIS/input")   → input files');
+      lines.push('  list_files("PROJECTS/CRYPTO_ANALYSIS/output")  → output files');
+      lines.push('  read_file("PROJECTS/CRYPTO_ANALYSIS/project_memory.json") → project memory');
+      lines.push('  write_file("PROJECTS/CRYPTO_ANALYSIS/output/report.md", content) → save output');
+      lines.push('  list_files("TASKS/OUTPUT")              → task outputs (no project)');
       lines.push('  list_files("PROJECTS")                  → list all project folders');
-      lines.push('CRITICAL: NEVER use list_files("NEWS") — projects live in PROJECTS/ folder!');
+      lines.push('CRITICAL: folder name = project NAME not project_id. Use list_files("PROJECTS") to see all folders.');
       lines.push('MULTI-STEP TASKS: after each step call update_task(id, "progress", "step N/M done: ...") so context resets dont lose state.');
       lines.push('DATA OUTPUT RULE — MANDATORY: when a task produces structured data (prices, stats, lists, research, any tabular data), you MUST write_file with the actual data in an appropriate format: .csv for tables, .json for structured data, .md only for reports/docs. NEVER summarize data without also saving the raw data. Example: crypto prices → write a .csv with columns date,coin,open,high,low,close,volume. A task whose output is only a .md summary when it should have produced data is INCOMPLETE.');
       lines.push('PROJECT MEMORY PROTOCOL — MANDATORY for project tasks:');
@@ -540,9 +542,8 @@ Never describe a bash command you could call instead.`;
       const AQUARIUM = require('../aquarium');
       projectList.forEach(p => {
         const agents = (p.assigned_agents || []).length;
-        const folder = p.folder_name || p.project_id?.replace('PROJECT_','').padStart(3,'0');
-        const folderPath = folder ? `PROJECTS/PROJECT_${folder.replace(/^PROJECT_/,'')}` : `PROJECTS/${p.project_id}`;
-        lines.push(`- ${p.project_id}: ${p.name} | folder: ${folderPath} | ${p.metrics?.completion_percent || 0}% done | ${agents} agent${agents === 1 ? '' : 's'}`);
+        const folder = p.folder || p.name?.toUpperCase().replace(/[^A-Z0-9_-]/g, '_').slice(0,48) || p.project_id;
+        lines.push(`- ${p.project_id}: ${p.name} | PROJECTS/${folder}/ | ${p.metrics?.completion_percent || 0}% | agents: ${agents}`);
       });
     }
     
@@ -1476,25 +1477,25 @@ Never describe a bash command you could call instead.`;
 
   async _createProject({ name, vision }) {
     try {
+      const AQUARIUM = require('../aquarium');
       const upperName = name.toUpperCase();
       this.rm.invalidateCache();
       const reg = await this.rm.read('projects/project_registry.json');
-      
+
       for (const p of Object.values(reg.projects || {})) {
         if (p.name === upperName) return { ok: false, error: `Project ${upperName} already exists` };
       }
-      
+
       const nextId = reg.metadata.next_id || 1;
       const projectId = `project_${String(nextId).padStart(3, '0')}`;
-      // Use project name as folder name (sanitized) for human-readable paths
-      const safeName = upperName.replace(/[^A-Z0-9_-]/g, '_').slice(0, 32);
-      const folderName = safeName;
-      const projectDir = require('../aquarium').projects(folderName);
-      
-      await fs.mkdir(projectDir, { recursive: true });
-      await fs.mkdir(path.join(projectDir, 'input'), { recursive: true });
+      // Folder = canonical uppercase name — always, never project_id
+      const folder = upperName.replace(/[^A-Z0-9_-]/g, '_').slice(0, 48);
+      const projectDir = AQUARIUM.projects(folder);
+
+      // Create folder structure: <NAME>/input/, <NAME>/output/, <NAME>/project_memory.json
+      await fs.mkdir(path.join(projectDir, 'input'),  { recursive: true });
       await fs.mkdir(path.join(projectDir, 'output'), { recursive: true });
-      
+
       const memory = {
         schema_version: '2.0.0', schema_type: 'project_memory',
         project_id: projectId, name: upperName,
@@ -1506,10 +1507,11 @@ Never describe a bash command you could call instead.`;
         created: new Date().toISOString()
       };
       await fs.writeFile(path.join(projectDir, 'project_memory.json'), JSON.stringify(memory, null, 2), 'utf8');
-      
+
       reg.projects[projectId] = {
-        project_id: projectId, name: upperName, folder: folderName,
-        memory_file: `${folderName}/project_memory.json`,
+        project_id: projectId, name: upperName,
+        folder,  // = uppercase name, human-readable, never project_id
+        memory_file: `${folder}/project_memory.json`,
         status: 'active',
         colors: memory.colors, temple_shape: 'classic',
         assigned_agents: [], vision: memory.vision,
@@ -1521,18 +1523,19 @@ Never describe a bash command you could call instead.`;
       reg.metadata.next_id = nextId + 1;
       reg.metadata.last_id_used = nextId;
       reg.metadata.total_active = (reg.metadata.total_active || 0) + 1;
-      
+
       await this.rm.write('projects/project_registry.json', reg);
-      
+
       await this.rm.log({
         event_type: 'project_created',
         actor: { type: 'system', id: 'poseidon_main' },
         subject: { type: 'project', id: projectId },
-        action: `Poseidon created project ${upperName}`,
+        action: `Poseidon created project ${upperName} → PROJECTS/${folder}/`,
         context: { vision }
       });
-      
-      return { ok: true, project_id: projectId, name: upperName, message: `Created project ${upperName} (${projectId}).` };
+
+      return { ok: true, project_id: projectId, name: upperName, folder,
+        message: `Created project ${upperName}. Files go in PROJECTS/${folder}/input/ and PROJECTS/${folder}/output/.` };
     } catch (err) {
       return { ok: false, error: err.message };
     }

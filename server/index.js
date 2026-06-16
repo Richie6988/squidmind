@@ -559,34 +559,33 @@ app.get('/api/logs', async (req, res) => {
 const dataProjectsPath = AQUARIUM.PROJECTS;
 
 // GET /api/v2/projects/:projectId/outputs — list output files
-// Checks both 'output' (created by Poseidon) and 'outputs' dirs
 app.get('/api/v2/projects/:projectId/outputs', async (req, res) => {
-  const safeProject = req.params.projectId.toUpperCase().replace(/[^A-Z0-9_]/g, '');
   const fsp2 = require('fs').promises;
-  // Try 'output' first (created by _createProject), then 'outputs'
-  let outputDir = path.join(dataProjectsPath, safeProject, 'output');
-  try { await fsp2.access(outputDir); } catch {
-    outputDir = path.join(dataProjectsPath, safeProject, 'outputs');
-  }
   try {
-    const entries = await fsp2.readdir(outputDir, { withFileTypes: true });
-    const files = entries.filter(e => e.isFile()).map(e => ({
-      name: e.name,
-      path: path.join(outputDir, e.name),
-      size: (() => { try { return require('fs').statSync(path.join(outputDir, e.name)).size; } catch { return 0; } })()
-    }));
-    res.json({ success: true, files, dir: outputDir });
-  } catch {
-    res.json({ success: true, files: [], dir: outputDir });
-  }
+    const proj = await sharedRm.resolveProjectByNameOrId(req.params.projectId);
+    const folder = proj?.entry?.folder || req.params.projectId.toUpperCase().replace(/[^A-Z0-9_]/g, '_');
+    const outputDir = path.join(AQUARIUM.PROJECTS, folder, 'output');
+    try {
+      const entries = await fsp2.readdir(outputDir, { withFileTypes: true });
+      const files = entries.filter(e => e.isFile()).map(e => ({
+        name: e.name,
+        path: path.join(outputDir, e.name),
+        size: (() => { try { return require('fs').statSync(path.join(outputDir, e.name)).size; } catch { return 0; } })()
+      }));
+      res.json({ success: true, files, dir: outputDir });
+    } catch {
+      res.json({ success: true, files: [], dir: outputDir });
+    }
+  } catch (err) { res.status(500).json({ success: false, error: err.message }); }
 });
 
 // GET /api/v2/projects/:projectId/inputs — list input files
 app.get('/api/v2/projects/:projectId/inputs', async (req, res) => {
-  const safeProject = req.params.projectId.toUpperCase().replace(/[^A-Z0-9_]/g, '');
   const fsp2 = require('fs').promises;
-  const inputDir = path.join(dataProjectsPath, safeProject, 'input');
   try {
+    const proj = await sharedRm.resolveProjectByNameOrId(req.params.projectId);
+    const folder = proj?.entry?.folder || req.params.projectId.toUpperCase().replace(/[^A-Z0-9_]/g, '_');
+    const inputDir = path.join(AQUARIUM.PROJECTS, folder, 'input');
     await fsp2.mkdir(inputDir, { recursive: true });
     const entries = await fsp2.readdir(inputDir, { withFileTypes: true });
     const files = entries.filter(e => e.isFile()).map(e => ({
@@ -595,66 +594,64 @@ app.get('/api/v2/projects/:projectId/inputs', async (req, res) => {
       size: (() => { try { return require('fs').statSync(path.join(inputDir, e.name)).size; } catch { return 0; } })()
     }));
     res.json({ success: true, files });
-  } catch (e) {
-    res.json({ success: true, files: [], error: e.message });
-  }
+  } catch (e) { res.json({ success: true, files: [], error: e.message }); }
 });
 
 // POST /api/v2/projects/:projectId/inputs — upload a file to project input/
 // Body: { fileName: string, content: string (base64 or text), encoding: 'base64'|'utf8' }
 app.post('/api/v2/projects/:projectId/inputs', express.json({ limit: '50mb' }), async (req, res) => {
-  const safeProject = req.params.projectId.toUpperCase().replace(/[^A-Z0-9_]/g, '');
   const { fileName, content, encoding = 'utf8' } = req.body;
   if (!fileName || content === undefined) return res.status(400).json({ success: false, error: 'fileName and content required' });
   const safeName = fileName.replace(/[^a-zA-Z0-9._\-\ ()]/g, '_');
   const fsp2 = require('fs').promises;
-  const inputDir = path.join(dataProjectsPath, safeProject, 'input');
   try {
+    const proj = await sharedRm.resolveProjectByNameOrId(req.params.projectId);
+    const folder = proj?.entry?.folder || req.params.projectId.toUpperCase().replace(/[^A-Z0-9_]/g, '_');
+    const inputDir = path.join(AQUARIUM.PROJECTS, folder, 'input');
     await fsp2.mkdir(inputDir, { recursive: true });
     const dest = path.join(inputDir, safeName);
     if (!dest.startsWith(inputDir)) return res.status(403).json({ success: false, error: 'path traversal' });
     const buf = encoding === 'base64' ? Buffer.from(content, 'base64') : Buffer.from(content, 'utf8');
     await fsp2.writeFile(dest, buf);
     res.json({ success: true, fileName: safeName, size: buf.length });
-  } catch (e) {
-    res.status(500).json({ success: false, error: e.message });
-  }
+  } catch (e) { res.status(500).json({ success: false, error: e.message }); }
 });
 
 // DELETE /api/v2/projects/:projectId/inputs/:filename — remove input file
 app.delete('/api/v2/projects/:projectId/inputs/:filename', async (req, res) => {
-  const safeProject = req.params.projectId.toUpperCase().replace(/[^A-Z0-9_]/g, '');
   const safeName = req.params.filename.replace(/[^a-zA-Z0-9._\-\ ()]/g, '_');
   const fsp2 = require('fs').promises;
-  const filePath = path.join(dataProjectsPath, safeProject, 'input', safeName);
-  if (!filePath.startsWith(dataProjectsPath)) return res.status(403).json({ success: false, error: 'forbidden' });
-  try { await fsp2.unlink(filePath); res.json({ success: true }); }
-  catch (e) { res.status(404).json({ success: false, error: e.message }); }
+  try {
+    const proj = await sharedRm.resolveProjectByNameOrId(req.params.projectId);
+    const folder = proj?.entry?.folder || req.params.projectId.toUpperCase().replace(/[^A-Z0-9_]/g, '_');
+    const filePath = path.join(AQUARIUM.PROJECTS, folder, 'input', safeName);
+    if (!filePath.startsWith(AQUARIUM.PROJECTS)) return res.status(403).json({ success: false, error: 'forbidden' });
+    await fsp2.unlink(filePath); res.json({ success: true });
+  } catch (e) { res.status(404).json({ success: false, error: e.message }); }
 });
 
 // GET /api/v2/projects/:projectId/inputs/:filename — serve input file  
-app.get('/api/v2/projects/:projectId/inputs/:filename', (req, res) => {
-  const safeProject = req.params.projectId.toUpperCase().replace(/[^A-Z0-9_]/g, '');
+app.get('/api/v2/projects/:projectId/inputs/:filename', async (req, res) => {
   const safeName = req.params.filename.replace(/[^a-zA-Z0-9._\-\ ()]/g, '_');
-  const filePath = path.join(dataProjectsPath, safeProject, 'input', safeName);
-  if (!filePath.startsWith(dataProjectsPath)) return res.status(403).send('Forbidden');
-  res.sendFile(filePath, err => { if (err) res.status(404).json({ error: 'Input file not found' }); });
+  try {
+    const proj = await sharedRm.resolveProjectByNameOrId(req.params.projectId);
+    const folder = proj?.entry?.folder || req.params.projectId.toUpperCase().replace(/[^A-Z0-9_]/g, '_');
+    const filePath = path.join(AQUARIUM.PROJECTS, folder, 'input', safeName);
+    if (!filePath.startsWith(AQUARIUM.PROJECTS)) return res.status(403).send('Forbidden');
+    res.sendFile(filePath, err => { if (err) res.status(404).json({ error: 'Input file not found' }); });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.get('/api/v2/projects/:projectId/outputs/:filename', (req, res) => {
-  const { projectId, filename } = req.params;
-  const safeProject = projectId.toUpperCase().replace(/[^A-Z0-9_]/g, '');
-  const safeFile    = filename.replace(/[^a-zA-Z0-9._\- ()]/g, '');
-  // Try 'output' dir first, then 'outputs'
-  let filePath = path.join(dataProjectsPath, safeProject, 'output', safeFile);
-  if (!require('fs').existsSync(filePath)) {
-    filePath = path.join(dataProjectsPath, safeProject, 'outputs', safeFile);
-  }
-  if (!filePath.startsWith(dataProjectsPath)) return res.status(403).send('Forbidden');
-  res.sendFile(filePath, err => {
-    if (err) res.status(404).json({ error: 'Output file not found', path: filePath });
-  });
-});
+app.get('/api/v2/projects/:projectId/outputs/:filename', async (req, res) => {
+  const safeFile = req.params.filename.replace(/[^a-zA-Z0-9._\- ()]/g, '');
+  try {
+    const proj = await sharedRm.resolveProjectByNameOrId(req.params.projectId);
+    const folder = proj?.entry?.folder || req.params.projectId.toUpperCase().replace(/[^A-Z0-9_]/g, '_');
+    const filePath = path.join(AQUARIUM.PROJECTS, folder, 'output', safeFile);
+    if (!filePath.startsWith(AQUARIUM.PROJECTS)) return res.status(403).send('Forbidden');
+    res.sendFile(filePath, err => { if (err) res.status(404).json({ error: 'Output file not found' }); });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});;
 
 // GET /api/files/read?path=... — read any file within aquarium or project dirs
 // Used by TempleInterior to load input/output file content for display

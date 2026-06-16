@@ -750,6 +750,18 @@ class RegistryManager {
   // ==================== PROJECTS ====================
 
   /**
+   * Canonical folder name for a project = uppercase sanitized name.
+   * aquarium/PROJECTS/<FOLDER>/input|output|project_memory.json
+   * This is the single source of truth — never use project_id as folder name.
+   */
+  static projectFolder(nameOrEntry) {
+    const name = typeof nameOrEntry === 'string'
+      ? nameOrEntry
+      : (nameOrEntry.name || nameOrEntry.folder || '');
+    return name.toUpperCase().replace(/[^A-Z0-9_-]/g, '_').slice(0, 48);
+  }
+
+  /**
    * Thin wrapper used by TaskRunner and AgentWorker.
    * 'active' → calls wakeAgent, 'sleeping' → calls sleepAgent.
    * Also updates current_task_id on the registry entry when provided.
@@ -793,32 +805,54 @@ class RegistryManager {
     const registry = await this.getProjectRegistry();
     const entry = registry.projects[projectId];
     if (!entry) return null;
-    const memory = await this.read(`projects/${entry.memory_file}`);
+    const folder = RegistryManager.projectFolder(entry);
+    const memory = await this.read(`projects/${folder}/project_memory.json`).catch(() => null);
     return { registry_entry: entry, memory };
   }
 
-  /** Resolve project entry by name OR id */
+  /** Resolve project entry by name OR id. Also repairs stale folder field. */
   async resolveProjectByNameOrId(nameOrId) {
     this.invalidateCache();
     const reg = await this.getProjectRegistry();
     const upper = (nameOrId || '').toUpperCase();
-    // Try by id first
-    if (reg.projects[nameOrId]) return { id: nameOrId, entry: reg.projects[nameOrId] };
+    let found = null;
+    // Try by id
+    if (reg.projects[nameOrId]) found = { id: nameOrId, entry: reg.projects[nameOrId] };
     // Try by name
-    const found = Object.entries(reg.projects || {}).find(
-      ([, p]) => p.name === upper || p.name === nameOrId
-    );
-    if (found) return { id: found[0], entry: found[1] };
-    return null;
+    if (!found) {
+      const pair = Object.entries(reg.projects || {}).find(
+        ([, p]) => p.name === upper || p.name === nameOrId
+      );
+      if (pair) found = { id: pair[0], entry: pair[1] };
+    }
+    // Try partial match
+    if (!found) {
+      const pair = Object.entries(reg.projects || {}).find(
+        ([, p]) => (p.name || '').toUpperCase().includes(upper) || upper.includes((p.name || '').toUpperCase())
+      );
+      if (pair) found = { id: pair[0], entry: pair[1] };
+    }
+    if (!found) return null;
+
+    // Repair: ensure folder = canonical name (fixes old project_id-named folders)
+    const canonical = RegistryManager.projectFolder(found.entry);
+    if (found.entry.folder !== canonical) {
+      found.entry.folder = canonical;
+      found.entry.memory_file = `${canonical}/project_memory.json`;
+      reg.projects[found.id] = found.entry;
+      await this.write('projects/project_registry.json', reg).catch(() => {});
+    }
+    return found;
   }
 
   /** Read project_memory.json for a given project */
   async getProjectMemory(projectId) {
     const reg = await this.getProjectRegistry();
     const entry = reg.projects[projectId];
-    if (!entry?.memory_file) return null;
+    if (!entry) return null;
+    const folder = RegistryManager.projectFolder(entry);
     try {
-      return await this.read(`projects/${entry.memory_file}`);
+      return await this.read(`projects/${folder}/project_memory.json`);
     } catch { return null; }
   }
 
@@ -834,8 +868,9 @@ class RegistryManager {
     const fs   = require('fs').promises;
     const path = require('path');
     const AQUARIUM = require('../aquarium');
-    const memPath = path.join(AQUARIUM.PROJECTS, entry.folder, 'project_memory.json');
-
+    const folder  = RegistryManager.projectFolder(entry);
+    const memPath = path.join(AQUARIUM.PROJECTS, folder, 'project_memory.json');
+    await fs.mkdir(path.dirname(memPath), { recursive: true });
     let memory;
     try {
       memory = JSON.parse(await fs.readFile(memPath, 'utf8'));
