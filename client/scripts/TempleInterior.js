@@ -70,10 +70,8 @@ const TempleInterior = {
     return `
 <div class="ti-header">
   <span class="ti-header-title">${name}</span>
-  <span style="font-family:'Courier New',monospace;font-size:9px;color:var(--ui-muted);margin-left:8px;">${pid}</span>
   <span class="ti-header-stat" id="ti-hdr-stat">...</span>
   <span class="ti-header-sep"></span>
-  <button class="ti-hbtn ti-hbtn-accent" onclick="TempleInterior._askPoseidon()">ASK POSEIDON</button>
   <button class="ti-hbtn" onclick="TempleInterior._newTaskModal()">+ TASK</button>
   <button class="ti-hbtn" onclick="TempleInterior._refreshAll()">REFRESH</button>
   <button class="ti-hbtn ti-hbtn-danger" onclick="TempleInterior.close()">CLOSE X</button>
@@ -126,22 +124,6 @@ const TempleInterior = {
 </div>`;
   },
 
-  // ═══ HEADER STATS ════════════════════════════════════════════════════════
-  async _renderHeader() {
-    const el = document.getElementById('ti-hdr-stat');
-    if (!el) return;
-    try {
-      const [tr, wr] = await Promise.all([
-        window.ApiV2._fetch('/tasks').catch(() => ({ registry: { tasks: {} } })),
-        window.ApiV2._fetch('/agents/pool/status').catch(() => ({ workers: {} }))
-      ]);
-      const tasks  = this._filterProjectTasks(Object.values(tr.registry?.tasks || {}));
-      const open   = tasks.filter(t => !['completed','failed','cancelled','archived'].includes(t.lifecycle?.status || t.status)).length;
-      const done   = tasks.filter(t => t.lifecycle?.status === 'completed' || t.status === 'completed').length;
-      const active = Object.values(wr.workers || {}).filter(w => w.status === 'running').length;
-      el.innerHTML = `<b>${open}</b> open · <b>${done}</b> done · <b>${active}</b> running`;
-    } catch {}
-  },
 
   // ═══ TAB SWITCHING ═══════════════════════════════════════════════════════
   _switchLeft(tab) {
@@ -660,7 +642,7 @@ const TempleInterior = {
   },
 
   // ═══ MEMORY TAB ══════════════════════════════════════════════════════════
-  // ═══ MEMORY TAB ════════════════════════════════════════════════════════
+
   async _renderMemory(container) {
     const c = container || document.getElementById('ti-left-body');
     if (!c) return;
