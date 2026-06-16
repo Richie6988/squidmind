@@ -567,7 +567,7 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
         const bytesPerTok = config.flashAttention
           ? (isGQA ? 38 * 1024 : 60 * 1024)
           : 100 * 1024;
-        const margin = 0.50;
+        const margin = 0.65;  // 650MB: CUDA runtime + activations + cuBLAS + hybrid-arch overhead
 
         if (vramAfter && freeAfterGb > margin + 0.1) {
           const availKvGb = freeAfterGb - margin;
@@ -605,7 +605,7 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
             contextSize:    tryCtx,
             batchSize:      config.batchSize,
             threads:        config.cpuThreads,
-            sequences:      2,   // 2 slots: one for chat, one for BG tasks — eliminates sequence contention
+            sequences:      1,   // single sequence — chat and BG never run simultaneously (broker serializes)
             flashAttention: config.flashAttention
           });
           config.contextLength = context.contextSize;
