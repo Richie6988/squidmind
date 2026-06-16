@@ -4732,6 +4732,7 @@ button .pixel-icon {
   font-family: 'Courier New', monospace;
   font-size: 10px;
   outline: none;
+  margin-bottom: 5px;
 }
 
 .projects-search-input:focus {
