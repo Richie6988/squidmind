@@ -149,15 +149,29 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
         // We NEVER trigger compilation at startup — only use pre-built or last successful build.
         const path = require('path');
         const fs   = require('fs');
-        const localBuildsDir = path.join(
-          path.dirname(require.resolve('node-llama-cpp/package.json')),
-          'localBuilds'
-        );
-        const brokenMarker = path.join(localBuildsDir, '.build-broken');
-        const hasLocalBuilds = fs.existsSync(localBuildsDir) &&
+        // Find node-llama-cpp root without accessing /package.json (blocked by exports map)
+        const nlcppRoot = (() => {
+          try {
+            // resolve the main entry, then walk up to find the package root
+            let p = path.dirname(require.resolve('node-llama-cpp'));
+            while (p !== path.dirname(p)) {
+              if (fs.existsSync(path.join(p, 'package.json'))) {
+                try {
+                  const pkg = JSON.parse(fs.readFileSync(path.join(p, 'package.json'), 'utf8'));
+                  if (pkg.name === 'node-llama-cpp') return p;
+                } catch {}
+              }
+              p = path.dirname(p);
+            }
+          } catch {}
+          return null;
+        })();
+        const localBuildsDir = nlcppRoot ? path.join(nlcppRoot, 'localBuilds') : null;
+        const brokenMarker  = localBuildsDir ? path.join(localBuildsDir, '.build-broken') : null;
+        const hasLocalBuilds = localBuildsDir && fs.existsSync(localBuildsDir) &&
           fs.readdirSync(localBuildsDir).filter(d => !d.startsWith('.')).length > 0;
 
-        if (hasLocalBuilds && !fs.existsSync(brokenMarker)) {
+        if (hasLocalBuilds && brokenMarker && !fs.existsSync(brokenMarker)) {
           try {
             this.llama = await Promise.race([
               llamaCpp.getLlama('lastBuild'),
@@ -167,11 +181,11 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
             return this.llama;
           } catch (e) {
             // Mark as broken so we don't retry on next restart
-            try { fs.writeFileSync(brokenMarker, `${new Date().toISOString()}: ${e.message}\n`); } catch {}
+            try { if (brokenMarker) fs.writeFileSync(brokenMarker, `${new Date().toISOString()}: ${e.message}\n`); } catch {}
             console.warn('[V2ModelService] Custom build failed, falling back to prebuilt:', e.message.slice(0, 100));
             console.warn('[V2ModelService] Run "npm run rebuild-llama" to fix the custom build.');
           }
-        } else if (fs.existsSync(brokenMarker)) {
+        } else if (brokenMarker && fs.existsSync(brokenMarker)) {
           console.log('[V2ModelService] Custom build marked broken — using prebuilt. Run "npm run rebuild-llama" to rebuild.');
         }
 
