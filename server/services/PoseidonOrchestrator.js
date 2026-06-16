@@ -1685,34 +1685,23 @@ Never describe a bash command you could call instead.`;
         } catch {}
       }
 
-      const initStatus = 'open';
       const taskObj = {
-        task_id: taskId,
+        task_id:      taskId,
         title,
-        description: description || '',
+        description:  description || '',
+        task_type:    'text',
+        sort_order:   0,
         project_name: project || null,
-        project_id: projectId,
-        status: initStatus,
-        priority: {
-          label: priority || 'medium',
-          computed_score: priority === 'critical' ? 20 : priority === 'high' ? 15 : priority === 'low' ? 5 : 10,
-          score_history: []
-        },
-        created_at: new Date().toISOString(),
-        created_by: 'poseidon_main',
-        lifecycle: { status: initStatus },
-        context: { project_id: projectId, project_name: project || null },
-        assignment: { assigned_to: assigned_agent_id || null, assigned_name: agentName }
+        project_id:   projectId || null,
+        assigned_to:  assigned_agent_id || null,
+        status:       'planned',
+        lifecycle:    { status: 'planned', status_history: [{ status: 'planned', at: new Date().toISOString(), by: 'poseidon' }], started_at: null, completed_at: null },
+        result_file:  null,
+        result_summary: null,
+        created_at:   new Date().toISOString(),
       };
 
-      // Write per-folder details.json so getTasksRegistry() scan picks it up
       await this.rm._writeTaskDetails(taskId, taskObj);
-
-      // Update flat registry metadata only (next_id)
-      reg.metadata = reg.metadata || {};
-      reg.metadata.next_id = nextId + 1;
-      reg.metadata.last_id_used = nextId;
-      await this.rm.write('tasks/tasks_registry.json', { metadata: reg.metadata, tasks: {} });
 
       await this.rm.log({
         event_type: 'task_created',

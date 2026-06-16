@@ -185,7 +185,7 @@ router.get('/tasks/:id/result', async (req, res) => {
     // Read task details to get result_file path
     const task = await rm._readTaskDetails(taskId);
 
-    // Try result_file field first (new routing)
+    // Try result_file field first (set by TaskRunner on completion)
     if (task?.result_file) {
       try {
         const text = await fs.readFile(task.result_file, 'utf8');
@@ -193,19 +193,25 @@ router.get('/tasks/:id/result', async (req, res) => {
       } catch {}
     }
 
-    // Fallback: flat output.txt in task folder (new flat structure)
-    const flatPath = path.join(AQUARIUM.TASKS, taskId, 'output.txt');
-    try {
-      const text = await fs.readFile(flatPath, 'utf8');
-      return res.json({ success: true, task_id: taskId, content: text, path: flatPath });
-    } catch {}
+    // Check TASKS/OUTPUT/<taskId>.txt|.json (flat output folder)
+    for (const ext of ['txt', 'json', 'md', 'csv']) {
+      const outPath = path.join(AQUARIUM.OUTPUT, `${taskId}.${ext}`);
+      try {
+        const text = await fs.readFile(outPath, 'utf8');
+        return res.json({ success: true, task_id: taskId, content: text, path: outPath });
+      } catch {}
+    }
 
-    // Legacy fallback: old results/output.txt path
-    const legacyPath = path.join(AQUARIUM.TASKS, taskId, 'results', 'output.txt');
-    try {
-      const text = await fs.readFile(legacyPath, 'utf8');
-      return res.json({ success: true, task_id: taskId, content: text, path: legacyPath });
-    } catch {}
+    // Legacy fallback: old per-folder output.txt
+    for (const legPath of [
+      path.join(AQUARIUM.TASKS, taskId, 'output.txt'),
+      path.join(AQUARIUM.TASKS, taskId, 'results', 'output.txt'),
+    ]) {
+      try {
+        const text = await fs.readFile(legPath, 'utf8');
+        return res.json({ success: true, task_id: taskId, content: text, path: legPath });
+      } catch {}
+    }
 
     res.json({ success: true, task_id: taskId, content: task?.result_summary || null });
   } catch (err) {
@@ -468,10 +474,15 @@ router.get('/tasks/:id/stream', async (req, res) => {
     try {
       const task = await rm._readTaskDetails(taskId);
       if (task?.result_file && fs.existsSync(task.result_file)) return task.result_file;
-      // Flat fallback
-      const flat = path.join(AQUARIUM.TASKS, taskId, 'output.txt');
-      if (fs.existsSync(flat)) return flat;
     } catch {}
+    // Check TASKS/OUTPUT/<taskId>.*
+    for (const ext of ['txt', 'json', 'md', 'csv']) {
+      const p = path.join(AQUARIUM.OUTPUT, `${taskId}.${ext}`);
+      if (fs.existsSync(p)) return p;
+    }
+    // Legacy per-folder fallback
+    const legacyFlat = path.join(AQUARIUM.TASKS, taskId, 'output.txt');
+    if (fs.existsSync(legacyFlat)) return legacyFlat;
     return null;
   };
 

@@ -216,7 +216,7 @@ class TaskRunner {
           && !tooManyFails
           && Date.now() >= retryDelay;
       })
-      // Sort: highest sort_order first, then FIFO by task_id (creation order)
+      // Queue order: explicit sort_order bump (image/urgent tasks) then FIFO by task_id
       .sort((a, b) => {
         const pDiff = (b.sort_order || 0) - (a.sort_order || 0);
         if (pDiff !== 0) return pDiff;
@@ -614,43 +614,17 @@ class TaskRunner {
 
   async _setStatus(taskId, status, extra = {}) {
     try {
-      // Try per-folder details.json first
       let task = await this.rm._readTaskDetails(taskId);
+      if (!task) { console.warn(`[TaskRunner] _setStatus: task ${taskId} not found`); return; }
 
-      // FALLBACK: task may still be in flat tasks_registry.json (created before migration)
-      if (!task) {
-        try {
-          const flatReg = await this.rm.read('tasks/tasks_registry.json');
-          task = flatReg.tasks?.[taskId] || null;
-        } catch {}
-      }
-
-      if (!task) {
-        console.warn(`[TaskRunner] _setStatus: task ${taskId} not found anywhere — skipping`);
-        return;
-      }
-
-      task.lifecycle = { ...(task.lifecycle || {}), status, ...extra };
       task.status    = status;
-      // Mirror key fields to task root so registry queries find them at top level
+      task.lifecycle = { ...(task.lifecycle || {}), status };
       if (extra.result_summary !== undefined) task.result_summary = extra.result_summary;
       if (extra.result_file    !== undefined) task.result_file    = extra.result_file;
-      if (extra.output_preview !== undefined) task.output_preview = extra.output_preview;
-      if (extra.completed_at   !== undefined) task.completed_at   = extra.completed_at;
+      if (extra.completed_at   !== undefined) { task.completed_at = extra.completed_at; task.lifecycle.completed_at = extra.completed_at; }
+      if (extra.started_at     !== undefined) task.lifecycle.started_at = extra.started_at;
 
-      // Always write per-folder (migrates flat-registry tasks on first update)
       await this.rm._writeTaskDetails(taskId, task);
-
-      // If task was in flat registry, remove it from there to avoid duplication
-      try {
-        const flatReg = await this.rm.read('tasks/tasks_registry.json');
-        if (flatReg.tasks?.[taskId]) {
-          delete flatReg.tasks[taskId];
-          await this.rm.write('tasks/tasks_registry.json', flatReg);
-        }
-      } catch {}
-
-      this.rm.invalidateCache();
     } catch (e) {
       console.warn(`[TaskRunner] setStatus failed for ${taskId}:`, e.message);
     }
@@ -658,13 +632,7 @@ class TaskRunner {
 
   async _updateProgressField(taskId, progressText) {
     try {
-      let task = await this.rm._readTaskDetails(taskId);
-      if (!task) {
-        try {
-          const flatReg = await this.rm.read('tasks/tasks_registry.json');
-          task = flatReg.tasks?.[taskId] || null;
-        } catch {}
-      }
+      const task = await this.rm._readTaskDetails(taskId);
       if (!task) return;
       task.progress = progressText;
       await this.rm._writeTaskDetails(taskId, task);
@@ -673,38 +641,36 @@ class TaskRunner {
 
   async _saveOutput(taskId, text) {
     try {
-      // All task outputs go to TASKS/OUTPUT/<taskId>.<ext> — flat, easy to browse
-      await fs.mkdir(AQUARIUM.OUTPUT, { recursive: true });
+      const task = await this.rm._readTaskDetails(taskId);
 
-      // Detect content type for extension
-      const isCode = /^```\w|^import |^function |^const |^class |^def |^#!\//.test(text.trim());
-      const isJson = text.trim().startsWith('{') || text.trim().startsWith('[');
-      const ext = isCode ? 'txt' : isJson ? 'json' : 'txt';
+      // Resolve output path: project folder if task belongs to one, else TASKS/OUTPUT/
+      let outputPath;
+      const projectId   = task?.project_id || task?.context?.project_id || null;
+      const projectName = task?.project_name || task?.context?.project_name || null;
 
-      const outputPath = path.join(AQUARIUM.OUTPUT, `${taskId}.${ext}`);
-      await fs.writeFile(outputPath, text, 'utf8');
-
-      // Update task details with result_file path
-      let task = await this.rm._readTaskDetails(taskId);
-      if (!task) {
+      if (projectId || projectName) {
         try {
-          const flatReg = await this.rm.read('tasks/tasks_registry.json');
-          task = flatReg.tasks?.[taskId] || null;
+          const proj = await this.rm.resolveProjectByNameOrId(projectId || projectName);
+          if (proj?.entry?.folder) {
+            const projOutDir = require('path').join(AQUARIUM.PROJECTS, proj.entry.folder, 'output');
+            await fs.mkdir(projOutDir, { recursive: true });
+            outputPath = require('path').join(projOutDir, `${taskId}.txt`);
+          }
         } catch {}
       }
+
+      if (!outputPath) {
+        await fs.mkdir(AQUARIUM.OUTPUT, { recursive: true });
+        const isJson = text.trim().startsWith('{') || text.trim().startsWith('[');
+        outputPath = require('path').join(AQUARIUM.OUTPUT, `${taskId}.${isJson ? 'json' : 'txt'}`);
+      }
+
+      await fs.writeFile(outputPath, text, 'utf8');
+
       if (task) {
         task.result_file    = outputPath;
         task.result_summary = text.slice(0, 500);
         await this.rm._writeTaskDetails(taskId, task);
-        // Remove from flat registry if it was there (migrated to per-folder)
-        try {
-          const flatReg = await this.rm.read('tasks/tasks_registry.json');
-          if (flatReg.tasks?.[taskId]) {
-            delete flatReg.tasks[taskId];
-            await this.rm.write('tasks/tasks_registry.json', flatReg);
-          }
-        } catch {}
-        this.rm.invalidateCache();
       }
     } catch (e) {
       console.warn(`[TaskRunner] saveOutput failed for ${taskId}:`, e.message);

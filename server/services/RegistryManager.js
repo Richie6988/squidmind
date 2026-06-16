@@ -983,181 +983,96 @@ class RegistryManager {
    *   details.json  — full task object
    *   results/      — output files (output.txt, etc.)
    *
-   * getTasksRegistry() rebuilds a virtual registry by scanning folders,
-   * keeping full backward compatibility with callers that expect { tasks: {} }.
+   * All task data lives in aquarium/TASKS/tasks_registry.json.
+   * No per-folder structure. No details.json files. Single flat JSON.
    */
+
   _taskDir(taskId) {
-    // Must use AQUARIUM.TASKS (uppercase on aquarium layout) — not dataRoot/tasks (lowercase)
+    // Kept only for output file path resolution — no task data is stored here
     const AQUARIUM = require('../aquarium');
     return require('path').join(AQUARIUM.TASKS, taskId);
   }
 
   async _readTaskDetails(taskId) {
-    const p = require('path').join(this._taskDir(taskId), 'details.json');
+    // Flat registry is the single source of truth
+    try {
+      const AQUARIUM = require('../aquarium');
+      const path = require('path');
+      const flatPath = path.join(AQUARIUM.TASKS, 'tasks_registry.json');
+      const reg = JSON.parse(require('fs').readFileSync(flatPath, 'utf8'));
+      if (reg.tasks?.[taskId]) return reg.tasks[taskId];
+    } catch {}
+    // Fallback: legacy per-folder details.json (migration only)
+    const p = require('path').join(require('../aquarium').TASKS, taskId, 'details.json');
     try { return JSON.parse(require('fs').readFileSync(p, 'utf8')); } catch { return null; }
   }
 
   async _writeTaskDetails(taskId, task) {
     const fs   = require('fs').promises;
     const path = require('path');
-    const dir  = this._taskDir(taskId);
-    await fs.mkdir(dir, { recursive: true });
-    await fs.writeFile(path.join(dir, 'details.json'), JSON.stringify(task, null, 2), 'utf8');
-
-    // Also keep flat registry in sync — minimal index entry for quick broker scans
-    try {
-      const AQUARIUM  = require('../aquarium');
-      const flatPath  = path.join(AQUARIUM.TASKS, 'tasks_registry.json');
-      let flatReg = { metadata: {}, tasks: {} };
-      try { flatReg = JSON.parse(await fs.readFile(flatPath, 'utf8')); } catch {}
-      flatReg.tasks[taskId] = {
-        task_id:    task.task_id || taskId,
-        title:      task.title || '',
-        status:     task.lifecycle?.status || task.status || 'open',
-        sort_order: task.sort_order || 0,
-        task_type:  task.task_type || 'text',
-        project_id: task.context?.project_id || task.project_id || null,
-        project_name: task.context?.project_name || task.project_name || null,
-        assigned_to:  task.assignment?.assigned_to || null,
-        created_at:   task.created_at || null,
-        completed_at: task.lifecycle?.completed_at || task.completed_at || null,
-        result_file:  task.result_file || null,
-        result_summary: task.result_summary ? task.result_summary.slice(0, 200) : null,
-        output_preview: task.output_preview || null,
-      };
-      await fs.writeFile(flatPath, JSON.stringify(flatReg, null, 2), 'utf8');
-    } catch {}
+    const AQUARIUM = require('../aquarium');
+    const flatPath = path.join(AQUARIUM.TASKS, 'tasks_registry.json');
+    let reg = { metadata: { next_id: 1, id_format: 'task_NNN' }, tasks: {} };
+    try { reg = JSON.parse(await fs.readFile(flatPath, 'utf8')); } catch {}
+    reg.tasks[taskId] = { ...task, task_id: task.task_id || taskId };
+    await fs.writeFile(flatPath, JSON.stringify(reg, null, 2), 'utf8');
+    this.invalidateCache();
   }
 
   async getTasksRegistry() {
-    // Build virtual registry from per-folder structure
     const fs   = require('fs');
     const path = require('path');
     const AQUARIUM = require('../aquarium');
-    const tasksRoot = AQUARIUM.TASKS;  // always uppercase path (aquarium/TASKS)
-
-    // Also read old flat registry if it still exists (migration transitional)
-    let flatReg = { metadata: { total_queued: 0, total_completed: 0, total_failed: 0, total_cancelled: 0 }, tasks: {} };
-    const flatPath = path.join(tasksRoot, 'tasks_registry.json');
+    const flatPath = path.join(AQUARIUM.TASKS, 'tasks_registry.json');
+    let reg = { metadata: { next_id: 1, id_format: 'task_NNN' }, tasks: {} };
     if (fs.existsSync(flatPath)) {
-      try { flatReg = JSON.parse(fs.readFileSync(flatPath, 'utf8')); } catch {}
+      try { reg = JSON.parse(fs.readFileSync(flatPath, 'utf8')); } catch {}
     }
-
-    // Scan task subfolders
-    let entries = [];
-    try { entries = fs.readdirSync(tasksRoot, { withFileTypes: true }); } catch {}
-
-    for (const ent of entries) {
-      if (!ent.isDirectory()) continue;
-      const taskId = ent.name;
-      if (!taskId.startsWith('task_')) continue;
-      const detailPath = path.join(tasksRoot, taskId, 'details.json');
-      if (!fs.existsSync(detailPath)) continue;
-      try {
-        const task = JSON.parse(fs.readFileSync(detailPath, 'utf8'));
-        flatReg.tasks[taskId] = task;
-      } catch {}
-    }
-
-    return flatReg;
+    // One-time migration: absorb any legacy per-folder tasks not yet in registry
+    try {
+      let migrated = 0;
+      for (const ent of fs.readdirSync(AQUARIUM.TASKS, { withFileTypes: true })) {
+        if (!ent.isDirectory() || !ent.name.startsWith('task_')) continue;
+        if (reg.tasks[ent.name]) continue;
+        const dp = path.join(AQUARIUM.TASKS, ent.name, 'details.json');
+        if (!fs.existsSync(dp)) continue;
+        try { reg.tasks[ent.name] = JSON.parse(fs.readFileSync(dp, 'utf8')); migrated++; } catch {}
+      }
+      if (migrated > 0) {
+        fs.writeFileSync(flatPath, JSON.stringify(reg, null, 2));
+        console.log('[RegistryManager] Migrated', migrated, 'legacy task folders → flat registry');
+      }
+    } catch {}
+    return reg;
   }
-
   async createTask(taskData) {
-    const registry = await this.getTasksRegistry();
     const taskId = await this.generateNextId('tasks/tasks_registry.json');
     const now = new Date().toISOString();
 
     const task = {
-      task_id: taskId,
-      parent_task_id: taskData.parent_task_id || null,
-      title: taskData.title,
-      description: taskData.description || '',
-      project_name: taskData.project_name || null,   // top-level for _filterProjectTasks
-      project_id: taskData.project_id || null,       // top-level mirror
-      origin: taskData.origin || {
-        type: 'human_direct',
-        source: 'human_user',
-        via: 'chat_interface',
-        received_at: now
-      },
-      assignment: {
-        assigned_to: taskData.assigned_to || null,
-        assigned_at: taskData.assigned_to ? now : null,
-        assigned_by: 'poseidon',
-        reassignment_count: 0,
-        previous_assignees: []
-      },
-      context: {
-        project_id: taskData.project_id || null,
-        project_name: taskData.project_name || null,
-        related_task_ids: [],
-        blocks_task_ids: [],
-        blocked_by_task_ids: taskData.blocked_by || [],
-      },
-      priority: this.computePriority(taskData),
+      task_id:        taskId,
+      title:          taskData.title,
+      description:    taskData.description || '',
+      task_type:      taskData.task_type || 'text',
+      sort_order:     taskData.sort_order ?? 0,   // queue position — lower = runs first (FIFO)
+      project_id:     taskData.project_id   || null,
+      project_name:   taskData.project_name || null,
+      assigned_to:    taskData.assigned_to  || null,
+      image_params:   taskData.image_params || null,
+      status:         'planned',
       lifecycle: {
-        status: 'planned',
+        status:         'planned',
         status_history: [{ status: 'planned', at: now, by: 'poseidon' }],
-        started_at: null,
-        completed_at: null,
-        duration_seconds: 0,
-        active_time_seconds: 0,
-        paused_count: 0
+        started_at:     null,
+        completed_at:   null,
       },
-      chunks: [],
-      execution: {
-        input_tokens_used: 0,
-        output_tokens_used: 0,
-        model_used: null,
-        files_modified: [],
-        files_created: [],
-        files_deleted: []
-      },
-      logs_refs: []
+      result_file:    null,
+      result_summary: null,
+      created_at:     now,
     };
 
-    // Write to per-folder structure
     await this._writeTaskDetails(taskId, task);
-
-    await this.log({
-      event_type: 'task_created',
-      actor: { type: 'poseidon', id: 'poseidon_main' },
-      subject: { type: 'task', id: taskId },
-      action: `Created task: ${taskData.title}`,
-      changes: [{ file: `tasks/${taskId}/details.json`, operation: 'created' }]
-    });
-
     return task;
-  }
-
-  /**
-   * Compute priority score using formula from poseidon_brain
-   */
-  computePriority(taskData) {
-    const urgency = taskData.urgency || 3;
-    const importance = taskData.importance || 3;
-    const difficulty = taskData.difficulty || 3;
-    const duration = (taskData.estimated_duration_minutes || 30) / 30;
-    const blocking = taskData.blocking_count || 0;
-    const saturation = taskData.resource_saturation_factor || 0;
-
-    const score = (urgency * 3) + (importance * 2) + (blocking * 5)
-                - (difficulty * 1) - (duration * 0.5) - (saturation * 4);
-
-    return {
-      urgency, importance, difficulty,
-      estimated_duration_minutes: taskData.estimated_duration_minutes || 30,
-      deadline: taskData.deadline || null,
-      blocking_count: blocking,
-      resource_saturation_factor: saturation,
-      computed_score: Math.round(score * 100) / 100,
-      score_history: [{
-        at: new Date().toISOString(),
-        score: Math.round(score * 100) / 100,
-        reason: 'initial_computation'
-      }],
-      justification: taskData.justification || ''
-    };
   }
 
   /**
@@ -1188,21 +1103,11 @@ class RegistryManager {
       rating_by_user: closureData.rating_by_user || null
     };
 
-    // Update lifecycle
     task.lifecycle.status = outcome;
     task.lifecycle.completed_at = now;
     task.lifecycle.duration_seconds = Math.round((Date.now() - startTime) / 1000);
-    task.lifecycle.status_history.push({
-      status: outcome,
-      at: now,
-      by: closureData.closed_by || 'poseidon'
-    });
-
-    // Update registry counters
-    registry.metadata.total_queued = Math.max(0, registry.metadata.total_queued - 1);
-    if (outcome === 'completed') registry.metadata.total_completed++;
-    else if (outcome === 'failed') registry.metadata.total_failed++;
-    else if (outcome === 'cancelled') registry.metadata.total_cancelled++;
+    task.lifecycle.status_history?.push({ status: outcome, at: now, by: closureData.closed_by || 'poseidon' });
+    task.status = outcome;
 
     await this._writeTaskDetails(taskId, task);
 
