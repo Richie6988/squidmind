@@ -144,15 +144,39 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
     if (!this._libPromise) {
       this._libPromise = (async () => {
         const llamaCpp = await import('node-llama-cpp');
-        // Try custom build first (built via "npx node-llama-cpp source build")
-        // This supports newer architectures like gemma4, llama4 not in prebuilt binaries
-        try {
-          this.llama = await llamaCpp.getLlama('lastBuild');
-          console.log('[V2ModelService] node-llama-cpp initialized (custom build)');
-        } catch {
-          this.llama = await llamaCpp.getLlama();
-          console.log('[V2ModelService] node-llama-cpp initialized (prebuilt)');
+
+        // Check if a custom build exists and is not marked broken.
+        // We NEVER trigger compilation at startup — only use pre-built or last successful build.
+        const path = require('path');
+        const fs   = require('fs');
+        const localBuildsDir = path.join(
+          path.dirname(require.resolve('node-llama-cpp/package.json')),
+          'localBuilds'
+        );
+        const brokenMarker = path.join(localBuildsDir, '.build-broken');
+        const hasLocalBuilds = fs.existsSync(localBuildsDir) &&
+          fs.readdirSync(localBuildsDir).filter(d => !d.startsWith('.')).length > 0;
+
+        if (hasLocalBuilds && !fs.existsSync(brokenMarker)) {
+          try {
+            this.llama = await Promise.race([
+              llamaCpp.getLlama('lastBuild'),
+              new Promise((_, reject) => setTimeout(() => reject(new Error('getLlama timeout')), 8000))
+            ]);
+            console.log('[V2ModelService] node-llama-cpp initialized (custom build — supports Gemma4/Llama4)');
+            return this.llama;
+          } catch (e) {
+            // Mark as broken so we don't retry on next restart
+            try { fs.writeFileSync(brokenMarker, `${new Date().toISOString()}: ${e.message}\n`); } catch {}
+            console.warn('[V2ModelService] Custom build failed, falling back to prebuilt:', e.message.slice(0, 100));
+            console.warn('[V2ModelService] Run "npm run rebuild-llama" to fix the custom build.');
+          }
+        } else if (fs.existsSync(brokenMarker)) {
+          console.log('[V2ModelService] Custom build marked broken — using prebuilt. Run "npm run rebuild-llama" to rebuild.');
         }
+
+        this.llama = await llamaCpp.getLlama();
+        console.log('[V2ModelService] node-llama-cpp initialized (prebuilt — Gemma4 requires rebuild)');
         return this.llama;
       })();
     }
