@@ -1095,18 +1095,46 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
           if (saved > 0) console.log(`[V2ModelService] Tool descriptions compressed: ~${Math.round(saved/4)} tokens saved (ctx=${ctxTokens})`);
         }
 
-        // With sequences:2, both chat and BG have their own slot — no contention.
-        // Still retry in case a previous session's slot hasn't been released yet.
+        // Get sequence slot — with sequences:1, the previous session must be disposed first.
+        // On "No sequences left": dispose stale session, wait for release, retry.
+        // If still stuck after dispose: force unload+reload the context entirely.
         let sequence;
-        for (let _seq_try = 0; _seq_try < 6; _seq_try++) {
-          try { sequence = entry.context.getSequence(); break; } catch (e) {
-            const wait = 300 + _seq_try * 250;
-            if (_seq_try < 5) {
-              console.warn(`[V2ModelService] getSequence attempt ${_seq_try+1} failed (${e.message}) — retrying in ${wait}ms`);
-              await new Promise(r => setTimeout(r, wait));
-            } else throw e;
+        const _acquireSequence = async () => {
+          for (let attempt = 0; attempt < 3; attempt++) {
+            try { return entry.context.getSequence(); } catch (e) {
+              if (!/no sequences/i.test(e.message)) throw e;
+              if (attempt === 0) {
+                // Dispose stale session — this releases the held sequence slot
+                console.warn('[V2ModelService] No sequences left — disposing stale session to release slot');
+                try { if (entry.session?.dispose) await entry.session.dispose(); } catch {}
+                try { if (entry._currentSequence?.dispose) await entry._currentSequence.dispose(); } catch {}
+                entry.session = null; entry._currentSequence = null;
+                await new Promise(r => setTimeout(r, 400));
+              } else if (attempt === 1) {
+                // Slot still held — force unload and recreate the context
+                console.warn('[V2ModelService] Sequence slot still stuck — unloading model to recover');
+                try { if (entry.context?.dispose) await entry.context.dispose(); } catch {}
+                entry.context = null;
+                // Recreate context
+                const newCtx = await entry.model.createContext({
+                  contextSize:    entry.config.contextLength,
+                  batchSize:      entry.config.batchSize,
+                  threads:        entry.config.cpuThreads,
+                  sequences:      1,
+                  flashAttention: entry.config.flashAttention
+                });
+                entry.context = newCtx;
+                entry.config.contextLength = newCtx.contextSize;
+                console.log(`[V2ModelService] Context recreated: ctx=${newCtx.contextSize}`);
+                await new Promise(r => setTimeout(r, 200));
+              } else {
+                throw e;
+              }
+            }
           }
-        }
+          throw new Error('No sequences left — failed to recover after context recreate');
+        };
+        sequence = await _acquireSequence();
         entry.session    = new llamaCpp.LlamaChatSession({
           contextSequence: sequence,
           systemPrompt,
