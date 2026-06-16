@@ -607,7 +607,7 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
             contextSize:    tryCtx,
             batchSize:      config.batchSize,
             threads:        config.cpuThreads,
-            sequences:      1,   // single-user chat — 4 was wasting 4× KV cache VRAM
+            sequences:      2,   // 2 slots: one for chat, one for BG tasks — eliminates sequence contention
             flashAttention: config.flashAttention
           });
           config.contextLength = context.contextSize;
@@ -1021,10 +1021,14 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
       const neededMode = _bgMode ? 'bg' : 'chat';
       if (entry.session && entry._sessionMode && entry._sessionMode !== neededMode) {
         console.log(`[V2ModelService] Session mode change ${entry._sessionMode}→${neededMode}, rebuilding session`);
-        try { if (entry._currentSequence?.dispose) await entry._currentSequence.dispose(); } catch {}
+        // Dispose session first (it owns the sequence internally), THEN null refs
+        // Reversing the order caused "No sequences left" on the next getSequence() call
         try { if (entry.session?.dispose) await entry.session.dispose(); } catch {}
-        entry.session = null; entry._currentSequence = null; entry.sessionTurns = 0;
-        await new Promise(r => setTimeout(r, 300));
+        entry.session = null;
+        try { if (entry._currentSequence?.dispose) await entry._currentSequence.dispose(); } catch {}
+        entry._currentSequence = null;
+        entry.sessionTurns = 0;
+        await new Promise(r => setTimeout(r, 600));  // 600ms: ensures llama.cpp native slot release
       }
 
       if (!entry.session) {
@@ -1093,18 +1097,12 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
           if (saved > 0) console.log(`[V2ModelService] Tool descriptions compressed: ~${Math.round(saved/4)} tokens saved (ctx=${ctxTokens})`);
         }
 
-        // Retry getSequence with backoff — llama.cpp sequence disposal is not always
-        // synchronous; the slot may still be held for a few hundred ms after dispose().
-        // If a lingering _currentSequence exists on the entry, dispose it first.
-        if (entry._currentSequence) {
-          try { await entry._currentSequence.dispose?.(); } catch {}
-          entry._currentSequence = null;
-          await new Promise(r => setTimeout(r, 300));
-        }
+        // With sequences:2, both chat and BG have their own slot — no contention.
+        // Still retry in case a previous session's slot hasn't been released yet.
         let sequence;
         for (let _seq_try = 0; _seq_try < 6; _seq_try++) {
           try { sequence = entry.context.getSequence(); break; } catch (e) {
-            const wait = 300 + _seq_try * 250;   // 300, 550, 800, 1050, 1300, give up
+            const wait = 300 + _seq_try * 250;
             if (_seq_try < 5) {
               console.warn(`[V2ModelService] getSequence attempt ${_seq_try+1} failed (${e.message}) — retrying in ${wait}ms`);
               await new Promise(r => setTimeout(r, wait));
