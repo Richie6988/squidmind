@@ -91,6 +91,7 @@ const PoseidonChat = {
           </div>
           <div class="pc-header-right">
             <button class="pc-btn" onclick="PoseidonChat.close(); ModelLoader.open();" title="Manage models">⚙ Models</button>
+            <button class="pc-btn" id="pc-voice-settings-btn" onclick="PoseidonChat._toggleVoiceSettings()" title="Voice settings (STT/TTS)">🎙 Voice</button>
             <button class="pc-close" onclick="PoseidonChat.close()">✕</button>
           </div>
         </div>
@@ -120,7 +121,7 @@ const PoseidonChat = {
             <input type="file" id="pc-file-input" style="display:none" accept="image/*,.pdf,.txt,.md,.json,.csv,.js,.ts,.py,.html,.css" multiple>
             <textarea id="pc-input" class="pc-input" placeholder="Message Poseidon... (paste images/files)" rows="1"></textarea>
             <div class="pc-input-actions">
-              <button class="pc-mic" id="pc-mic" title="Voice input">🎤</button>
+              <button class="pc-mic" id="pc-mic" title="Hold to record voice (local STT)" style="position:relative;">🎤</button><button class="pc-tts" id="pc-tts" title="Read last response aloud (local TTS)" style="display:none;">🔊</button>
               <button class="pc-send" id="pc-send" title="Send">
                 <svg id="pc-send-icon" width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
               </button>
@@ -138,7 +139,9 @@ const PoseidonChat = {
 
     // Wire mic button
     const micBtn = this.modal.querySelector('#pc-mic');
+    const ttsBtn = this.modal.querySelector('#pc-tts');
     if (micBtn) micBtn.addEventListener('click', () => this._toggleMic());
+    if (ttsBtn) ttsBtn.addEventListener('click', () => this._speakLastResponse());
 
     // Wire attachment button
     const attachBtn  = this.modal.querySelector('#pc-attach-btn');
@@ -432,6 +435,7 @@ const PoseidonChat = {
     if (type === 'start')          { this._mutatedThisTurn = false; return; }
     if (type === 'end') {
       if (p.turn !== undefined) this._updateTurnCounter();
+      this._updateTtsButton();  // show 🔊 button after response
       // Inject copy button — read accumulated text from contentEl's text nodes
       const lastAiMsg = this.modal?.querySelectorAll('.pc-msg-ai');
       const lastMsg = lastAiMsg?.[lastAiMsg.length - 1];
@@ -824,66 +828,278 @@ const PoseidonChat = {
       ({ '<':'&lt;', '>':'&gt;', '&':'&amp;', '"':'&quot;' })[c]);
   },
 
-  // ── Speech-to-text via Web Speech API ────────────────────────────────────
-  _toggleMic() {
+  // ── Voice: STT via MediaRecorder → Speaches, TTS via Speaches → Audio ──────
+
+  /** Toggle mic recording. Uses local Speaches if configured, falls back to Web Speech API */
+  async _toggleMic() {
     const btn = document.getElementById('pc-mic');
     if (!btn) return;
 
-    // Stop if already recording
-    if (this._recognition) {
-      this._recognition.stop();
+    // If recording, stop
+    if (this._mediaRecorder && this._mediaRecorder.state === 'recording') {
+      this._mediaRecorder.stop();
       return;
     }
 
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SR) {
-      // Fallback: alert user
-      const btn2 = document.getElementById('pc-mic');
-      if (btn2) { btn2.title = 'Speech recognition not supported in this browser'; btn2.textContent = '🚫'; }
-      return;
-    }
+    // Check if Speaches is configured
+    let voiceCfg = null;
+    try {
+      const r = await window.ApiV2._fetch('/voice/config');
+      if (r.ok && r.config.enabled) voiceCfg = r.config;
+    } catch {}
 
-    const rec = new SR();
-    rec.lang = 'fr-FR,en-US';   // Try French first, then English
-    rec.interimResults = true;
-    rec.maxAlternatives = 1;
-    rec.continuous = false;
+    if (voiceCfg) {
+      // ── Local STT via Speaches ────────────────────────────────────────────
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const mimeType = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/ogg';
+        const rec = new MediaRecorder(stream, { mimeType });
+        const chunks = [];
 
-    this._recognition = rec;
-    if (btn) { btn.textContent = '🔴'; btn.style.borderColor = '#ef4444'; btn.style.color = '#ef4444'; btn.title = 'Recording… click to stop'; }
+        rec.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
 
-    const ta = this._getInput();
-    const originalValue = ta ? ta.value : '';
+        rec.onstop = async () => {
+          stream.getTracks().forEach(t => t.stop());
+          btn.textContent = '⏳'; btn.title = 'Transcribing...';
+          try {
+            const blob = new Blob(chunks, { type: mimeType });
+            const form = new FormData();
+            form.append('file', blob, 'audio.webm');
+            form.append('model', voiceCfg.stt_model || 'Systran/faster-whisper-small');
+            if (voiceCfg.language && voiceCfg.language !== 'auto') {
+              form.append('language', voiceCfg.language);
+            }
 
-    rec.onresult = (e) => {
-      const transcript = Array.from(e.results).map(r => r[0].transcript).join(' ');
-      if (ta) {
-        ta.value = (originalValue ? originalValue + ' ' : '') + transcript;
-        ta.style.height = 'auto';
-        ta.style.height = Math.min(ta.scrollHeight, 200) + 'px';
+            const resp = await fetch('/api/v2/voice/stt', { method: 'POST', body: form });
+            const data = await resp.json();
+
+            if (data.ok && data.text?.trim()) {
+              const ta = this._getInput();
+              if (ta) {
+                ta.value = (ta.value ? ta.value + ' ' : '') + data.text.trim();
+                ta.style.height = 'auto';
+                ta.style.height = Math.min(ta.scrollHeight, 200) + 'px';
+                ta.focus();
+              }
+            } else if (!data.ok) {
+              this._showVoiceError(data.error);
+            }
+          } catch (err) {
+            this._showVoiceError('STT error: ' + err.message);
+          }
+          btn.textContent = '🎤'; btn.title = 'Hold to record voice'; btn.style.color = '';
+        };
+
+        rec.start();
+        this._mediaRecorder = rec;
+        btn.textContent = '⏹'; btn.style.color = '#ef4444'; btn.title = 'Click to stop recording';
+      } catch (err) {
+        if (err.name === 'NotAllowedError') {
+          this._showVoiceError('Microphone access denied. Allow mic access in browser settings.');
+        } else {
+          this._showVoiceError('Mic error: ' + err.message);
+        }
       }
-    };
+    } else {
+      // ── Fallback: Web Speech API (browser STT) ────────────────────────────
+      const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (!SR) {
+        this._showVoiceError('No voice service configured and browser STT not available.\nConfigure Speaches in voice settings.');
+        return;
+      }
+      if (this._recognition) { this._recognition.stop(); return; }
 
-    rec.onerror = (e) => {
-      console.warn('[Mic] Error:', e.error);
-      this._stopMic();
-    };
+      const rec = new SR();
+      rec.lang = 'fr-FR'; rec.interimResults = true; rec.maxAlternatives = 1;
+      this._recognition = rec;
+      btn.textContent = '🔴'; btn.style.color = '#ef4444'; btn.title = 'Recording (browser)… click to stop';
 
-    rec.onend = () => {
-      this._stopMic();
-      // Auto-focus input after recording
-      const ta2 = this._getInput();
-      if (ta2) ta2.focus();
-    };
-
-    try { rec.start(); } catch (e) { console.warn('[Mic]', e.message); this._stopMic(); }
+      const ta = this._getInput();
+      const originalValue = ta ? ta.value : '';
+      rec.onresult = e => {
+        const t = Array.from(e.results).map(r => r[0].transcript).join(' ');
+        if (ta) ta.value = (originalValue ? originalValue + ' ' : '') + t;
+      };
+      rec.onerror = () => this._stopBrowserMic();
+      rec.onend   = () => this._stopBrowserMic();
+      try { rec.start(); } catch { this._stopBrowserMic(); }
+    }
   },
 
-  _stopMic() {
+  _stopBrowserMic() {
     if (this._recognition) { try { this._recognition.stop(); } catch {} this._recognition = null; }
     const btn = document.getElementById('pc-mic');
-    if (btn) { btn.textContent = '🎤'; btn.style.borderColor = 'rgba(255,255,255,0.1)'; btn.style.color = '#64748b'; btn.title = 'Voice input'; }
+    if (btn) { btn.textContent = '🎤'; btn.style.color = ''; btn.title = 'Voice input'; }
   },
+
+  _showVoiceError(msg) {
+    const div = document.createElement('div');
+    div.style.cssText = 'position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:#1e0a0a;border:1px solid #ef4444;color:#f87171;font-family:monospace;font-size:10px;padding:8px 16px;z-index:99999;max-width:420px;text-align:center;';
+    div.textContent = msg;
+    document.body.appendChild(div);
+    setTimeout(() => div.remove(), 5000);
+  },
+
+  /** Speak the last Poseidon response using Speaches TTS */
+  async _speakLastResponse() {
+    const btn = document.getElementById('pc-tts');
+    if (!btn) return;
+
+    // Stop if already playing
+    if (this._ttsAudio && !this._ttsAudio.paused) {
+      this._ttsAudio.pause();
+      this._ttsAudio.currentTime = 0;
+      btn.textContent = '🔊'; btn.title = 'Read last response aloud';
+      return;
+    }
+
+    // Get last AI message text
+    const aiMsgs = this.modal?.querySelectorAll('.pc-msg-ai');
+    const lastMsg = aiMsgs?.[aiMsgs.length - 1];
+    const text = lastMsg?.innerText?.trim();
+    if (!text) return;
+
+    btn.textContent = '⏳'; btn.disabled = true;
+
+    try {
+      let voiceCfg = {};
+      try { const r = await window.ApiV2._fetch('/voice/config'); if (r.ok) voiceCfg = r.config; } catch {}
+
+      const resp = await fetch('/api/v2/voice/tts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text, voice: voiceCfg.tts_voice, speed: voiceCfg.tts_speed }),
+      });
+
+      if (!resp.ok) {
+        const d = await resp.json().catch(() => ({}));
+        throw new Error(d.error || 'TTS failed');
+      }
+
+      const blob = await resp.blob();
+      const url  = URL.createObjectURL(blob);
+      const audio = new Audio(url);
+      this._ttsAudio = audio;
+      btn.textContent = '⏸'; btn.disabled = false; btn.title = 'Click to stop';
+      audio.onended = () => {
+        URL.revokeObjectURL(url);
+        btn.textContent = '🔊'; btn.title = 'Read last response aloud';
+      };
+      audio.onerror = () => {
+        btn.textContent = '🔊'; btn.disabled = false;
+        this._showVoiceError('Audio playback failed');
+      };
+      await audio.play();
+    } catch (err) {
+      btn.textContent = '🔊'; btn.disabled = false;
+      this._showVoiceError(err.message);
+    }
+  },
+
+  /** Show/hide TTS button after each AI response */
+  _updateTtsButton() {
+    const btn = document.getElementById('pc-tts');
+    if (!btn) return;
+    const hasMsgs = this.modal?.querySelectorAll('.pc-msg-ai')?.length > 0;
+    btn.style.display = hasMsgs ? 'flex' : 'none';
+  },
+
+
+  async _toggleVoiceSettings() {
+    let panel = this.modal?.querySelector('#pc-voice-panel');
+    if (panel) { panel.remove(); return; }
+
+    // Load current config
+    let cfg = { enabled: false, speaches_url: 'http://localhost:8000', tts_voice: 'af_heart', tts_speed: 1.0, language: 'fr', stt_model: 'Systran/faster-whisper-small' };
+    try { const r = await window.ApiV2._fetch('/voice/config'); if (r.ok) cfg = r.config; } catch {}
+
+    panel = document.createElement('div');
+    panel.id = 'pc-voice-panel';
+    panel.style.cssText = 'position:absolute;top:52px;right:8px;background:#0d1b2e;border:1px solid rgba(79,172,254,0.3);border-radius:10px;padding:16px 18px;z-index:1000;min-width:320px;font-family:Courier New,monospace;font-size:11px;color:#94a3b8;box-shadow:0 8px 32px rgba(0,0,0,0.6);';
+    panel.innerHTML = `
+<div style="font-family:'Press Start 2P',monospace;font-size:8px;color:#4facfe;margin-bottom:12px;">🎙 VOICE SETTINGS</div>
+<label style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
+  <input type="checkbox" id="pv-enabled" ${cfg.enabled ? 'checked' : ''}> Enable local voice (Speaches)
+</label>
+<div style="margin-bottom:8px;">
+  <div style="font-size:9px;color:#475569;margin-bottom:4px;">Speaches URL</div>
+  <input id="pv-url" value="${this._esc(cfg.speaches_url)}" style="width:100%;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);color:#e2e8f0;padding:5px 8px;font-size:10px;box-sizing:border-box;">
+</div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
+  <div>
+    <div style="font-size:9px;color:#475569;margin-bottom:4px;">TTS Voice</div>
+    <select id="pv-voice" style="width:100%;background:#0d1b2e;border:1px solid rgba(255,255,255,0.1);color:#e2e8f0;padding:4px 6px;font-size:10px;">
+      <option value="af_heart" ${cfg.tts_voice==='af_heart'?'selected':''}>af_heart (EN, warm)</option>
+      <option value="af_bella" ${cfg.tts_voice==='af_bella'?'selected':''}>af_bella (EN, bright)</option>
+      <option value="am_adam" ${cfg.tts_voice==='am_adam'?'selected':''}>am_adam (EN, male)</option>
+      <option value="ff_siwis" ${cfg.tts_voice==='ff_siwis'?'selected':''}>ff_siwis (FR, female)</option>
+      <option value="fr_remi" ${cfg.tts_voice==='fr_remi'?'selected':''}>fr_remi (FR, male)</option>
+    </select>
+  </div>
+  <div>
+    <div style="font-size:9px;color:#475569;margin-bottom:4px;">Speed (${cfg.tts_speed}x)</div>
+    <input type="range" id="pv-speed" min="0.5" max="2" step="0.1" value="${cfg.tts_speed}" style="width:100%;" oninput="this.previousElementSibling.textContent='Speed ('+this.value+'x)'">
+  </div>
+</div>
+<div style="margin-bottom:12px;">
+  <div style="font-size:9px;color:#475569;margin-bottom:4px;">STT Language</div>
+  <select id="pv-lang" style="width:100%;background:#0d1b2e;border:1px solid rgba(255,255,255,0.1);color:#e2e8f0;padding:4px 6px;font-size:10px;">
+    <option value="fr" ${cfg.language==='fr'?'selected':''}>Français</option>
+    <option value="en" ${cfg.language==='en'?'selected':''}>English</option>
+    <option value="auto" ${cfg.language==='auto'?'selected':''}>Auto-detect</option>
+  </select>
+</div>
+<div style="display:flex;gap:8px;align-items:center;">
+  <button id="pv-save" style="background:#4facfe;border:none;color:#fff;padding:6px 14px;font-size:9px;cursor:pointer;border-radius:4px;">SAVE</button>
+  <button id="pv-test" style="background:rgba(79,172,254,0.1);border:1px solid rgba(79,172,254,0.3);color:#4facfe;padding:6px 14px;font-size:9px;cursor:pointer;border-radius:4px;">TEST TTS</button>
+  <span id="pv-status" style="font-size:9px;color:#475569;"></span>
+</div>
+<div style="margin-top:10px;font-size:8.5px;color:#334155;line-height:1.6;">
+  Start Speaches: <code style="color:#4facfe;">docker run -p 8000:8000 ghcr.io/speaches-ai/speaches:latest-cu124</code>
+</div>`;
+
+    panel.querySelector('#pv-save').onclick = async () => {
+      const status = panel.querySelector('#pv-status');
+      status.textContent = 'Saving...';
+      try {
+        await window.ApiV2._fetch('/voice/config', { method: 'PATCH', body: JSON.stringify({
+          enabled:    panel.querySelector('#pv-enabled').checked,
+          speaches_url: panel.querySelector('#pv-url').value.trim(),
+          tts_voice:  panel.querySelector('#pv-voice').value,
+          tts_speed:  parseFloat(panel.querySelector('#pv-speed').value),
+          language:   panel.querySelector('#pv-lang').value,
+        })});
+        status.textContent = '✓ Saved';
+        setTimeout(() => { status.textContent = ''; }, 2000);
+      } catch (e) { status.textContent = '✗ ' + e.message; }
+    };
+
+    panel.querySelector('#pv-test').onclick = async () => {
+      const status = panel.querySelector('#pv-status');
+      status.textContent = 'Testing...';
+      try {
+        const resp = await fetch('/api/v2/voice/tts', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text: 'Bonjour, je suis Poseidon, votre assistant local.', voice: panel.querySelector('#pv-voice').value }),
+        });
+        if (!resp.ok) { const d = await resp.json(); throw new Error(d.error); }
+        const blob = await resp.blob();
+        const audio = new Audio(URL.createObjectURL(blob));
+        audio.play();
+        status.textContent = '🔊 Playing...';
+        audio.onended = () => { status.textContent = '✓ TTS works!'; };
+      } catch (e) { status.textContent = '✗ ' + e.message; }
+    };
+
+    // Close on outside click
+    setTimeout(() => {
+      const close = (e) => { if (!panel.contains(e.target) && e.target.id !== 'pc-voice-settings-btn') { panel.remove(); document.removeEventListener('click', close); } };
+      document.addEventListener('click', close);
+    }, 100);
+
+    this.modal?.appendChild(panel);
+  },
+
 
   _getInput() {
     return this.modal?.querySelector('#pc-input') || document.getElementById('pc-input');

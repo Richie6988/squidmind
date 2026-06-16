@@ -12,5 +12,14 @@
     "allowed_user_ids": [],
     "bot_username": ""
   },
-  "history": []
+  "history": [],
+  "voice": {
+    "enabled": false,
+    "speaches_url": "http://localhost:8000",
+    "stt_model": "Systran/faster-whisper-small",
+    "tts_model": "kokoro",
+    "tts_voice": "af_heart",
+    "tts_speed": 1.0,
+    "language": "fr"
+  }
 }

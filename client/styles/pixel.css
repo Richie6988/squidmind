@@ -6048,6 +6048,15 @@ option {
 }
 .pc-mic:hover { color: #ef4444; }
 .pc-mic.recording { color: #ef4444; animation: ti-dot-pulse .7s ease-in-out infinite; }
+/* TTS button */
+.pc-tts {
+  width: 28px; height: 36px; background: none; border: none;
+  color: #475569; cursor: pointer; font-size: 14px; display: none;
+  align-items: center; justify-content: center; padding: 0;
+  transition: color 0.15s;
+}
+.pc-tts:hover { color: #4facfe; }
+.pc-tts.playing { color: #4facfe; }
 .pc-send {
   width: 38px; height: 38px; flex-shrink: 0;
   background: #4facfe;
