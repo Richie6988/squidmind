@@ -7,6 +7,7 @@ const TaskQueueUI = {
   agents: [],
   projects: [],
   _tasks: [],        // current ordered task list (managed locally for drag-drop)
+  _dismissed: new Set(), // task IDs dismissed from results view (survive polls)
   _dragging: null,   // task_id being dragged
   _workerStatuses: {},   // agentId → { status, model_id }
   _runTimers: {},        // taskId → { start, elapsed interval }
@@ -88,6 +89,7 @@ const TaskQueueUI = {
 
       const doneTasks = allTasks
         .filter(t => ['completed', 'failed'].includes(t.lifecycle?.status || t.status))
+        .filter(t => !this._dismissed.has(t.task_id))   // hide dismissed results
         .sort((a, b) => new Date(b.lifecycle?.completed_at || b.created_at || 0) - new Date(a.lifecycle?.completed_at || a.created_at || 0));
       this._doneTasks = doneTasks;
 
@@ -702,8 +704,16 @@ ${task.description}`
   },
 
   dismissResult(taskId) {
-    // Dismiss from RESULTS view only — does NOT delete from server/disk
+    // Persist in _dismissed set so it survives next poll refresh
+    this._dismissed.add(taskId);
     this._doneTasks = (this._doneTasks || []).filter(t => t.task_id !== taskId);
+    this._render();
+  },
+
+  dismissAllResults() {
+    // Dismiss all current results from view — does NOT delete from server/disk
+    (this._doneTasks || []).forEach(t => this._dismissed.add(t.task_id));
+    this._doneTasks = [];
     this._render();
   },
 

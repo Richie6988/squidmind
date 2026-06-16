@@ -1,26 +1,27 @@
 #!/bin/bash
-# rebuild-llama.sh — Rebuild node-llama-cpp with latest llama.cpp
-# Run this when you get "unknown model architecture" errors for new models (Gemma4, Llama4, etc.)
-# Takes 5-10 minutes. Requires CUDA toolkit for GPU build.
+# rebuild-llama.sh — Update + rebuild node-llama-cpp with latest llama.cpp
+# Fixes "unknown model architecture" errors for new models (Gemma4, Llama4, etc.)
 
 set -e
 cd "$(dirname "$0")/.."
 
-echo "=== IAQUA: Rebuilding llama.cpp for new model support ==="
-echo "This adds support for Gemma4, Llama4, and other new architectures."
+echo "=== IAQUA: Updating llama.cpp for new model support ==="
 echo ""
 
-# Check if CUDA is available
-if command -v nvcc &> /dev/null; then
+if command -v nvcc &> /dev/null || nvidia-smi &> /dev/null 2>&1; then
   echo "✓ CUDA detected — building with GPU support"
   export CMAKE_ARGS="-DGGML_CUDA=ON"
 else
-  echo "⚠ No CUDA detected — building CPU-only (GPU inference won't work)"
+  echo "⚠ No CUDA detected — building CPU-only"
   export CMAKE_ARGS="-DGGML_CUDA=OFF"
 fi
 
-echo "Building... (this takes 5-10 minutes)"
+echo "Step 1/2: Downloading latest llama.cpp source..."
+npx node-llama-cpp source download --release latest
+
+echo "Step 2/2: Compiling (5-10 min)..."
 npx node-llama-cpp source build
 
 echo ""
-echo "✅ Build complete! Restart IAQUA server to use the new llama.cpp."
+echo "✅ Done! Restart IAQUA to use the new llama.cpp."
+echo "   Gemma4, Llama4, and other new architectures should now load correctly."

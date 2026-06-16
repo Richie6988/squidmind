@@ -429,9 +429,11 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
         const arch = err.message.match(/unknown model architecture: '([^']+)'/)?.[1] || 'unknown';
         throw new Error(
           `Architecture '${arch}' not supported by current llama.cpp build.\n` +
-          `Run this in your IAQUA folder to rebuild with Gemma4/Llama4 support:\n` +
-          `  npx node-llama-cpp source build\n` +
-          `(Takes ~5-10 min, GPU required for CUDA build)`
+          `Run these commands in your IAQUA folder to add support:\n` +
+          `  npx node-llama-cpp source download --release latest\n` +
+          `  CMAKE_ARGS="-DGGML_CUDA=ON" npx node-llama-cpp source build\n` +
+          `Or: npm run rebuild-llama\n` +
+          `(~5-10 min. Fixes Gemma4, Llama4, and other new architectures.)`
         );
       }
       throw err;

@@ -833,7 +833,7 @@ class RegistryManager {
 
     const fs   = require('fs').promises;
     const path = require('path');
-    const AQUARIUM = require('./aquarium');
+    const AQUARIUM = require('../aquarium');
     const memPath = path.join(AQUARIUM.PROJECTS, entry.folder, 'project_memory.json');
 
     let memory;
@@ -1006,7 +1006,7 @@ class RegistryManager {
 
     // Also keep flat registry in sync — minimal index entry for quick broker scans
     try {
-      const AQUARIUM  = require('./aquarium');
+      const AQUARIUM  = require('../aquarium');
       const flatPath  = path.join(AQUARIUM.TASKS, 'tasks_registry.json');
       let flatReg = { metadata: {}, tasks: {} };
       try { flatReg = JSON.parse(await fs.readFile(flatPath, 'utf8')); } catch {}
