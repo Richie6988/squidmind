@@ -121,8 +121,10 @@ const ProjectsPanel = {
    */
   _renderTempleSvg(shape, colors, squidCount = 0) {
     const outside = colors.outside || '#457B9D';
-    const inside = colors.inside || '#1D3557';
     const darker = this._darken(outside, 0.7);
+    // inside color is NOT shown in the preview — it's an interior decoration only
+    // Use a neutral dark fill for the temple interior in the preview card
+    const inside = '#0d1b2e';
     
     const shapes = {
       // Classic Greek temple (pediment + 3 columns + base)

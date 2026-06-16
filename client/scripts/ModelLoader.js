@@ -443,6 +443,7 @@ const ModelLoader = {
           : `${!m.is_poseidon ? `<button class="btn-secondary" onclick="ModelLoader.assignPoseidon('${m.model_id}')">Use as Poseidon</button>` : ''}`
         }
         <button class="btn-secondary" onclick="ModelLoader.showImportDialog('${this._escape(m.file_name)}', '${m.model_id}')">Edit Params</button>
+        <button class="btn-secondary" onclick="ModelLoader.renameModel('${m.model_id}', this)">✏ Rename</button>
         <button class="btn-secondary" title="Toggle between text and image generation mode" onclick="ModelLoader.setModelType('${m.model_id}','${nextType}')">${toggleLabel}</button>
         ${m.is_loaded ? `<button class="btn-secondary" onclick="ModelLoader.unload('${m.model_id}')">Unload from Memory</button>` : ''}
         <button class="btn-secondary danger-action" onclick="ModelLoader.remove('${m.model_id}')">Remove</button>
@@ -486,7 +487,8 @@ const ModelLoader = {
     return `
       <div class="model-library-card ${m.is_poseidon ? 'is-poseidon' : ''} ${isInvalid ? 'is-invalid' : ''}" data-model-id="${this._escape(m.model_id || '')}">
         <div class="model-card-header">
-          <strong title="${this._escape(m.file_name)}">${this._escape(m.file_name)}</strong>
+          <strong title="${this._escape(m.file_name)}">${this._escape(m.display_name || m.file_name)}</strong>
+          ${m.display_name ? `<span style="font-size:8px;color:#475569;font-family:monospace;">${this._escape(m.file_name)}</span>` : ''}
           <span class="model-size-pill">${sizeStr}</span>
           ${statusBadge}
         </div>
@@ -741,6 +743,33 @@ const ModelLoader = {
     }
   },
   
+  async renameModel(modelId, triggerEl) {
+    // Find current display name from library
+    const m = this.library?.models?.find(m => m.model_id === modelId);
+    const current = m?.display_name || '';
+
+    // Build inline rename input next to the button
+    const btn = typeof triggerEl === 'string' ? null : triggerEl;
+    const newName = await SquidModal.prompt(
+      `Rename "${m?.file_name || modelId}"`,
+      'Enter a short readable name (e.g. "Qwen 9B Fast")',
+      current
+    );
+    if (!newName || newName.trim() === current) return;
+
+    try {
+      const res = await window.ApiV2._fetch(`/models/${modelId}/rename`, {
+        method: 'PATCH',
+        body: JSON.stringify({ display_name: newName.trim() })
+      });
+      if (!res.success) throw new Error(res.error || 'Rename failed');
+      // Update local library cache
+      if (m) m.display_name = newName.trim();
+      await this.open();  // refresh library view
+    } catch (e) { await SquidModal.alert('Rename failed: ' + e.message); }
+  },
+
+
   async removeFile(fileName) {
     if (!await SquidModal.confirm(`DELETE the file ${fileName} from disk? This cannot be undone.`)) return;
     try {

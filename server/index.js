@@ -318,6 +318,32 @@ app.post('/api/v2/voice/tts', express.json({ limit: '50kb' }), async (req, res) 
   }
 });
 
+// ==================== REASONING BUS — live agent/poseidon thought stream ====================
+// Lightweight pub/sub: any server code calls ReasoningBus.push(event) to broadcast to temple UIs.
+const ReasoningBus = {
+  _clients: new Set(),
+  push(event) {
+    const data = `data: ${JSON.stringify(event)}\n\n`;
+    for (const res of this._clients) {
+      try { res.write(data); } catch {}
+    }
+  },
+  subscribe(res) { this._clients.add(res); },
+  unsubscribe(res) { this._clients.delete(res); },
+};
+global.ReasoningBus = ReasoningBus;  // available to TaskRunner, AgentWorker, etc.
+
+// GET /api/v2/reasoning/stream — SSE stream of all agent activity
+app.get('/api/v2/reasoning/stream', (req, res) => {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+  res.write('data: {"type":"connected"}\n\n');
+  ReasoningBus.subscribe(res);
+  req.on('close', () => ReasoningBus.unsubscribe(res));
+});
+
 // Initialize services
 // ==================== AGENT ROUTES (V1 reads, kept for canvas) ====================
 

@@ -44,6 +44,14 @@ const TempleInterior = {
     const agentSection = document.getElementById('ti-agents-always');
     if (agentSection) this._renderAgentsCompact(agentSection);
 
+    // Auto-start reasoning stream
+    const _rPanel = document.getElementById('ti-reasoning-panel');
+    if (_rPanel && !this._reasoningEvtSource) {
+      this._startReasoningStream(_rPanel);
+      const _rBtn = document.getElementById('ti-reasoning-toggle');
+      if (_rBtn) { _rBtn.style.background = '#00ffb4'; _rBtn.style.color = '#020810'; _rBtn.style.borderColor = '#00ffb4'; _rBtn.textContent = '⏹ STOP'; }
+    }
+
     this._pollTimer = setInterval(() => {
       this._renderHeader();
       // Always refresh kanban and agents regardless of active tab
@@ -51,7 +59,7 @@ const TempleInterior = {
       const agSec = document.getElementById('ti-agents-always');
       if (agSec) this._renderAgentsCompact(agSec);
       // Also refresh task list in right panel if visible
-      if (this._rightTab !== 'kanban' && this._rightTab !== 'output') this._renderTasks();
+      if (this._rightTab !== 'kanban') this._renderTasks();
     }, 3000);
   },
 
@@ -99,15 +107,17 @@ const TempleInterior = {
         <span class="ti-ide-notabs" id="ti-ide-notabs">OPEN A FILE FROM THE FILES PANEL</span>
       </div>
       <div class="ti-ide-toolbar">
-        <span class="ti-ide-fname" id="ti-ide-fname">—</span>
-        <button class="ti-tab-sm accent" onclick="TempleInterior._ideSave()">SAVE</button>
+        <span class="ti-ide-fname" id="ti-ide-fname">AGENT REASONING</span>
+        <button class="ti-tab-sm accent" onclick="TempleInterior._ideSave()" id="ti-ide-save-btn" style="display:none;">SAVE</button>
         <button class="ti-tab-sm" onclick="TempleInterior._ideTogglePreview()" id="ti-prev-toggle" style="display:none;">PREVIEW</button>
+        <button class="ti-tab-sm" id="ti-reasoning-toggle" onclick="TempleInterior._toggleReasoningStream()" style="margin-left:auto;border-color:rgba(0,255,180,0.3);color:#00ffb4;">● LIVE</button>
       </div>
-      <div class="ti-ide-main">
-        <textarea id="ti-editor" class="ti-editor"
+      <div class="ti-ide-main" style="position:relative;">
+        <div id="ti-reasoning-panel" style="position:absolute;inset:0;overflow-y:auto;background:#020810;color:#00ffb4;font-family:'Courier New',monospace;font-size:10px;padding:12px;line-height:1.6;"></div>
+        <textarea id="ti-editor" class="ti-editor" style="display:none;position:absolute;inset:0;z-index:2;"
           placeholder="Open a file to start editing..."
           oninput="TempleInterior._ideMarkDirty()" spellcheck="false"></textarea>
-        <iframe id="ti-preview-frame" class="ti-preview-frame" sandbox="allow-scripts allow-same-origin"></iframe>
+        <iframe id="ti-preview-frame" class="ti-preview-frame" sandbox="allow-scripts allow-same-origin" style="display:none;position:absolute;inset:0;z-index:2;"></iframe>
       </div>
       <div class="ti-ide-status" id="ti-ide-status">READY</div>
     </div>
@@ -116,7 +126,6 @@ const TempleInterior = {
   <div class="ti-right">
     <div class="ti-tabs">
       <button class="ti-tab active" id="ti-rt-kanban" onclick="TempleInterior._switchRight('kanban')">KANBAN</button>
-      <button class="ti-tab" id="ti-rt-output" onclick="TempleInterior._switchRight('output')">OUTPUT</button>
     </div>
     <div id="ti-right-body" style="display:flex;flex-direction:column;flex:1;min-height:0;overflow:hidden;"></div>
   </div>
@@ -143,18 +152,13 @@ const TempleInterior = {
 
   _switchRight(tab) {
     this._rightTab = tab || 'kanban';
-    // Update tab button states
-    ['kanban','output'].forEach(t => {
+    ['kanban'].forEach(t => {
       const btn = document.getElementById(`ti-rt-${t}`);
       if (btn) btn.classList.toggle('active', t === this._rightTab);
     });
     const body = document.getElementById('ti-right-body');
     if (!body) return;
-    if (this._rightTab === 'output') {
-      this._renderOutput(body);
-    } else {
-      this._renderKanban(body);
-    }
+    this._renderKanban(body);
   },
 
   _refreshAll() {
@@ -172,23 +176,63 @@ const TempleInterior = {
     // Try inline colors first, then re-fetch from registry for accuracy
     const applyColors = (inside, outside) => {
       if (inside) {
+        const hex = inside.replace('#', '');
+        const r = parseInt(hex.slice(0,2), 16), g = parseInt(hex.slice(2,4), 16), b = parseInt(hex.slice(4,6), 16);
+        const tint4  = `rgba(${r},${g},${b},0.04)`;
+        const tint8  = `rgba(${r},${g},${b},0.08)`;
+        const tint15 = `rgba(${r},${g},${b},0.15)`;
+        const tint20 = `rgba(${r},${g},${b},0.20)`;
+        const tint35 = `rgba(${r},${g},${b},0.35)`;
+        const tint60 = `rgba(${r},${g},${b},0.60)`;
+
         root.style.setProperty('--ti-temple-color', inside);
-        // Solid backgrounds — no transparency so aquarium never bleeds through
-        root.style.background = `var(--ocean-deep)`;
+
+        // ── Full immersive background tint (not just top border) ─────────
+        // The interior feels "inside" the temple — subtle color wash on all panels
+        root.style.background = `linear-gradient(160deg, rgba(${r},${g},${b},0.06) 0%, #020810 60%)`;
+        root.style.borderTop  = `3px solid ${inside}`;
+
+        // Left panel
         const left = root.querySelector('.ti-left');
-        if (left) left.style.background = `var(--ocean-deep)`;
+        if (left) { left.style.background = `linear-gradient(180deg, rgba(${r},${g},${b},0.07) 0%, var(--ocean-deep) 100%)`; left.style.borderRight = `1px solid ${tint20}`; }
+        // Center panel
+        const center = root.querySelector('.ti-center');
+        if (center) center.style.background = `linear-gradient(180deg, rgba(${r},${g},${b},0.05) 0%, #020810 100%)`;
+        // Right panel
         const right = root.querySelector('.ti-right');
-        if (right) right.style.background = `var(--ocean-deep)`;
-        // Accent: top border only
-        root.style.borderTop = `3px solid ${inside}`;
+        if (right) { right.style.background = `linear-gradient(180deg, rgba(${r},${g},${b},0.07) 0%, var(--ocean-deep) 100%)`; right.style.borderLeft = `1px solid ${tint20}`; }
+
+        // Active tabs get the accent color
+        root.querySelectorAll('.ti-tab.active, .ti-tab-sm.accent').forEach(el => {
+          el.style.borderBottomColor = inside;
+          el.style.color = inside;
+        });
+        // Section headers
+        root.querySelectorAll('.ti-sec').forEach(el => {
+          el.style.background = tint8;
+          el.style.borderBottom = `1px solid ${tint20}`;
+        });
+        // IDE toolbar accent
+        const toolbar = root.querySelector('.ti-ide-toolbar');
+        if (toolbar) toolbar.style.borderBottom = `1px solid ${tint20}`;
+        // IDE tab bar
+        const tabbar = root.querySelector('.ti-ide-tabbar');
+        if (tabbar) tabbar.style.background = tint4;
+        // Header accent line
+        const hdr = root.querySelector('.ti-header');
+        if (hdr) hdr.style.borderBottom = `2px solid ${tint35}`;
+        // Reasoning toggle button border
+        const rBtn = root.querySelector('#ti-reasoning-toggle');
+        if (rBtn && rBtn.style.background !== inside) rBtn.style.borderColor = tint60;
       }
       if (outside) {
-        const hdr = root.querySelector('.ti-header');
-        if (hdr) {
-          hdr.style.borderBottom = `2px solid ${outside}88`;
-          hdr.style.background = `var(--ocean-deep)`;
+        // Outside color: temple card exterior only (rendered in ProjectsPanel SVG)
+        // Inside the temple, outside color accents the header border
+        if (!inside) {
+          const hdr = root.querySelector('.ti-header');
+          if (hdr) hdr.style.borderBottom = `2px solid ${outside}88`;
+          root.style.borderTop = `3px solid ${outside}`;
         }
-        if (!inside) root.style.borderTop = `3px solid ${outside}`;
       }
     };
 
@@ -1208,8 +1252,6 @@ const TempleInterior = {
     const f = this._openFiles[idx];
 
     const frame = document.getElementById('ti-preview-frame');
-    if (ed) ed.style.display = '';
-    if (frame) frame.style.display = 'none';
 
     if (f.isImg) {
       if (ed) ed.style.display = 'none';
@@ -1217,14 +1259,20 @@ const TempleInterior = {
         frame.style.display = '';
         frame.srcdoc = `<html><body style="margin:0;background:#0a2239;display:flex;align-items:center;justify-content:center;min-height:100vh;"><img src="${f.imgUrl}" style="max-width:100%;max-height:100vh;"></body></html>`;
       }
-    } else if (ed) {
-      ed.value = f.loading ? 'Loading...' : (f.content || '');
+    } else {
+      if (frame) frame.style.display = 'none';
+      if (ed) {
+        ed.style.display = '';
+        ed.value = f.loading ? 'Loading...' : (f.content || '');
+      }
     }
 
-    const fnEl = document.getElementById('ti-ide-fname');
-    if (fnEl) fnEl.textContent = f.name + (f.type ? ` [${f.type.toUpperCase()}]` : '');
-    // Show PREVIEW button only for HTML files
+    // Show editor UI elements
+    const fnEl   = document.getElementById('ti-ide-fname');
+    const saveBtn = document.getElementById('ti-ide-save-btn');
     const prevBtn = document.getElementById('ti-prev-toggle');
+    if (fnEl)   fnEl.textContent = f.name + (f.type ? ` [${f.type.toUpperCase()}]` : '');
+    if (saveBtn) saveBtn.style.display = '';
     if (prevBtn) prevBtn.style.display = /\.html?$/i.test(f.name) ? '' : 'none';
     this._renderIdeTabs();
   },
@@ -1251,6 +1299,106 @@ const TempleInterior = {
     this._renderIdeTabs();
   },
 
+  // ── Live reasoning panel ────────────────────────────────────────────────────
+  // Show reasoning panel (default) — hide file editor
+  _showReasoning() {
+    const editor  = document.getElementById('ti-editor');
+    const preview = document.getElementById('ti-preview-frame');
+    const fname   = document.getElementById('ti-ide-fname');
+    const saveBtn = document.getElementById('ti-ide-save-btn');
+    if (editor)  editor.style.display  = 'none';
+    if (preview) preview.style.display = 'none';
+    if (fname)   fname.textContent = 'AGENT REASONING';
+    if (saveBtn) saveBtn.style.display = 'none';
+    // Restart stream if not running
+    const panel = document.getElementById('ti-reasoning-panel');
+    if (panel && !this._reasoningEvtSource) this._startReasoningStream(panel);
+  },
+
+  // Show file editor — reasoning panel stays in background
+  _showEditor(fileName) {
+    const editor  = document.getElementById('ti-editor');
+    const fname   = document.getElementById('ti-ide-fname');
+    const saveBtn = document.getElementById('ti-ide-save-btn');
+    if (editor)  { editor.style.display = ''; }
+    if (fname)   fname.textContent = fileName || '—';
+    if (saveBtn) saveBtn.style.display = '';
+  },
+
+  // Toggle SSE stream on/off — reasoning panel stays visible either way
+  _toggleReasoningStream() {
+    const btn = document.getElementById('ti-reasoning-toggle');
+    const panel = document.getElementById('ti-reasoning-panel');
+    if (!panel) return;
+    if (this._reasoningEvtSource) {
+      // Stop stream
+      this._reasoningEvtSource.close();
+      this._reasoningEvtSource = null;
+      if (btn) { btn.style.background = ''; btn.style.color = '#00ffb4'; btn.style.borderColor = 'rgba(0,255,180,0.3)'; btn.textContent = '● LIVE'; }
+    } else {
+      // Start stream
+      this._startReasoningStream(panel);
+      if (btn) { btn.style.background = '#00ffb4'; btn.style.color = '#020810'; btn.style.borderColor = '#00ffb4'; btn.textContent = '⏹ STOP'; }
+    }
+  },
+
+  // Legacy alias
+  _toggleReasoning() { this._toggleReasoningStream(); },
+
+  _startReasoningStream(panel) {
+    if (this._reasoningEvtSource) this._reasoningEvtSource.close();
+
+    // Rolling buffer: keep last 120 events max
+    if (!this._reasoningLog) this._reasoningLog = [];
+    const log = this._reasoningLog;
+
+    const render = () => {
+      if (panel.style.display === 'none') return;
+      const html = log.map(e => {
+        if (e.type === 'connected') return `<div style="color:#475569;padding:4px 0;">── Connected to reasoning stream ──</div>`;
+        if (e.type === 'task_start') return `<div style="color:#4facfe;margin-top:10px;border-top:1px solid #1e3a5f;padding-top:6px;">▶ <strong>${e.title || e.task_id}</strong> ${e.agent ? `[${e.agent}]` : ''}</div>`;
+        if (e.type === 'task_end')   return `<div style="color:#475569;padding:2px 0;">── task complete ──</div>`;
+        if (e.type === 'thinking_start') return `<div style="color:#7c3aed;margin-top:6px;font-size:9px;">⟨think⟩</div>`;
+        if (e.type === 'thinking')   return `<span style="color:#a78bfa;white-space:pre-wrap;">${this._escR(e.chunk)}</span>`;
+        if (e.type === 'thinking_end') return `<div style="color:#7c3aed;font-size:9px;">⟨/think⟩</div>`;
+        if (e.type === 'text')       return `<span style="color:#e2e8f0;white-space:pre-wrap;">${this._escR(e.chunk)}</span>`;
+        if (e.type === 'tool_call')  return `<div style="color:#f59e0b;margin-top:4px;">⚡ ${this._escR(e.name)} ${e.args ? `<span style="color:#78350f;">${this._escR(JSON.stringify(e.args).slice(0,120))}</span>` : ''}</div>`;
+        if (e.type === 'tool_result') return `<div style="color:${e.ok ? '#10b981' : '#ef4444'};font-size:9px;margin-left:10px;">  ${e.ok ? '✓' : '✗'} ${this._escR(e.summary || '')}</div>`;
+        return '';
+      }).join('');
+      panel.innerHTML = `<div style="min-height:100%;">${html}<div id="ti-reason-end"></div></div>`;
+      const end = panel.querySelector('#ti-reason-end');
+      if (end) end.scrollIntoView({ behavior: 'smooth' });
+    };
+
+    // Show existing log immediately
+    render();
+
+    // Connect SSE stream
+    const es = new EventSource('/api/v2/reasoning/stream');
+    this._reasoningEvtSource = es;
+
+    es.onmessage = (e) => {
+      try {
+        const ev = JSON.parse(e.data);
+        log.push(ev);
+        if (log.length > 200) log.splice(0, log.length - 200);
+        render();
+      } catch {}
+    };
+
+    es.onerror = () => {
+      log.push({ type: 'connected' });  // shows reconnect indicator
+      render();
+    };
+  },
+
+  _escR(s) {
+    return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  },
+
+
+
   async _ideClose(idx) {
     const f = this._openFiles[idx];
     if (f?.dirty) {
@@ -1260,8 +1408,12 @@ const TempleInterior = {
     this._openFiles.splice(idx, 1);
     if (this._activeFileIdx >= this._openFiles.length) this._activeFileIdx = this._openFiles.length - 1;
     this._renderIdeTabs();
-    if (this._activeFileIdx >= 0) this._ideActivate(this._activeFileIdx);
-    else { const ed = document.getElementById('ti-editor'); if (ed) ed.value = ''; }
+    if (this._activeFileIdx >= 0) {
+      this._ideActivate(this._activeFileIdx);
+    } else {
+      // No more open files — return to reasoning view
+      this._showReasoning();
+    }
   },
 
   async _ideSave() {

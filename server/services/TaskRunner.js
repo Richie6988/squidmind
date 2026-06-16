@@ -497,14 +497,22 @@ class TaskRunner {
           // Preemption: abort BG inference the moment a CHAT request is queued.
           // The task will retry on the next tick once Poseidon is free.
           let preempted = false;
+          const bus = global.ReasoningBus;
+          if (bus) bus.push({ type: 'task_start', task_id: taskId, title: task.title, agent: agentId || 'poseidon', project: task.project_name });
           for await (const ev of this.modelService.chatWithPoseidon(posMsg, [], { _skipBroker: true, _bgMode: true })) {
-            if (ev.type === 'text') output += ev.chunk;
+            if (ev.type === 'text')          { output += ev.chunk; bus?.push({ type: 'text', task_id: taskId, chunk: ev.chunk }); }
+            if (ev.type === 'thinking')      bus?.push({ type: 'thinking', task_id: taskId, chunk: ev.chunk });
+            if (ev.type === 'thinking_start') bus?.push({ type: 'thinking_start', task_id: taskId });
+            if (ev.type === 'thinking_end')   bus?.push({ type: 'thinking_end', task_id: taskId });
+            if (ev.type === 'tool_call')      bus?.push({ type: 'tool_call', task_id: taskId, name: ev.name, args: ev.args });
+            if (ev.type === 'tool_result')    bus?.push({ type: 'tool_result', task_id: taskId, name: ev.name, ok: ev.result?.ok !== false, summary: String(ev.result?.message || '').slice(0, 200) });
             if (this.modelService.broker.hasHighPriorityWaiting()) {
               preempted = true;
               this.modelService.abortCurrentGeneration?.();
               break;
             }
           }
+          if (bus) bus.push({ type: 'task_end', task_id: taskId });
           if (preempted) {
             console.log(`[TaskRunner] BG task ${taskId} preempted by CHAT — will retry`);
             throw new Error('PREEMPTED_BY_CHAT');
