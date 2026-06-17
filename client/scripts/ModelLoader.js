@@ -420,11 +420,35 @@ const ModelLoader = {
     if (isMissing) statusBadge += '<span class="model-missing-pill">FILE MISSING</span>';
     if (isInvalid) statusBadge += '<span class="model-missing-pill">INVALID GGUF</span>';
     if (!m.imported && !isMissing && !isInvalid) statusBadge += '<span class="model-notimport-pill">NOT IMPORTED</span>';
-    // model_type badge (text vs image)
-    const mtype = m.config?.model_type || m.model_type || 'text';
-    statusBadge += mtype === 'image'
-      ? '<span class="model-imgtype-pill">🖼 IMAGE MODEL</span>'
-      : '<span class="model-texttype-pill">💬 TEXT</span>';
+    // Capability badges from model_type and name heuristics
+    const mtype    = m.config?.model_type || m.model_type || 'text';
+    const fname    = (m.file_name || m.model_id || '').toLowerCase();
+    const dname    = (m.display_name || '').toLowerCase();
+    const combined = fname + ' ' + dname;
+    const caps = [];
+    if (mtype === 'image') {
+      caps.push({ icon: '🖼', label: 'IMAGE', color: '#a78bfa' });
+    } else {
+      caps.push({ icon: '💬', label: 'TEXT', color: '#4facfe' });
+      if (/vision|vlm|vl-|visual|-v\d|qwen.*vl|llava|moondream|minicpm.*v|phi.*vision|pixtral/i.test(combined))
+        caps.push({ icon: '👁', label: 'VLM', color: '#34d399' });
+      if (/tool|function|fc-|instruct.*fn|qwen.*7b.*instruct|hermes|mistral.*instruct/i.test(combined))
+        caps.push({ icon: '🔧', label: 'TOOLS', color: '#f59e0b' });
+      if (/think|reasoning|r1|deepseek.*r|qwq|sky-t1|marco-o1/i.test(combined))
+        caps.push({ icon: '🧠', label: 'THINK', color: '#f472b6' });
+      if (/code|coder|starcoder|codellama|deepseek.*coder|qwen.*coder|wizard.*coder|phind/i.test(combined))
+        caps.push({ icon: '💻', label: 'CODE', color: '#00ffb4' });
+      if (/embed|embedding|bge|nomic|e5-|gte-|jina/i.test(combined))
+        caps.push({ icon: '📐', label: 'EMBED', color: '#94a3b8' });
+      if (/math|mathstral|numina|deepseek.*math/i.test(combined))
+        caps.push({ icon: '∑', label: 'MATH', color: '#fb923c' });
+      if (/instruct|chat|assistant/i.test(combined) && caps.length === 1)
+        caps.push({ icon: '🎯', label: 'INSTRUCT', color: '#7dd3fc' });
+    }
+    statusBadge += caps.map(c =>
+      `<span class="model-texttype-pill" style="background:${c.color}18;border-color:${c.color}44;color:${c.color};">${c.icon} ${c.label}</span>`
+    ).join('');
+
     
     let actions = '';
     if (isInvalid) {
