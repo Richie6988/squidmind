@@ -48,6 +48,31 @@ const SquidModal = {
     });
   },
 
+  prompt(title, placeholder, defaultValue) {
+    return new Promise(resolve => {
+      const el = this._make(`
+        <p class="squid-modal-msg">${this._esc(title)}</p>
+        <input class="squid-modal-input" type="text"
+          placeholder="${this._esc(placeholder || '')}"
+          value="${this._esc(defaultValue || '')}"
+          style="width:100%;box-sizing:border-box;background:var(--ocean-deep,#020810);border:1px solid var(--border,#1e3a5f);color:var(--text-primary,#e2e8f0);border-radius:4px;padding:6px 8px;font-size:11px;margin-bottom:10px;outline:none;">
+        <div class="squid-modal-actions">
+          <button class="btn-secondary squid-modal-no">Cancel</button>
+          <button class="btn-primary squid-modal-ok">OK</button>
+        </div>
+      `);
+      const input = el.querySelector('.squid-modal-input');
+      el.querySelector('.squid-modal-ok').onclick  = () => { el.remove(); resolve(input.value || null); };
+      el.querySelector('.squid-modal-no').onclick  = () => { el.remove(); resolve(null); };
+      el.addEventListener('keydown', e => {
+        if (e.key === 'Enter')  { el.remove(); resolve(input.value || null); }
+        if (e.key === 'Escape') { el.remove(); resolve(null); }
+      });
+      input.focus();
+      input.select();
+    });
+  },
+
   _esc(s) {
     return String(s ?? '').replace(/[<>&"]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'})[c]);
   }
