@@ -92,8 +92,13 @@ const ControlTowerLive = {
     const pill = document.getElementById('monitor-model-pill');
     if (!pill) return;
     if (library.poseidon_model_id) {
-      const inMem = library.currently_loaded.includes(library.poseidon_model_id);
-      pill.innerHTML = `<strong style="color:${inMem ? 'var(--success)' : 'var(--text)'}">${library.poseidon_model_id}</strong> ${inMem ? '(loaded)' : '(lazy)'}`;
+      const inMem  = library.currently_loaded.includes(library.poseidon_model_id);
+      const mid    = library.poseidon_model_id;
+      const mEntry = (library.models || []).find(m => m.model_id === mid);
+      const label  = mEntry?.display_name || mid;
+      pill.innerHTML = `
+        <div style="font-size:9px;color:#c8d8f0;word-break:break-all;line-height:1.4;">${label}</div>
+        <div style="font-size:8px;color:${inMem ? '#06ffa5' : '#64748b'};margin-top:2px;">${inMem ? '&#9679; LOADED IN VRAM' : '&#9675; NOT LOADED (lazy)'}</div>`;
     } else {
       pill.textContent = 'none assigned';
       pill.style.color = 'var(--text-secondary)';
@@ -121,14 +126,17 @@ const ControlTowerLive = {
       barWrap.id = 'ctx-bar-wrap';
       barWrap.style.cssText = 'margin-top:4px;';
       barWrap.innerHTML = `
-        <div style="display:flex;justify-content:space-between;font-size:7px;color:var(--text-secondary);margin-bottom:2px;">
-          <span id="ctx-bar-label">Context</span>
-          <span id="ctx-bar-val"></span>
+        <div style="display:flex;justify-content:space-between;align-items:center;font-size:7px;color:#64748b;margin-bottom:3px;letter-spacing:.04em;">
+          <span>CONTEXT</span>
+          <span id="ctx-bar-val" style="font-family:'Courier New',monospace;color:#94a3b8;"></span>
         </div>
-        <div style="height:3px;background:rgba(255,255,255,0.1);border-radius:2px;overflow:hidden;">
+        <div style="height:4px;background:rgba(255,255,255,0.08);border-radius:2px;overflow:hidden;">
           <div id="ctx-bar-fill" style="height:100%;border-radius:2px;transition:width 0.5s,background 0.5s;"></div>
         </div>
-        <div id="ctx-tokens" style="font-size:7px;color:var(--text-secondary);margin-top:2px;"></div>`;
+        <div style="display:flex;justify-content:space-between;margin-top:4px;font-size:7px;color:#475569;">
+          <span id="ctx-turns"></span>
+          <span id="ctx-tokens" style="font-family:'Courier New',monospace;"></span>
+        </div>`;
       pill.parentNode.insertBefore(barWrap, pill.nextSibling);
     }
 
@@ -140,9 +148,11 @@ const ControlTowerLive = {
       fill.style.background = pct < 60 ? 'var(--success)' : pct < 85 ? '#FBBF24' : 'var(--danger)';
     }
     if (val) val.textContent = ctxTotal
-      ? `${(ctxUsed/1000).toFixed(1)}k/${(ctxTotal/1000).toFixed(0)}k tok (${pct}%) · turn ${turns}`
-      : `turn ${turns} (${pct}%)`;
-    if (tokEl) tokEl.textContent = `${(tokens/1000).toFixed(1)}k tokens total`;
+      ? `${(ctxUsed/1000).toFixed(1)}k / ${(ctxTotal/1000).toFixed(0)}k  (${pct}%)`
+      : `${pct}%`;
+    const turnsEl = document.getElementById('ctx-turns');
+    if (turnsEl) turnsEl.textContent = `turn ${turns}`;
+    if (tokEl) tokEl.textContent = `${(tokens/1000).toFixed(1)}k tokens`;
   },
 
   stop() {
