@@ -1028,7 +1028,30 @@ const ModelLoader = {
         const lk = m.likes > 1000 ? (m.likes/1000).toFixed(1)+'k' : (m.likes||0);
         const sz = m.size_hint ? `<span class="ml-hf-size-hint">${m.size_hint}</span>` : '';
         const src_link = `https://huggingface.co/${m.id}`;
-        const capsHtml = (m.caps||[]).map(c => `<span class="ml-hf-cap">${c}</span>`).join('');
+        const capsHtml = (m.caps||[]).map(c => {
+          const PI = window.PixelIcons;
+          const capMap = {
+            'text-generation':        { icon: PI?.inline('text_model',10)||'💬', label:'TEXT',   color:'#4facfe' },
+            'text2text-generation':   { icon: PI?.inline('text_model',10)||'💬', label:'TEXT',   color:'#4facfe' },
+            'conversational':         { icon: PI?.inline('text_model',10)||'💬', label:'CHAT',   color:'#4facfe' },
+            'image-text-to-text':     { icon: PI?.inline('vlm',10)||'👁',        label:'VLM',    color:'#34d399' },
+            'visual-question-answering':{ icon: PI?.inline('vlm',10)||'👁',      label:'VLM',    color:'#34d399' },
+            'image-to-text':          { icon: PI?.inline('vlm',10)||'👁',        label:'VLM',    color:'#34d399' },
+            'text-to-image':          { icon: PI?.inline('image_model',10)||'🖼', label:'IMG',   color:'#a78bfa' },
+            'image-classification':   { icon: PI?.inline('image_model',10)||'🖼', label:'IMG',   color:'#a78bfa' },
+            'text-classification':    { icon: PI?.inline('target',10)||'🎯',     label:'CLASS',  color:'#7dd3fc' },
+            'token-classification':   { icon: PI?.inline('target',10)||'🎯',     label:'NER',    color:'#7dd3fc' },
+            'feature-extraction':     { icon: PI?.inline('embed',10)||'📐',      label:'EMBED',  color:'#94a3b8' },
+            'sentence-similarity':    { icon: PI?.inline('embed',10)||'📐',      label:'EMBED',  color:'#94a3b8' },
+            'fill-mask':              { icon: PI?.inline('embed',10)||'📐',      label:'MASK',   color:'#94a3b8' },
+            'code-generation':        { icon: PI?.inline('code_model',10)||'💻', label:'CODE',   color:'#00ffb4' },
+            'translation':            { icon: PI?.inline('text_model',10)||'💬', label:'TRANSL', color:'#4facfe' },
+            'summarization':          { icon: PI?.inline('text_model',10)||'💬', label:'SUMM',   color:'#4facfe' },
+            'question-answering':     { icon: PI?.inline('brain',10)||'🧠',      label:'Q&A',    color:'#f472b6' },
+          };
+          const cap = capMap[c] || { icon: '', label: c.replace(/-/g,' ').toUpperCase().slice(0,8), color:'#64748b' };
+          return `<span class="ml-hf-cap" style="background:${cap.color}18;border-color:${cap.color}44;color:${cap.color};display:inline-flex;align-items:center;gap:2px;">${cap.icon}${cap.label}</span>`;
+        }).join('');
         const updatedStr = m.updated ? new Date(m.updated).toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit',year:'2-digit'}) : '';
         return `<div class="ml-hf-row" onclick="ModelLoader._hfOpenRepo('${m.id}')">
           <div class="ml-hf-row-body">
@@ -1078,7 +1101,20 @@ const ModelLoader = {
         if (data.pipeline && !items.some(c => c.includes(data.pipeline))) {
           items.unshift(`<span style="font-size:8px;color:#94a3b8">${data.pipeline}</span>`);
         }
-        capsDiv.innerHTML = items.map(c => `<span class="ml-hf-cap">${c}</span>`).join('');
+        capsDiv.innerHTML = items.map(c => {
+          const PI = window.PixelIcons;
+          const capMap = {
+            'text-generation':{'icon':PI?.inline('text_model',10)||'','label':'TEXT','color':'#4facfe'},
+            'image-text-to-text':{'icon':PI?.inline('vlm',10)||'','label':'VLM','color':'#34d399'},
+            'text-to-image':{'icon':PI?.inline('image_model',10)||'','label':'IMG','color':'#a78bfa'},
+            'feature-extraction':{'icon':PI?.inline('embed',10)||'','label':'EMBED','color':'#94a3b8'},
+            'code-generation':{'icon':PI?.inline('code_model',10)||'','label':'CODE','color':'#00ffb4'},
+            'question-answering':{'icon':PI?.inline('brain',10)||'','label':'Q&A','color':'#f472b6'},
+          };
+          const cap = capMap[c];
+          if (cap) return `<span class="ml-hf-cap" style="background:${cap.color}18;border-color:${cap.color}44;color:${cap.color};display:inline-flex;align-items:center;gap:2px;">${cap.icon}${cap.label}</span>`;
+          return `<span class="ml-hf-cap">${c}</span>`;
+        }).join('');
         const hint = panel.querySelector('.ml-hf-file-hint');
         if (hint) hint.insertAdjacentElement('beforebegin', capsDiv);
       }
