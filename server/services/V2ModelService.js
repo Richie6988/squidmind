@@ -243,6 +243,7 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
         file_size_gb: file.file_size_gb,
         format: 'gguf',
         imported: !!regEntry,
+        display_name: regEntry?.display_name || null,
         config: regEntry?.config || null,             // SAVED config (user preference, may have 'auto')
         runtime_config: loadedEntry?.config || null,  // RESOLVED config (all numeric, what's actually running)
         status: regEntry?.status || 'not_imported',
