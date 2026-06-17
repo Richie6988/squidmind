@@ -11,8 +11,10 @@ const SquidModal = {
     el.innerHTML = `<div class="squid-modal-box">${html}</div>`;
     // z-index above everything including temple (9999) and agent form (20000)
     el.style.cssText = 'position:fixed;inset:0;z-index:30000;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.65);';
-    // Prevent clicks from propagating to underlying modals
-    el.addEventListener('click', e => e.stopPropagation());
+    // Prevent clicks AND mouseup from propagating to underlying modals
+    el.addEventListener('click',    e => e.stopPropagation());
+    el.addEventListener('mouseup',  e => e.stopPropagation());
+    el.addEventListener('mousedown',e => e.stopPropagation());
     document.body.appendChild(el);
     return el;
   },
