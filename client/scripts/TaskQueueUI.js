@@ -111,7 +111,7 @@ const TaskQueueUI = {
         resultsEl.innerHTML = '<p class="hint" style="font-size:9px;color:var(--text-secondary);padding:8px;">No results yet.</p>';
       } else {
         // Image tasks pinned at top, then rest sorted by recency
-        const isImg = t => (t.task_type === 'image_gen') || /^generate[: ]/i.test(t.title) || !!t.output_preview;
+        const isImg = t => (t.task_type === 'image_gen') || /^generate[: ]/i.test(t.title);
         const imgTasks  = doneTasks.filter(t => isImg(t) && t.lifecycle?.status === 'completed');
         const restTasks = doneTasks.filter(t => !isImg(t) || t.lifecycle?.status !== 'completed');
         resultsEl.innerHTML =
@@ -128,7 +128,8 @@ const TaskQueueUI = {
     const agent   = t.assignment?.assigned_name || t.assignment?.assigned_to || '—';
     const when    = t.lifecycle?.completed_at ? this._elapsed(t.lifecycle.completed_at) : '';
     // Image generation tasks: show thumbnail from output_preview url
-    const imgPreview = t.output_preview
+    const isImageTask = t.task_type === 'image_gen' || /^generate[: ]/i.test(t.title || '');
+    const imgPreview = (isImageTask && t.output_preview)
       ? `<div style="margin:4px 0;"><img src="${t.output_preview}" style="max-width:100%;max-height:140px;border:1px solid rgba(255,255,255,0.1);border-radius:3px;" onerror="this.style.display='none'"></div>`
       : '';
     const summaryText = t.result_summary
@@ -457,7 +458,8 @@ ${task.description}`
 
     // Full result: load from file if available
     let resultHtml = '';
-    if (task.output_preview) {
+    const isImageTask = task.task_type === 'image_gen' || /^generate[: ]/i.test(task.title || '');
+    if (isImageTask && task.output_preview) {
       resultHtml = `<div style="margin:8px 0"><img src="${task.output_preview}" style="max-width:100%;border:1px solid var(--border);"></div>`;
     } else if (task.result_summary) {
       resultHtml = `<pre class="tq-result-pre">${this._esc(task.result_summary)}</pre>`;

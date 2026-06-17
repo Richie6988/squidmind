@@ -80,7 +80,6 @@ const ControlTowerLive = {
     const working  = agentList.filter(a => a.current_task_id).length;
     
     const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
-    set('monitor-total-squids', total);
     set('monitor-active-squids', active);
     set('monitor-sleeping-squids', sleeping);
     set('monitor-working-squids', working);
