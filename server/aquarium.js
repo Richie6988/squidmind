@@ -163,6 +163,8 @@ const AQUARIUM = {
   // Well-known file paths
   POSEIDON_BRAIN:       path.join(AQ_ROOT, isAquarium ? 'BRAIN/poseidon_brain.json'    : 'main/poseidon_brain.json'),
   DREAM_MEMORY:         path.join(AQ_ROOT, isAquarium ? 'BRAIN/dream_memory.json'      : 'main/context_checkpoint.json'),
+  SOUL:                 path.join(AQ_ROOT, isAquarium ? 'BRAIN/soul.json'               : 'main/soul.json'),
+  TEMP_LOG:             path.join(AQ_ROOT, isAquarium ? 'BRAIN/temp.md'                 : 'main/temp.md'),
   COMMS_CONFIG:         path.join(AQ_ROOT, isAquarium ? 'CHANNELS/comms_config.json'   : 'main/comms_config.json'),
   AGENT_REGISTRY:       path.join(AQ_ROOT, isAquarium ? 'AGENTS/agent_registry.json'   : 'agents/agent_registry.json'),
   PROJECT_REGISTRY:     path.join(AQ_ROOT, isAquarium ? 'PROJECTS/project_registry.json' : 'projects/project_registry.json'),
@@ -187,6 +189,8 @@ const AQUARIUM = {
     { seed: 'logs.json',             dst: AQUARIUM.logs('logs.json') },
     { seed: 'tasks_registry.json',   dst: AQUARIUM.tasks('tasks_registry.json') },
     { seed: 'comms_config.json',     dst: AQUARIUM.channels('comms_config.json') },
+    { seed: 'soul.json',             dst: AQUARIUM.SOUL },
+    { seed: 'temp.md',               dst: AQUARIUM.TEMP_LOG },
   ];
 
   let seeded = 0;

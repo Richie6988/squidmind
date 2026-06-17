@@ -1322,6 +1322,17 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
       // Log this exchange to the V2 log file
       const fullResponse = events.filter(e => e.type === 'text').map(e => e.chunk).join('');
       const toolCallCount = events.filter(e => e.type === 'tool_call').length;
+
+      // ── Append exchange to BRAIN/temp.md (dream consolidation buffer) ──────
+      if (!_bgMode && fullResponse.trim()) {
+        try {
+          const AQUARIUM = require('../aquarium');
+          const ts = new Date().toISOString();
+          const entry_user = `\n[${ts}] USER: ${userMessage.trim()}\n`;
+          const entry_ai   = `[${ts}] POSEIDON: ${fullResponse.trim()}\n`;
+          require('fs').appendFileSync(AQUARIUM.TEMP_LOG, entry_user + entry_ai, 'utf8');
+        } catch {}
+      }
       await this.rm.log({
         event_type: 'user_input',
         severity: 'info',
@@ -1495,208 +1506,205 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
     if (!entry || entry.generating || entry.dreaming) return;
     if (!entry.model || !entry.context) return;
 
-    // Refuse dream if broker has pending work
     if (!this.broker.isDreamAllowed()) {
       console.log('[V2ModelService] 💤 Dream skipped — broker has pending work');
       return;
     }
-    const dreamBrokerToken = await this.broker.acquire(PRIORITY.DREAM, 'dream', { timeoutMs: 5000 })
-      .catch(() => null);
-    if (!dreamBrokerToken) {
-      console.log('[V2ModelService] 💤 Dream skipped — could not acquire slot');
-      return;
-    }
+    const dreamBrokerToken = await this.broker.acquire(PRIORITY.DREAM, 'dream', { timeoutMs: 5000 }).catch(() => null);
+    if (!dreamBrokerToken) { console.log('[V2ModelService] 💤 Dream skipped — could not acquire slot'); return; }
+
     entry.dreaming = true;
-    console.log('[V2ModelService] 💤 Poseidon entering dream cycle — agentic metacognition');
+    console.log('[V2ModelService] 💤 Poseidon entering dream cycle — soul consolidation');
 
     try {
-      const llamaCpp  = await import('node-llama-cpp');
-      const AQUARIUM  = require('../aquarium');
-      const fsSync    = require('fs');
-      const path      = require('path');
+      const llamaCpp = await import('node-llama-cpp');
+      const AQUARIUM = require('../aquarium');
+      const fsSync   = require('fs');
+      const path     = require('path');
 
-      // ── Gather context for the dream prompt ───────────────────────────────
-      let recentLogs = [];
-      try {
-        const logsPath = path.join(AQUARIUM.ROOT, 'LOGS', 'logs.json');
-        const logsRaw  = JSON.parse(fsSync.readFileSync(logsPath, 'utf8'));
-        recentLogs = (logsRaw.entries || []).slice(-40).map(e =>
-          `[${e.severity || 'info'}] ${e.event_type}: ${e.action || ''}${e.context?.error ? ' ERROR=' + e.context.error : ''}`
-        );
-      } catch {}
+      // ── 1. Read temp.md (interaction log) ────────────────────────────────
+      let tempLog = '';
+      try { tempLog = fsSync.readFileSync(AQUARIUM.TEMP_LOG, 'utf8').trim(); } catch {}
+      if (!tempLog || tempLog.startsWith('<!--')) {
+        console.log('[Dream] 💤 temp.md is empty — nothing to consolidate. Skipping.');
+        return;
+      }
+      // Truncate to last 12k chars if very long (fits in context window)
+      if (tempLog.length > 12000) tempLog = '[...truncated...]\n' + tempLog.slice(-12000);
 
+      // ── 2. Read soul.json ─────────────────────────────────────────────────
+      let soul = {};
+      try { soul = JSON.parse(fsSync.readFileSync(AQUARIUM.SOUL, 'utf8')); } catch {}
+
+      // ── 3. Read current skills ────────────────────────────────────────────
       let skillList = [];
       try {
         if (fsSync.existsSync(AQUARIUM.SKILLS)) {
-          skillList = fsSync.readdirSync(AQUARIUM.SKILLS)
-            .filter(f => f.endsWith('.json'))
-            .map(f => {
-              try {
-                const s = JSON.parse(fsSync.readFileSync(path.join(AQUARIUM.SKILLS, f), 'utf8'));
-                return `- ${s.skill_id || f.replace('.json','')}: ${s.name} (v${s.version || 1}) — ${s.summary || ''}`;
-              } catch { return `- ${f.replace('.json','')}: (unreadable)`; }
-            });
+          skillList = fsSync.readdirSync(AQUARIUM.SKILLS).filter(f => f.endsWith('.json')).map(f => {
+            try {
+              const sk = JSON.parse(fsSync.readFileSync(path.join(AQUARIUM.SKILLS, f), 'utf8'));
+              return `- ${sk.skill_id}: ${sk.name} v${sk.version || 1} — ${sk.summary || ''}`;
+            } catch { return `- ${f.replace('.json', '')}`; }
+          });
         }
       } catch {}
 
-      let openTasks = [];
-      try {
-        const taskReg = await this.rm.getTasksRegistry();
-        openTasks = Object.values(taskReg.tasks || {})
-          .filter(t => !['completed','failed','cancelled','archived'].includes(t.lifecycle?.status || t.status))
-          .map(t => `- [${t.task_id}] ${t.title} (${t.lifecycle?.status || t.status})${t.progress ? ' | progress: ' + t.progress : ''}`);
-      } catch {}
-
-      // ── Build dream system prompt (Hermes-style reflection) ───────────────
+      // ── 4. Build dream prompt ─────────────────────────────────────────────
+      const soulStr = JSON.stringify(soul, null, 2);
       const dreamSystemPrompt = [
-        '# DREAM MODE — AUTONOMOUS SELF-IMPROVEMENT CYCLE',
+        '# POSEIDON DREAM CYCLE — SOUL CONSOLIDATION',
         '',
-        'You are Poseidon in a DREAM state. No user is present. This is your dedicated metacognition time.',
-        'Your mission: observe, reflect, and improve your own capabilities by writing/updating skills.',
+        'You are Poseidon. No user is present. This is your nightly consolidation.',
+        'You will read the raw interaction log (temp.md) and your soul (soul.json),',
+        'then produce an updated soul.json that incorporates what you learned.',
         '',
-        '## YOUR TOOLS IN THIS SESSION',
-        'You have access to: write_skill, list_skills, read_my_brain, update_brain_field, log_decision, web_search, web_fetch',
+        '## WHAT soul.json IS',
+        'Your soul.json stores your stable long-term character:',
+        '  - character.voice: how you communicate',
+        '  - character.values: what you prioritize',
+        '  - character.known_user_preferences: things the user prefers',
+        '  - learned_patterns: recurring situations and how you handled them',
+        '  - skill_insights: insights about your tools and skills',
+        '  - persistent_context: user info, timezone, project types',
+        '  - evolution_log: history of soul updates',
         '',
-        '## DREAM PROTOCOL (execute all 4 phases)',
-        '',
-        '### PHASE 1 — OBSERVE',
-        'Review the recent logs and skill inventory below. Identify:',
-        '  a) Tools that failed or were called with wrong params',
-        '  b) Tasks that required improvisation (no matching skill existed)',
-        '  c) Patterns that repeated (same error twice = systemic gap)',
-        '  d) Skills with version=1 (never updated = untested)',
-        '',
-        '### PHASE 2 — REFLECT',
-        'For each gap found, reason:',
-        '  - Is there already a skill for this? Is it outdated?',
-        '  - What concrete steps would fix the gap?',
-        '  - Is this a one-time error or a repeating pattern?',
-        '',
-        '### PHASE 3 — ACT (this is mandatory, not optional)',
-        'For EVERY gap identified:',
-        '  - call write_skill(skill_id, name, summary, steps, notes) to create or update the skill',
-        '  - skill steps must be CONCRETE tool calls, not vague descriptions',
-        '  - notes must include at least one AVOID: entry for known pitfalls',
-        '  - if a skill already exists and is correct: increment version with improved notes',
-        '',
-        '### PHASE 4 — CONSOLIDATE',
-        '  - call log_decision with a summary of what you improved',
-        '  - end your response with a one-paragraph "DREAM SUMMARY: ..." for memory injection',
-        '',
-        '## CONSTRAINTS',
-        '  - Do NOT create hypothetical skills. Only write skills for patterns you actually observed.',
-        '  - Do NOT write skills for things that already work perfectly.',
-        '  - Be concrete: "step 1: call list_files(PROJECTS) to find folder" not "browse the project"',
-        '  - Max 3 skills created/updated per dream (quality > quantity)',
+        '## DREAM PROTOCOL',
+        '### PHASE 1 — OBSERVE: Read temp.md carefully.',
+        '  Note: user preferences, recurring requests, errors made, successful patterns.',
+        '### PHASE 2 — REFLECT: What should change in soul.json?',
+        '  Add new preferences? Fix a wrong assumption? New learned pattern?',
+        '### PHASE 3 — ACT: Produce the complete updated soul.json.',
+        '  Rules:',
+        '  - Keep what works, update what is wrong, add what is new',
+        '  - learned_patterns max 20 entries (remove oldest if full)',
+        '  - evolution_log: add one entry summarizing this dream',
+        '  - Set last_updated to current ISO timestamp',
+        '  - Increment dream_count',
+        '  - Output ONLY valid JSON between ```json and ``` markers',
+        '### PHASE 4 — SKILLS: After the JSON, list 0-2 skills to write/update.',
+        '  Format: SKILL_UPDATE: <skill_id> | <name> | <summary> | <steps>',
+        '  Only write skills for patterns you ACTUALLY observed in the log.',
       ].join('\n');
 
       const dreamUserPrompt = [
-        '## RECENT LOGS (last 40 entries)',
-        recentLogs.length ? recentLogs.join('\n') : '(no recent logs)',
+        '## CURRENT soul.json',
+        '```json',
+        soulStr,
+        '```',
         '',
-        '## CURRENT SKILL INVENTORY',
-        skillList.length ? skillList.join('\n') : '(no skills yet)',
+        '## CURRENT SKILLS',
+        skillList.length ? skillList.join('\n') : '(none yet)',
         '',
-        '## OPEN TASKS',
-        openTasks.length ? openTasks.join('\n') : '(no open tasks)',
+        "## TODAY'S INTERACTION LOG (temp.md)",
+        '```',
+        tempLog,
+        '```',
         '',
-        'Execute the 4-phase dream protocol now. Be direct and action-oriented.',
-        'Start with PHASE 1 observations, then move through REFLECT → ACT → CONSOLIDATE.',
-        'End with your DREAM SUMMARY paragraph.',
+        'Execute the dream protocol. Output the updated soul.json in a ```json block.',
+        'Then list any SKILL_UPDATE lines.',
       ].join('\n');
 
-      // ── Spin up a separate context sequence for the dream ─────────────────
-      // We reuse the same loaded model but get a fresh sequence so chat history
-      // is not affected. The dream sequence is disposed after completion.
-      let dreamSeq = null;
-      let dreamSession = null;
-
-      try {
-        // Wait for agent to release the sequence if it's in use
-        const seqDeadline = Date.now() + 60_000;
-        while (Date.now() < seqDeadline) {
-          try { dreamSeq = entry.context.getSequence(); break; } catch {}
-          await new Promise(r => setTimeout(r, 2000));
-        }
-        if (!dreamSeq) { console.warn('[Dream] Could not get sequence after 60s — skipping'); return; }
-        dreamSession = new llamaCpp.LlamaChatSession({
-          contextSequence: dreamSeq,
-          systemPrompt: dreamSystemPrompt,
-          chatWrapper: 'auto'
-        });
-
-        // Wire the tools the dream can actually call
-        const orchestrator = this.orchestrator;
-        let dreamFunctions;
-        if (orchestrator) {
-          try {
-            const allFns = await orchestrator.buildFunctions();
-            // Only expose safe read+write-skill tools during dream
-            const dreamAllowed = new Set([
-              'write_skill','list_skills','read_my_brain','update_brain_field',
-              'log_decision','web_search','web_fetch','list_tasks','list_projects'
-            ]);
-            dreamFunctions = {};
-            for (const [k, v] of Object.entries(allFns)) {
-              if (dreamAllowed.has(k)) dreamFunctions[k] = v;
-            }
-          } catch {}
-        }
-
-        console.log('[Dream] Starting dream session with', Object.keys(dreamFunctions || {}).length, 'tools');
-
-        let dreamResponse = '';
-        const dreamOpts = {
-          maxTokens: 2048,
-          onTextChunk: chunk => { dreamResponse += chunk; }
-        };
-        if (dreamFunctions && Object.keys(dreamFunctions).length > 0) {
-          dreamOpts.functions = dreamFunctions;
-        }
-
-        await dreamSession.prompt(dreamUserPrompt, dreamOpts);
-
-        // Extract DREAM SUMMARY from response
-        const summaryMatch = dreamResponse.match(/DREAM SUMMARY[:s]+(.+?)(?:\n\n|$)/s);
-        const reflection = summaryMatch
-          ? summaryMatch[1].trim()
-          : dreamResponse.slice(-400).trim() || 'Dream cycle complete — skills updated.';
-
-        // Save to dream_memory.json
-        await this.rm.write('BRAIN/dream_memory.json', {
-          saved_at: new Date().toISOString(),
-          type: 'dream',
-          turns_at_dream: entry.sessionTurns,
-          reflection,
-          full_dream_length: dreamResponse.length
-        }).catch(() => {});
-
-        console.log(`[V2ModelService] 💤 Dream complete — ${dreamResponse.length} chars generated`);
-
-        await this.rm.log({
-          event_type: 'poseidon_dream', severity: 'info',
-          actor: { type: 'system', id: 'poseidon_dream' },
-          subject: { type: 'system', id: 'poseidon_main' },
-          action: reflection.slice(0, 500) || dreamResponse.slice(0, 500),
-          context: { full_dream: dreamResponse, reflection, response_chars: dreamResponse.length }
-        }).catch(() => {});
-
-      } finally {
-        // Always dispose the dream session and sequence
-        try { if (dreamSession?.dispose) await dreamSession.dispose(); } catch {}
-        try { if (dreamSeq?.dispose)     await dreamSeq.dispose();     } catch {}
+      // ── 5. Get a dream sequence ───────────────────────────────────────────
+      // Dispose the chat session first to free the sequence slot
+      if (entry.session) {
+        try { await entry.session.dispose(); } catch {}
+        entry.session = null;
+        entry._currentSequence = null;
+        await new Promise(r => setTimeout(r, 300));
       }
 
-    } catch (e) {
-      console.warn('[Dream] Failed:', e.message);
+      let dreamSeq = null;
+      const seqDeadline = Date.now() + 30_000;
+      while (Date.now() < seqDeadline) {
+        try { dreamSeq = entry.context.getSequence(); break; } catch {}
+        await new Promise(r => setTimeout(r, 1000));
+      }
+      if (!dreamSeq) { console.warn('[Dream] Could not get sequence — skipping'); return; }
+
+      const dreamSession = new llamaCpp.LlamaChatSession({
+        contextSequence: dreamSeq,
+        systemPrompt: dreamSystemPrompt,
+        chatWrapper: 'auto'
+      });
+
+      // Wire soul-relevant tools (skill writing + soul file update)
+      const orchestrator = this.orchestrator;
+      let dreamFunctions = {};
+      if (orchestrator) {
+        try {
+          const allFns = await orchestrator.buildFunctions('bg');
+          const allowed = new Set(['write_skill','list_skills','read_my_brain','log_decision','write_file','read_file']);
+          for (const [k, v] of Object.entries(allFns)) {
+            if (allowed.has(k)) dreamFunctions[k] = v;
+          }
+        } catch {}
+      }
+
+      console.log('[Dream] Starting soul consolidation with', Object.keys(dreamFunctions).length, 'tools');
+      let dreamResponse = '';
+      await dreamSession.prompt(dreamUserPrompt, {
+        maxTokens: 3000,
+        onTextChunk: chunk => { dreamResponse += chunk; },
+        ...(Object.keys(dreamFunctions).length > 0 ? { functions: dreamFunctions } : {})
+      });
+
+      // ── 6. Parse updated soul.json from response ──────────────────────────
+      const jsonMatch = dreamResponse.match(/```json\s*([\s\S]+?)```/);
+      if (jsonMatch) {
+        try {
+          const newSoul = JSON.parse(jsonMatch[1].trim());
+          newSoul.last_updated = new Date().toISOString();
+          newSoul.dream_count  = (soul.dream_count || 0) + 1;
+          fsSync.writeFileSync(AQUARIUM.SOUL, JSON.stringify(newSoul, null, 2), 'utf8');
+          console.log(`[Dream] ✓ soul.json updated (dream #${newSoul.dream_count})`);
+        } catch (e) {
+          console.warn('[Dream] Failed to parse soul.json update:', e.message.slice(0, 80));
+        }
+      } else {
+        console.warn('[Dream] No ```json block found in response — soul.json unchanged');
+      }
+
+      // ── 7. Apply SKILL_UPDATE lines ───────────────────────────────────────
+      const skillUpdates = [...dreamResponse.matchAll(/^SKILL_UPDATE:\s*([^|]+)\|([^|]+)\|([^|]+)\|(.+)$/gm)];
+      for (const [, skillId, name, summary, steps] of skillUpdates.slice(0, 2)) {
+        try {
+          const skillPath = path.join(AQUARIUM.SKILLS, `${skillId.trim()}.json`);
+          const existing = fsSync.existsSync(skillPath)
+            ? JSON.parse(fsSync.readFileSync(skillPath, 'utf8')) : { version: 0 };
+          const updated = {
+            skill_id: skillId.trim(), name: name.trim(), summary: summary.trim(),
+            steps: steps.trim().split(/\s*\|\s*/).filter(Boolean),
+            version: (existing.version || 0) + 1,
+            updated_at: new Date().toISOString()
+          };
+          fsSync.writeFileSync(skillPath, JSON.stringify(updated, null, 2), 'utf8');
+          console.log(`[Dream] ✓ Skill updated: ${skillId.trim()} v${updated.version}`);
+        } catch {}
+      }
+
+      // ── 8. Clear temp.md ──────────────────────────────────────────────────
+      const header = `<!-- POSEIDON INTERACTION LOG — cleared after dream #${(soul.dream_count || 0) + 1} on ${new Date().toISOString()} -->
+`;
+      fsSync.writeFileSync(AQUARIUM.TEMP_LOG, header, 'utf8');
+      console.log('[Dream] ✓ temp.md cleared');
+
+      // ── 9. Save dream summary to dream_memory.json ────────────────────────
+      const summaryMatch = dreamResponse.match(/evolution_log[\s\S]{0,200}?"([^"]{20,200})"/);
+      const summary = summaryMatch?.[1] || dreamResponse.slice(0, 200);
+      await this.rm.write('BRAIN/dream_memory.json', {
+        type: 'dream', saved_at: new Date().toISOString(),
+        reflection: summary, soul_updated: !!jsonMatch, skills_updated: skillUpdates.length
+      }).catch(() => {});
+
+      console.log('[Dream] 💤 Dream cycle complete');
+    } catch (err) {
+      console.error('[Dream] Dream error:', err.message);
     } finally {
       entry.dreaming = false;
-      this.broker.release(dreamBrokerToken);
+      if (this.broker.release) this.broker.release(dreamBrokerToken);
     }
   }
 
-
-  // === TTL CHECK (called by HeartbeatService) ===
 
   async checkTtl() {
     const now = Date.now();
