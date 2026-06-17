@@ -354,6 +354,7 @@ const PoseidonChat = {
       const decoder = new TextDecoder();
       let buf = '';
       this.currentRequest = reader;
+      this._generating = true;
 
       while (true) {
         const { value, done } = await reader.read();
@@ -413,6 +414,7 @@ const PoseidonChat = {
       this.history[aiIdx].content = msg;
     } finally {
       this.currentRequest = null;
+      this._generating = false;
       sendBtn.disabled = false;
       sendIcon.textContent = '▶';
       if (stopBtn) stopBtn.style.display = 'none';
@@ -590,7 +592,15 @@ const PoseidonChat = {
     } catch (e) { await SquidModal.alert('Reset failed: ' + e.message); }
   },
 
-  close() { clearInterval(this._statusInterval); window.ApiV2._fetch('/poseidon/chat-active', { method: 'POST', body: JSON.stringify({ active: false }) }).catch(() => {}); this.modal?.classList.add('hidden'); },
+  close() {
+    clearInterval(this._statusInterval);
+    // If Poseidon is generating, just hide the modal — don't abort or signal inactive.
+    // The stream continues in the background and history is preserved.
+    if (!this._generating) {
+      window.ApiV2._fetch('/poseidon/chat-active', { method: 'POST', body: JSON.stringify({ active: false }) }).catch(() => {});
+    }
+    this.modal?.classList.add('hidden');
+  },
 
   // ── Helpers ──────────────────────────────────────────────────────────────
 
