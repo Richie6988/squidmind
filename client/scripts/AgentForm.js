@@ -357,7 +357,7 @@ const AgentForm = {
     previewRow.className = 'agent-form-row';
     previewRow.innerHTML = `
       <label>Live Preview</label>
-      <canvas id="af-preview-canvas" width="220" height="220" class="af-preview-canvas"></canvas>
+      <canvas id="af-preview-canvas" width="280" height="280" class="af-preview-canvas"></canvas>
     `;
     body.appendChild(previewRow);
 
@@ -406,7 +406,7 @@ const AgentForm = {
       tile.title = opt;
       // Canvas with the accessory drawn
       const canvas = document.createElement('canvas');
-      canvas.width = 48; canvas.height = 48;
+      canvas.width = 72; canvas.height = 72;
       this._drawAccessoryPreview(canvas, key, opt);
       tile.appendChild(canvas);
       const tag = document.createElement('div');
@@ -431,50 +431,51 @@ const AgentForm = {
 
   _drawAccessoryPreview(canvas, key, value) {
     const ctx = canvas.getContext('2d');
+    const W = canvas.width, H = canvas.height;
     ctx.imageSmoothingEnabled = false;
-    ctx.fillStyle = '#0d1b2a';
-    ctx.fillRect(0, 0, 48, 48);
+
+    // Gradient background
+    const bg = ctx.createRadialGradient(W/2, H/2, 0, W/2, H/2, W/1.5);
+    bg.addColorStop(0, '#0d2340');
+    bg.addColorStop(1, '#020810');
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, W, H);
 
     if (value === 'none' || !value) {
-      ctx.fillStyle = '#3B4252';
-      ctx.font = '10px monospace';
+      ctx.fillStyle = 'rgba(255,255,255,0.12)';
+      ctx.fillRect(0, 0, W, H);
+      ctx.fillStyle = '#475569';
+      ctx.font = 'bold 11px monospace';
       ctx.textAlign = 'center';
-      ctx.fillText('none', 24, 28);
+      ctx.textBaseline = 'middle';
+      ctx.fillText('none', W/2, H/2);
       return;
     }
     if (typeof Squid === 'undefined' || typeof SquidAccessories === 'undefined') return;
 
-    // Render a real mini squid with only this accessory applied
+    // Mini squid with only this accessory, larger size
     const app = this.brain?.appearance || {};
-    const baseAcc = {};  // only show this one accessory on the tile
+    const baseAcc = {};
     baseAcc[key] = value;
 
     const tempData = {
-      id: '__tile__',
-      name: '',
-      appearance: {
-        ...app,
-        accessories: baseAcc,
-        // keep body color but no other accessories
-      },
+      id: '__tile__', name: '',
+      appearance: { ...app, accessories: baseAcc },
       accessories: baseAcc,
       status: 'idle',
-      x: 24,
-      y: 30,
+      x: W / 2, y: H / 2 + 4,
     };
 
     try {
       const sq = new Squid(tempData);
-      sq.animFrame    = 0;
-      sq.bobOffset    = 0;
-      sq.isSleeping   = false;
-      sq.isHovered    = false;
-      sq.alpha        = 1;
-      sq.insideTemple = null;
-      sq.jumpHeight   = 0;
-      sq.heartParticles = [];
-      sq.baseSize     = 0.42;   // tiny to fit 48px tile
+      sq.animFrame = 0; sq.bobOffset = 0; sq.isSleeping = false;
+      sq.isHovered = false; sq.alpha = 1; sq.insideTemple = null;
+      sq.jumpHeight = 0; sq.heartParticles = [];
+      sq.baseSize = 0.58;  // bigger than before (was 0.42)
+      ctx.save();
+      ctx.beginPath(); ctx.rect(0, 0, W, H); ctx.clip();
       sq.draw(ctx);
+      ctx.restore();
     } catch {}
   },
 
@@ -486,9 +487,17 @@ const AgentForm = {
     const ctx = canvas.getContext('2d');
     ctx.imageSmoothingEnabled = false;
 
-    // Dark background
-    ctx.fillStyle = '#0a2540';
+    // Rich background
+    const bg = ctx.createRadialGradient(canvas.width/2, canvas.height/2, 0, canvas.width/2, canvas.height/2, canvas.width/1.3);
+    bg.addColorStop(0, '#0d2340');
+    bg.addColorStop(1, '#020810');
+    ctx.fillStyle = bg;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
+    // Subtle grid
+    ctx.strokeStyle = 'rgba(79,172,254,0.05)';
+    ctx.lineWidth = 1;
+    for (let x = 0; x < canvas.width; x += 20) { ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,canvas.height); ctx.stroke(); }
+    for (let y = 0; y < canvas.height; y += 20) { ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(canvas.width,y); ctx.stroke(); }
 
     // Build a real Squid instance from current brain appearance
     const app = this.brain.appearance || {};
@@ -516,7 +525,7 @@ const AgentForm = {
       tempSquid.jumpHeight   = 0;
       tempSquid.heartParticles = [];
       // Body radius = targetBodyPx px. Clip canvas so glow/shadow never overflow.
-      const targetBodyPx = canvas.width * 0.32;   // body radius in px
+      const targetBodyPx = canvas.width * 0.38;   // larger body
       tempSquid.baseSize = targetBodyPx / 40;
       tempSquid.x = canvas.width  / 2;
       tempSquid.y = canvas.height / 2 - canvas.height * 0.08;
