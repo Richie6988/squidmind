@@ -662,7 +662,7 @@ class TaskRunner {
           if (proj?.entry?.folder) {
             const projOutDir = require('path').join(AQUARIUM.PROJECTS, proj.entry.folder, 'output');
             await fs.mkdir(projOutDir, { recursive: true });
-            outputPath = require('path').join(projOutDir, `${taskId}.txt`);
+            outputPath = require('path').join(projOutDir, `${taskId}.md`);
           }
         } catch {}
       }
@@ -670,7 +670,7 @@ class TaskRunner {
       if (!outputPath) {
         await fs.mkdir(AQUARIUM.OUTPUT, { recursive: true });
         const isJson = text.trim().startsWith('{') || text.trim().startsWith('[');
-        outputPath = require('path').join(AQUARIUM.OUTPUT, `${taskId}.${isJson ? 'json' : 'txt'}`);
+        outputPath = require('path').join(AQUARIUM.OUTPUT, `${taskId}.${isJson ? 'json' : 'md'}`);
       }
 
       await fs.writeFile(outputPath, text, 'utf8');
