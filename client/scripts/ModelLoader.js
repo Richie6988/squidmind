@@ -426,27 +426,28 @@ const ModelLoader = {
     const dname    = (m.display_name || '').toLowerCase();
     const combined = fname + ' ' + dname;
     const caps = [];
+    const PI = window.PixelIcons;
     if (mtype === 'image') {
-      caps.push({ icon: '🖼', label: 'IMAGE', color: '#a78bfa' });
+      caps.push({ icon: PI?.inline('image_model',12)||'🖼', label: 'IMAGE', color: '#a78bfa' });
     } else {
-      caps.push({ icon: '💬', label: 'TEXT', color: '#4facfe' });
+      caps.push({ icon: PI?.inline('text_model',12)||'💬', label: 'TEXT', color: '#4facfe' });
       if (/vision|vlm|vl-|visual|-v\d|qwen.*vl|llava|moondream|minicpm.*v|phi.*vision|pixtral/i.test(combined))
-        caps.push({ icon: '👁', label: 'VLM', color: '#34d399' });
+        caps.push({ icon: PI?.inline('vlm',12)||'👁', label: 'VLM', color: '#34d399' });
       if (/tool|function|fc-|instruct.*fn|qwen.*7b.*instruct|hermes|mistral.*instruct/i.test(combined))
-        caps.push({ icon: '🔧', label: 'TOOLS', color: '#f59e0b' });
+        caps.push({ icon: PI?.inline('tools',12)||'🔧', label: 'TOOLS', color: '#f59e0b' });
       if (/think|reasoning|r1|deepseek.*r|qwq|sky-t1|marco-o1/i.test(combined))
-        caps.push({ icon: '🧠', label: 'THINK', color: '#f472b6' });
+        caps.push({ icon: PI?.inline('think',12)||'🧠', label: 'THINK', color: '#f472b6' });
       if (/code|coder|starcoder|codellama|deepseek.*coder|qwen.*coder|wizard.*coder|phind/i.test(combined))
-        caps.push({ icon: '💻', label: 'CODE', color: '#00ffb4' });
+        caps.push({ icon: PI?.inline('code_model',12)||'💻', label: 'CODE', color: '#00ffb4' });
       if (/embed|embedding|bge|nomic|e5-|gte-|jina/i.test(combined))
-        caps.push({ icon: '📐', label: 'EMBED', color: '#94a3b8' });
+        caps.push({ icon: PI?.inline('embed',12)||'📐', label: 'EMBED', color: '#94a3b8' });
       if (/math|mathstral|numina|deepseek.*math/i.test(combined))
-        caps.push({ icon: '∑', label: 'MATH', color: '#fb923c' });
+        caps.push({ icon: PI?.inline('math_model',12)||'∑', label: 'MATH', color: '#fb923c' });
       if (/instruct|chat|assistant/i.test(combined) && caps.length === 1)
-        caps.push({ icon: '🎯', label: 'INSTRUCT', color: '#7dd3fc' });
+        caps.push({ icon: PI?.inline('target',12)||'🎯', label: 'INSTRUCT', color: '#7dd3fc' });
     }
     statusBadge += caps.map(c =>
-      `<span class="model-texttype-pill" style="background:${c.color}18;border-color:${c.color}44;color:${c.color};">${c.icon} ${c.label}</span>`
+      `<span class="model-texttype-pill" style="background:${c.color}18;border-color:${c.color}44;color:${c.color};display:inline-flex;align-items:center;gap:3px;">${c.icon} ${c.label}</span>`
     ).join('');
 
     
@@ -463,11 +464,11 @@ const ModelLoader = {
       const nextType    = curType === 'image' ? 'text' : 'image';
       actions = `
         ${curType === 'image'
-          ? `<button class="btn-primary" onclick="ModelLoader.openImageGen('${m.model_id}')">🎨 Generate Image</button>`
+          ? `<button class="btn-primary" onclick="ModelLoader.openImageGen('${m.model_id}')" style="display:inline-flex;align-items:center;gap:4px;">${window.PixelIcons?.inline('image_model',11)||''}Generate Image</button>`
           : `${!m.is_poseidon ? `<button class="btn-secondary" onclick="ModelLoader.assignPoseidon('${m.model_id}')">Use as Poseidon</button>` : ''}`
         }
         <button class="btn-secondary" onclick="ModelLoader.showImportDialog('${this._escape(m.file_name)}', '${m.model_id}')">Edit Params</button>
-        <button class="btn-secondary" onclick="ModelLoader.renameModel('${m.model_id}', this)">✏ Rename</button>
+        <button class="btn-secondary" onclick="ModelLoader.renameModel('${m.model_id}', this)" style="display:inline-flex;align-items:center;gap:3px;">${window.PixelIcons?.inline('config',11)||''}Rename</button>
         <button class="btn-secondary" title="Toggle between text and image generation mode" onclick="ModelLoader.setModelType('${m.model_id}','${nextType}')">${toggleLabel}</button>
         ${m.is_loaded ? `<button class="btn-secondary" onclick="ModelLoader.unload('${m.model_id}')">Unload from Memory</button>` : ''}
         <button class="btn-secondary danger-action" onclick="ModelLoader.remove('${m.model_id}')">Remove</button>
@@ -858,7 +859,7 @@ const ModelLoader = {
         html += data.entries.map(e => {
           if (e.type === 'directory') {
             return `<div class="ml-browse-entry ml-dir" onclick="ModelLoader._browseGo('${this._escapePath(e.path)}')">
-              <span class="ml-entry-icon">📁</span>
+              <span class="ml-entry-icon">${window.PixelIcons?.inline('data',12)||'📁'}</span>
               <span class="ml-entry-name">${this._escape(e.name)}</span>
               <span class="ml-entry-arrow">›</span>
             </div>`;

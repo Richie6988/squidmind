@@ -373,7 +373,118 @@ const PixelIcons = {
         "1 10 11 2 2"
       ]
     },
-    
+
+    // TEXT model — speech bubble with lines
+    text_model: {
+      palette: ['#4facfe','#0a1628','#7dd3fc'],
+      pixels: [
+        '0 2 1 12 9','1 3 2 10 7',
+        '2 4 3 8 1','2 4 5 8 1','2 4 7 6 1',
+        '0 4 10 2 2','0 5 12 1 1'
+      ]
+    },
+
+    // VLM — eye inside viewfinder
+    vlm: {
+      palette: ['#34d399','#022c1a','#a7f3d0','#065f46'],
+      pixels: [
+        '0 1 4 14 1','0 1 11 14 1','0 1 4 1 8','0 14 4 1 8',
+        '0 4 6 8 4','1 5 7 6 2','2 7 7 2 2',
+        '3 6 8 1 1','3 9 8 1 1'
+      ]
+    },
+
+    // TOOLS — wrench pixel
+    tools: {
+      palette: ['#f59e0b','#7c2d00','#fde68a'],
+      pixels: [
+        '0 2 1 4 4','0 2 2 2 2','2 3 3 2 1',
+        '0 4 5 8 8','0 5 6 6 6','1 6 7 4 4',
+        '0 10 9 4 4','0 11 10 2 2','0 12 11 2 2','0 13 12 2 2'
+      ]
+    },
+
+    // THINK — lightbulb
+    think: {
+      palette: ['#f472b6','#831843','#fce7f3','#4a0520'],
+      pixels: [
+        '0 5 1 6 1','0 3 2 10 1','0 2 3 12 4',
+        '2 4 3 8 3','2 3 4 10 2',
+        '0 3 7 10 1','0 4 8 8 1',
+        '1 5 9 6 1','1 5 10 6 2',
+        '3 6 10 4 1','3 7 11 2 1'
+      ]
+    },
+
+    // CODE — </>  
+    code_model: {
+      palette: ['#00ffb4','#003d29','#00cc90'],
+      pixels: [
+        '0 1 5 3 1','0 1 6 2 1','0 1 7 2 1','0 1 8 3 1',
+        '0 3 6 2 2','0 4 8 1 1',
+        '2 7 4 2 1','2 8 5 2 1','2 8 7 2 1','2 7 8 2 1',
+        '0 12 5 3 1','0 13 6 2 1','0 13 7 2 1','0 12 8 3 1',
+        '0 10 6 2 2','0 11 8 1 1'
+      ]
+    },
+
+    // EMBED — grid of dots
+    embed: {
+      palette: ['#94a3b8','#1e293b','#cbd5e1'],
+      pixels: [
+        '0 2 2 2 2','0 7 2 2 2','0 12 2 2 2',
+        '0 2 7 2 2','2 7 7 2 2','0 12 7 2 2',
+        '0 2 12 2 2','0 7 12 2 2','0 12 12 2 2',
+        '1 4 4 8 8'
+      ]
+    },
+
+    // MATH — sigma symbol
+    math_model: {
+      palette: ['#fb923c','#431407','#fed7aa'],
+      pixels: [
+        '0 2 1 12 2','2 3 2 9 1',
+        '0 4 4 5 2','0 3 6 6 2',
+        '0 4 10 5 2','2 3 11 9 1',
+        '0 2 12 12 2'
+      ]
+    },
+
+    // IMAGE — landscape in frame
+    image_model: {
+      palette: ['#a78bfa','#2e1065','#7c3aed','#ddd6fe','#86efac'],
+      pixels: [
+        '0 1 1 14 14','1 2 2 12 12',
+        '4 3 8 4 5','4 4 9 2 4','4 5 10 1 3',
+        '3 8 5 2 3','3 9 6 1 2',
+        '2 3 3 1 1','0 4 4 1 1'
+      ]
+    },
+
+    // BOLT — lightning (active/running)
+    bolt: {
+      palette: ['#facc15','#713f12','#fef08a'],
+      pixels: [
+        '2 8 1 4 1','2 6 2 6 1','2 5 3 7 1',
+        '0 4 4 8 1','0 3 5 9 1','0 2 6 9 2',
+        '0 5 8 6 1','0 6 9 5 1','0 7 10 4 1',
+        '0 9 11 5 1','0 10 12 4 1','0 11 13 3 1',
+        '1 4 5 1 1','1 4 9 1 1'
+      ]
+    },
+
+    // MOON — crescent (sleeping)
+    moon: {
+      palette: ['#818cf8','#1e1b4b','#c7d2fe'],
+      pixels: [
+        '2 5 1 6 1','2 3 2 9 1','2 2 3 11 1','2 2 4 11 1',
+        '2 2 5 11 1','2 2 6 10 1','2 3 7 8 1','2 4 8 6 1',
+        '2 6 9 3 1','2 8 10 2 1',
+        '0 8 2 4 1','0 9 3 3 1','0 10 4 3 1',
+        '0 9 5 4 1','0 8 7 4 1','0 6 9 4 1'
+      ]
+    },
+
     // Clean/Sparkle: cyan
     clean: {
       palette: ["#06FFA5", "#FFD700", "#FFFFFF"],
@@ -454,7 +565,17 @@ const PixelIcons = {
     '[LAUNCH]': 'launch',
     '[MOUSE]': 'mouse',
     '[DATA]': 'data',
-    '[SYSTEM]': 'system'
+    '[SYSTEM]': 'system',
+    '[TEXT]': 'text_model',
+    '[VLM]': 'vlm',
+    '[TOOLS]': 'tools',
+    '[THINK]': 'think',
+    '[CODE]': 'code_model',
+    '[EMBED]': 'embed',
+    '[MATH]': 'math_model',
+    '[IMAGE]': 'image_model',
+    '[BOLT]': 'bolt',
+    '[MOON]': 'moon'
   },
 
   replaceTags(rootEl) {

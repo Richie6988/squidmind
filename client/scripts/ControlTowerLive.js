@@ -71,18 +71,21 @@ const ControlTowerLive = {
   },
   
   _renderSquad(registry) {
-    const agents = registry.agents || {};
-    const agentList = Object.values(agents);
-    // Count from actual registry entries (not stale metadata counters)
-    const total    = agentList.length;
-    const active   = agentList.filter(a => a.status === 'active').length;
-    const sleeping = agentList.filter(a => a.status === 'sleeping').length;
-    const working  = agentList.filter(a => a.current_task_id).length;
-    
-    const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
-    set('monitor-active-squids', active);
-    set('monitor-sleeping-squids', sleeping);
-    set('monitor-working-squids', working);
+    const agents = Object.values(registry.agents || {});
+    const active   = agents.filter(a => a.status === 'active').length;
+    const sleeping = agents.filter(a => a.status === 'sleeping').length;
+    const PI = window.PixelIcons;
+
+    const activeWrap = document.getElementById('monitor-active-squids-wrap');
+    const sleepWrap  = document.getElementById('monitor-sleeping-squids-wrap');
+    if (activeWrap) {
+      activeWrap.innerHTML = (PI?.inline('bolt',12) || '⚡') +
+        `<span id="monitor-active-squids" style="font-size:11px;font-weight:600;color:#facc15;">${active}</span>`;
+    }
+    if (sleepWrap) {
+      sleepWrap.innerHTML = (PI?.inline('moon',12) || '💤') +
+        `<span id="monitor-sleeping-squids" style="font-size:11px;color:var(--text-secondary);">${sleeping}</span>`;
+    }
   },
   
   _renderModel(library) {

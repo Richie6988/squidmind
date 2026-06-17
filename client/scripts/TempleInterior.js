@@ -882,7 +882,7 @@ const TempleInterior = {
         ? `<div class="ti-kcard-prog">${this._esc(String(task.result_summary).slice(0, 100))}</div>` : '';
       const bar    = isRun ? `<div class="ti-kcard-bar"><div class="ti-kcard-bar-fill"></div></div>` : '';
       const agentBadge = agent
-        ? `<span class="ti-kcard-agent${isRun ? ' running' : ''}">${isRun ? '⚡' : '>'} ${this._esc(agent.slice(0,14))}</span>`
+        ? `<span class="ti-kcard-agent${isRun ? ' running' : ''}">${isRun ? (window.PixelIcons?.inline('bolt',10)||'▶') : '>'} ${this._esc(agent.slice(0,14))}</span>`
         : '';
       return `<div class="ti-kcard ${cls}" draggable="true" data-task-id="${task.task_id}"
           ondragstart="TempleInterior._kDragStart(event)"

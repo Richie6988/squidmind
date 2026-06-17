@@ -542,7 +542,7 @@ const AgentForm = {
     section.className = 'agent-form-section';
 
     const enabledCount = allowedTools.filter(t => allTools.find(a => a.name === t)).length;
-    section.innerHTML = `<h3 class="agent-form-section-title">🔧 Tools <span style="font-weight:400;color:var(--text-secondary);font-size:10px;">(${enabledCount} enabled / ${allTools.length} available)</span></h3>`;
+    section.innerHTML = `<h3 class="agent-form-section-title" style="display:flex;align-items:center;gap:6px;">${window.PixelIcons?.inline('tools',13)||''} Tools <span style="font-weight:400;color:var(--text-secondary);font-size:10px;">(${enabledCount} enabled / ${allTools.length} available)</span></h3>`;
 
     if (allTools.length === 0) {
       section.innerHTML += '<p class="hint" style="font-size:10px;color:var(--text-secondary);">No tools in registry. Restart server to sync built-in tools.</p>';
@@ -561,18 +561,19 @@ const AgentForm = {
     section.appendChild(bar);
 
     // Category icons & colors
+    const PI = window.PixelIcons;
     const catMeta = {
-      ai:                  { emoji: '🤖', color: '#7c3aed' },
-      code:                { emoji: '💻', color: '#0ea5e9' },
-      custom:              { emoji: '⚡', color: '#f59e0b' },
-      filesystem:          { emoji: '📁', color: '#10b981' },
-      information_retrieval:{ emoji: '🔍', color: '#06b6d4' },
-      network:             { emoji: '🌐', color: '#3b82f6' },
-      shell:               { emoji: '⌨️', color: '#6b7280' },
-      version_control:     { emoji: '🔀', color: '#f97316' },
-      data:                { emoji: '📊', color: '#ec4899' },
-      system:              { emoji: '⚙️', color: '#94a3b8' },
-      general:             { emoji: '✳️', color: '#64748b' },
+      ai:                  { icon: PI?.inline('brain',13)||'◉',       color: '#7c3aed' },
+      code:                { icon: PI?.inline('code_model',13)||'<>', color: '#0ea5e9' },
+      custom:              { icon: PI?.inline('bolt',13)||'⚡',        color: '#f59e0b' },
+      filesystem:          { icon: PI?.inline('data',13)||'◈',        color: '#10b981' },
+      information_retrieval:{ icon: PI?.inline('logs',13)||'◈',       color: '#06b6d4' },
+      network:             { icon: PI?.inline('ocean',13)||'~',        color: '#3b82f6' },
+      shell:               { icon: PI?.inline('system',13)||'>_',      color: '#6b7280' },
+      version_control:     { icon: PI?.inline('create',13)||'⊕',      color: '#f97316' },
+      data:                { icon: PI?.inline('stats',13)||'◈',        color: '#ec4899' },
+      system:              { icon: PI?.inline('cpu',13)||'◈',          color: '#94a3b8' },
+      general:             { icon: PI?.inline('target',13)||'◈',       color: '#64748b' },
     };
 
     // Group by category
@@ -587,7 +588,7 @@ const AgentForm = {
     const recount = () => {
       const n = section.querySelectorAll('.af-tool-row.enabled').length;
       const h = section.querySelector('h3');
-      if (h) h.innerHTML = `🔧 Tools <span style="font-weight:400;color:var(--text-secondary);font-size:10px;">(${n} enabled / ${allTools.length} available)</span>`;
+      if (h) h.innerHTML = `${window.PixelIcons?.inline('tools',13)||''} Tools <span style="font-weight:400;color:var(--text-secondary);font-size:10px;">(${n} enabled / ${allTools.length} available)</span>`;
     };
 
     const saveAllowed = () => {
@@ -597,7 +598,7 @@ const AgentForm = {
     };
 
     Object.entries(byCategory).sort().forEach(([cat, tools]) => {
-      const meta = catMeta[cat] || { emoji: '🔧', color: '#64748b' };
+      const meta = catMeta[cat] || { icon: window.PixelIcons?.inline('tools',13)||'⚙', color: '#64748b' };
 
       const catWrap = document.createElement('div');
       catWrap.style.cssText = 'margin-bottom:14px;';
@@ -607,7 +608,7 @@ const AgentForm = {
         border-left:3px solid ${meta.color};background:rgba(255,255,255,0.03);border-radius:0 4px 4px 0;`;
       const enabledInCat = tools.filter(t => allowedSet.has(t.name)).length;
       catLabel.innerHTML = `
-        <span style="font-size:13px;">${meta.emoji}</span>
+        <span style="display:inline-flex;align-items:center;">${meta.icon}</span>
         <span style="font-size:11px;font-weight:600;color:#e2e8f0;text-transform:capitalize;">${cat.replace(/_/g,' ')}</span>
         <span style="font-size:9px;color:var(--text-secondary);margin-left:auto;">${enabledInCat}/${tools.length}</span>
       `;

@@ -200,7 +200,7 @@ const TaskQueueUI = {
     if (isCron) {
       typeBadge = `<span class="tq-type-badge tq-type-cron" title="Recurring: ${this._esc(t.cron_schedule)}">⏱ CRON</span>`;
     } else if (projectName) {
-      typeBadge = `<span class="tq-type-badge tq-type-project" title="Part of project: ${this._esc(projectName)}">📁 ${this._esc(projectName)}</span>`;
+      typeBadge = `<span class="tq-type-badge tq-type-project" title="Part of project: ${this._esc(projectName)}" style="display:inline-flex;align-items:center;gap:3px;">${window.PixelIcons?.inline('data',10)||''} ${this._esc(projectName)}</span>`;
     } else {
       typeBadge = `<span class="tq-type-badge tq-type-oneshot" title="One-time task">◈ ONE-TIME</span>`;
     }
@@ -239,7 +239,7 @@ const TaskQueueUI = {
         </div>
         ${(isRunning || isBrokerActive) ? `<div class="tq-progress-bar"><div class="tq-progress-fill"></div></div>` : ''}
         ${isBrokerActive ? `<div class="tq-running-meta">⏳ Running…${t.lifecycle?.started_at ? ' · ' + TaskQueueUI._elapsed(t.lifecycle.started_at) : ''}</div>`
-          : isRunning    ? `<div class="tq-running-meta">⚡ Running${t.lifecycle?.started_at ? ' · ' + TaskQueueUI._elapsed(t.lifecycle.started_at) : ''}</div>`
+          : isRunning    ? `<div class="tq-running-meta">${window.PixelIcons?.inline('bolt',10)||'▶'} Running${t.lifecycle?.started_at ? ' · ' + TaskQueueUI._elapsed(t.lifecycle.started_at) : ''}</div>`
           : ''}
       </div>
     `;
@@ -505,7 +505,7 @@ ${task.description}`
             (task.description ? `<div class="tq-detail-field"><label>Task</label><div class="tq-detail-result">${this._esc(task.description || '')}</div></div>` : '')}
         </div>
         <div class="agent-form-footer">
-          <button class="btn-secondary" onclick="TaskQueueUI.openTaskDetail('${taskId}')">✏ Edit</button>
+          <button class="btn-secondary" onclick="TaskQueueUI.openTaskDetail('${taskId}')" style="display:inline-flex;align-items:center;gap:3px;">${window.PixelIcons?.inline('config',11)||''} Edit</button>
           <button class="btn-primary" onclick="this.closest('.modal').remove()">Close</button>
         </div>
       </div>
