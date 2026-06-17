@@ -167,6 +167,30 @@ router.get('/tasks', async (req, res) => {
   } catch (err) { res.status(500).json({ success: false, error: err.message }); }
 });
 
+// GET /tasks/results — completed/cancelled task log (slim, for UI Results pane)
+router.get('/tasks/results', async (req, res) => {
+  try {
+    const fsp      = require('fs').promises;
+    const AQUARIUM = require('../aquarium');
+    let rlog = { results: {} };
+    try { rlog = JSON.parse(await fsp.readFile(AQUARIUM.RESULTS_LOG, 'utf8')); } catch {}
+    res.json({ success: true, results: rlog.results || {} });
+  } catch (err) { res.status(500).json({ success: false, error: err.message }); }
+});
+
+// DELETE /tasks/results/:id — dismiss a result from the log
+router.delete('/tasks/results/:id', async (req, res) => {
+  try {
+    const fsp      = require('fs').promises;
+    const AQUARIUM = require('../aquarium');
+    let rlog = { results: {} };
+    try { rlog = JSON.parse(await fsp.readFile(AQUARIUM.RESULTS_LOG, 'utf8')); } catch {}
+    delete rlog.results[req.params.id];
+    await fsp.writeFile(AQUARIUM.RESULTS_LOG, JSON.stringify(rlog, null, 2), 'utf8');
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ success: false, error: err.message }); }
+});
+
 router.post('/tasks', async (req, res) => {
   try {
     rm.invalidateCache();

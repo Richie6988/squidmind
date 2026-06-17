@@ -87,10 +87,14 @@ const TaskQueueUI = {
         .filter(t => !['completed', 'failed', 'cancelled', 'archived'].includes(t.lifecycle?.status || t.status))
         .sort((a, b) => (b.sort_order || 0) - (a.sort_order || 0));
 
-      const doneTasks = allTasks
-        .filter(t => ['completed', 'failed'].includes(t.lifecycle?.status || t.status))
-        .filter(t => !this._dismissed.has(t.task_id))   // hide dismissed results
-        .sort((a, b) => new Date(b.lifecycle?.completed_at || b.created_at || 0) - new Date(a.lifecycle?.completed_at || a.created_at || 0));
+      // Results come from dedicated results_log (tasks are purged from registry on completion)
+      let doneTasks = [];
+      try {
+        const rr = await window.ApiV2._fetch('/tasks/results');
+        doneTasks = Object.values(rr.results || {})
+          .filter(t => !this._dismissed.has(t.task_id))
+          .sort((a, b) => new Date(b.completed_at || 0) - new Date(a.completed_at || 0));
+      } catch {}
       this._doneTasks = doneTasks;
 
       // ── QUEUE PANE ──
@@ -444,6 +448,11 @@ ${task.description}`
     try {
       const r = await window.ApiV2.tasks.list();
       task = r.registry.tasks?.[taskId];
+      // Completed tasks are purged from registry — check results_log
+      if (!task) {
+        const rr = await window.ApiV2._fetch('/tasks/results');
+        task = rr.results?.[taskId];
+      }
     } catch(e) { return SquidModal.alert('Could not load task: ' + e.message); }
     if (!task) return SquidModal.alert('Task not found.');
 
@@ -706,15 +715,19 @@ ${task.description}`
   },
 
   dismissResult(taskId) {
-    // Persist in _dismissed set so it survives next poll refresh
     this._dismissed.add(taskId);
     this._doneTasks = (this._doneTasks || []).filter(t => t.task_id !== taskId);
+    // Remove from server results_log
+    window.ApiV2._fetch('/tasks/results/' + taskId, { method: 'DELETE' }).catch(() => {});
     this._render();
   },
 
   dismissAllResults() {
-    // Dismiss all current results from view — does NOT delete from server/disk
-    (this._doneTasks || []).forEach(t => this._dismissed.add(t.task_id));
+    const ids = (this._doneTasks || []).map(t => t.task_id);
+    ids.forEach(id => {
+      this._dismissed.add(id);
+      window.ApiV2._fetch('/tasks/results/' + id, { method: 'DELETE' }).catch(() => {});
+    });
     this._doneTasks = [];
     this._render();
   },
@@ -731,12 +744,6 @@ ${task.description}`
     this._tasks = [];
     if (failed) await SquidModal.alert(`${ids.length - failed} deleted, ${failed} failed.`);
     await this._render();
-  },
-
-  dismissAllResults() {
-    // Clear results from view only — does NOT delete from server/disk
-    this._doneTasks = [];
-    this._render();
   },
 
   // ── Cancel ──────────────────────────────────────────────────────────────────

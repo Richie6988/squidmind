@@ -1049,7 +1049,16 @@ class RegistryManager {
     const flatPath = path.join(AQUARIUM.TASKS, 'tasks_registry.json');
     let reg = { metadata: { next_id: 1, id_format: 'task_NNN' }, tasks: {} };
     try { reg = JSON.parse(await fs.readFile(flatPath, 'utf8')); } catch {}
-    reg.tasks[taskId] = { ...task, task_id: task.task_id || taskId };
+
+    const terminalStatuses = new Set(['completed', 'cancelled', 'archived']);
+    const status = task.lifecycle?.status || task.status || '';
+    if (terminalStatuses.has(status)) {
+      // Remove terminal tasks from registry — output is in result_file on disk
+      delete reg.tasks[taskId];
+    } else {
+      reg.tasks[taskId] = { ...task, task_id: task.task_id || taskId };
+    }
+
     await fs.writeFile(flatPath, JSON.stringify(reg, null, 2), 'utf8');
     this.invalidateCache();
   }
@@ -1143,6 +1152,28 @@ class RegistryManager {
     task.lifecycle.duration_seconds = Math.round((Date.now() - startTime) / 1000);
     task.lifecycle.status_history?.push({ status: outcome, at: now, by: closureData.closed_by || 'poseidon' });
     task.status = outcome;
+
+    // Persist slim result entry to results_log.json BEFORE registry purge
+    try {
+      const AQUARIUM = require('../aquarium');
+      const fsp = require('fs').promises;
+      let rlog = { results: {} };
+      try { rlog = JSON.parse(await fsp.readFile(AQUARIUM.RESULTS_LOG, 'utf8')); } catch {}
+      rlog.results[taskId] = {
+        task_id:       taskId,
+        title:         task.title,
+        task_type:     task.task_type || 'text',
+        status:        outcome,
+        result_summary: task.result_summary || closureData.summary || null,
+        result_file:   task.result_file || null,
+        output_preview: task.output_preview || null,
+        completed_at:  now,
+        assigned_name: task.assignment?.assigned_name || task.assignment?.assigned_to || null,
+        project_name:  task.project_name || null,
+        lifecycle:     task.lifecycle
+      };
+      await fsp.writeFile(AQUARIUM.RESULTS_LOG, JSON.stringify(rlog, null, 2), 'utf8');
+    } catch (e) { console.warn('[RegistryManager] results_log write failed:', e.message); }
 
     await this._writeTaskDetails(taskId, task);
 
