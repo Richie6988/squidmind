@@ -98,6 +98,21 @@ const TempleInterior = {
     <div style="border-top:2px solid var(--border);flex-shrink:0;display:flex;flex-direction:column;height:62%;min-height:0;overflow:hidden;">
       <div class="ti-sec" style="flex-shrink:0;">AGENTS</div>
       <div id="ti-agents-always" style="flex:1;overflow:hidden;display:flex;flex-direction:column;"></div>
+      <!-- Poseidon project chatbox -->
+      <div id="ti-proj-chat" style="flex-shrink:0;border-top:1px solid var(--border);display:flex;flex-direction:column;background:rgba(2,8,16,0.6);max-height:160px;">
+        <div style="font-size:8px;color:#4facfe;padding:4px 8px 2px;letter-spacing:.08em;opacity:.7;">POSEIDON — PROJECT INSTRUCTIONS</div>
+        <div id="ti-proj-chat-log" style="flex:1;overflow-y:auto;padding:4px 8px;font-size:9px;line-height:1.5;color:var(--text-secondary);min-height:40px;max-height:90px;"></div>
+        <div style="display:flex;gap:4px;padding:4px 6px;">
+          <textarea id="ti-proj-chat-input" rows="1"
+            style="flex:1;background:rgba(15,35,64,0.8);border:1px solid var(--border);color:var(--text-primary);border-radius:4px;padding:4px 7px;font-size:9px;resize:none;font-family:inherit;line-height:1.4;outline:none;"
+            placeholder="Give Poseidon project instructions…"
+            onkeydown="if((event.ctrlKey||event.metaKey)&&event.key==='Enter'){event.preventDefault();TempleInterior._projChatSend();}"></textarea>
+          <button onclick="TempleInterior._projChatSend()"
+            style="flex-shrink:0;padding:4px 8px;font-size:8px;background:rgba(79,172,254,0.15);border:1px solid rgba(79,172,254,0.3);color:#4facfe;border-radius:4px;cursor:pointer;letter-spacing:.06em;">
+            &#9654;
+          </button>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -1269,6 +1284,8 @@ const TempleInterior = {
     const frame = document.getElementById('ti-preview-frame');
     const rPanel = document.getElementById('ti-reasoning-panel');
     const reasoningVisible = rPanel && rPanel.style.display !== 'none';
+    // Keep reasoning visible behind — file content overlays it at z-index:2
+    if (rPanel) rPanel.style.zIndex = '0';
 
     const isMd   = /\.(md|markdown)$/i.test(f.name);
     const isHtml = /\.html?$/i.test(f.name);
@@ -1357,13 +1374,34 @@ const TempleInterior = {
     const noTabs = document.getElementById('ti-ide-notabs');
     if (!bar) return;
     bar.querySelectorAll('.ti-ide-filetab').forEach(t => t.remove());
-    if (!this._openFiles.length) { if (noTabs) noTabs.style.display = ''; return; }
+    if (!this._openFiles.length) {
+      if (noTabs) noTabs.style.display = '';
+      // No files open — bring reasoning panel back to front
+      const rPanel = document.getElementById('ti-reasoning-panel');
+      const ed     = document.getElementById('ti-editor');
+      const frame  = document.getElementById('ti-preview-frame');
+      if (rPanel) rPanel.style.zIndex = '3';
+      if (ed)     { ed.style.display = 'none'; }
+      if (frame)  { frame.style.display = 'none'; }
+      const fnEl = document.getElementById('ti-ide-fname');
+      if (fnEl) fnEl.textContent = 'AGENT REASONING';
+      const saveBtn = document.getElementById('ti-ide-save-btn');
+      if (saveBtn) saveBtn.style.display = 'none';
+      return;
+    }
     if (noTabs) noTabs.style.display = 'none';
+    // Files open — reasoning stays visible but behind (z-index 0)
+    const rPanel = document.getElementById('ti-reasoning-panel');
+    if (rPanel) rPanel.style.zIndex = '0';
+
     this._openFiles.forEach((f, i) => {
       const btn = document.createElement('button');
       btn.className = `ti-ide-filetab${i === this._activeFileIdx ? ' active' : ''}${f.dirty ? ' dirty' : ''}`;
+      btn.title = 'Middle-click to close';
       btn.innerHTML = `${this._esc(f.name.slice(0,18))} <span class="ti-ide-tabclose" onclick="event.stopPropagation();TempleInterior._ideClose(${i})">x</span>`;
       btn.onclick = () => this._ideActivate(i);
+      // Middle-click (aux button) closes tab
+      btn.onmousedown = (e) => { if (e.button === 1) { e.preventDefault(); this._ideClose(i); } };
       bar.appendChild(btn);
     });
   },
@@ -1376,6 +1414,61 @@ const TempleInterior = {
 
   // ── Live reasoning panel ────────────────────────────────────────────────────
   // Show reasoning panel (default) — hide file editor
+  // ── Project chatbox — send instruction to Poseidon with project context ─────
+  async _projChatSend() {
+    const input  = document.getElementById('ti-proj-chat-input');
+    const log    = document.getElementById('ti-proj-chat-log');
+    if (!input || !log) return;
+    const text = input.value.trim();
+    if (!text) return;
+    input.value = '';
+    input.style.height = '';
+
+    const temple = this.currentTemple;
+    const proj   = temple?.name || 'this project';
+
+    // Show user message in log
+    const userEl = document.createElement('div');
+    userEl.style.cssText = 'color:#c8d8f0;margin:2px 0;';
+    userEl.textContent = '› ' + text;
+    log.appendChild(userEl);
+    log.scrollTop = log.scrollHeight;
+
+    // Build context-aware message
+    const ctxMsg = `[Project: ${proj}] ${text}`;
+
+    // Route to Poseidon chat
+    try {
+      if (window.PoseidonChat?.sendMessage) {
+        // If chat panel is available, use it directly
+        await window.PoseidonChat.sendMessage(ctxMsg);
+        const replyEl = document.createElement('div');
+        replyEl.style.cssText = 'color:#4facfe;margin:2px 0;font-style:italic;font-size:8px;';
+        replyEl.textContent = '⬡ Sent to Poseidon — check chat panel';
+        log.appendChild(replyEl);
+      } else {
+        // Direct API call for quick project instruction
+        const replyEl = document.createElement('div');
+        replyEl.style.cssText = 'color:#00ffb4;margin:2px 0;font-size:9px;';
+        replyEl.textContent = '⬡ Poseidon…';
+        log.appendChild(replyEl);
+        log.scrollTop = log.scrollHeight;
+
+        const res = await window.ApiV2._fetch('/chat', {
+          method: 'POST',
+          body: JSON.stringify({ message: ctxMsg, stream: false })
+        });
+        replyEl.textContent = '⬡ ' + (res.reply || res.message || 'OK');
+      }
+    } catch (e) {
+      const errEl = document.createElement('div');
+      errEl.style.cssText = 'color:#ef4444;margin:2px 0;font-size:8px;';
+      errEl.textContent = 'Error: ' + e.message;
+      log.appendChild(errEl);
+    }
+    log.scrollTop = log.scrollHeight;
+  },
+
   _showReasoning() {
     const editor  = document.getElementById('ti-editor');
     const preview = document.getElementById('ti-preview-frame');
