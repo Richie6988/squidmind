@@ -461,23 +461,25 @@ router.put('/skills/:id', async (req, res) => {
 router.delete('/skills/:id', async (req, res) => {
   try {
     const fsp  = require('fs').promises;
+    const fs   = require('fs');
     const path = require('path');
     const AQUARIUM = require('../aquarium');
     const skillId = req.params.id;
-    const file = path.join(AQUARIUM.SKILLS, skillId + '.json');
-    await fsp.unlink(file).catch(() => {});
-    // Also remove from seed
-    const seedFile = path.join(__dirname, '../skills', skillId + '.json');
-    await fsp.unlink(seedFile).catch(() => {});
-    // Persist to deleted_skills blocklist so it never re-seeds on restart
+    await fsp.unlink(path.join(AQUARIUM.SKILLS, skillId + '.json')).catch(() => {});
+    await fsp.unlink(path.join(__dirname, '../skills', skillId + '.json')).catch(() => {});
+    // Rebuild positive registry
     const regPath = path.join(AQUARIUM.SKILLS, 'skills_registry.json');
     try {
-      let reg = { skills: {}, deleted_skills: [] };
-      try { reg = JSON.parse(await fsp.readFile(regPath, 'utf8')); } catch {}
-      reg.deleted_skills = [...new Set([...(reg.deleted_skills || []), skillId])];
-      delete reg.skills?.[skillId];
-      reg.updated_at = new Date().toISOString();
-      await fsp.writeFile(regPath, JSON.stringify(reg, null, 2), 'utf8');
+      const entries = {};
+      for (const f of fs.readdirSync(AQUARIUM.SKILLS)) {
+        if (!f.endsWith('.json') || f === 'skills_registry.json') continue;
+        try {
+          const s = JSON.parse(fs.readFileSync(path.join(AQUARIUM.SKILLS, f), 'utf8'));
+          const id = s.skill_id || f.replace('.json', '');
+          entries[id] = { skill_id: id, name: s.name || id, version: s.version || 1, file: f };
+        } catch {}
+      }
+      await fsp.writeFile(regPath, JSON.stringify({ skills: entries, updated_at: new Date().toISOString() }, null, 2), 'utf8');
     } catch {}
     res.json({ success: true, deleted: skillId });
   } catch (err) { res.status(500).json({ success: false, error: err.message }); }

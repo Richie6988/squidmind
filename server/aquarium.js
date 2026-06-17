@@ -213,40 +213,22 @@ const AQUARIUM = {
   }
   if (seeded > 0) console.log(`[Aquarium] Bootstrapped ${seeded} missing files from server/seed/`);
 
-  // Seed skills — upsert: copy each skill if missing OR seed version > aquarium version
-  // Manually deleted skills (tracked in skills_registry.json) are never re-seeded
+  // Seed skills — copy ONLY if file absent (first install). Never re-seed deleted skills.
   try {
     fs.mkdirSync(AQUARIUM.SKILLS, { recursive: true });
     fs.mkdirSync(AQUARIUM.OUTPUT, { recursive: true });
-    // Load deleted skills blocklist
-    const regPath = path.join(AQUARIUM.SKILLS, 'skills_registry.json');
-    let deletedSkills = new Set();
-    try {
-      const reg = JSON.parse(fs.readFileSync(regPath, 'utf8'));
-      deletedSkills = new Set(reg.deleted_skills || []);
-    } catch {}
 
     if (fs.existsSync(SKILLS_SEED)) {
       let n = 0;
       for (const f of fs.readdirSync(SKILLS_SEED)) {
         if (!f.endsWith('.json')) continue;
-        const skillId = f.replace('.json', '');
-        if (deletedSkills.has(skillId)) continue;  // respect manual deletion
         const dst = path.join(AQUARIUM.SKILLS, f);
-        const src = path.join(SKILLS_SEED, f);
-        let shouldCopy = !fs.existsSync(dst);
-        if (!shouldCopy) {
-          try {
-            const existing = JSON.parse(fs.readFileSync(dst, 'utf8'));
-            const seed     = JSON.parse(fs.readFileSync(src, 'utf8'));
-            if ((seed.version || 1) > (existing.version || 1)) shouldCopy = true;
-          } catch { shouldCopy = true; }
-        }
-        if (shouldCopy) { fs.copyFileSync(src, dst); n++; }
+        if (!fs.existsSync(dst)) { fs.copyFileSync(path.join(SKILLS_SEED, f), dst); n++; }
       }
-      if (n > 0) console.log(`[Aquarium] Upserted ${n} skills from server/skills/`);
+      if (n > 0) console.log(`[Aquarium] Seeded ${n} new skills from server/skills/`);
     }
-    // Always (re)build skills_registry.json from individual skill files
+
+    // Rebuild skills_registry.json = positive list of skills present on disk
     try {
       const regPath = path.join(AQUARIUM.SKILLS, 'skills_registry.json');
       const entries = {};
@@ -266,7 +248,7 @@ const AQUARIUM = {
       fs.writeFileSync(regPath, JSON.stringify({ skills: entries, updated_at: new Date().toISOString() }, null, 2), 'utf8');
       console.log(`[Aquarium] skills_registry.json rebuilt (${Object.keys(entries).length} skills)`);
     } catch (e) { console.warn('[Aquarium] Could not build skills_registry.json:', e.message); }
-  } catch {}
+    } catch {}
 })();
 
 console.log(`[Aquarium] Root: ${AQ_ROOT} (${isAquarium ? 'aquarium layout' : 'legacy layout — run node migrate_aquarium.js'})`);
