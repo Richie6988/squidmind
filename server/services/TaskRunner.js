@@ -205,15 +205,27 @@ class TaskRunner {
       }
     }
 
+    // Build set of agentIds already running a task (in _running)
+    const agentsRunning = new Set();
+    for (const tid of this._running) {
+      // Find the task in allTasks to get its assigned_to
+      const rt = allTasks.find(t => t.task_id === tid);
+      if (rt?.assignment?.assigned_to) agentsRunning.add(rt.assignment.assigned_to);
+    }
+
     const runnable = allTasks
       .filter(t => {
         const s = t.lifecycle?.status || t.status || 'open';
         const tooManyFails = (this._failCounts.get(t.task_id) || 0) >= this.MAX_RETRIES;
         const retryDelay = this._retryAfter.get(t.task_id) || 0;
+        const agentId = t.assignment?.assigned_to;
+        // Block if this agent already has a running task
+        const agentBusy = agentId && agentId !== 'poseidon_main' && agentsRunning.has(agentId);
         return !TERMINAL.has(s)
           && !this._running.has(t.task_id)
           && !this._done.has(t.task_id)
           && !tooManyFails
+          && !agentBusy
           && Date.now() >= retryDelay;
       })
       // Queue order: explicit sort_order bump (image/urgent tasks) then FIFO by task_id
