@@ -478,44 +478,67 @@ const ModelLoader = {
     let paramsSection = '';
     if (m.config) {
       const isRunning = m.is_loaded && m.runtime_config;
-      const showCfg = isRunning ? m.runtime_config : m.config;
-      const savedHint = isRunning && (
+      const cfg = isRunning ? m.runtime_config : m.config;
+      const savedDiff = isRunning && (
         m.config.contextLength !== m.runtime_config.contextLength ||
-        m.config.gpuLayers !== m.runtime_config.gpuLayers
-      ) ? ` <span class="ml-hint">(saved: ctx=${m.config.contextLength}, gpu_layers=${m.config.gpuLayers})</span>` : '';
+        m.config.gpuLayers     !== m.runtime_config.gpuLayers
+      );
       paramsSection = `
         <div class="model-params">
-          <div class="model-params-row">ctx=<strong>${showCfg.contextLength}</strong> | gpu_layers=<strong>${showCfg.gpuLayers}</strong> | threads=<strong>${showCfg.cpuThreads}</strong>${savedHint}</div>
-          <div class="model-params-row">batch=<strong>${showCfg.batchSize}</strong> | TTL=<strong>${showCfg.autoUnloadIdleMinutes}m</strong> | flash=${showCfg.flashAttention ? 'yes' : 'no'} | mmap=${showCfg.useMmap ? 'yes' : 'no'} | mlock=${showCfg.useMlock ? 'yes' : 'no'}</div>
+          <div class="model-params-row">
+            <span class="mp-kv">CTX <strong>${cfg.contextLength ?? 'auto'}</strong></span>
+            <span class="mp-kv">GPU LAYERS <strong>${cfg.gpuLayers ?? 'auto'}</strong></span>
+            <span class="mp-kv">THREADS <strong>${cfg.cpuThreads ?? 4}</strong></span>
+            <span class="mp-kv">BATCH <strong>${cfg.batchSize ?? 512}</strong></span>
+          </div>
+          <div class="model-params-row">
+            <span class="mp-kv">TTL <strong>${cfg.autoUnloadIdleMinutes ?? 15}m</strong></span>
+            <span class="mp-kv">FLASH <strong style="color:${cfg.flashAttention?'#00ffb4':'#64748b'}">${cfg.flashAttention?'ON':'OFF'}</strong></span>
+            <span class="mp-kv">MMAP <strong>${cfg.useMmap?'yes':'no'}</strong></span>
+            <span class="mp-kv">MLOCK <strong>${cfg.useMlock?'yes':'no'}</strong></span>
+          </div>
+          ${savedDiff ? `<div class="mp-hint">saved: ctx=${m.config.contextLength}, gpu=${m.config.gpuLayers}</div>` : ''}
         </div>`;
     }
-    
+
     let runtimeSection = '';
     if (m.runtime && m.runtime.loaded_at) {
-      const ctxStr = m.runtime_config?.contextLength ? ` | ctx=${m.runtime_config.contextLength}` : '';
+      const ctx  = m.runtime_config?.contextLength;
+      const reqs = m.runtime.total_requests      || 0;
+      const toks = m.runtime.total_tokens_generated || 0;
       runtimeSection = `
         <div class="model-runtime">
-          loaded ${this._timeAgo(m.runtime.loaded_at)} | last used ${this._timeAgo(m.runtime.last_used_at)}
-          | ${m.runtime.total_requests} requests | ${m.runtime.total_tokens_generated} tokens${ctxStr}
+          <span class="mp-kv">LOADED <strong>${this._timeAgo(m.runtime.loaded_at)}</strong></span>
+          <span class="mp-kv">LAST USE <strong>${this._timeAgo(m.runtime.last_used_at)}</strong></span>
+          <span class="mp-kv">REQUESTS <strong>${reqs}</strong></span>
+          <span class="mp-kv">TOKENS <strong>${(toks/1000).toFixed(1)}k</strong></span>
+          ${ctx ? `<span class="mp-kv">CTX ACTIVE <strong>${(ctx/1000).toFixed(0)}k</strong></span>` : ''}
         </div>`;
     }
-    
+
     let warningSection = '';
     if (isInvalid) {
-      warningSection = `<div class="model-warning">File is not a valid .gguf (wrong magic bytes). It's likely a placeholder or corrupted. Delete it and use Browse Files or Download HF.</div>`;
+      warningSection = `<div class="model-warning">Not a valid .gguf — placeholder or corrupted. Delete and re-download.</div>`;
     } else if (mtype === 'image' && m.is_poseidon) {
-      warningSection = `<div class="model-warning">⚠ This model is tagged as IMAGE (encoder/diffusion component). It cannot be used as a chat model. Remove it from Poseidon and assign a text LLM instead.</div>`;
+      warningSection = `<div class="model-warning">⚠ IMAGE model assigned as Poseidon — cannot chat. Replace with a text LLM.</div>`;
     } else if (mtype === 'text' && m.imported && m.file_size_gb && m.file_size_gb < 0.8) {
-      warningSection = `<div class="model-warning">⚠ Very small model (${m.file_size_gb} GB) — likely an encoder component (T5, CLIP, VAE), not a text LLM. Consider tagging as Image Model.</div>`;
+      warningSection = `<div class="model-warning">⚠ Very small (${m.file_size_gb} GB) — likely encoder/VAE, not a chat LLM.</div>`;
     }
-    
+
+    const displayName = m.display_name || m.file_name || m.model_id || '—';
+    const fileName    = m.display_name ? m.file_name : '';
+
     return `
       <div class="model-library-card ${m.is_poseidon ? 'is-poseidon' : ''} ${isInvalid ? 'is-invalid' : ''}" data-model-id="${this._escape(m.model_id || '')}">
         <div class="model-card-header">
-          <strong title="${this._escape(m.file_name)}">${this._escape(m.display_name || m.file_name)}</strong>
-          ${m.display_name ? `<span style="font-size:8px;color:#475569;font-family:monospace;">${this._escape(m.file_name)}</span>` : ''}
-          <span class="model-size-pill">${sizeStr}</span>
-          ${statusBadge}
+          <div class="model-name-block">
+            <strong class="model-display-name" title="${this._escape(m.file_name)}">${this._escape(displayName)}</strong>
+            ${fileName ? `<span class="model-filename">${this._escape(fileName)}</span>` : ''}
+          </div>
+          <div class="model-header-right">
+            <span class="model-size-pill">${sizeStr}</span>
+            <div class="model-caps-row">${statusBadge}</div>
+          </div>
         </div>
         <div class="model-card-body">
           ${warningSection}${paramsSection}${runtimeSection}
@@ -790,7 +813,7 @@ const ModelLoader = {
       if (!res.success) throw new Error(res.error || 'Rename failed');
       // Update local library cache
       if (m) m.display_name = newName.trim();
-      await this.open();  // refresh library view
+      await this._refresh();  // refresh in-place, don't rebuild modal
     } catch (e) { await SquidModal.alert('Rename failed: ' + e.message); }
   },
 
