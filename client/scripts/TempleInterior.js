@@ -161,6 +161,21 @@ const TempleInterior = {
     this._renderKanban(body);
   },
 
+  _renderHeader() {
+    const el = document.getElementById('ti-hdr-stat');
+    if (!el) return;
+    // Fetch task counts for this project
+    const pid = this.currentTemple?.project_id;
+    window.ApiV2?._fetch('/tasks').then(r => {
+      const tasks = Object.values(r?.registry?.tasks || {});
+      const mine  = pid ? tasks.filter(t => t.project_id === pid || t.context?.project_id === pid) : tasks;
+      const done  = mine.filter(t => ['completed','cancelled','archived'].includes(t.lifecycle?.status || t.status)).length;
+      const prog  = mine.filter(t => (t.lifecycle?.status || t.status) === 'in_progress').length;
+      const total = mine.length;
+      el.textContent = `${prog > 0 ? `▶ ${prog} running · ` : ''}${done}/${total} done`;
+    }).catch(() => { el.textContent = ''; });
+  },
+
   _refreshAll() {
     this._renderHeader();
     this._switchLeft(this._leftTab);
@@ -1252,18 +1267,36 @@ const TempleInterior = {
     const f = this._openFiles[idx];
 
     const frame = document.getElementById('ti-preview-frame');
+    const rPanel = document.getElementById('ti-reasoning-panel');
+    const reasoningVisible = rPanel && rPanel.style.display !== 'none';
+
+    const isMd   = /\.(md|markdown)$/i.test(f.name);
+    const isHtml = /\.html?$/i.test(f.name);
+    const isJson = /\.json$/i.test(f.name);
 
     if (f.isImg) {
       if (ed) ed.style.display = 'none';
+      if (rPanel) rPanel.style.display = 'none';
       if (frame) {
         frame.style.display = '';
         frame.srcdoc = `<html><body style="margin:0;background:#0a2239;display:flex;align-items:center;justify-content:center;min-height:100vh;"><img src="${f.imgUrl}" style="max-width:100%;max-height:100vh;"></body></html>`;
       }
+    } else if (isMd && !f.loading) {
+      // Markdown: show editor + auto-preview in iframe
+      if (rPanel) rPanel.style.display = 'none';
+      if (ed) { ed.style.display = ''; ed.value = f.loading ? 'Loading...' : (f.content || ''); }
+      this._renderMarkdownPreview(f.content || '');
+      if (frame) frame.style.display = '';
+      // Split view: editor left half, preview right half via CSS hack
+      if (ed) ed.style.width = '50%';
+      if (frame) { frame.style.width = '50%'; frame.style.left = '50%'; }
     } else {
       if (frame) frame.style.display = 'none';
+      if (ed) { ed.style.display = ''; ed.style.width = ''; ed.style.left = ''; }
+      if (ed) ed.value = f.loading ? 'Loading...' : (f.content || '');
+      // Apply syntax hint via spellcheck off + lang attr for IDEs
       if (ed) {
-        ed.style.display = '';
-        ed.value = f.loading ? 'Loading...' : (f.content || '');
+        ed.setAttribute('data-lang', isJson ? 'json' : (f.name.match(/\.(\w+)$/)?.[1] || 'text'));
       }
     }
 
@@ -1273,8 +1306,50 @@ const TempleInterior = {
     const prevBtn = document.getElementById('ti-prev-toggle');
     if (fnEl)   fnEl.textContent = f.name + (f.type ? ` [${f.type.toUpperCase()}]` : '');
     if (saveBtn) saveBtn.style.display = '';
-    if (prevBtn) prevBtn.style.display = /\.html?$/i.test(f.name) ? '' : 'none';
+    if (prevBtn) prevBtn.style.display = (isHtml || isMd) ? '' : 'none';
     this._renderIdeTabs();
+  },
+
+  _renderMarkdownPreview(md) {
+    const frame = document.getElementById('ti-preview-frame');
+    if (!frame) return;
+    // Simple markdown → HTML renderer (no external deps)
+    const html = md
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+      .replace(/^#{6}\s(.+)$/gm,'<h6>$1</h6>')
+      .replace(/^#{5}\s(.+)$/gm,'<h5>$1</h5>')
+      .replace(/^#{4}\s(.+)$/gm,'<h4>$1</h4>')
+      .replace(/^#{3}\s(.+)$/gm,'<h3>$1</h3>')
+      .replace(/^#{2}\s(.+)$/gm,'<h2>$1</h2>')
+      .replace(/^#{1}\s(.+)$/gm,'<h1>$1</h1>')
+      .replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>')
+      .replace(/\*(.+?)\*/g,'<em>$1</em>')
+      .replace(/`([^`]+)`/g,'<code>$1</code>')
+      .replace(/^```[\w]*\n?([\s\S]*?)```/gm,'<pre><code>$1</code></pre>')
+      .replace(/^- (.+)$/gm,'<li>$1</li>').replace(/(<li>.*<\/li>\n?)+/g,'<ul>$&</ul>')
+      .replace(/^\d+\. (.+)$/gm,'<li>$1</li>')
+      .replace(/^\|(.+)\|$/gm, row => '<tr>' + row.slice(1,-1).split('|').map(c=>`<td>${c.trim()}</td>`).join('') + '</tr>')
+      .replace(/(<tr>.*<\/tr>\n?)+/g, t => `<table>${t}</table>`)
+      .replace(/^---+$/gm,'<hr>')
+      .replace(/\[([^\]]+)\]\(([^)]+)\)/g,'<a href="$2" target="_blank">$1</a>')
+      .replace(/\n\n+/g,'</p><p>')
+      .replace(/\n/g,'<br>');
+    frame.srcdoc = `<!DOCTYPE html><html><head><style>
+      body{margin:0;padding:14px;background:#0a1628;color:#c8d8f0;font-family:'Segoe UI',sans-serif;font-size:12px;line-height:1.7;}
+      h1,h2,h3,h4{color:#4facfe;margin:.5em 0 .3em;}
+      h1{font-size:1.5em;border-bottom:1px solid #1e3a5f;padding-bottom:.2em;}
+      h2{font-size:1.2em;}
+      code{background:#0f2340;color:#00ffb4;padding:1px 5px;border-radius:3px;font-family:'Courier New',monospace;}
+      pre{background:#0f2340;border:1px solid #1e3a5f;border-radius:5px;padding:10px;overflow-x:auto;}
+      pre code{background:none;padding:0;}
+      table{border-collapse:collapse;width:100%;margin:.5em 0;}
+      td,th{border:1px solid #1e3a5f;padding:4px 8px;}
+      tr:nth-child(even){background:#0f2340;}
+      ul{padding-left:1.5em;}
+      a{color:#4facfe;}
+      hr{border:none;border-top:1px solid #1e3a5f;}
+      p{margin:.4em 0;}
+    </style></head><body><p>${html}</p></body></html>`;
   },
 
   _renderIdeTabs() {
