@@ -214,13 +214,24 @@ const AQUARIUM = {
   if (seeded > 0) console.log(`[Aquarium] Bootstrapped ${seeded} missing files from server/seed/`);
 
   // Seed skills — upsert: copy each skill if missing OR seed version > aquarium version
+  // Manually deleted skills (tracked in skills_registry.json) are never re-seeded
   try {
     fs.mkdirSync(AQUARIUM.SKILLS, { recursive: true });
     fs.mkdirSync(AQUARIUM.OUTPUT, { recursive: true });
+    // Load deleted skills blocklist
+    const regPath = path.join(AQUARIUM.SKILLS, 'skills_registry.json');
+    let deletedSkills = new Set();
+    try {
+      const reg = JSON.parse(fs.readFileSync(regPath, 'utf8'));
+      deletedSkills = new Set(reg.deleted_skills || []);
+    } catch {}
+
     if (fs.existsSync(SKILLS_SEED)) {
       let n = 0;
       for (const f of fs.readdirSync(SKILLS_SEED)) {
         if (!f.endsWith('.json')) continue;
+        const skillId = f.replace('.json', '');
+        if (deletedSkills.has(skillId)) continue;  // respect manual deletion
         const dst = path.join(AQUARIUM.SKILLS, f);
         const src = path.join(SKILLS_SEED, f);
         let shouldCopy = !fs.existsSync(dst);

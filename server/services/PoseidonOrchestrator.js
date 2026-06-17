@@ -1878,6 +1878,16 @@ Never describe a bash command you could call instead.`;
       // Also remove seed if exists
       const seedPath = path.join(__dirname, '../skills', `${skill_id}.json`);
       await fsp.unlink(seedPath).catch(() => {});
+      // Add to deleted_skills blocklist in skills_registry.json to prevent re-seed on restart
+      const regPath = path.join(AQUARIUM.SKILLS, 'skills_registry.json');
+      try {
+        let reg = { skills: {}, deleted_skills: [] };
+        try { reg = JSON.parse(await fsp.readFile(regPath, 'utf8')); } catch {}
+        reg.deleted_skills = [...new Set([...(reg.deleted_skills || []), skill_id])];
+        delete reg.skills?.[skill_id];
+        reg.updated_at = new Date().toISOString();
+        await fsp.writeFile(regPath, JSON.stringify(reg, null, 2), 'utf8');
+      } catch (regErr) { console.warn('[deleteSkill] registry update failed:', regErr.message); }
       await this.rm.log({ event_type: 'skill_deleted', severity: 'info',
         actor: { type: 'system', id: 'poseidon_main' },
         subject: { type: 'skill', id: skill_id },

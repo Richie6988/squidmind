@@ -460,12 +460,26 @@ router.put('/skills/:id', async (req, res) => {
 /** DELETE /skills/:id */
 router.delete('/skills/:id', async (req, res) => {
   try {
-    const fs   = require('fs').promises;
+    const fsp  = require('fs').promises;
     const path = require('path');
     const AQUARIUM = require('../aquarium');
-    const file = path.join(AQUARIUM.SKILLS, req.params.id + '.json');
-    await fs.unlink(file);
-    res.json({ success: true, deleted: req.params.id });
+    const skillId = req.params.id;
+    const file = path.join(AQUARIUM.SKILLS, skillId + '.json');
+    await fsp.unlink(file).catch(() => {});
+    // Also remove from seed
+    const seedFile = path.join(__dirname, '../skills', skillId + '.json');
+    await fsp.unlink(seedFile).catch(() => {});
+    // Persist to deleted_skills blocklist so it never re-seeds on restart
+    const regPath = path.join(AQUARIUM.SKILLS, 'skills_registry.json');
+    try {
+      let reg = { skills: {}, deleted_skills: [] };
+      try { reg = JSON.parse(await fsp.readFile(regPath, 'utf8')); } catch {}
+      reg.deleted_skills = [...new Set([...(reg.deleted_skills || []), skillId])];
+      delete reg.skills?.[skillId];
+      reg.updated_at = new Date().toISOString();
+      await fsp.writeFile(regPath, JSON.stringify(reg, null, 2), 'utf8');
+    } catch {}
+    res.json({ success: true, deleted: skillId });
   } catch (err) { res.status(500).json({ success: false, error: err.message }); }
 });
 
