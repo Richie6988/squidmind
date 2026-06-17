@@ -234,6 +234,26 @@ const AQUARIUM = {
       }
       if (n > 0) console.log(`[Aquarium] Upserted ${n} skills from server/skills/`);
     }
+    // Always (re)build skills_registry.json from individual skill files
+    try {
+      const regPath = path.join(AQUARIUM.SKILLS, 'skills_registry.json');
+      const entries = {};
+      for (const f of fs.readdirSync(AQUARIUM.SKILLS)) {
+        if (!f.endsWith('.json') || f === 'skills_registry.json') continue;
+        try {
+          const s = JSON.parse(fs.readFileSync(path.join(AQUARIUM.SKILLS, f), 'utf8'));
+          const id = s.skill_id || f.replace('.json', '');
+          entries[id] = {
+            skill_id: id, name: s.name || id, version: s.version || 1,
+            summary: s.summary || '', triggers: s.triggers || [],
+            steps_count: (s.steps || []).length, created_by: s.created_by || 'system',
+            file: f
+          };
+        } catch {}
+      }
+      fs.writeFileSync(regPath, JSON.stringify({ skills: entries, updated_at: new Date().toISOString() }, null, 2), 'utf8');
+      console.log(`[Aquarium] skills_registry.json rebuilt (${Object.keys(entries).length} skills)`);
+    } catch (e) { console.warn('[Aquarium] Could not build skills_registry.json:', e.message); }
   } catch {}
 })();
 
