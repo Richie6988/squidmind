@@ -541,13 +541,20 @@ const PoseidonChat = {
     const d  = document.createElement('div');
     d.className = 'pc-tool pc-tool-pending';
     d.dataset.fn = name;
-    const preview = Object.entries(args || {}).slice(0, 2)
-      .map(([k, v]) => `${k}: ${JSON.stringify(v).slice(0, 30)}`).join(', ');
+    // Build full args display — no truncation on keys, 200 chars on values
+    const argsHtml = Object.entries(args || {})
+      .map(([k, v]) => {
+        const vs = typeof v === 'string' ? v : JSON.stringify(v);
+        const display = vs.length > 200 ? vs.slice(0, 200) + '…' : vs;
+        return `<span class="pc-tool-kv"><span class="pc-tool-key">${k}</span>: <span class="pc-tool-argval">${this._esc(display)}</span></span>`;
+      }).join('');
     d.innerHTML = `
-      <span class="pc-tool-icon">⚡</span>
-      <span class="pc-tool-name">${this._esc(name)}</span>
-      <span class="pc-tool-args">${this._esc(preview ? `(${preview})` : '')}</span>
-      <span class="pc-tool-spin">◌</span>`;
+      <div class="pc-tool-header">
+        <span class="pc-tool-icon">${window.PixelIcons?.inline('tools',10)||'⚡'}</span>
+        <span class="pc-tool-name">${this._esc(name)}</span>
+        <span class="pc-tool-spin">◌</span>
+      </div>
+      ${argsHtml ? `<div class="pc-tool-args">${argsHtml}</div>` : ''}`;
     // Seal current text segment, then append tool in stream order
     const cur = el.querySelector('.pc-text-final:last-of-type');
     if (cur) cur.classList.remove('pc-text-final');
@@ -561,7 +568,14 @@ const PoseidonChat = {
     d.classList.remove('pc-tool-pending');
     d.classList.add(ok ? 'pc-tool-ok' : 'pc-tool-fail');
     const spin = d.querySelector('.pc-tool-spin');
-    if (spin) spin.outerHTML = `<span class="pc-tool-res">${ok ? '✓' : '✗'} ${this._esc(summary || '')}${ms ? ` <em>${ms}ms</em>` : ''}</span>`;
+    const statusIcon = ok
+      ? (window.PixelIcons?.inline('ok',10)||'✓')
+      : (window.PixelIcons?.inline('error',10)||'✗');
+    // summary can be long (file content preview) — show up to 400 chars
+    const sumDisplay = (summary || '').length > 400
+      ? summary.slice(0, 400) + '…'
+      : (summary || '');
+    if (spin) spin.outerHTML = `<span class="pc-tool-res ${ok ? 'ok' : 'fail'}">${statusIcon} <span class="pc-tool-sum">${this._esc(sumDisplay)}</span>${ms ? ` <em class="pc-tool-ms">${ms}ms</em>` : ''}</span>`;
   },
 
   // ── Controls ────────────────────────────────────────────────────────────

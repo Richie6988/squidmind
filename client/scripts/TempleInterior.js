@@ -1591,8 +1591,17 @@ const TempleInterior = {
         if (e.type === 'thinking')   return `<span style="color:#a78bfa;white-space:pre-wrap;">${this._escR(e.chunk)}</span>`;
         if (e.type === 'thinking_end') return `<div style="color:#7c3aed;font-size:9px;">⟨/think⟩</div>`;
         if (e.type === 'text')       return `<span style="color:#e2e8f0;white-space:pre-wrap;">${this._escR(e.chunk)}</span>`;
-        if (e.type === 'tool_call')  return `<div style="color:#f59e0b;margin-top:4px;">⚡ ${this._escR(e.name)} ${e.args ? `<span style="color:#78350f;">${this._escR(JSON.stringify(e.args).slice(0,120))}</span>` : ''}</div>`;
-        if (e.type === 'tool_result') return `<div style="color:${e.ok ? '#10b981' : '#ef4444'};font-size:9px;margin-left:10px;">  ${e.ok ? '✓' : '✗'} ${this._escR(e.summary || '')}</div>`;
+        if (e.type === 'tool_call')  {
+          const argsStr = Object.entries(e.args || {}).map(([k,v]) => {
+            const vs = typeof v === 'string' ? v : JSON.stringify(v);
+            return `<span style="color:#94a3b8;">${this._escR(k)}</span>: <span style="color:#c8d8f0;">${this._escR(vs.slice(0,300))}${vs.length>300?'…':''}</span>`;
+          }).join('<br>&nbsp;&nbsp;');
+          return `<div style="background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.2);border-radius:4px;padding:4px 8px;margin:3px 0;font-size:9px;">
+            <div style="color:#fbbf24;font-weight:bold;margin-bottom:2px;">${window.PixelIcons?.inline('tools',10)||'⚡'} ${this._escR(e.name)}</div>
+            ${argsStr ? `<div style="color:#64748b;border-left:2px solid rgba(245,158,11,0.2);padding-left:8px;word-break:break-all;line-height:1.5;">${argsStr}</div>` : ''}
+          </div>`;
+        }
+        if (e.type === 'tool_result') return `<div style="color:${e.ok ? '#34d399' : '#f87171'};font-size:9px;padding:2px 8px;border-left:2px solid ${e.ok?'#34d399':'#f87171'};margin:2px 0 2px 10px;word-break:break-word;">${e.ok ? (window.PixelIcons?.inline('ok',9)||'✓') : (window.PixelIcons?.inline('error',9)||'✗')} ${this._escR((e.summary||'').slice(0,400))}${(e.summary||'').length>400?'…':''}</div>`;
         return '';
       }).join('');
       panel.innerHTML = `<div style="min-height:100%;">${html}<div id="ti-reason-end"></div></div>`;

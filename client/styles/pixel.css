@@ -5981,14 +5981,21 @@ option {
 
 /* Tool calls */
 .pc-tool {
-  display: flex; align-items: center; gap: 7px;
-  padding: 7px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 10px;
   border-radius: 5px;
   margin: 4px 0;
   font-family: 'Courier New', monospace;
   font-size: 9px;
   border: 1px solid;
   transition: all 0.2s;
+}
+.pc-tool-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 .pc-tool-pending {
   background: rgba(245,158,11,0.06);
@@ -6005,12 +6012,41 @@ option {
   border-color: rgba(239,68,68,0.2);
   color: #f87171;
 }
-.pc-tool-icon { font-size: 11px; }
-.pc-tool-name { font-weight: bold; flex: 0 0 auto; }
-.pc-tool-args { color: #64748b; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.pc-tool-spin { animation: pcSpin 1s linear infinite; opacity: 0.5; }
+.pc-tool-icon { flex-shrink: 0; }
+.pc-tool-name { font-weight: bold; font-size: 10px; flex: 1; }
+.pc-tool-spin { animation: pcSpin 1s linear infinite; opacity: 0.5; flex-shrink: 0; }
 @keyframes pcSpin { to { transform: rotate(360deg); } }
-.pc-tool-res em { color: #475569; font-style: normal; }
+/* Args block — full text, word wrap */
+.pc-tool-args {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 3px 0 2px 14px;
+  border-left: 2px solid rgba(245,158,11,0.2);
+}
+.pc-tool-kv {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  word-break: break-all;
+  line-height: 1.4;
+}
+.pc-tool-key { color: #94a3b8; flex-shrink: 0; }
+.pc-tool-argval { color: #c8d8f0; word-break: break-all; }
+/* Result line */
+.pc-tool-res {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+  flex-wrap: wrap;
+  word-break: break-word;
+  padding: 2px 0;
+}
+.pc-tool-res.ok  { color: #34d399; }
+.pc-tool-res.fail { color: #f87171; }
+.pc-tool-sum { color: #94a3b8; font-size: 8px; word-break: break-all; flex: 1; }
+.pc-tool-ms  { color: #475569; font-style: normal; font-size: 8px; flex-shrink: 0; }
+
 
 /* Input area */
 .pc-input-area {
