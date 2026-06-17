@@ -192,31 +192,8 @@ const aquarium = {
     cx.fillStyle = grad;
     cx.fillRect(0, 0, W, H);
 
-    // Seaweed at edges
-    this._bgSeaweed(W, H, t);
-
-    // Small random bubbles drifting up — the only animation
-    if (!this._bgBubs) this._bgBubs = Array.from({ length: 18 }, () => ({
-      x: Math.random(), y: 0.3 + Math.random() * 0.8,
-      r: 0.5 + Math.random() * 1.6,
-      sp: 0.00015 + Math.random() * 0.0005,
-      wb: Math.random() * Math.PI * 2, ws: 0.007 + Math.random() * 0.01,
-      al: 0.08 + Math.random() * 0.2
-    }));
-    cx.save();
-    for (const b of this._bgBubs) {
-      b.y -= b.sp; b.wb += b.ws; b.x += Math.sin(b.wb) * 0.00018;
-      if (b.y < -0.02) { b.y = 1.02; b.x = Math.random(); }
-      const fade = Math.max(0, Math.min(1, b.y * 5));
-      cx.globalAlpha = b.al * fade;
-      cx.strokeStyle = 'rgba(160,220,255,0.75)'; cx.lineWidth = 0.6;
-      cx.beginPath(); cx.arc(b.x * W, b.y * H, b.r, 0, Math.PI * 2); cx.stroke();
-      // Tiny specular dot
-      cx.fillStyle = 'rgba(230,245,255,0.5)';
-      cx.beginPath(); cx.arc(b.x * W - b.r * 0.35, b.y * H - b.r * 0.35, b.r * 0.25, 0, Math.PI * 2); cx.fill();
-    }
-    cx.globalAlpha = 1;
-    cx.restore();
+    // Depth-layered colorful bubbles (replace seaweed)
+    this._bgBubbles(W, H, t);
 
     // Subtle vignette
     const vig = cx.createRadialGradient(W / 2, H / 2, H * 0.25, W / 2, H / 2, H * 0.85);
@@ -264,33 +241,86 @@ const aquarium = {
     cx.restore();
   },
 
-  _bgSeaweed(W, H, t) {
+  _bgBubbles(W, H, t) {
     const cx = this.ctx;
-    const xpos = [0.02, 0.07, 0.13, 0.18, 0.82, 0.88, 0.93, 0.98];
+    if (!this._depthBubs) {
+      // Three depth layers: far (small, slow, dim), mid, near (large, fast, bright)
+      const layer = (n, rMin, rMax, spMin, spMax, alMin, alMax) =>
+        Array.from({ length: n }, () => ({
+          x: Math.random(), y: Math.random(),
+          r: rMin + Math.random() * (rMax - rMin),
+          sp: spMin + Math.random() * (spMax - spMin),
+          wb: Math.random() * Math.PI * 2,
+          ws: 0.004 + Math.random() * 0.012,
+          al: alMin + Math.random() * (alMax - alMin),
+          hue: Math.floor(Math.random() * 6), // 0=cyan 1=blue 2=violet 3=teal 4=aqua 5=green
+          wobbleAmp: 0.0001 + Math.random() * 0.0003,
+          phase: Math.random() * Math.PI * 2
+        }));
+      this._depthBubs = {
+        far:  layer(22, 0.4, 1.1, 0.00008, 0.00018, 0.04, 0.10),
+        mid:  layer(14, 1.2, 2.6, 0.00018, 0.00040, 0.10, 0.22),
+        near: layer(7,  3.0, 5.5, 0.00040, 0.00080, 0.18, 0.35),
+      };
+    }
+    const PALETTES = [
+      [160, 220, 255], // cyan
+      [ 79, 172, 254], // blue
+      [168, 130, 255], // violet
+      [  0, 210, 180], // teal
+      [ 80, 240, 220], // aqua
+      [ 60, 200, 130], // green
+    ];
     cx.save();
-    xpos.forEach((xr, i) => {
-      const x0 = W * xr;
-      const h  = 45 + Math.sin(i * 2.1) * 22;
-      const segs = 11;
-      const rgb = i % 3 === 0 ? '6,200,130' : i % 3 === 1 ? '20,150,200' : '80,100,255';
-      const al  = 0.18 + Math.sin(i * 0.9) * 0.07;
-      cx.beginPath();
-      for (let s = segs; s >= 0; s--) {
-        const py   = H - (s / segs) * h;
-        const wave = Math.sin(t * 0.9 + i * 0.8 + s * 0.38) * (s / segs) * 9;
-        const px   = x0 + wave;
-        s === segs ? cx.moveTo(px, py) : cx.lineTo(px, py);
+    for (const [layerKey, blur, glow] of [['far',0,false],['mid',1,false],['near',2.5,true]]) {
+      for (const b of this._depthBubs[layerKey]) {
+        b.y -= b.sp;
+        b.wb += b.ws;
+        b.x += Math.sin(b.wb + b.phase) * b.wobbleAmp;
+        if (b.y < -0.04) { b.y = 1.03; b.x = Math.random(); b.phase = Math.random() * Math.PI * 2; }
+        if (b.x < -0.02) b.x = 1.02;
+        if (b.x >  1.02) b.x = -0.02;
+
+        const px = b.x * W, py = b.y * H;
+        const r  = b.r;
+        const [cr, cg, cb] = PALETTES[b.hue];
+        // Depth fade (more visible near top of screen)
+        const depthFade = Math.max(0, Math.min(1, (1 - b.y) * 0.7 + 0.3));
+        const al = b.al * depthFade;
+
+        if (glow) { cx.shadowColor = `rgba(${cr},${cg},${cb},0.5)`; cx.shadowBlur = blur * 4; }
+
+        // Bubble body
+        const grad = cx.createRadialGradient(px - r*0.3, py - r*0.3, r*0.1, px, py, r);
+        grad.addColorStop(0, `rgba(${cr},${cg},${cb},${(al * 0.25).toFixed(3)})`);
+        grad.addColorStop(0.6, `rgba(${cr},${cg},${cb},${(al * 0.08).toFixed(3)})`);
+        grad.addColorStop(1, `rgba(${cr},${cg},${cb},0)`);
+        cx.fillStyle = grad;
+        cx.beginPath(); cx.arc(px, py, r, 0, Math.PI * 2); cx.fill();
+
+        // Rim stroke
+        cx.strokeStyle = `rgba(${cr},${cg},${cb},${(al * 0.55).toFixed(3)})`;
+        cx.lineWidth = layerKey === 'far' ? 0.4 : layerKey === 'mid' ? 0.65 : 1;
+        cx.beginPath(); cx.arc(px, py, r, 0, Math.PI * 2); cx.stroke();
+
+        // Specular highlight (top-left glint)
+        cx.fillStyle = `rgba(230,245,255,${(al * 0.7).toFixed(3)})`;
+        cx.beginPath(); cx.arc(px - r*0.35, py - r*0.38, r * 0.22, 0, Math.PI * 2); cx.fill();
+
+        // Secondary tiny glint
+        if (layerKey !== 'far') {
+          cx.fillStyle = `rgba(255,255,255,${(al * 0.4).toFixed(3)})`;
+          cx.beginPath(); cx.arc(px + r*0.2, py - r*0.15, r * 0.09, 0, Math.PI * 2); cx.fill();
+        }
+
+        if (glow) { cx.shadowBlur = 0; cx.shadowColor = 'transparent'; }
       }
-      cx.shadowColor = `rgba(${rgb},0.4)`;
-      cx.shadowBlur  = 6;
-      cx.strokeStyle = `rgba(${rgb},${al})`;
-      cx.lineWidth   = 3.5 - (i % 3) * 0.8;
-      cx.lineCap     = 'round';
-      cx.stroke();
-      cx.shadowBlur  = 0;
-    });
+    }
+    cx.globalAlpha = 1;
     cx.restore();
   },
+
+
 
 
   onMouseMove(e) {
