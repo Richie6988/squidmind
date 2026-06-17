@@ -334,13 +334,46 @@ class ToolRegistry {
 
     this.registerTool({
       name: 'run_javascript',
-      description: 'Execute JavaScript code in sandbox (timeout: 60s max)',
+      description: 'Execute JavaScript/Node.js code in a sandbox (timeout: 60s max). For shell commands use run_bash instead.',
       category: 'code',
       parameters: {
         code: { type: 'string', required: true, description: 'JavaScript code to execute' },
         timeout_seconds: { type: 'number', required: false, description: 'Timeout in seconds (default: 5)' }
       },
       execute: async ({ code, timeout_seconds = 5 }) => filesystemTools.runJavaScript(code, timeout_seconds)
+    });
+
+    this.registerTool({
+      name: 'run_bash',
+      description: 'Execute a bash/shell command directly on the machine. Use for file ops, npm/python installs, git commands, running scripts. stdout + stderr returned. Timeout max 120s.',
+      category: 'code',
+      parameters: {
+        command: { type: 'string', required: true, description: 'Shell command to run' },
+        cwd:     { type: 'string', required: false, description: 'Working directory (default: aquarium root)' },
+        timeout_seconds: { type: 'number', required: false, description: 'Timeout in seconds (default: 30, max: 120)' }
+      },
+      execute: async ({ command, cwd, timeout_seconds = 30 }) => {
+        const { execSync } = require('child_process');
+        const path = require('path');
+        const AQUARIUM = require('../aquarium');
+        const workDir = cwd ? path.resolve(cwd) : path.dirname(AQUARIUM.TASKS);
+        const timeout = Math.min(Math.max(1, timeout_seconds), 120) * 1000;
+        try {
+          const stdout = execSync(command, {
+            cwd: workDir, timeout, encoding: 'utf8',
+            maxBuffer: 2 * 1024 * 1024,
+            env: { ...process.env, PATH: process.env.PATH || '/usr/local/bin:/usr/bin:/bin' }
+          });
+          return { success: true, stdout: stdout.slice(0, 8000), stderr: '', cwd: workDir };
+        } catch (e) {
+          return {
+            success: false,
+            stdout: (e.stdout || '').slice(0, 4000),
+            stderr: (e.stderr || e.message || '').slice(0, 4000),
+            exit_code: e.status || 1
+          };
+        }
+      }
     });
 
     this.registerTool({
