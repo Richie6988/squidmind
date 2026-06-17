@@ -273,6 +273,24 @@ router.delete('/tasks/:id', async (req, res) => {
     // Tell TaskRunner to never run this task again (in-memory _done set + persist)
     const taskRunner = servicesRef.taskRunner;
     if (taskRunner?.markDeleted) taskRunner.markDeleted(taskId);
+
+    // 3. Remove output files from TASKS/OUTPUT/ (.md, .json, .png)
+    for (const ext of ['md', 'txt', 'json', 'png']) {
+      try { await fsp.unlink(path.join(AQUARIUM.OUTPUT, `${taskId}.${ext}`)); } catch {}
+    }
+
+    // 4. Remove from results_log.json if present
+    try {
+      const rlogPath = AQUARIUM.RESULTS_LOG;
+      const raw = await fsp.readFile(rlogPath, 'utf8').catch(() => null);
+      if (raw) {
+        const rlog = JSON.parse(raw);
+        if (rlog.results?.[taskId]) {
+          delete rlog.results[taskId];
+          await fsp.writeFile(rlogPath, JSON.stringify(rlog, null, 2), 'utf8');
+        }
+      }
+    } catch {}
     await rm.log({
       event_type: 'task_deleted', severity: 'info',
       actor:   { type: 'human', id: 'user' },

@@ -973,6 +973,16 @@ class RegistryManager {
 
     const projectName = entry.name;
     const assignedAgents = [...(entry.assigned_agents || [])];
+    const folder = entry.folder || projectName?.toUpperCase().replace(/[^A-Z0-9_]/g, '_');
+
+    // Remove project folder from disk (input/, output/, project_memory.json …)
+    if (folder) {
+      const AQUARIUM = require('../aquarium');
+      const path = require('path');
+      const fsp  = require('fs').promises;
+      const projDir = path.join(AQUARIUM.PROJECTS, folder);
+      try { await fsp.rm(projDir, { recursive: true, force: true }); } catch {}
+    }
 
     // Remove project from registry
     delete reg.projects[projectId];
