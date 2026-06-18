@@ -47,7 +47,13 @@ const SquidAccessories = {
       case 'beanie':     this._beanie(ctx, c); break;
       case 'pirate':     this._pirateHat(ctx, c); break;
       case 'wizard_hat': this._wizardHat(ctx, c); break;
-      case 'headphones': this._headphones(ctx, c, size); break;
+      case 'headphones':   this._headphones(ctx, c, size); break;
+      case 'beret':        this._beret(ctx, c); break;
+      case 'halo':         this._halo(ctx, c); break;
+      case 'antenna':      this._antenna(ctx, c); break;
+      case 'devil_horns':  this._devilHorns(ctx, c); break;
+      case 'ninja_mask':   this._ninjaMask(ctx, c, size); break;
+      case 'sombrero':     this._sombrero(ctx, c); break;
     }
     ctx.restore();
   },
@@ -197,6 +203,70 @@ const SquidAccessories = {
     this._r(ctx,  -HW - 0.95, CY + CH + 1.5, 0.65, 0.35, '#fff', c);
   },
 
+
+  _beret(ctx, c) {
+    // Flat French beret — dark red with tiny stem on top
+    ctx.fillStyle = '#8B1A1A';
+    ctx.beginPath(); ctx.ellipse(0, -1.5*c, 3.5*c, 2*c, 0, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#6B0000';
+    ctx.beginPath(); ctx.ellipse(0, -1.5*c, 3.5*c, 0.5*c, 0, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#333'; ctx.fillRect(-0.3*c, -3.8*c, 0.6*c, 0.9*c); // stem
+  },
+
+  _halo(ctx, c) {
+    // Golden glowing halo ring floating above head
+    ctx.strokeStyle = '#FFD700'; ctx.lineWidth = c * 0.8;
+    ctx.shadowColor = '#FFD700'; ctx.shadowBlur = 6;
+    ctx.beginPath(); ctx.ellipse(0, -3.2*c, 3*c, 0.9*c, 0, 0, Math.PI*2); ctx.stroke();
+    ctx.shadowBlur = 0;
+    // Support pillar
+    ctx.strokeStyle = 'rgba(255,215,0,0.3)'; ctx.lineWidth = c*0.3;
+    ctx.beginPath(); ctx.moveTo(0, -2.3*c); ctx.lineTo(0, -3.2*c); ctx.stroke();
+  },
+
+  _antenna(ctx, c) {
+    // Sci-fi antenna with glowing ball on top
+    ctx.strokeStyle = '#888'; ctx.lineWidth = c*0.4;
+    ctx.beginPath(); ctx.moveTo(0, -1.5*c); ctx.lineTo(0.5*c, -4*c); ctx.stroke();
+    ctx.fillStyle = '#00ffb4';
+    ctx.shadowColor = '#00ffb4'; ctx.shadowBlur = 8;
+    ctx.beginPath(); ctx.arc(0.5*c, -4*c, c*0.7, 0, Math.PI*2); ctx.fill();
+    ctx.shadowBlur = 0;
+  },
+
+  _devilHorns(ctx, c) {
+    // Two red devil horns
+    const horn = (x) => {
+      ctx.fillStyle = '#CC0000';
+      ctx.beginPath(); ctx.moveTo(x-c, -0.5*c); ctx.lineTo(x, -3.5*c); ctx.lineTo(x+c, -0.5*c); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = '#880000';
+      ctx.beginPath(); ctx.moveTo(x-0.3*c, -0.5*c); ctx.lineTo(x+0.2*c, -3*c); ctx.lineTo(x+0.3*c, -0.5*c); ctx.closePath(); ctx.fill();
+    };
+    horn(-2.5*c); horn(2.5*c);
+  },
+
+  _ninjaMask(ctx, c, size) {
+    // Dark mask covering forehead and across eyes
+    ctx.fillStyle = '#1a1a2e';
+    ctx.fillRect(-4*c, -2.5*c, 8*c, 2.2*c);
+    // Headband knot on side
+    ctx.fillStyle = '#111'; ctx.fillRect(3.2*c, -2.2*c, 1.2*c, 1.4*c);
+    // Eye slits
+    ctx.fillStyle = '#FF4500'; ctx.fillRect(-2.5*c, -1.8*c, 1.6*c, 0.5*c);
+    ctx.fillRect(0.9*c, -1.8*c, 1.6*c, 0.5*c);
+  },
+
+  _sombrero(ctx, c) {
+    // Wide Mexican sombrero — big brim + tall crown
+    const O='#D4A017', D='#8B6914', B='#111', R='#CC0000';
+    this._rb(ctx, -7, 0.5, 14, 1.0, O, D, c); // wide brim
+    this._rb(ctx, -7, 0.2, 14, 0.5, D, B, c); // brim shadow
+    this._rb(ctx, -2.5, -3.5, 5, 3.5, O, D, c); // crown
+    this._rb(ctx, -2.5, -0.2, 5, 0.5, R, B, c); // red band
+    // Tiny stitching dots on brim
+    for(let i=-6; i<6; i+=1.5){ctx.fillStyle=D; ctx.fillRect(i*c, 0.6*c, 0.3*c, 0.3*c);}
+  },
+
   // ===================== GLASSES =====================
 
   drawGlasses(ctx, glassesName, size) {
@@ -208,7 +278,10 @@ const SquidAccessories = {
       case 'round':      this._roundGlasses(ctx, c, size); break;
       case 'sunglasses': this._sunglasses(ctx, c, size); break;
       case 'monocle':    this._monocle(ctx, c, size); break;
-      case 'vr':         this._vr(ctx, c, size); break;
+      case 'vr':           this._vr(ctx, c, size); break;
+      case 'pixel_glasses': this._pixelGlasses(ctx, c, size); break;
+      case '3d_glasses':    this._3dGlasses(ctx, c, size); break;
+      case 'eyepatch':      this._eyepatch(ctx, c, size); break;
     }
     ctx.restore();
   },
@@ -332,6 +405,9 @@ const SquidAccessories = {
         case 'cape':     this._shoeBoots(ctx, size, i); break;
         case 'lab_coat': this._shoeLabShoe(ctx, size, i); break;
         case 'armor':    this._shoeArmorBoot(ctx, size, i); break;
+        case 'hoodie':   this._shoeHoodie(ctx, size, i); break;
+        case 'kimono':   this._shoeKimono(ctx, size, i); break;
+        case 'cloak':    this._shoeCloak(ctx, size, i); break;
       }
       ctx.restore();
     }
@@ -437,6 +513,34 @@ const SquidAccessories = {
   },
 
 
+
+  _shoeHoodie(ctx, size, i) {
+    // Colourful sneaker with hoodie strings
+    const w=size*0.28, h=size*0.17;
+    ctx.fillStyle='#4A90D9'; ctx.fillRect(-w/2, -h, w, h);
+    ctx.fillStyle='#2c5f8a'; ctx.fillRect(-w/2, 0, w, h*0.35);
+    ctx.fillStyle='#fff'; ctx.fillRect(-w/4, -h*0.6, w*0.5, h*0.3);
+  },
+
+  _shoeKimono(ctx, size, i) {
+    // Japanese-style kimono sash end
+    const w=size*0.22, h=size*0.2;
+    ctx.fillStyle='#E8A0A0'; ctx.fillRect(-w/2, -h, w, h);
+    ctx.fillStyle='#C47070';
+    ctx.beginPath(); ctx.moveTo(-w/2,-h); ctx.lineTo(0,-h*0.4); ctx.lineTo(w/2,-h); ctx.closePath(); ctx.fill();
+    ctx.fillStyle='#F5D5D5'; ctx.fillRect(-w/2, -h*0.25, w, h*0.15);
+  },
+
+  _shoeCloak(ctx, size, i) {
+    // Dark flowing cloak hem
+    const w=size*0.3, h=size*0.22;
+    ctx.fillStyle='#1a1040';
+    ctx.beginPath(); ctx.moveTo(-w/2, -h); ctx.lineTo(w/2, -h);
+    ctx.lineTo(w/2*1.2, 0); ctx.lineTo(-w/2*1.2, 0); ctx.closePath(); ctx.fill();
+    ctx.fillStyle='#2d1f60'; ctx.fillRect(-w/2, -h, w, h*0.2);
+    ctx.fillStyle='rgba(150,100,255,0.4)'; ctx.fillRect(-w/2+w*0.4, -h, w*0.08, h);
+  },
+
   // ===================== EYES =====================
 
   drawEyes(ctx, eyesName, size) {
@@ -533,8 +637,49 @@ const SquidAccessories = {
       this._r(ctx, ex-0.9, -0.9, 0.4, 0.35, RH, c);
       this._r(ctx, ex+0.3, -0.9, 0.4, 0.35, RH, c);
     });
+  },
+  _dizzyEyes(ctx, c, size) {
+    [[-2.5],[2.5]].forEach(([ex]) => {
+      // X shape for dizziness
+      ctx.strokeStyle='#111'; ctx.lineWidth=c*0.6;
+      ctx.beginPath(); ctx.moveTo((ex-0.8)*c,-0.8*c); ctx.lineTo((ex+0.8)*c,0.8*c); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo((ex+0.8)*c,-0.8*c); ctx.lineTo((ex-0.8)*c,0.8*c); ctx.stroke();
+    });
+  },
+
+  _winkEyes(ctx, c, size) {
+    // Left eye normal, right eye winking (closed line)
+    ctx.fillStyle='#111';
+    ctx.beginPath(); ctx.arc(-2.5*c, 0, 0.9*c, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle='rgba(255,255,255,0.7)'; ctx.beginPath(); ctx.arc(-2.8*c,-0.3*c,0.3*c,0,Math.PI*2); ctx.fill();
+    // Wink = closed arc
+    ctx.strokeStyle='#111'; ctx.lineWidth=c*0.65;
+    ctx.beginPath(); ctx.arc(2.4*c, 0.1*c, 0.9*c, Math.PI*0.1, Math.PI*0.9); ctx.stroke();
+  },
+
+  _surprisedEyes(ctx, c, size) {
+    [[-2.5],[2.5]].forEach(([ex]) => {
+      // Wide open circle eyes
+      ctx.strokeStyle='#111'; ctx.lineWidth=c*0.5;
+      ctx.beginPath(); ctx.arc(ex*c, 0, 1.1*c, 0, Math.PI*2); ctx.stroke();
+      ctx.fillStyle='#111'; ctx.beginPath(); ctx.arc(ex*c, 0, 0.55*c, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle='#fff'; ctx.beginPath(); ctx.arc((ex-0.3)*c,-0.35*c,0.28*c,0,Math.PI*2); ctx.fill();
+    });
+  },
+
+  _laserEyes(ctx, c, size) {
+    [[-2.5],[2.5]].forEach(([ex]) => {
+      ctx.fillStyle='#FF0000';
+      ctx.shadowColor='#FF0000'; ctx.shadowBlur=10;
+      ctx.beginPath(); ctx.arc(ex*c, 0, 0.9*c, 0, Math.PI*2); ctx.fill();
+      ctx.shadowBlur=0;
+      // Laser beam
+      ctx.strokeStyle='rgba(255,50,50,0.8)'; ctx.lineWidth=c*0.35;
+      ctx.beginPath(); ctx.moveTo((ex>0?ex+0.9:ex-0.9)*c, 0); ctx.lineTo((ex>0?ex+5:ex-5)*c, 0); ctx.stroke();
+    });
   }
+
 };
 
 window.SquidAccessories = SquidAccessories;
-console.log('[OK] SquidAccessories loaded - hats:7 glasses:4 outfits:5 eyes:5');
+console.log('[OK] SquidAccessories loaded - hats:13 glasses:7 outfits:8 eyes:10');

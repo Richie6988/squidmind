@@ -362,10 +362,10 @@ const AgentForm = {
     body.appendChild(previewRow);
 
     // Accessory pickers - each with pixel art tiles
-    const hatOpts = ['none', 'top_hat', 'cap', 'crown', 'beanie', 'pirate', 'wizard_hat', 'headphones'];
-    const glassesOpts = ['none', 'round', 'sunglasses', 'monocle', 'vr'];
-    const eyesOpts = ['round', 'happy', 'sleepy', 'angry', 'star', 'heart'];
-    const outfitOpts = ['none', 'scarf', 'tie', 'cape', 'lab_coat', 'armor'];
+    const hatOpts     = ['none', 'top_hat', 'cap', 'crown', 'beanie', 'pirate', 'wizard_hat', 'headphones', 'beret', 'halo', 'antenna', 'devil_horns', 'ninja_mask', 'sombrero'];
+    const glassesOpts = ['none', 'round', 'sunglasses', 'monocle', 'vr', 'pixel_glasses', '3d_glasses', 'eyepatch'];
+    const eyesOpts    = ['round', 'happy', 'sleepy', 'angry', 'star', 'heart', 'dizzy', 'wink', 'surprised', 'laser'];
+    const outfitOpts  = ['none', 'scarf', 'tie', 'cape', 'lab_coat', 'armor', 'hoodie', 'kimono', 'cloak'];
 
     this._addAccessoryPicker(body, 'Hat', 'hat', hatOpts, acc.hat || 'none', brainFile);
     this._addAccessoryPicker(body, 'Glasses', 'glasses', glassesOpts, acc.glasses || 'none', brainFile);
@@ -471,7 +471,7 @@ const AgentForm = {
       sq.animFrame = 0; sq.bobOffset = 0; sq.isSleeping = false;
       sq.isHovered = false; sq.alpha = 1; sq.insideTemple = null;
       sq.jumpHeight = 0; sq.heartParticles = [];
-      sq.baseSize = 0.58;  // bigger than before (was 0.42)
+      sq.baseSize = 0.44;  // fits 72px tile with hat/accessories
       ctx.save();
       ctx.beginPath(); ctx.rect(0, 0, W, H); ctx.clip();
       sq.draw(ctx);
@@ -525,10 +525,10 @@ const AgentForm = {
       tempSquid.jumpHeight   = 0;
       tempSquid.heartParticles = [];
       // Body radius = targetBodyPx px. Clip canvas so glow/shadow never overflow.
-      const targetBodyPx = canvas.width * 0.38;   // larger body
+      const targetBodyPx = canvas.width * 0.26;   // smaller — fits fully inside square with tentacles
       tempSquid.baseSize = targetBodyPx / 40;
       tempSquid.x = canvas.width  / 2;
-      tempSquid.y = canvas.height / 2 - canvas.height * 0.08;
+      tempSquid.y = canvas.height / 2 - canvas.height * 0.12;
 
       // Clip to canvas bounds so glow arcs don't bleed outside
       ctx.save();
