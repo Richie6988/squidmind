@@ -295,6 +295,8 @@ const PoseidonChat = {
     sendIcon.textContent = '⏳';
     const stopBtn = this.modal.querySelector('#pc-stop');
     if (stopBtn) stopBtn.style.display = 'inline-flex';
+    const sendBtn2 = this.modal?.querySelector('#pc-send');
+    if (sendBtn2) sendBtn2.style.display = 'none';
 
     // Loading indicator
     let firstToken = false;
@@ -355,7 +357,6 @@ const PoseidonChat = {
       let buf = '';
       this.currentRequest = reader;
       this._generating = true;
-      this.modal?.querySelector('#pc-send')?.classList.add('generating');
 
       while (true) {
         const { value, done } = await reader.read();
@@ -416,10 +417,11 @@ const PoseidonChat = {
     } finally {
       this.currentRequest = null;
       this._generating = false;
-      this.modal?.querySelector('#pc-send')?.classList.remove('generating');
       sendBtn.disabled = false;
       sendIcon.textContent = '▶';
       if (stopBtn) stopBtn.style.display = 'none';
+      const sendBtnEnd = this.modal?.querySelector('#pc-send');
+      if (sendBtnEnd) sendBtnEnd.style.display = '';
       if (this._mutatedThisTurn) {
         window.aquarium?.loadSquids?.();
         window.ProjectsPanel?.refresh?.();
