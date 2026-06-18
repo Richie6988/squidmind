@@ -124,18 +124,20 @@ class RegistryManager {
 
     const format = registry.metadata.id_format ?? this._defaultIdFormat(registryPath);
 
-    // Compute true next ID by scanning existing entries — never trust stale metadata counter.
-    // This handles: old seed with wrong next_id, corrupted counter, manual edits.
+    // Use last_id_used as authoritative floor — prevents purged tasks from resetting counter.
+    // Scan existing entries only to handle manual edits above the stored counter.
     const entities = registry.agents || registry.projects || registry.tasks || registry.models || {};
-    let maxNum = 0;
+    let maxFromEntries = 0;
     for (const id of Object.keys(entities)) {
       const match = id.match(/(\d+)$/);
-      if (match) maxNum = Math.max(maxNum, parseInt(match[1], 10));
+      if (match) maxFromEntries = Math.max(maxFromEntries, parseInt(match[1], 10));
     }
+    const lastUsed   = registry.metadata.last_id_used ?? 0;
     const storedNext = registry.metadata.next_id ?? 1;
-    const nextNum = Math.max(maxNum + 1, storedNext);
+    // Always at least max(lastUsed, scanMax, storedNext-1) + 1
+    const nextNum = Math.max(maxFromEntries, lastUsed, storedNext - 1) + 1;
 
-    const id = format.replace('NNN', String(nextNum).padStart(3, '0'));
+    const id = format.replace('NNN', String(nextNum).padStart(4, '0'));
 
     registry.metadata.last_id_used = nextNum;
     registry.metadata.next_id = nextNum + 1;
