@@ -5698,9 +5698,10 @@ option {
 
 .pc-overlay {
   position: fixed;
-  top: 0; bottom: 0;
+  top: 70px;   /* below header */
+  bottom: 0;
   left: 0;
-  right: 200px; /* stop before projects-container (200px wide) */
+  right: 200px; /* stop at left edge of projects-container */
   background: rgba(0,0,0,0.75);
   backdrop-filter: blur(6px);
   z-index: 15000;
@@ -5712,7 +5713,7 @@ option {
 
 .pc-modal {
   width: min(960px, 94%);
-  height: min(88vh, 920px);
+  height: min(88%, 840px);
   background: #080e1a;
   border: 1px solid rgba(79,172,254,0.25);
   border-radius: 12px;
