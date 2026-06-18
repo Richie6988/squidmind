@@ -111,48 +111,59 @@ const ControlTowerLive = {
     const model = (statusData?.loaded_models || []).find(m => m.model_id === poseidonId);
     if (!model) return;
 
-    const pct      = model.context_pct || 0;
-    const turns    = model.session_turns || 0;
+    const pct      = model.context_pct    || 0;
+    const turns    = model.session_turns  || 0;
     const ctxUsed  = model.context_used_tokens  || 0;
     const ctxTotal = model.context_total_tokens || 0;
     const tokens   = model.total_tokens_generated || 0;
 
-    // Update or create context bar element
     let barWrap = document.getElementById('ctx-bar-wrap');
     if (!barWrap) {
       const pill = document.getElementById('monitor-model-pill');
       if (!pill) return;
       barWrap = document.createElement('div');
       barWrap.id = 'ctx-bar-wrap';
-      barWrap.style.cssText = 'margin-top:4px;';
+      barWrap.style.cssText = 'margin-top:6px;';
       barWrap.innerHTML = `
         <div style="display:flex;justify-content:space-between;align-items:center;font-size:7px;color:#64748b;margin-bottom:3px;letter-spacing:.04em;">
           <span>CONTEXT</span>
           <span id="ctx-bar-val" style="font-family:'Courier New',monospace;color:#94a3b8;"></span>
         </div>
         <div style="height:4px;background:rgba(255,255,255,0.08);border-radius:2px;overflow:hidden;">
-          <div id="ctx-bar-fill" style="height:100%;border-radius:2px;transition:width 0.5s,background 0.5s;"></div>
+          <div id="ctx-bar-fill" style="height:100%;border-radius:2px;transition:width 0.5s,background 0.5s;min-width:2px;"></div>
         </div>
-        <div style="display:flex;justify-content:space-between;margin-top:4px;font-size:7px;color:#475569;">
+        <div style="display:flex;justify-content:space-between;margin-top:3px;font-size:7px;color:#475569;">
           <span id="ctx-turns"></span>
           <span id="ctx-tokens" style="font-family:'Courier New',monospace;"></span>
         </div>`;
       pill.parentNode.insertBefore(barWrap, pill.nextSibling);
     }
 
-    const fill  = document.getElementById('ctx-bar-fill');
-    const val   = document.getElementById('ctx-bar-val');
-    const tokEl = document.getElementById('ctx-tokens');
-    if (fill) {
-      fill.style.width = Math.min(100, pct) + '%';
-      fill.style.background = pct < 60 ? 'var(--success)' : pct < 85 ? '#FBBF24' : 'var(--danger)';
-    }
-    if (val) val.textContent = ctxTotal
-      ? `${(ctxUsed/1000).toFixed(1)}k / ${(ctxTotal/1000).toFixed(0)}k  (${pct}%)`
-      : `${pct}%`;
+    const fill    = document.getElementById('ctx-bar-fill');
+    const val     = document.getElementById('ctx-bar-val');
+    const tokEl   = document.getElementById('ctx-tokens');
     const turnsEl = document.getElementById('ctx-turns');
-    if (turnsEl) turnsEl.textContent = `turn ${turns}`;
-    if (tokEl) tokEl.textContent = `${(tokens/1000).toFixed(1)}k tokens`;
+
+    // Bar fill — always show at least the prompt size if pct is 0
+    const displayPct = pct || (ctxTotal > 0 ? Math.round(ctxUsed / ctxTotal * 100) : 0);
+    if (fill) {
+      fill.style.width      = Math.min(100, displayPct) + '%';
+      fill.style.background = displayPct < 60 ? '#06ffa5' : displayPct < 85 ? '#fbbf24' : '#ef4444';
+    }
+
+    // Top label: show used/total when available, else just total size
+    if (val) {
+      if (ctxTotal > 0 && ctxUsed > 0) {
+        val.textContent = `${(ctxUsed/1000).toFixed(1)}k / ${(ctxTotal/1000).toFixed(0)}k (${displayPct}%)`;
+      } else if (ctxTotal > 0) {
+        val.textContent = `${(ctxTotal/1000).toFixed(0)}k ctx`;
+        val.style.color = '#475569';
+      }
+    }
+
+    // Bottom row: turns + tokens generated (only show when non-zero)
+    if (turnsEl) turnsEl.textContent = turns > 0 ? `turn ${turns}` : '';
+    if (tokEl)   tokEl.textContent   = tokens > 0 ? `${(tokens/1000).toFixed(1)}k tok` : '';
   },
 
   stop() {
