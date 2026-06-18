@@ -34,6 +34,7 @@ class RegistryManager {
     this.cache = new Map();
     this.dirty = new Set();
     this.writeLocks = new Map(); // path -> Promise chain (serializes writes per file)
+    this._idMutex   = new Map(); // path -> Promise chain (serializes ID generation per registry)
   }
 
   // ==================== CORE I/O ====================
@@ -119,33 +120,50 @@ class RegistryManager {
    * @returns {string} - e.g. 'agent_005'
    */
   async generateNextId(registryPath) {
-    const registry = await this.read(registryPath);
-    if (!registry.metadata) registry.metadata = {};
+    const rp = AQUARIUM.resolve(registryPath);
 
-    const format = registry.metadata.id_format ?? this._defaultIdFormat(registryPath);
+    // ── Per-registry mutex: each call waits for the previous to fully commit ──
+    // This prevents the race condition where rapid sequential calls all read
+    // the same counter value before any write has landed on disk.
+    const prev = this._idMutex.get(rp) || Promise.resolve();
+    let resolveMutex;
+    const current = new Promise(r => { resolveMutex = r; });
+    this._idMutex.set(rp, current);
 
-    // Use last_id_used as authoritative floor — prevents purged tasks from resetting counter.
-    // Scan existing entries only to handle manual edits above the stored counter.
-    const entities = registry.agents || registry.projects || registry.tasks || registry.models || {};
-    let maxFromEntries = 0;
-    for (const id of Object.keys(entities)) {
-      const match = id.match(/(\d+)$/);
-      if (match) maxFromEntries = Math.max(maxFromEntries, parseInt(match[1], 10));
+    try {
+      await prev; // wait for previous ID generation to fully commit to disk
+
+      // Always bypass cache — read the freshest counter from disk
+      this.invalidateCache();
+      const registry = await this.read(registryPath);
+      if (!registry.metadata) registry.metadata = {};
+
+      const format = registry.metadata.id_format ?? this._defaultIdFormat(registryPath);
+
+      // last_id_used is the authoritative floor — safe even when tasks are purged
+      const entities  = registry.agents || registry.projects || registry.tasks || registry.models || {};
+      let maxFromKeys = 0;
+      for (const id of Object.keys(entities)) {
+        const m = id.match(/(\d+)$/);
+        if (m) maxFromKeys = Math.max(maxFromKeys, parseInt(m[1], 10));
+      }
+      const lastUsed = registry.metadata.last_id_used ?? 0;
+      const nextNum  = Math.max(maxFromKeys, lastUsed) + 1;
+
+      // Commit the new counter to disk BEFORE releasing the mutex
+      registry.metadata.last_id_used = nextNum;
+      registry.metadata.next_id      = nextNum + 1;
+      registry.metadata.id_format    = format;
+      await this.write(registryPath, registry);
+
+      return format.replace('NNN', String(nextNum).padStart(4, '0'));
+
+    } finally {
+      resolveMutex(); // always release — unblocks the next waiting call
     }
-    const lastUsed   = registry.metadata.last_id_used ?? 0;
-    const storedNext = registry.metadata.next_id ?? 1;
-    // Always at least max(lastUsed, scanMax, storedNext-1) + 1
-    const nextNum = Math.max(maxFromEntries, lastUsed, storedNext - 1) + 1;
-
-    const id = format.replace('NNN', String(nextNum).padStart(4, '0'));
-
-    registry.metadata.last_id_used = nextNum;
-    registry.metadata.next_id = nextNum + 1;
-    registry.metadata.id_format = format;
-    await this.write(registryPath, registry);
-
-    return id;
   }
+
+
   /** Derive a default id_format from the registry path when the field is missing */
   _defaultIdFormat(registryPath) {
     if (registryPath.includes('agent'))   return 'agent_NNN';
