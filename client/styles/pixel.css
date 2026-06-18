@@ -5697,7 +5697,10 @@ option {
    ╚══════════════════════════════════════════════════════════╝ */
 
 .pc-overlay {
-  position: fixed; inset: 0;
+  position: fixed;
+  top: 0; bottom: 0;
+  left: 0;
+  right: 200px; /* stop before projects-container (200px wide) */
   background: rgba(0,0,0,0.75);
   backdrop-filter: blur(6px);
   z-index: 15000;
@@ -5708,7 +5711,7 @@ option {
 .pc-overlay.hidden { display: none; }
 
 .pc-modal {
-  width: min(1100px, 96vw);
+  width: min(960px, 94%);
   height: min(88vh, 920px);
   background: #080e1a;
   border: 1px solid rgba(79,172,254,0.25);
