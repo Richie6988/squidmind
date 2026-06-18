@@ -6088,24 +6088,7 @@ option {
 .pc-input-actions {
   display: flex; align-items: center; gap: 5px; flex-shrink: 0;
 }
-/* Minimal mic — just the icon, no background */
-.pc-mic {
-  width: 28px; height: 36px; background: none; border: none;
-  color: #475569; cursor: pointer; font-size: 14px; display: flex;
-  align-items: center; justify-content: center; padding: 0;
-  transition: color 0.15s;
-}
-.pc-mic:hover { color: #ef4444; }
-.pc-mic.recording { color: #ef4444; animation: ti-dot-pulse .7s ease-in-out infinite; }
-/* TTS button */
-.pc-tts {
-  width: 28px; height: 36px; background: none; border: none;
-  color: #475569; cursor: pointer; font-size: 14px; display: none;
-  align-items: center; justify-content: center; padding: 0;
-  transition: color 0.15s;
-}
-.pc-tts:hover { color: #4facfe; }
-.pc-tts.playing { color: #4facfe; }
+/* mic/tts buttons removed — voice via settings */
 .pc-send {
   width: 38px; height: 38px; flex-shrink: 0;
   background: #4facfe;
@@ -6113,10 +6096,29 @@ option {
   color: #fff;
   display: flex; align-items: center; justify-content: center;
   transition: all 0.15s;
+  position: relative;
+  overflow: hidden;
 }
-.pc-send:hover:not(:disabled) { background: #2563eb; transform: scale(1.05); }
+.pc-send:hover:not(:disabled):not(.generating) { background: #2563eb; transform: scale(1.05); }
 .pc-send:disabled { opacity: 0.25; cursor: not-allowed; transform: none; }
-.pc-send svg { width: 18px; height: 18px; }
+.pc-send svg { width: 18px; height: 18px; transition: opacity 0.2s; }
+/* Generating state — ripple pulse */
+.pc-send.generating {
+  background: #1e3a5f;
+  cursor: not-allowed;
+}
+.pc-send.generating::after {
+  content: '';
+  position: absolute;
+  inset: 4px;
+  border: 2px solid transparent;
+  border-top-color: #4facfe;
+  border-right-color: #4facfe;
+  border-radius: 50%;
+  animation: pc-spin 0.7s linear infinite;
+}
+.pc-send.generating svg { opacity: 0; }
+@keyframes pc-spin { to { transform: rotate(360deg); } }
 
 /* ╔══════════════════════════════════════════════════════════╗
    ║  LOGS MODAL — System log viewer                          ║

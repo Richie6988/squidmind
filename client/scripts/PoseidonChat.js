@@ -121,7 +121,7 @@ const PoseidonChat = {
             <input type="file" id="pc-file-input" style="display:none" accept="image/*,.pdf,.txt,.md,.json,.csv,.js,.ts,.py,.html,.css" multiple>
             <textarea id="pc-input" class="pc-input" placeholder="Message Poseidon... (paste images/files)" rows="1"></textarea>
             <div class="pc-input-actions">
-              <button class="pc-mic" id="pc-mic" title="Hold to record voice (local STT)" style="position:relative;">🎤</button><button class="pc-tts" id="pc-tts" title="Read last response aloud (local TTS)" style="display:none;">🔊</button>
+              
               <button class="pc-send" id="pc-send" title="Send">
                 <svg id="pc-send-icon" width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
               </button>
@@ -355,6 +355,7 @@ const PoseidonChat = {
       let buf = '';
       this.currentRequest = reader;
       this._generating = true;
+      this.modal?.querySelector('#pc-send')?.classList.add('generating');
 
       while (true) {
         const { value, done } = await reader.read();
@@ -415,6 +416,7 @@ const PoseidonChat = {
     } finally {
       this.currentRequest = null;
       this._generating = false;
+      this.modal?.querySelector('#pc-send')?.classList.remove('generating');
       sendBtn.disabled = false;
       sendIcon.textContent = '▶';
       if (stopBtn) stopBtn.style.display = 'none';
