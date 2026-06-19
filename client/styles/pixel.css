@@ -6019,6 +6019,8 @@ option {
   display: flex;
   align-items: center;
   gap: 6px;
+  flex-wrap: nowrap;
+  min-width: 0;
 }
 .pc-tool-pending {
   background: rgba(245,158,11,0.06);
@@ -6035,8 +6037,14 @@ option {
   border-color: rgba(239,68,68,0.2);
   color: #f87171;
 }
-.pc-tool-icon { flex-shrink: 0; }
-.pc-tool-name { font-weight: bold; font-size: 10px; flex: 1; }
+.pc-tool-icon { flex-shrink: 0; line-height: 0; }
+.pc-tool-name {
+  font-weight: bold; font-size: 10px;
+  flex: 1; min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .pc-tool-spin { animation: pcSpin 1s linear infinite; opacity: 0.5; flex-shrink: 0; }
 @keyframes pcSpin { to { transform: rotate(360deg); } }
 /* Args block — full text, word wrap */
@@ -6104,33 +6112,27 @@ option {
 }
 /* mic/tts buttons removed — voice via settings */
 .pc-send {
-  width: 38px; height: 38px; flex-shrink: 0;
-  background: #4facfe;
-  border: none; border-radius: 10px; cursor: pointer;
-  color: #fff;
+  width: 42px; height: 42px; flex-shrink: 0;
+  background: linear-gradient(135deg, #1a3a6a 0%, #0f2340 100%);
+  border: 1px solid rgba(79,172,254,0.4);
+  border-radius: 12px; cursor: pointer;
+  color: #4facfe;
   display: flex; align-items: center; justify-content: center;
   transition: all 0.15s;
-  position: relative;
-  overflow: hidden;
+  position: relative; overflow: hidden;
+  box-shadow: 0 0 8px rgba(79,172,254,0.15), inset 0 1px 0 rgba(255,255,255,0.06);
 }
-.pc-send:hover:not(:disabled):not(.generating) { background: #2563eb; transform: scale(1.05); }
-.pc-send:disabled { opacity: 0.25; cursor: not-allowed; transform: none; }
-.pc-send svg { width: 18px; height: 18px; transition: opacity 0.2s; }
-/* Generating state — ripple pulse */
-.pc-send.generating {
-  background: #1e3a5f;
-  cursor: not-allowed;
+.pc-send:hover:not(:disabled) {
+  background: linear-gradient(135deg, #2a5aaa 0%, #1a3a7a 100%);
+  border-color: rgba(79,172,254,0.7);
+  box-shadow: 0 0 16px rgba(79,172,254,0.35);
+  transform: translateY(-1px);
 }
-.pc-send.generating::after {
-  content: '';
-  position: absolute;
-  inset: 4px;
-  border: 2px solid transparent;
-  border-top-color: #4facfe;
-  border-right-color: #4facfe;
-  border-radius: 50%;
-  animation: pc-spin 0.7s linear infinite;
-}
+.pc-send:active:not(:disabled) { transform: translateY(0); }
+.pc-send:disabled { opacity: 0.25; cursor: not-allowed; }
+.pc-send svg { width: 16px; height: 16px; transition: opacity 0.2s; filter: drop-shadow(0 0 4px rgba(79,172,254,0.5)); }
+/* Generating state: dim border pulse only — button hidden by JS anyway */
+.pc-send.generating { border-color: rgba(79,172,254,0.2); }
 .pc-send.generating svg { opacity: 0; }
 @keyframes pc-spin { to { transform: rotate(360deg); } }
 

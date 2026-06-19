@@ -205,9 +205,16 @@ const PoseidonChat = {
       if (s.poseidon_model_id) {
         const isBusy = state !== 'IDLE';
         const isBG   = isBusy && owner.startsWith('bg_task');
-        const label  = isBG   ? `\u23f3 ${s.poseidon_model_id} \u2014 task running`
-                     : isBusy ? `\u23f3 ${s.poseidon_model_id} \u2014 busy`
-                     :          s.poseidon_model_id;
+        // Prefer display_name from library — fall back to model_id
+        let modelName = s.poseidon_model_id;
+        try {
+          const lib = await window.ApiV2._fetch('/models/library');
+          const entry = (lib.models || []).find(m => m.model_id === s.poseidon_model_id);
+          if (entry?.display_name) modelName = entry.display_name;
+        } catch {}
+        const label  = isBG   ? `⏳ ${modelName} — task running`
+                     : isBusy ? `⏳ ${modelName} — busy`
+                     :          modelName;
         tag.textContent = label;
         tag.className = isBusy ? 'pc-model-tag pc-model-busy' : 'pc-model-tag pc-model-ready';
       } else {
@@ -565,7 +572,7 @@ const PoseidonChat = {
       }).join('');
     d.innerHTML = `
       <div class="pc-tool-header">
-        <span class="pc-tool-icon">${window.PixelIcons?.inline('tools',10)||'⚡'}</span>
+        <span class="pc-tool-icon" style="display:inline-flex;align-items:center;flex-shrink:0;">${window.PixelIcons?.inline('tools',10)||'⚡'}</span>
         <span class="pc-tool-name">${this._esc(name)}</span>
         <span class="pc-tool-spin">◌</span>
       </div>
