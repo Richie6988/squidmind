@@ -71,20 +71,21 @@ const ControlTowerLive = {
   },
   
   _renderSquad(registry) {
-    const agents = Object.values(registry.agents || {});
+    const agents   = Object.values(registry.agents || {});
     const active   = agents.filter(a => a.status === 'active').length;
     const sleeping = agents.filter(a => a.status === 'sleeping').length;
-    const PI = window.PixelIcons;
 
     const activeWrap = document.getElementById('monitor-active-squids-wrap');
     const sleepWrap  = document.getElementById('monitor-sleeping-squids-wrap');
     if (activeWrap) {
-      activeWrap.innerHTML = (PI?.inline('bolt',12) || '⚡') +
-        `<span id="monitor-active-squids" style="font-size:11px;font-weight:600;color:#facc15;">${active}</span>`;
+      activeWrap.innerHTML =
+        `<span style="font-size:7px;font-family:'Courier New',monospace;color:#06ffa5;letter-spacing:.08em;opacity:.8;">ACT</span>` +
+        `<span id="monitor-active-squids" style="font-size:13px;font-weight:700;color:#06ffa5;font-family:'Courier New',monospace;">${active}</span>`;
     }
     if (sleepWrap) {
-      sleepWrap.innerHTML = (PI?.inline('moon',12) || '💤') +
-        `<span id="monitor-sleeping-squids" style="font-size:11px;color:var(--text-secondary);">${sleeping}</span>`;
+      sleepWrap.innerHTML =
+        `<span style="font-size:7px;font-family:'Courier New',monospace;color:#4facfe;letter-spacing:.08em;opacity:.8;">ZZZ</span>` +
+        `<span id="monitor-sleeping-squids" style="font-size:13px;font-weight:700;color:#4facfe;font-family:'Courier New',monospace;">${sleeping}</span>`;
     }
   },
   
