@@ -97,17 +97,20 @@ h1 {
 /* ========== MODAL BASE (overlay backdrop for all modals) ========== */
 .modal {
   position: fixed !important;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
+  top: 0; left: 0; right: 0; bottom: 0;
   z-index: 5000;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  display: flex; align-items: center; justify-content: center;
   background: rgba(0, 0, 0, 0.65);
-  padding: 20px;
-  box-sizing: border-box;
+  padding: 20px; box-sizing: border-box;
+}
+/* pc-overlay overrides — JS inline style sets exact right value */
+.modal.pc-overlay {
+  top: 70px !important;
+  right: 200px !important;
+  padding: 0 !important;
+  background: rgba(0,0,0,0.75);
+  backdrop-filter: blur(6px);
+  z-index: 15000 !important;
 }
 
 .modal.hidden {
@@ -5726,19 +5729,7 @@ option {
    ║  POSEIDON CHAT  — Cutting-edge AI oracle interface        ║
    ╚══════════════════════════════════════════════════════════╝ */
 
-.pc-overlay {
-  position: fixed;
-  top: 70px;   /* below header */
-  bottom: 0;
-  left: 0;
-  right: 200px; /* fallback — overridden by JS */
-  background: rgba(0,0,0,0.75);
-  backdrop-filter: blur(6px);
-  z-index: 15000;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
+/* pc-overlay hidden state */
 .pc-overlay.hidden { display: none; }
 
 .pc-modal {
