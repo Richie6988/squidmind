@@ -614,19 +614,30 @@ const PoseidonChat = {
 
   _syncOverlayBounds() {
     if (!this.modal) return;
-    // Measure projects-container left edge (that's our right boundary)
-    const proj = document.getElementById('projects-container');
-    if (proj) {
+    // Overlay should cover only the aquarium area:
+    // right edge = left edge of projects-container (first right panel)
+    // This excludes both projects panel and control tower from the backdrop.
+    const aquarium = document.querySelector('.aquarium-wrapper');
+    const proj     = document.getElementById('projects-container');
+    if (aquarium) {
+      const rect = aquarium.getBoundingClientRect();
+      // left = aquarium left, right = window.innerWidth - aquarium right edge
+      this.modal.style.left  = rect.left + 'px';
+      this.modal.style.right = (window.innerWidth - rect.right) + 'px';
+    } else if (proj) {
       const rect = proj.getBoundingClientRect();
+      this.modal.style.left  = '0px';
       this.modal.style.right = (window.innerWidth - rect.left) + 'px';
     } else {
-      this.modal.style.right = '200px'; // fallback
+      this.modal.style.left  = '0px';
+      this.modal.style.right = '480px'; // fallback: 200+280
     }
     // Top = header bottom
     const hdr = document.querySelector('header');
     if (hdr) {
       this.modal.style.top = hdr.getBoundingClientRect().bottom + 'px';
     }
+    this.modal.style.bottom = '0px';
   },
 
   close() {

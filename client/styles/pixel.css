@@ -106,7 +106,9 @@ h1 {
 /* pc-overlay overrides — JS inline style sets exact right value */
 .modal.pc-overlay {
   top: 70px !important;
-  right: 200px !important;
+  left: 0 !important;
+  right: 480px !important; /* fallback: 200px projects + 280px tower — JS overrides with exact bounds */
+  bottom: 0 !important;
   padding: 0 !important;
   background: rgba(0,0,0,0.75);
   backdrop-filter: blur(6px);
