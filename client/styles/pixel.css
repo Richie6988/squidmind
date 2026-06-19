@@ -1618,7 +1618,6 @@ input[type="color"]::-webkit-color-swatch {
 .ti-ide-fname { font-family: 'Courier New', monospace; font-size: 9px; color: var(--ui-muted); flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ti-ide-main { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; background: #020810; }
 .ti-editor {
-  flex: 1;
   resize: none;
   background: #020810;
   border: none;
@@ -1627,13 +1626,44 @@ input[type="color"]::-webkit-color-swatch {
   font-size: 12px;
   line-height: 1.65;
   padding: 14px 16px;
-  tab-size: 2;
+  tab-size: 4;
   width: 100%;
+  height: 100%;
   box-sizing: border-box;
-  min-height: 0;
+  outline: none;
+  /* Code files get a subtle left accent via JS background color change */
+  transition: background 0.2s, color 0.2s;
 }
 .ti-editor:focus { outline: none; }
-.ti-preview-frame { flex: 1; border: none; background: #020810; min-height: 0; }
+/* Code editor dark theme — applied when data-lang is a code type */
+.ti-editor[data-lang="py"],
+.ti-editor[data-lang="js"],
+.ti-editor[data-lang="ts"],
+.ti-editor[data-lang="mjs"],
+.ti-editor[data-lang="sh"],
+.ti-editor[data-lang="bash"],
+.ti-editor[data-lang="rs"],
+.ti-editor[data-lang="go"],
+.ti-editor[data-lang="java"],
+.ti-editor[data-lang="cpp"],
+.ti-editor[data-lang="c"],
+.ti-editor[data-lang="css"],
+.ti-editor[data-lang="rb"],
+.ti-editor[data-lang="php"] {
+  background: #1e2127;
+  color: #abb2bf;
+  font-family: 'JetBrains Mono','Fira Code','Cascadia Code','Consolas','Courier New',monospace;
+  font-size: 12px;
+  line-height: 1.7;
+  border-left: 3px solid rgba(79,172,254,0.3);
+  padding-left: 13px;
+}
+.ti-editor[data-lang="json"] {
+  background: #1a1a2e;
+  color: #e6db74;
+  font-family: 'Courier New',monospace;
+}
+.ti-preview-frame { border: none; background: #020810; width: 100%; height: 100%; }
 .ti-ide-status {
   height: 20px;
   display: flex;

@@ -112,39 +112,42 @@ const TempleInterior = {
     </div>
   </div>
 
-  <!-- CENTER: reasoning live stream OR file content — full opacity, no bleed -->
-  <div class="ti-center" style="position:relative;display:flex;flex-direction:column;min-height:0;overflow:hidden;background:#020810;">
-    <!-- Tab bar with file tabs + LIVE always on right -->
+  <!-- CENTER: reasoning live stream OR file content — flex column, no absolute hacks -->
+  <div class="ti-center" style="display:flex;flex-direction:column;min-height:0;overflow:hidden;background:#020810;">
+    <!-- Tab bar: file tabs left + LIVE right — always visible, flex-shrink:0 -->
     <div class="ti-ide-tabbar" id="ti-ide-tabbar"
-      style="display:flex;align-items:center;gap:2px;padding:0 6px;flex-shrink:0;border-bottom:1px solid var(--border);min-height:24px;background:#030d1a;position:relative;z-index:5;">
+      style="display:flex;align-items:center;gap:2px;padding:0 6px;flex-shrink:0;border-bottom:1px solid var(--border);min-height:26px;background:#030d1a;z-index:2;">
       <span class="ti-ide-notabs" id="ti-ide-notabs"
         style="font-size:8px;opacity:.3;pointer-events:none;user-select:none;">NO FILE OPEN</span>
-      <span style="flex:1;"></span>
+      <span style="flex:1;min-width:0;"></span>
       <button class="ti-tab-sm" id="ti-reasoning-toggle" onclick="TempleInterior._toggleReasoningStream()"
         style="flex-shrink:0;border-color:rgba(0,255,180,0.35);color:#00ffb4;font-size:8px;">&#x25CF; LIVE</button>
     </div>
-    <!-- File toolbar — only shown when file is active -->
+    <!-- File toolbar — visible only when a file is open -->
     <div class="ti-ide-toolbar" id="ti-ide-toolbar"
-      style="display:none;flex-shrink:0;border-bottom:1px solid var(--border);background:#030d1a;padding:2px 6px;gap:6px;position:relative;z-index:5;">
+      style="display:none;align-items:center;flex-shrink:0;border-bottom:1px solid var(--border);background:#030d1a;padding:2px 6px;gap:6px;z-index:2;">
       <span class="ti-ide-fname" id="ti-ide-fname"
         style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:9px;color:#94a3b8;"></span>
       <button class="ti-tab-sm accent" onclick="TempleInterior._ideSave()" id="ti-ide-save-btn">SAVE</button>
       <button class="ti-tab-sm" onclick="TempleInterior._ideTogglePreview()" id="ti-prev-toggle" style="display:none;">PREVIEW</button>
     </div>
-    <!-- Reasoning panel — full center area, shown when no file -->
-    <div id="ti-reasoning-panel"
-      style="position:absolute;top:24px;left:0;right:0;bottom:20px;overflow-y:auto;background:#020810;color:#00ffb4;font-family:'Courier New',monospace;font-size:10px;padding:12px;line-height:1.6;display:flex;flex-direction:column;z-index:1;"></div>
-    <!-- Editor — overlays reasoning when file is open; top:50px to clear tabbar+toolbar -->
-    <textarea id="ti-editor" class="ti-editor" spellcheck="false"
-      oninput="TempleInterior._ideMarkDirty()"
-      placeholder="Open a file to edit..."
-      style="display:none;position:absolute;top:50px;left:0;width:100%;bottom:20px;box-sizing:border-box;resize:none;background:#020810;color:#c8d8f0;font-family:'Courier New',monospace;font-size:11px;padding:12px;border:none;outline:none;z-index:2;"></textarea>
-    <!-- Preview iframe — right half when split, full otherwise; same top offset -->
-    <iframe id="ti-preview-frame" class="ti-preview-frame" sandbox="allow-scripts allow-same-origin"
-      style="display:none;position:absolute;top:50px;left:0;width:100%;bottom:20px;border:none;background:#020810;z-index:2;"></iframe>
-    <!-- Status bar -->
+    <!-- Content area: flex:1 — ONE child visible at a time fills the remaining space -->
+    <div id="ti-content-area" style="flex:1;min-height:0;position:relative;overflow:hidden;">
+      <!-- Reasoning stream — shown when no file open -->
+      <div id="ti-reasoning-panel"
+        style="position:absolute;inset:0;overflow-y:auto;background:#020810;color:#00ffb4;font-family:'Courier New',monospace;font-size:10px;padding:12px;line-height:1.6;z-index:1;"></div>
+      <!-- Editor — overlays reasoning when a text/code file is open -->
+      <textarea id="ti-editor" class="ti-editor" spellcheck="false"
+        oninput="TempleInterior._ideMarkDirty()"
+        placeholder="Open a file to edit..."
+        style="display:none;position:absolute;inset:0;width:100%;height:100%;box-sizing:border-box;resize:none;border:none;outline:none;z-index:2;"></textarea>
+      <!-- Preview iframe — full area for md/html/images -->
+      <iframe id="ti-preview-frame" class="ti-preview-frame" sandbox="allow-scripts allow-same-origin"
+        style="display:none;position:absolute;inset:0;width:100%;height:100%;border:none;background:#020810;z-index:2;"></iframe>
+    </div>
+    <!-- Status bar — always at bottom, flex-shrink:0 -->
     <div class="ti-ide-status" id="ti-ide-status"
-      style="position:absolute;bottom:0;left:0;right:0;font-size:8px;padding:2px 8px;background:#020d1c;border-top:1px solid var(--border);color:#475569;letter-spacing:.06em;z-index:3;">READY</div>
+      style="flex-shrink:0;font-size:8px;padding:2px 8px;background:#020d1c;border-top:1px solid var(--border);color:#475569;letter-spacing:.06em;">READY</div>
   </div>
 
   <!-- RIGHT: kanban -->
@@ -1306,85 +1309,97 @@ const TempleInterior = {
     const toolbar = document.getElementById('ti-ide-toolbar');
     const fnEl    = document.getElementById('ti-ide-fname');
     const prevBtn = document.getElementById('ti-prev-toggle');
+    const status  = document.getElementById('ti-ide-status');
 
     const isMd   = /\.(md|markdown)$/i.test(f.name);
     const isHtml = /\.html?$/i.test(f.name);
     const isJson = /\.json$/i.test(f.name);
     const isPy   = /\.py$/i.test(f.name);
     const isJs   = /\.(js|mjs|cjs|ts)$/i.test(f.name);
-    const isCode = isPy || isJs || /\.(sh|bash|rs|go|java|cpp|c|h|css|yaml|yml|toml|ini)$/i.test(f.name);
+    const isShell= /\.(sh|bash|zsh)$/i.test(f.name);
+    const isCode = isPy || isJs || isShell ||
+                   /\.(rs|go|java|cpp|c|h|css|yaml|yml|toml|ini|rb|php|swift|kt|r)$/i.test(f.name);
 
-    // Reasoning stays in background (z:1), content overlays at z:2
+    // Reasoning stays in bg (z:1), file content at z:2
     if (rPanel) rPanel.style.zIndex = '1';
 
+    // Hide both by default
+    if (ed)    { ed.style.display = 'none'; }
+    if (frame) { frame.style.display = 'none'; }
+
     if (f.isImg) {
-      // Image: full-width iframe
-      if (ed) ed.style.display = 'none';
       if (frame) {
         frame.style.display = 'block';
-        frame.style.width   = '100%';
-        frame.style.left    = '0';
         frame.style.zIndex  = '2';
         frame.srcdoc = `<html><body style="margin:0;background:#020810;display:flex;align-items:center;justify-content:center;height:100vh;"><img src="${f.imgUrl}" style="max-width:100%;max-height:100%;object-fit:contain;"></body></html>`;
       }
       if (prevBtn) prevBtn.style.display = 'none';
+      if (status) status.textContent = f.name + ' [IMAGE]';
 
     } else if (isMd) {
-      // Markdown: full-width rendered preview — NO raw editor shown
-      if (ed) { ed.style.display = 'none'; }
+      // Markdown: rendered preview fills full area
       if (frame) {
         frame.style.display = 'block';
-        frame.style.width   = '100%';
-        frame.style.left    = '0';
         frame.style.zIndex  = '2';
         this._renderMarkdownPreview(f.loading ? '' : (f.content || ''));
       }
       if (prevBtn) prevBtn.style.display = 'none';
+      if (status) status.textContent = f.name + ' [MARKDOWN PREVIEW]';
 
     } else if (isHtml) {
-      // HTML: rendered preview full width
-      if (ed) ed.style.display = 'none';
+      // HTML: rendered live
       if (frame) {
         frame.style.display = 'block';
-        frame.style.width   = '100%';
-        frame.style.left    = '0';
         frame.style.zIndex  = '2';
         frame.srcdoc = f.loading ? '' : (f.content || '');
       }
       if (prevBtn) prevBtn.style.display = '';
+      if (status) status.textContent = f.name + ' [HTML PREVIEW]';
 
     } else {
-      // Text / code: full-width editor
-      if (frame) frame.style.display = 'none';
+      // Text / code — full-area editor
       if (ed) {
-        ed.style.display    = 'block';
-        ed.style.width      = '100%';
-        ed.style.left       = '0';
-        ed.style.zIndex     = '2';
-        ed.value            = f.loading ? 'Loading...' : (f.content || '');
-        // IDE-like styling for code files
+        ed.style.display = 'block';
+        ed.style.zIndex  = '2';
+        ed.value = f.loading ? 'Loading...' : (f.content || '');
+
         const lang = f.name.match(/\.(\w+)$/)?.[1] || 'text';
         ed.setAttribute('data-lang', lang);
+
         if (isCode) {
-          ed.style.fontFamily = "'JetBrains Mono','Fira Code','Cascadia Code','Courier New',monospace";
+          // IDE-dark theme for code files
+          ed.style.fontFamily   = "'JetBrains Mono','Fira Code','Cascadia Code','Consolas','Courier New',monospace";
+          ed.style.fontSize     = '12px';
+          ed.style.lineHeight   = '1.7';
+          ed.style.color        = '#abb2bf';
+          ed.style.background   = '#1e2127';
+          ed.style.padding      = '14px 16px';
+          ed.style.letterSpacing= '0';
+        } else if (isJson) {
+          ed.style.fontFamily = "'Courier New',monospace";
           ed.style.fontSize   = '11px';
-          ed.style.lineHeight = '1.65';
-          ed.style.color      = '#abb2bf';
-          ed.style.background = '#1e2127';
-          ed.style.tabSize    = '4';
+          ed.style.lineHeight = '1.6';
+          ed.style.color      = '#e6db74';
+          ed.style.background = '#1a1a2e';
+          ed.style.padding    = '12px';
         } else {
+          // Plain text / markdown source
           ed.style.fontFamily = "'Courier New',monospace";
           ed.style.fontSize   = '11px';
           ed.style.lineHeight = '1.6';
           ed.style.color      = '#c8d8f0';
           ed.style.background = '#020810';
+          ed.style.padding    = '12px';
         }
       }
       if (prevBtn) prevBtn.style.display = 'none';
+      const langLabel = isCode ? lang.toUpperCase() : (isJson ? 'JSON' : 'TEXT');
+      if (status) status.textContent = f.name + ` [${langLabel}]`;
     }
 
+    // Show file toolbar
     if (toolbar) toolbar.style.display = 'flex';
-    if (fnEl) fnEl.textContent = f.name + (f.type ? ` [${f.type.toUpperCase()}]` : '');
+    if (fnEl) fnEl.textContent = f.name;
     this._renderIdeTabs();
   },
 
@@ -1431,44 +1446,41 @@ const TempleInterior = {
   },
 
   _renderIdeTabs() {
-    const bar    = document.getElementById('ti-ide-tabbar');
-    const noTabs = document.getElementById('ti-ide-notabs');
+    const bar     = document.getElementById('ti-ide-tabbar');
+    const noTabs  = document.getElementById('ti-ide-notabs');
     const toolbar = document.getElementById('ti-ide-toolbar');
     if (!bar) return;
     bar.querySelectorAll('.ti-ide-filetab').forEach(t => t.remove());
 
     if (!this._openFiles.length) {
-      if (noTabs) noTabs.style.display = '';
+      if (noTabs)  noTabs.style.display  = '';
       if (toolbar) toolbar.style.display = 'none';
-      // No file open — reasoning panel comes to front
+      // Bring reasoning back to front
       const rPanel = document.getElementById('ti-reasoning-panel');
       const ed     = document.getElementById('ti-editor');
       const frame  = document.getElementById('ti-preview-frame');
       if (rPanel) rPanel.style.zIndex = '3';
-      if (ed)     ed.style.display = 'none';
+      if (ed)     ed.style.display    = 'none';
       if (frame)  frame.style.display = 'none';
       const fnEl = document.getElementById('ti-ide-fname');
       if (fnEl) fnEl.textContent = '';
+      const status = document.getElementById('ti-ide-status');
+      if (status) status.textContent = 'LIVE STREAM';
       return;
     }
 
     if (noTabs) noTabs.style.display = 'none';
 
+    const liveBtn = bar.querySelector('#ti-reasoning-toggle');
     this._openFiles.forEach((f, i) => {
       const btn = document.createElement('button');
       btn.className = `ti-ide-filetab${i === this._activeFileIdx ? ' active' : ''}${f.dirty ? ' dirty' : ''}`;
       btn.title = f.name + ' — middle-click to close';
-      btn.innerHTML = `${this._esc(f.name.slice(0,18))}${f.dirty ? ' ●' : ''} <span class="ti-ide-tabclose" onclick="event.stopPropagation();TempleInterior._ideClose(${i})">×</span>`;
+      btn.innerHTML = `${this._esc(f.name.slice(0, 20))}${f.dirty ? ' ●' : ''} <span class="ti-ide-tabclose" onclick="event.stopPropagation();TempleInterior._ideClose(${i})">×</span>`;
       btn.onclick = () => this._ideActivate(i);
       btn.onmousedown = (e) => { if (e.button === 1) { e.preventDefault(); this._ideClose(i); } };
-      bar.insertBefore(btn, bar.querySelector('.ti-tab-sm[id="ti-reasoning-toggle"]'));
+      bar.insertBefore(btn, liveBtn || null);
     });
-  }  ,
-
-  _ideMarkDirty() {
-    if (this._activeFileIdx < 0 || !this._openFiles[this._activeFileIdx]) return;
-    this._openFiles[this._activeFileIdx].dirty = true;
-    this._renderIdeTabs();
   },
 
   // ── Live reasoning panel ────────────────────────────────────────────────────
