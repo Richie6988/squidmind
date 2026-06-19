@@ -357,7 +357,7 @@ const AgentForm = {
     previewRow.className = 'agent-form-row';
     previewRow.innerHTML = `
       <label>Live Preview</label>
-      <canvas id="af-preview-canvas" width="280" height="280" class="af-preview-canvas"></canvas>
+      <canvas id="af-preview-canvas" width="200" height="200" class="af-preview-canvas"></canvas>
     `;
     body.appendChild(previewRow);
 
@@ -406,7 +406,7 @@ const AgentForm = {
       tile.title = opt;
       // Canvas with the accessory drawn
       const canvas = document.createElement('canvas');
-      canvas.width = 72; canvas.height = 72;
+      canvas.width = 60; canvas.height = 60;
       this._drawAccessoryPreview(canvas, key, opt);
       tile.appendChild(canvas);
       const tag = document.createElement('div');
@@ -429,123 +429,65 @@ const AgentForm = {
     parent.appendChild(row);
   },
 
-  _drawAccessoryPreview(canvas, key, value) {
+  _drawAccessoryPreview(canvas, key, opt) {
     const ctx = canvas.getContext('2d');
     const W = canvas.width, H = canvas.height;
-    ctx.imageSmoothingEnabled = false;
-
-    // Gradient background
-    const bg = ctx.createRadialGradient(W/2, H/2, 0, W/2, H/2, W/1.5);
-    bg.addColorStop(0, '#0d2340');
-    bg.addColorStop(1, '#020810');
-    ctx.fillStyle = bg;
-    ctx.fillRect(0, 0, W, H);
-
-    if (value === 'none' || !value) {
-      ctx.fillStyle = 'rgba(255,255,255,0.12)';
-      ctx.fillRect(0, 0, W, H);
-      ctx.fillStyle = '#475569';
-      ctx.font = 'bold 11px monospace';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText('none', W/2, H/2);
-      return;
+    ctx.clearRect(0, 0, W, H);
+    const bg = ctx.createRadialGradient(W/2,H/2,0,W/2,H/2,W/1.3);
+    bg.addColorStop(0,'#0d2340'); bg.addColorStop(1,'#020810');
+    ctx.fillStyle = bg; ctx.fillRect(0,0,W,H);
+    if (!opt || opt === 'none') {
+      ctx.fillStyle = '#2a3a4a'; ctx.font = 'bold 9px monospace';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText('\u2013', W/2, H/2); return;
     }
-    if (typeof Squid === 'undefined' || typeof SquidAccessories === 'undefined') return;
-
-    // Mini squid with only this accessory, larger size
+    if (typeof Squid === 'undefined') return;
     const app = this.brain?.appearance || {};
-    const baseAcc = {};
-    baseAcc[key] = value;
-
-    const tempData = {
-      id: '__tile__', name: '',
-      appearance: { ...app, accessories: baseAcc },
-      accessories: baseAcc,
-      status: 'idle',
-      x: W / 2, y: H / 2 + 4,
-    };
-
     try {
-      const sq = new Squid(tempData);
-      sq.animFrame = 0; sq.bobOffset = 0; sq.isSleeping = false;
-      sq.isHovered = false; sq.alpha = 1; sq.insideTemple = null;
-      sq.jumpHeight = 0; sq.heartParticles = [];
-      sq.baseSize = 0.44;  // fits 72px tile with hat/accessories
-      ctx.save();
-      ctx.beginPath(); ctx.rect(0, 0, W, H); ctx.clip();
-      sq.draw(ctx);
-      ctx.restore();
+      const sq = new Squid({
+        id: '__tile__', name: '',
+        appearance: { ...app, size: 'medium', accessories: { [key]: opt } },
+        accessories: { [key]: opt }, status: 'idle', x: W/2, y: H/2,
+      });
+      sq.animFrame=0; sq.bobOffset=0; sq.glowPulse=0; sq.isSleeping=false;
+      sq.isHovered=false; sq.alpha=1; sq.insideTemple=null;
+      sq.jumpHeight=0; sq.heartParticles=[]; sq.isDragging=false;
+      sq.baseSize = 0.30;
+      sq.x = W/2; sq.y = H/2 + 4;
+      ctx.save(); ctx.beginPath(); ctx.rect(0,0,W,H); ctx.clip();
+      sq.draw(ctx); ctx.restore();
     } catch {}
   },
-
   _updateAppearancePreview() {
     const canvas = this.modal?.querySelector('#af-preview-canvas');
     if (!canvas) return;
     if (typeof Squid === 'undefined') return;
-
     const ctx = canvas.getContext('2d');
-    ctx.imageSmoothingEnabled = false;
-
-    // Rich background
-    const bg = ctx.createRadialGradient(canvas.width/2, canvas.height/2, 0, canvas.width/2, canvas.height/2, canvas.width/1.3);
-    bg.addColorStop(0, '#0d2340');
-    bg.addColorStop(1, '#020810');
-    ctx.fillStyle = bg;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    // Subtle grid
-    ctx.strokeStyle = 'rgba(79,172,254,0.05)';
-    ctx.lineWidth = 1;
-    for (let x = 0; x < canvas.width; x += 20) { ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,canvas.height); ctx.stroke(); }
-    for (let y = 0; y < canvas.height; y += 20) { ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(canvas.width,y); ctx.stroke(); }
-
-    // Build a real Squid instance from current brain appearance
-    const app = this.brain.appearance || {};
-    const tempData = {
-      id: '__preview__',
-      name: this.brain.display_name || 'Preview',
-      appearance: { ...app },
-      accessories: app.accessories || null,
-      // Idle state so no sleeping overlay
-      status: 'idle',
-      // Position at canvas center
-      x: canvas.width / 2,
-      y: canvas.height / 2 + 10,
-    };
-
+    const W = canvas.width, H = canvas.height;
+    ctx.clearRect(0, 0, W, H);
+    const bg = ctx.createRadialGradient(W/2,H/2,0,W/2,H/2,W/1.3);
+    bg.addColorStop(0,'#0d2340'); bg.addColorStop(1,'#020810');
+    ctx.fillStyle = bg; ctx.fillRect(0,0,W,H);
+    ctx.strokeStyle = 'rgba(79,172,254,0.05)'; ctx.lineWidth = 1;
+    for (let x=0;x<W;x+=20){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke();}
+    for (let y=0;y<H;y+=20){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();}
+    const app = this.brain?.appearance || {};
     try {
-      const tempSquid = new Squid(tempData);
-      // Freeze animation frame at a neutral pose (no bob/wiggle)
-      tempSquid.animFrame    = 0;
-      tempSquid.bobOffset    = 0;
-      tempSquid.isSleeping   = false;
-      tempSquid.isHovered    = false;
-      tempSquid.alpha        = 1;
-      tempSquid.insideTemple = null;
-      tempSquid.jumpHeight   = 0;
-      tempSquid.heartParticles = [];
-      // Body radius = targetBodyPx px. Clip canvas so glow/shadow never overflow.
-      const targetBodyPx = canvas.width * 0.26;   // smaller — fits fully inside square with tentacles
-      tempSquid.baseSize = targetBodyPx / 40;
-      tempSquid.x = canvas.width  / 2;
-      tempSquid.y = canvas.height / 2 - canvas.height * 0.12;
-
-      // Clip to canvas bounds so glow arcs don't bleed outside
-      ctx.save();
-      ctx.beginPath();
-      ctx.rect(0, 0, canvas.width, canvas.height);
-      ctx.clip();
-
-      // draw() translates to (this.x, this.y) already
-      tempSquid.draw(ctx);
-      ctx.restore();
-    } catch (e) {
-      console.warn('[AgentForm] Preview draw failed:', e);
-    }
+      const sq = new Squid({
+        id: '__preview__', name: this.brain?.identity?.display_name || 'Preview',
+        appearance: { ...app, size: 'medium' },
+        accessories: app.accessories || null,
+        status: 'idle', x: W/2, y: H/2,
+      });
+      sq.animFrame=0; sq.bobOffset=0; sq.glowPulse=0; sq.isSleeping=false;
+      sq.isHovered=false; sq.alpha=1; sq.insideTemple=null;
+      sq.jumpHeight=0; sq.heartParticles=[]; sq.isDragging=false;
+      sq.baseSize = 0.24;
+      sq.x = W/2; sq.y = H/2 + H*0.05;
+      ctx.save(); ctx.beginPath(); ctx.rect(0,0,W,H); ctx.clip();
+      sq.draw(ctx); ctx.restore();
+    } catch (e) { console.warn('[preview]', e.message); }
   },
-
-  // ===== TOOLS GRID =====
-
   _addToolsGrid(parent, allTools, allowedTools, brainFile) {
     const section = document.createElement('div');
     section.className = 'agent-form-section';

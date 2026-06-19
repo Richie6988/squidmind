@@ -4921,8 +4921,8 @@ button .pixel-icon {
   border-radius: 6px;
   image-rendering: pixelated;
   display: block;
-  width: 280px;
-  height: 280px;
+  width: 200px;
+  height: 200px;
 }
 
 .af-accessory-grid {
@@ -4952,8 +4952,8 @@ button .pixel-icon {
 }
 .af-accessory-tile canvas {
   display: block;
-  width: 72px;
-  height: 72px;
+  width: 60px;
+  height: 60px;
   margin: 0 auto;
   image-rendering: pixelated;
 }
