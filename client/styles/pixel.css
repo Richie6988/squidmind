@@ -5701,7 +5701,7 @@ option {
   top: 70px;   /* below header */
   bottom: 0;
   left: 0;
-  right: 200px; /* stop at left edge of projects-container */
+  right: 200px; /* fallback — overridden by JS */
   background: rgba(0,0,0,0.75);
   backdrop-filter: blur(6px);
   z-index: 15000;

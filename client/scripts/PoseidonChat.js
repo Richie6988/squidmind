@@ -71,7 +71,8 @@ const PoseidonChat = {
 
   _buildModal() {
     if (this.modal && document.body.contains(this.modal)) {
-      this.modal.classList.remove('hidden');
+      this._syncOverlayBounds();
+    this.modal.classList.remove('hidden');
       return;
     }
     this.modal = document.createElement('div');
@@ -132,6 +133,14 @@ const PoseidonChat = {
       </div>
     `;
     document.body.appendChild(this.modal);
+    this._syncOverlayBounds();
+    // Keep overlay synced if window resizes (e.g. panel drag)
+    if (!this._resizeObserver) {
+      this._resizeObserver = new ResizeObserver(() => this._syncOverlayBounds());
+      const proj = document.getElementById('projects-container');
+      if (proj) this._resizeObserver.observe(proj);
+      window.addEventListener('resize', () => this._syncOverlayBounds());
+    }
 
     const ta   = this.modal.querySelector('#pc-input');
     const send = this.modal.querySelector('#pc-send');
@@ -594,6 +603,23 @@ const PoseidonChat = {
       this._renderHistory();
       this._setStatus('Context wiped', 'idle');
     } catch (e) { await SquidModal.alert('Reset failed: ' + e.message); }
+  },
+
+  _syncOverlayBounds() {
+    if (!this.modal) return;
+    // Measure projects-container left edge (that's our right boundary)
+    const proj = document.getElementById('projects-container');
+    if (proj) {
+      const rect = proj.getBoundingClientRect();
+      this.modal.style.right = (window.innerWidth - rect.left) + 'px';
+    } else {
+      this.modal.style.right = '200px'; // fallback
+    }
+    // Top = header bottom
+    const hdr = document.querySelector('header');
+    if (hdr) {
+      this.modal.style.top = hdr.getBoundingClientRect().bottom + 'px';
+    }
   },
 
   close() {
