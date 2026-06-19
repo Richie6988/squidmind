@@ -1689,12 +1689,8 @@ Never describe a bash command you could call instead.`;
 
   async _createTask({ title, description, project, assigned_agent_id, priority }) {
     try {
-      this.rm.invalidateCache();
-      const reg = await this.rm.read('tasks/tasks_registry.json');
-
-      const nextId = reg.metadata?.next_id || 1;
-      const taskId = `task_${String(nextId).padStart(4, '0')}`;
-      reg.tasks = reg.tasks || {};
+      // Use the serialized generateNextId — prevents duplicate IDs on concurrent calls
+      const taskId = await this.rm.generateNextId('tasks/tasks_registry.json');
 
       // Resolve agent name
       let agentName = null;
