@@ -71,7 +71,7 @@ const PoseidonChat = {
 
   _buildModal() {
     if (this.modal && document.body.contains(this.modal)) {
-      this._syncOverlayBounds();
+      requestAnimationFrame(() => this._syncOverlayBounds());
     this.modal.classList.remove('hidden');
       return;
     }
@@ -133,7 +133,7 @@ const PoseidonChat = {
       </div>
     `;
     document.body.appendChild(this.modal);
-    this._syncOverlayBounds();
+    requestAnimationFrame(() => this._syncOverlayBounds());
     // Keep overlay synced if window resizes (e.g. panel drag)
     if (!this._resizeObserver) {
       this._resizeObserver = new ResizeObserver(() => this._syncOverlayBounds());
