@@ -1363,8 +1363,8 @@ const TempleInterior = {
         ed.style.zIndex  = '2';
         ed.value = f.loading ? 'Loading...' : (f.content || '');
 
-        const lang = f.name.match(/\.(\w+)$/)?.[1] || 'text';
-        ed.setAttribute('data-lang', lang);
+        const fileLang = f.name.match(/\.(\w+)$/)?.[1] || 'text';
+        ed.setAttribute('data-lang', fileLang);
 
         if (isCode) {
           // IDE-dark theme for code files
@@ -1393,6 +1393,7 @@ const TempleInterior = {
         }
       }
       if (prevBtn) prevBtn.style.display = 'none';
+      const lang = f.name.match(/\.(\w+)$/)?.[1] || 'text';
       const langLabel = isCode ? lang.toUpperCase() : (isJson ? 'JSON' : 'TEXT');
       if (status) status.textContent = f.name + ` [${langLabel}]`;
     }
