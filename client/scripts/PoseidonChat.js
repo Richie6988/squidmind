@@ -1027,7 +1027,10 @@ const PoseidonChat = {
 
       if (!resp.ok) {
         const d = await resp.json().catch(() => ({}));
-        throw new Error(d.error || 'TTS failed');
+        const msg = d.error || 'TTS failed';
+        // Show in status bar so user knows what to do
+        this._setStatus(msg, 'error');
+        throw new Error(msg);
       }
 
       const blob = await resp.blob();

@@ -281,7 +281,7 @@ app.post('/api/v2/voice/tts', express.json({ limit: '50kb' }), async (req, res) 
   try {
     sharedRm.invalidateCache();
     const cfg = (await sharedRm.read('CHANNELS/comms_config.json').catch(() => ({}))).voice || {};
-    if (!cfg.enabled) return res.status(503).json({ ok: false, error: 'Voice service not enabled.' });
+    if (!cfg.enabled) return res.status(503).json({ ok: false, error: 'Voice not enabled — click 🎙 Voice in chat header to enable Speaches and save.' });
 
     const { text, voice, speed } = req.body;
     if (!text) return res.status(400).json({ ok: false, error: 'text required' });
