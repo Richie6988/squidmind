@@ -1257,6 +1257,55 @@ class RegistryManager {
     }
   }
 
+  /**
+   * cascadeTaskClosureFlat — reads the FLAT task structure used by TaskRunner.
+   * Tasks created by _createTask / createTask have:
+   *   task.assigned_to  (not task.assignment.assigned_to)
+   *   task.project_id   (not task.context.project_id)
+   *
+   * Updates agent performance_summary (tasks_completed/failed/cancelled + success_rate)
+   * and project metrics. Called by TaskRunner._setStatus on terminal statuses.
+   */
+  async cascadeTaskClosureFlat(taskId, task, status) {
+    // ── Agent performance ──────────────────────────────────────────────────
+    const agentId = task.assigned_to || task.assignment?.assigned_to || null;
+    if (agentId && agentId !== 'poseidon_main') {
+      try {
+        const agentReg = await this.getAgentRegistry();
+        const agent    = agentReg.agents?.[agentId];
+        if (agent) {
+          if (!agent.performance_summary) {
+            agent.performance_summary = { tasks_completed: 0, tasks_failed: 0, tasks_cancelled: 0, success_rate: 0 };
+          }
+          const perf = agent.performance_summary;
+          if (status === 'completed') perf.tasks_completed = (perf.tasks_completed || 0) + 1;
+          else if (status === 'failed')    perf.tasks_failed    = (perf.tasks_failed    || 0) + 1;
+          else if (status === 'cancelled') perf.tasks_cancelled = (perf.tasks_cancelled || 0) + 1;
+          const total = (perf.tasks_completed || 0) + (perf.tasks_failed || 0) + (perf.tasks_cancelled || 0);
+          perf.success_rate = total > 0 ? perf.tasks_completed / total : 0;
+          await this.write('agents/agent_registry.json', agentReg);
+          console.log(`[RegistryManager] cascade: agent ${agentId} tasks_completed=${perf.tasks_completed}`);
+        }
+      } catch (e) { console.warn(`[RegistryManager] cascadeFlat agent update failed:`, e.message); }
+    }
+
+    // ── Project metrics ────────────────────────────────────────────────────
+    const projectId = task.project_id || task.context?.project_id || null;
+    if (projectId) {
+      try {
+        const projReg = await this.getProjectRegistry();
+        const project = projReg.projects?.[projectId];
+        if (project) {
+          if (!project.metrics) project.metrics = { tasks_completed: 0, tasks_pending: 0, tasks_failed: 0 };
+          if (status === 'completed') project.metrics.tasks_completed = (project.metrics.tasks_completed || 0) + 1;
+          if (status === 'failed')    project.metrics.tasks_failed    = (project.metrics.tasks_failed    || 0) + 1;
+          project.metrics.tasks_pending = Math.max(0, (project.metrics.tasks_pending || 0) - 1);
+          await this.write('projects/project_registry.json', projReg);
+        }
+      } catch (e) { console.warn(`[RegistryManager] cascadeFlat project update failed:`, e.message); }
+    }
+  }
+
   // ==================== CHUNKED TASK EXECUTION ====================
 
   /**

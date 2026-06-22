@@ -210,7 +210,7 @@ class TaskRunner {
     for (const tid of this._running) {
       // Find the task in allTasks to get its assigned_to
       const rt = allTasks.find(t => t.task_id === tid);
-      if (rt?.assignment?.assigned_to) agentsRunning.add(rt.assignment.assigned_to);
+      if (rt?.assigned_to) agentsRunning.add(rt.assigned_to);
     }
 
     const runnable = allTasks
@@ -218,7 +218,7 @@ class TaskRunner {
         const s = t.lifecycle?.status || t.status || 'open';
         const tooManyFails = (this._failCounts.get(t.task_id) || 0) >= this.MAX_RETRIES;
         const retryDelay = this._retryAfter.get(t.task_id) || 0;
-        const agentId = t.assignment?.assigned_to;
+        const agentId = t.assigned_to || t.assignment?.assigned_to;
         // Block if this agent already has a running task
         const agentBusy = agentId && agentId !== 'poseidon_main' && agentsRunning.has(agentId);
         return !TERMINAL.has(s)
@@ -271,7 +271,7 @@ class TaskRunner {
 
   async _runTask(task) {
     const taskId  = task.task_id;
-    const agentId = task.assignment?.assigned_to || null;
+    const agentId = task.assigned_to || task.assignment?.assigned_to || null;
     this._running.add(taskId);
 
     console.log(`[TaskRunner] ▶ ${taskId}: "${task.title}"${agentId ? ' → ' + agentId : ' → poseidon'}`);
@@ -644,7 +644,39 @@ class TaskRunner {
       if (extra.completed_at   !== undefined) { task.completed_at = extra.completed_at; task.lifecycle.completed_at = extra.completed_at; }
       if (extra.started_at     !== undefined) task.lifecycle.started_at = extra.started_at;
 
+      // ── IC-01: Write to results_log BEFORE _writeTaskDetails purges terminal tasks ──
+      const TERMINAL_FOR_LOG = new Set(['completed', 'failed', 'cancelled']);
+      if (TERMINAL_FOR_LOG.has(status)) {
+        try {
+          const AQUARIUM = require('../aquarium');
+          const fsp      = require('fs').promises;
+          let rlog = { results: {} };
+          try { rlog = JSON.parse(await fsp.readFile(AQUARIUM.RESULTS_LOG, 'utf8')); } catch {}
+          rlog.results[taskId] = {
+            task_id:        taskId,
+            title:          task.title,
+            task_type:      task.task_type || 'text',
+            status,
+            result_summary: task.result_summary || extra.result_summary || null,
+            result_file:    task.result_file    || extra.result_file    || null,
+            output_preview: task.output_preview  || extra.output_preview || null,
+            completed_at:   task.completed_at   || extra.completed_at   || new Date().toISOString(),
+            assigned_name:  task.assigned_to    || task.assignment?.assigned_to || null,
+            project_name:   task.project_name   || task.context?.project_name   || null,
+            project_id:     task.project_id     || task.context?.project_id     || null,
+          };
+          await fsp.writeFile(AQUARIUM.RESULTS_LOG, JSON.stringify(rlog, null, 2), 'utf8');
+        } catch (re) { console.warn(`[TaskRunner] results_log write failed for ${taskId}:`, re.message); }
+      }
+
       await this.rm._writeTaskDetails(taskId, task);
+
+      // ── IC-03: Update agent performance + project metrics (cascade) ──────
+      if (TERMINAL_FOR_LOG.has(status)) {
+        try {
+          await this.rm.cascadeTaskClosureFlat(taskId, task, status);
+        } catch (ce) { console.warn(`[TaskRunner] cascade failed for ${taskId}:`, ce.message); }
+      }
     } catch (e) {
       console.warn(`[TaskRunner] setStatus failed for ${taskId}:`, e.message);
     }
@@ -718,7 +750,7 @@ class TaskRunner {
       if (!proj) return; // task has no project — nothing to update
 
       const pid = proj.id;
-      const by  = task.assignment?.assigned_name || task.assignment?.assigned_to || 'poseidon';
+      const by  = task.assignment?.assigned_name || task.assigned_to || 'poseidon';
 
       if (status === 'completed') {
         // Add to recent achievements
@@ -726,7 +758,7 @@ class TaskRunner {
           `[${task.task_id}] ${task.title}`, by);
 
         // Agent sync message
-        if (task.assignment?.assigned_to && task.assignment.assigned_to !== 'poseidon_main') {
+        if ((task.assigned_to || task.assignment?.assigned_to) && (task.assigned_to || task.assignment?.assigned_to) !== 'poseidon_main') {
           await this.rm.updateProjectMemory(pid, 'agent_sync',
             `${by} completed: "${task.title}" — ${output.slice(0, 200)}`, by);
         }
