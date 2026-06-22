@@ -495,7 +495,7 @@ ${task.description}`
           <button class="btn-close" onclick="this.closest('.modal').remove()">x</button>
         </div>
         <div class="tq-detail-body">
-          <div style="font-family:'Press Start 2P',monospace;font-size:9px;color:var(--text-primary);margin-bottom:8px;">${this._esc(task.title)}</div>
+          <div style="font-family:system-ui,sans-serif;font-size:13px;font-weight:600;color:var(--text-primary);margin-bottom:8px;">${this._esc(task.title)}</div>
           <div style="font-family:'Courier New',monospace;font-size:9px;color:var(--ui-muted);margin-bottom:12px;">
             Agent: ${this._esc(agent)} · ${when}
           </div>

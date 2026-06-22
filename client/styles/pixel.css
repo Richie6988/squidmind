@@ -1,3 +1,5 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,400;0,500;0,600;1,400&display=swap');
+
 :root {
   /* Ocean Palette */
   --ocean-deep: #0A2239;
@@ -38,6 +40,25 @@
   --ui-input-bg:  rgba(255,255,255,0.04); /* input background */
   --ui-font:      'Courier New', monospace;
   --ui-font-px:   'Press Start 2P', monospace;
+  /* Panel UI font — clean, readable, no pixel grit */
+  --panel-font:      -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', system-ui, sans-serif;
+  --panel-font-mono: 'Fira Code', 'JetBrains Mono', 'Consolas', 'Courier New', monospace;
+  /* Panel text scale */
+  --panel-text-xs:   11px;
+  --panel-text-sm:   12px;
+  --panel-text-md:   13px;
+  --panel-text-lg:   15px;
+  --panel-heading:   14px;
+  /* Panel colours (same palette, cleaner usage) */
+  --panel-bg:        #0b1929;
+  --panel-surface:   #0f2236;
+  --panel-border:    rgba(79,172,254,0.15);
+  --panel-input-bg:  rgba(255,255,255,0.05);
+  --panel-label:     #7fa8c9;
+  --panel-accent:    #4facfe;
+  --panel-accent2:   #06ffa5;
+  --panel-text:      #dce8f5;
+  --panel-muted:     #4d6f8c;
 }
 
 * {
@@ -55,6 +76,298 @@ body {
   image-rendering: pixelated;
   image-rendering: crisp-edges;
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   PANEL UI SYSTEM — clean, readable typography for all functional modals.
+   Pixel font is reserved for the aquarium, game elements, header, and
+   action buttons on the main HUD. Everything inside .modal uses Inter.
+   ═════════════════════════════════════════════════════════════════════════ */
+
+/* Base panel reset — applied to all modal content */
+.modal *:not(.pixel-art):not(canvas):not(.squid-name):not(.ti-ide-tabbar *):not(.pc-welcome-title):not(.pc-name):not(.pc-model-tag) {
+  /* Inherit from panel-scoped rules below — don't force here to avoid overriding canvas */
+}
+
+/* Modal body typography — Inter for all panel content */
+.modal .agent-form-content,
+.modal .model-modal-content,
+.modal .skills-panel-content,
+.modal .comms-panel-content,
+.modal .scheduler-panel-content,
+.modal-body,
+.agent-form-body,
+.model-modal-body,
+[class*="-panel-content"],
+[class*="-modal-content"] {
+  font-family: var(--panel-font);
+  font-size: var(--panel-text-sm);
+  color: var(--panel-text);
+  line-height: 1.55;
+}
+
+/* Panel-scoped label reset */
+.agent-form-body label,
+.agent-form-body .agent-form-section h3,
+.model-modal-body label,
+.ml-cat-title,
+.comms-panel-content label,
+.skills-body label,
+.af-section-title,
+.agent-form-section-title {
+  font-family: var(--panel-font) !important;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/* Panel inputs — crisp and readable */
+.agent-form-row > input,
+.agent-form-row > textarea,
+.agent-form-row > select,
+.form-group input[type="text"],
+.form-group input[type="number"],
+.form-group textarea,
+.form-group select,
+.model-section input[type="text"],
+.model-section select,
+.comms-panel-content input,
+.comms-panel-content select,
+.comms-panel-content textarea,
+.skills-body input,
+.skills-body textarea {
+  font-family: var(--panel-font) !important;
+  font-size: var(--panel-text-sm) !important;
+  border-radius: 6px !important;
+  border: 1px solid var(--panel-border) !important;
+  background: var(--panel-input-bg) !important;
+  color: var(--panel-text) !important;
+  padding: 8px 11px !important;
+  transition: border-color 0.15s, box-shadow 0.15s !important;
+  outline: none !important;
+}
+.agent-form-row > input:focus,
+.agent-form-row > textarea:focus,
+.agent-form-row > select:focus,
+.form-group input:focus,
+.form-group textarea:focus,
+.form-group select:focus,
+.comms-panel-content input:focus,
+.comms-panel-content select:focus {
+  border-color: var(--panel-accent) !important;
+  box-shadow: 0 0 0 3px rgba(79,172,254,0.1) !important;
+}
+
+/* Panel buttons — clean, not pixel */
+.agent-form-footer button,
+.agent-form-footer .btn,
+.model-modal-footer button,
+.skills-body .skill-btn,
+.skills-new-btn,
+.comms-panel-content button:not(.skills-close-btn):not(.skills-refresh-btn) {
+  font-family: var(--panel-font) !important;
+  font-size: var(--panel-text-xs) !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.05em !important;
+  text-transform: uppercase !important;
+  border-radius: 6px !important;
+}
+
+/* Section headings inside panels */
+.agent-form-section h3,
+.af-section-title,
+.agent-form-section-title,
+.ml-cat-title,
+.comms-section-title,
+.skills-title {
+  font-family: var(--panel-font) !important;
+  font-size: 10px !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.12em !important;
+  text-transform: uppercase !important;
+}
+
+/* Panel prose / descriptions */
+.form-group small,
+.agent-form-body p,
+.model-modal-body p,
+.comms-panel-content p,
+.skill-summary,
+.skills-desc,
+.ml-entry-desc,
+.hf-result-desc,
+.af-tool-desc {
+  font-family: var(--panel-font) !important;
+  font-size: var(--panel-text-xs) !important;
+  line-height: 1.6 !important;
+  letter-spacing: 0 !important;
+}
+
+/* ─── Agent Form specific ─────────────────────────────────────────── */
+.agent-form-row > label {
+  font-family: var(--panel-font) !important;
+  font-size: 11px !important;
+  font-weight: 500 !important;
+  color: var(--panel-label) !important;
+  letter-spacing: 0.02em !important;
+  text-transform: none !important;
+}
+
+/* Accessory tile labels */
+.af-accessory-tile span,
+.af-tile-label {
+  font-family: var(--panel-font) !important;
+  font-size: 9px !important;
+  letter-spacing: 0 !important;
+}
+
+/* Tool category labels */
+.af-tool-cat-title,
+.ml-cat-title {
+  font-family: var(--panel-font) !important;
+  font-size: 9px !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.08em !important;
+}
+
+/* ─── Model Library specific ──────────────────────────────────────── */
+.ml-entry-name,
+.ml-model-name,
+.lm-entry-name,
+.hf-result-name {
+  font-family: var(--panel-font) !important;
+  font-size: var(--panel-text-sm) !important;
+  font-weight: 500 !important;
+  letter-spacing: 0 !important;
+}
+
+.ml-entry-meta,
+.ml-param-pill,
+.lm-entry-size,
+.ml-badge {
+  font-family: var(--panel-font) !important;
+  font-size: 10px !important;
+  letter-spacing: 0 !important;
+}
+
+/* Model param pills get mono for key=value readability */
+.ml-param-pill {
+  font-family: var(--panel-font-mono) !important;
+  font-size: 9px !important;
+}
+
+/* HF search */
+.ml-hf-section label,
+.ml-hf-section input,
+.ml-hf-section button,
+.ml-hf-result-name,
+.ml-hf-result-meta {
+  font-family: var(--panel-font) !important;
+  letter-spacing: 0 !important;
+}
+
+/* ─── Comms Panel specific ────────────────────────────────────────── */
+.comms-section-title {
+  font-family: var(--panel-font) !important;
+  font-size: 10px !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.1em !important;
+  text-transform: uppercase !important;
+}
+.comms-status-bar span,
+.comms-panel-content .stat-label,
+.comms-panel-content small {
+  font-family: var(--panel-font) !important;
+  font-size: var(--panel-text-xs) !important;
+  letter-spacing: 0 !important;
+}
+
+/* ─── Skills Panel specific ───────────────────────────────────────── */
+.skill-name {
+  font-family: var(--panel-font) !important;
+  font-size: var(--panel-text-sm) !important;
+  font-weight: 500 !important;
+  letter-spacing: 0 !important;
+}
+.skill-version {
+  font-family: var(--panel-font-mono) !important;
+  font-size: 10px !important;
+}
+.skill-btn {
+  font-family: var(--panel-font) !important;
+  font-size: 10px !important;
+  font-weight: 500 !important;
+  letter-spacing: 0.03em !important;
+  text-transform: none !important;
+  border-radius: 5px !important;
+}
+.skills-loading, .skills-empty, .skills-err {
+  font-family: var(--panel-font) !important;
+  font-size: var(--panel-text-sm) !important;
+  letter-spacing: 0 !important;
+}
+.skills-stat span {
+  font-family: var(--panel-font) !important;
+  font-size: 22px !important;
+  font-weight: 600 !important;
+}
+.skills-stat label {
+  font-family: var(--panel-font) !important;
+  font-size: 10px !important;
+}
+.skill-field label {
+  font-family: var(--panel-font) !important;
+  font-size: 11px !important;
+  font-weight: 500 !important;
+  letter-spacing: 0 !important;
+}
+
+/* ─── Task Queue / Results detail ────────────────────────────────── */
+.tq-detail-field label,
+.tq-pane-title,
+.tq-del-all-btn {
+  font-family: var(--panel-font) !important;
+  letter-spacing: 0.04em !important;
+}
+.tq-pane-title {
+  font-size: 11px !important;
+  font-weight: 600 !important;
+}
+
+/* ─── Modal headers — keep accent, drop pixel ─────────────────────── */
+.agent-form-modal .modal-header h2,
+.model-modal-header h2,
+.modal-header h2 {
+  font-family: var(--panel-font) !important;
+  font-size: var(--panel-heading) !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.06em !important;
+  text-transform: uppercase !important;
+}
+
+/* ─── Generic modal buttons (Save, Cancel, etc.) ─────────────────── */
+.modal-footer button,
+.agent-form-footer button,
+.btn-primary,
+.btn-secondary,
+.btn-danger {
+  font-family: var(--panel-font) !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.04em !important;
+  border-radius: 6px !important;
+}
+
+/* Header + aquarium elements stay pixel — explicit overrides to protect them */
+header,
+header *,
+.aquarium-wrapper *,
+.poseidon-avatar,
+.squid-name,
+.walker-name,
+.avatar-name,
+.pc-welcome-title,
+.pc-name {
+  /* These keep their existing font declarations — no panel-font override */
+}
+
 
 /* Header */
 header {
@@ -189,7 +502,7 @@ h1 {
 
 /* Buttons */
 button, .btn {
-  font-family: 'Press Start 2P', cursive;
+  font-family: var(--panel-font);
   font-size: 10px;
   padding: 10px 16px;
   border: 3px solid var(--border);
@@ -423,7 +736,7 @@ button:active, .btn:active {
   color: var(--text-primary);
   border: 2px solid var(--border);
   padding: 8px 16px;
-  font-family: 'Press Start 2P', cursive;
+  font-family: var(--panel-font);
   font-size: 10px;
   cursor: pointer;
   transition: all 0.2s;
@@ -492,7 +805,7 @@ button:active, .btn:active {
   color: var(--text-primary);
   border: 2px solid var(--border);
   padding: 4px 12px;
-  font-family: 'Press Start 2P', cursive;
+  font-family: var(--panel-font);
   font-size: 8px;
   cursor: pointer;
 }
@@ -743,7 +1056,7 @@ button:active, .btn:active {
   border: 2px solid var(--border);
   color: var(--text-primary);
   padding: 12px;
-  font-family: 'Press Start 2P', cursive;
+  font-family: var(--panel-font);
   font-size: 10px;
 }
 
@@ -875,7 +1188,7 @@ button:active, .btn:active {
   border: 2px solid var(--border);
   color: var(--text-primary);
   padding: 12px;
-  font-family: 'Press Start 2P', cursive;
+  font-family: var(--panel-font);
   font-size: 9px;
   cursor: pointer;
   transition: all 0.2s;
@@ -1110,7 +1423,7 @@ input[type="color"]::-webkit-color-swatch {
   border: 2px solid var(--border);
   padding: 8px 16px;
   cursor: pointer;
-  font-family: 'Press Start 2P';
+  font-family: var(--panel-font);
   font-size: 10px;
   margin-top: 8px;
 }
@@ -1126,7 +1439,7 @@ input[type="color"]::-webkit-color-swatch {
   border: 2px solid var(--border);
   padding: 8px 16px;
   cursor: pointer;
-  font-family: 'Press Start 2P';
+  font-family: var(--panel-font);
   font-size: 10px;
   margin-left: 8px;
 }
@@ -1232,7 +1545,7 @@ input[type="color"]::-webkit-color-swatch {
 
 /* ── Header buttons ── */
 .ti-hbtn {
-  font-family: 'Press Start 2P', monospace;
+  font-family: var(--panel-font);
   font-size: 7px;
   padding: 6px 10px;
   border: 2px solid var(--border);
@@ -1316,7 +1629,7 @@ input[type="color"]::-webkit-color-swatch {
   flex-shrink: 0;
 }
 .ti-tab {
-  font-family: 'Press Start 2P', monospace;
+  font-family: var(--panel-font);
   font-size: 7px;
   padding: 4px 8px;
   border: 1px solid transparent;
@@ -1337,7 +1650,7 @@ input[type="color"]::-webkit-color-swatch {
 }
 .ti-tabs-end { margin-left: auto; display: flex; align-items: center; gap: 4px; }
 .ti-tab-sm {
-  font-family: 'Press Start 2P', monospace;
+  font-family: var(--panel-font);
   font-size: 6px;
   padding: 3px 7px;
   border: 1px solid var(--border);
@@ -1370,7 +1683,7 @@ input[type="color"]::-webkit-color-swatch {
   align-items: center;
   justify-content: space-between;
   padding: 6px 10px 5px;
-  font-family: 'Press Start 2P', monospace;
+  font-family: var(--panel-font);
   font-size: 6px;
   color: var(--ui-accent);
   letter-spacing: 1.5px;
@@ -1382,7 +1695,7 @@ input[type="color"]::-webkit-color-swatch {
   text-shadow: 0 0 8px rgba(79,172,254,0.4);
 }
 .ti-sec-btn {
-  font-family: 'Press Start 2P', monospace;
+  font-family: var(--panel-font);
   font-size: 6px;
   padding: 3px 7px;
   border: 1px solid var(--border);
@@ -1434,7 +1747,7 @@ input[type="color"]::-webkit-color-swatch {
 .ti-file-size  { font-family: 'Courier New', monospace; font-size: 8px; color: var(--ui-muted); flex-shrink: 0; }
 .ti-file-mtime { font-family: 'Courier New', monospace; font-size: 8px; color: #4facfe; flex-shrink: 0; opacity: .7; }
 .ti-file-del {
-  font-family: 'Press Start 2P', monospace;
+  font-family: var(--panel-font);
   font-size: 6px;
   padding: 2px 5px;
   border: 1px solid transparent;
@@ -1453,7 +1766,7 @@ input[type="color"]::-webkit-color-swatch {
   border: 2px dashed rgba(79,172,254,0.2);
   padding: 10px;
   text-align: center;
-  font-family: 'Press Start 2P', monospace;
+  font-family: var(--panel-font);
   font-size: 6px;
   color: var(--ui-muted);
   cursor: pointer;
@@ -1479,7 +1792,7 @@ input[type="color"]::-webkit-color-swatch {
 }
 .ti-walker { position: absolute; pointer-events: none; display: flex; flex-direction: column; align-items: center; }
 .ti-walker-name {
-  font-family: 'Press Start 2P', monospace;
+  font-family: var(--panel-font);
   font-size: 5px;
   color: rgba(148,163,184,0.7);
   text-align: center;
@@ -1488,7 +1801,7 @@ input[type="color"]::-webkit-color-swatch {
   letter-spacing: 0.5px;
 }
 .ti-walker-badge {
-  font-family: 'Press Start 2P', monospace; font-size: 5px;
+  font-family: var(--panel-font); font-size: 5px;
   color: #06ffa5; background: rgba(6,255,165,0.12);
   border: 1px solid rgba(6,255,165,0.3);
   padding: 1px 4px; margin-bottom: 1px;
@@ -1517,10 +1830,10 @@ input[type="color"]::-webkit-color-swatch {
 .ti-agent-dot.idle { background: var(--border); }
 .ti-agent-dot.run  { background: var(--success); box-shadow: 0 0 8px var(--success); animation: tiDotPulse 1.4s infinite; }
 @keyframes tiDotPulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
-.ti-agent-name { font-family: 'Press Start 2P', monospace; font-size: 7px; color: var(--text-primary); flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ti-agent-name { font-family: var(--panel-font); font-size: 7px; color: var(--text-primary); flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ti-agent-spec { font-family: 'Courier New', monospace; font-size: 9px; color: var(--ui-muted); }
 .ti-agent-badge {
-  font-family: 'Press Start 2P', monospace;
+  font-family: var(--panel-font);
   font-size: 6px;
   padding: 2px 5px;
   border: 1px solid;
@@ -1535,7 +1848,7 @@ input[type="color"]::-webkit-color-swatch {
 .ti-mem-header {
   display:flex; align-items:center; justify-content:space-between;
   padding:6px 12px; border-bottom:1px solid rgba(255,255,255,0.06);
-  font-family:'Press Start 2P',monospace; font-size:7px; color:#4facfe;
+  font-family:var(--panel-font); font-size:10px; font-weight:600; letter-spacing:0.1em; color:#4facfe;
   background:rgba(79,172,254,0.04);
 }
 .ti-mem-progress { color:#06ffa5; font-size:8px; }
@@ -1545,7 +1858,7 @@ input[type="color"]::-webkit-color-swatch {
 }
 .ti-mem-section.ti-mem-warn { border-left:2px solid rgba(239,68,68,0.5); background:rgba(239,68,68,0.03); }
 .ti-mem-label {
-  font-family:'Press Start 2P',monospace; font-size:5.5px; color:#334155;
+  font-family:var(--panel-font),monospace; font-size:5.5px; color:#334155;
   letter-spacing:.5px; text-transform:uppercase; display:flex; align-items:center; gap:4px;
 }
 .ti-mem-value { font-family:'Courier New',monospace; font-size:9px; color:#94a3b8; line-height:1.4; }
@@ -1691,7 +2004,7 @@ input[type="color"]::-webkit-color-swatch {
   align-items: center;
   justify-content: space-between;
   padding: 5px 10px;
-  font-family: 'Press Start 2P', monospace;
+  font-family: var(--panel-font);
   font-size: 7px;
   color: var(--ui-muted);
   border-bottom: 2px solid var(--border);
@@ -1714,7 +2027,7 @@ input[type="color"]::-webkit-color-swatch {
   align-items: center;
   justify-content: space-between;
   padding: 5px 8px;
-  font-family: 'Press Start 2P', monospace;
+  font-family: var(--panel-font);
   font-size: 6px;
   color: var(--ui-muted);
   background: rgba(0,0,0,0.3);
@@ -1727,7 +2040,7 @@ input[type="color"]::-webkit-color-swatch {
 .ti-kcol-head.prog  { border-bottom-color: var(--ui-accent); color: var(--ui-accent); }
 .ti-kcol-head.done  { border-bottom-color: var(--success); color: var(--success); }
 .ti-kcol-count {
-  font-family: 'Press Start 2P', monospace;
+  font-family: var(--panel-font);
   font-size: 6px;
   padding: 1px 5px;
   background: rgba(255,255,255,0.06);
@@ -1763,7 +2076,7 @@ input[type="color"]::-webkit-color-swatch {
 .ti-kcard.dragging { opacity: 0.4; }
 .ti-kcard.drag-over { border-top: 2px solid var(--ui-accent); }
 .ti-kcard-title {
-  font-family: 'Press Start 2P', monospace;
+  font-family: var(--panel-font);
   font-size: 7px;
   color: var(--text-primary);
   line-height: 1.6;
@@ -1773,7 +2086,7 @@ input[type="color"]::-webkit-color-swatch {
 .ti-kcard-prog  { font-family: 'Courier New', monospace; font-size: 8px; color: var(--ui-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 3px; }
 .ti-kcard-foot  { display: flex; align-items: center; justify-content: space-between; margin-top: 4px; gap: 4px; }
 .ti-kcard-agent {
-  font-family: 'Press Start 2P', monospace;
+  font-family: var(--panel-font);
   font-size: 6px;
   color: var(--ui-accent2);
   background: rgba(6,255,165,0.06);
@@ -1787,7 +2100,7 @@ input[type="color"]::-webkit-color-swatch {
   animation: tiDotPulse 1.4s infinite;
 }
 .ti-kcard-del {
-  font-family: 'Press Start 2P', monospace;
+  font-family: var(--panel-font);
   font-size: 6px;
   padding: 2px 5px;
   border: 1px solid transparent;
@@ -1833,7 +2146,7 @@ input[type="color"]::-webkit-color-swatch {
 .ti-taskrow-title { font-family: 'Courier New', monospace; font-size: 10px; color: var(--text-primary); line-height: 1.4; }
 .ti-taskrow-sub   { font-family: 'Courier New', monospace; font-size: 8px; color: var(--ui-muted); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ti-taskrow-del {
-  font-family: 'Press Start 2P', monospace;
+  font-family: var(--panel-font);
   font-size: 6px;
   padding: 2px 5px;
   border: 1px solid transparent;
@@ -1889,7 +2202,7 @@ input[type="color"]::-webkit-color-swatch {
 .ti-out-status-run { color: var(--success); animation: ti-out-pulse 1s ease-in-out infinite; }
 @keyframes ti-out-pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
 .ti-out-live {
-  font-family: 'Press Start 2P', monospace; font-size: 6px;
+  font-family: var(--panel-font); font-size: 6px;
   color: var(--success); background: rgba(6,255,165,0.1);
   border: 1px solid rgba(6,255,165,0.3); padding: 1px 5px;
   animation: ti-out-pulse 1s ease-in-out infinite;
@@ -1897,12 +2210,12 @@ input[type="color"]::-webkit-color-swatch {
 }
 .ti-out-row-top { display: flex; align-items: center; gap: 6px; margin-bottom: 3px; }
 .ti-out-status {
-  font-family: 'Press Start 2P', monospace; font-size: 7px;
+  font-family: var(--panel-font); font-size: 7px;
   width: 14px; text-align: center; color: var(--success); flex-shrink: 0;
 }
 .ti-out-fail .ti-out-status { color: var(--danger); }
 .ti-out-title {
-  font-family: 'Press Start 2P', monospace; font-size: 7px;
+  font-family: var(--panel-font); font-size: 7px;
   color: #cbd5e1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .ti-out-row-bot { display: flex; align-items: center; gap: 8px; }
@@ -1921,7 +2234,7 @@ input[type="color"]::-webkit-color-swatch {
   margin-bottom: 6px;
 }
 #ti-out-viewer-title {
-  font-family: 'Press Start 2P', monospace; font-size: 7px; color: var(--ui-accent);
+  font-family: var(--panel-font); font-size: 7px; color: var(--ui-accent);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .ti-out-pre {
@@ -2112,7 +2425,7 @@ input[type="color"]::-webkit-color-swatch {
   color: white !important;
   border: 2px solid #c0392b !important;
   padding: 8px 16px;
-  font-family: 'Press Start 2P';
+  font-family: var(--panel-font);
   font-size: 10px;
   cursor: pointer;
   box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
@@ -2333,7 +2646,7 @@ input[type="color"]::-webkit-color-swatch {
   background: var(--ocean-deep);
   border: 2px solid var(--border);
   color: var(--accent);
-  font-family: 'Press Start 2P';
+  font-family: var(--panel-font);
   font-size: 9px;
   margin-bottom: 8px;
 }
@@ -2344,7 +2657,7 @@ input[type="color"]::-webkit-color-swatch {
   border: 2px solid var(--border);
   color: var(--text);
   padding: 8px;
-  font-family: 'Press Start 2P';
+  font-family: var(--panel-font);
   font-size: 9px;
   cursor: pointer;
 }
@@ -2405,7 +2718,7 @@ input[type="color"]::-webkit-color-swatch {
   color: white;
   border: 3px solid #c0392b;
   padding: 12px;
-  font-family: 'Press Start 2P';
+  font-family: var(--panel-font);
   font-size: 11px;
   cursor: pointer;
   text-align: center;
@@ -2586,7 +2899,7 @@ input[type="color"]::-webkit-color-swatch {
   font-size: 12px;
   color: rgba(255, 255, 255, 0.6);
   margin: 4px 0 12px 0;
-  font-family: 'Press Start 2P', monospace;
+  font-family: var(--panel-font);
 }
 
 .section-divider {
@@ -2641,7 +2954,7 @@ input[type="color"]::-webkit-color-swatch {
   color: white;
   border: none;
   border-radius: 4px;
-  font-family: 'Press Start 2P', monospace;
+  font-family: var(--panel-font);
   font-size: 10px;
   cursor: pointer;
   transition: transform 0.2s;
@@ -2659,7 +2972,7 @@ input[type="color"]::-webkit-color-swatch {
   color: white;
   border: none;
   border-radius: 4px;
-  font-family: 'Press Start 2P', monospace;
+  font-family: var(--panel-font);
   font-size: 9px;
   cursor: pointer;
   margin-top: 12px;
@@ -2716,7 +3029,7 @@ input[type="color"]::-webkit-color-swatch {
   color: white;
   border: none;
   border-radius: 4px;
-  font-family: 'Press Start 2P', monospace;
+  font-family: var(--panel-font);
   font-size: 9px;
   cursor: pointer;
   margin-bottom: 12px;
@@ -2846,7 +3159,7 @@ input[type="color"]::-webkit-color-swatch {
   padding: 12px;
   border: none;
   border-radius: 4px;
-  font-family: 'Press Start 2P', monospace;
+  font-family: var(--panel-font);
   font-size: 9px;
   cursor: pointer;
   transition: transform 0.2s;
@@ -2917,7 +3230,7 @@ input[type="color"]::-webkit-color-swatch {
   background: rgba(255, 255, 255, 0.2);
   border: none;
   border-radius: 4px;
-  font-family: 'Press Start 2P', monospace;
+  font-family: var(--panel-font);
   font-size: 9px;
   cursor: pointer;
   margin-top: 16px;
@@ -3061,7 +3374,7 @@ input[type="color"]::-webkit-color-swatch {
   color: white;
   border: 2px solid rgba(255, 255, 255, 0.3);
   border-radius: 8px;
-  font-family: 'Press Start 2P', monospace;
+  font-family: var(--panel-font);
   font-size: 10px;
   cursor: pointer;
   box-shadow: 0 4px 15px rgba(240, 147, 251, 0.4);
@@ -3157,7 +3470,7 @@ input[type="color"]::-webkit-color-swatch {
   padding: 8px 16px;
   border-radius: 4px;
   cursor: pointer;
-  font-family: 'Press Start 2P';
+  font-family: var(--panel-font);
   font-size: 10px;
 }
 
@@ -3190,7 +3503,7 @@ input[type="color"]::-webkit-color-swatch {
   border: 2px solid var(--border);
   color: var(--text-primary);
   padding: 8px;
-  font-family: 'Press Start 2P';
+  font-family: var(--panel-font);
   font-size: 10px;
   border-radius: 4px;
 }
@@ -3207,7 +3520,7 @@ input[type="color"]::-webkit-color-swatch {
   color: var(--ocean-deep);
   border: none;
   border-radius: 4px;
-  font-family: 'Press Start 2P';
+  font-family: var(--panel-font);
   font-size: 12px;
   cursor: pointer;
   margin-top: 20px;
@@ -3230,7 +3543,7 @@ input[type="color"]::-webkit-color-swatch {
   color: white;
   border: 2px solid rgba(255, 255, 255, 0.3);
   border-radius: 6px;
-  font-family: 'Press Start 2P';
+  font-family: var(--panel-font);
   font-size: 9px;
   cursor: pointer;
   box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
@@ -3267,7 +3580,7 @@ input[type="color"]::-webkit-color-swatch {
   border: 2px solid var(--border);
   color: var(--text-primary);
   padding: 6px 12px;
-  font-family: 'Press Start 2P';
+  font-family: var(--panel-font);
   font-size: 9px;
   border-radius: 4px;
   margin: 0 12px;
@@ -3322,7 +3635,7 @@ input[type="color"]::-webkit-color-swatch {
   border: 2px solid var(--border);
   color: var(--text-primary);
   padding: 6px;
-  font-family: 'Press Start 2P';
+  font-family: var(--panel-font);
   font-size: 9px;
   border-radius: 4px;
   margin-bottom: 8px;
@@ -3369,7 +3682,7 @@ input[type="color"]::-webkit-color-swatch {
   border: 2px solid var(--border);
   color: var(--text-primary);
   padding: 6px;
-  font-family: 'Press Start 2P';
+  font-family: var(--panel-font);
   font-size: 9px;
   margin-bottom: 12px;
   border-radius: 4px;
@@ -3393,7 +3706,7 @@ input[type="color"]::-webkit-color-swatch {
   border: 2px solid var(--success);
   color: var(--text-primary);
   padding: 10px 16px;
-  font-family: 'Press Start 2P';
+  font-family: var(--panel-font);
   font-size: 9px;
   border-radius: 4px;
   cursor: pointer;
@@ -4160,7 +4473,7 @@ button .pixel-icon {
   flex: 1;
   background: none;
   border: 1px solid transparent;
-  font-family: 'Press Start 2P', monospace;
+  font-family: var(--panel-font);
   font-size: 7px;
   cursor: pointer;
   padding: 1px 4px;
@@ -4283,7 +4596,7 @@ button .pixel-icon {
   color: white;
   border: 2px solid rgba(255, 255, 255, 0.3);
   border-radius: 6px;
-  font-family: 'Press Start 2P';
+  font-family: var(--panel-font);
   font-size: 9px;
   cursor: pointer;
   box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
@@ -4367,7 +4680,7 @@ button .pixel-icon {
 
 .temple-card-name {
   font-size: 10px;
-  font-family: 'Press Start 2P';
+  font-family: var(--panel-font);
   color: var(--text);
   margin-bottom: 4px;
   word-break: break-word;
@@ -4449,10 +4762,12 @@ button .pixel-icon {
 .modal-header h2 {
   margin: 0;
   flex: 1;
-  font-size: 11px;
-  color: #4facfe;
-  font-family: 'Press Start 2P';
-  letter-spacing: 1px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #e2e8f0;
+  font-family: var(--panel-font);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
 }
 
 .modal-body {
@@ -4460,6 +4775,10 @@ button .pixel-icon {
   overflow-y: auto;
   padding: 18px;
   background: transparent;
+  font-family: var(--panel-font);
+  font-size: var(--panel-text-sm);
+  line-height: 1.55;
+  color: var(--panel-text);
 }
 .modal-body::-webkit-scrollbar { width: 4px; }
 .modal-body::-webkit-scrollbar-track { background: transparent; }
@@ -4570,7 +4889,7 @@ button .pixel-icon {
   border: none;
   padding: 6px 14px;
   cursor: pointer;
-  font-family: 'Press Start 2P';
+  font-family: var(--panel-font);
   font-size: 9px;
 }
 
@@ -4593,7 +4912,7 @@ button .pixel-icon {
   color: var(--text-secondary);
   padding: 6px 12px;
   font-size: 9px;
-  font-family: 'Press Start 2P';
+  font-family: var(--panel-font);
   cursor: pointer;
 }
 
@@ -4660,7 +4979,7 @@ button .pixel-icon {
 }
 
 .ml-entry-icon {
-  font-family: 'Press Start 2P';
+  font-family: var(--panel-font);
   font-size: 8px;
   padding: 2px 6px;
   background: var(--ocean-deep);
@@ -4776,7 +5095,7 @@ button .pixel-icon {
   height: 24px;
   padding: 0 !important;
   cursor: pointer;
-  font-family: 'Press Start 2P';
+  font-family: var(--panel-font);
   font-size: 11px;
   line-height: 22px;
   text-align: center;
@@ -4850,7 +5169,7 @@ button .pixel-icon {
   border-bottom: 1px solid rgba(255,255,255,0.07);
 }
 .agent-form-section-title {
-  font-family: 'Press Start 2P';
+  font-family: var(--panel-font);
   font-size: 11px;
   color: var(--accent);
   margin: 0 0 10px 0;
@@ -4967,7 +5286,7 @@ button .pixel-icon {
   margin: 10px 0 4px;
   font-size: 9px;
   color: var(--text-secondary);
-  font-family: 'Press Start 2P';
+  font-family: var(--panel-font);
   letter-spacing: 1px;
 }
 
@@ -5000,12 +5319,12 @@ button .pixel-icon {
   content: 'X';
   position: absolute;
   top: 2px; right: 4px;
-  font-family: 'Press Start 2P';
+  font-family: var(--panel-font);
   font-size: 8px;
   color: var(--success);
 }
 .af-tool-icon {
-  font-family: 'Press Start 2P';
+  font-family: var(--panel-font);
   font-size: 9px;
   color: var(--accent);
   margin-bottom: 4px;
@@ -5223,7 +5542,7 @@ button .pixel-icon {
   font-size: 10px;
 }
 .ml-estimate-header {
-  font-family: 'Press Start 2P';
+  font-family: var(--panel-font);
   font-size: 9px;
   color: var(--success);
   margin-bottom: 6px;
@@ -5301,7 +5620,7 @@ button .pixel-icon {
   background: var(--ocean-deep);
   border: 1px solid var(--border);
   color: var(--text);
-  font-family: 'Press Start 2P';
+  font-family: var(--panel-font);
   font-size: 7px;
   padding: 3px 6px;
   cursor: pointer;
@@ -5311,7 +5630,7 @@ button .pixel-icon {
 
 /* ========== Poseidon turn counter ========== */
 .poseidon-turn-counter {
-  font-family: 'Press Start 2P';
+  font-family: var(--panel-font);
   font-size: 8px;
   padding: 3px 7px;
   background: var(--ocean-deep);
@@ -5595,7 +5914,7 @@ option {
   padding: 2px 6px;
   font-size: 8px;
   border-radius: 3px;
-  font-family: 'Press Start 2P', monospace;
+  font-family: var(--panel-font);
 }
 
 .model-texttype-pill {
@@ -5605,7 +5924,7 @@ option {
   padding: 2px 6px;
   font-size: 8px;
   border-radius: 3px;
-  font-family: 'Press Start 2P', monospace;
+  font-family: var(--panel-font);
 }
 
 /* ===== ModelLoader native file picker ===== */
@@ -5615,7 +5934,7 @@ option {
   background: linear-gradient(135deg, var(--ocean-mid), var(--ocean-deep));
   border: 2px solid var(--accent);
   color: var(--accent);
-  font-family: 'Press Start 2P', monospace;
+  font-family: var(--panel-font);
   font-size: 10px;
   border-radius: 4px;
   cursor: pointer;
@@ -5658,7 +5977,7 @@ option {
   border-bottom: 1px solid rgba(168,85,247,0.2);
   padding: 6px 10px;
   cursor: pointer;
-  font-family: 'Press Start 2P', monospace;
+  font-family: var(--panel-font);
   font-size: 8px;
   color: #c084fc;
   text-align: left;
@@ -6174,7 +6493,7 @@ option {
 }
 .lm-title {
   display: flex; align-items: center; gap: 8px;
-  font-family: 'Press Start 2P', monospace;
+  font-family: var(--panel-font);
   font-size: 10px; color: #4facfe; letter-spacing: 2px;
 }
 .lm-icon { opacity: 0.7; }
@@ -6208,7 +6527,7 @@ option {
   border: 1px solid transparent;
   border-bottom: 2px solid transparent;
   color: #475569;
-  font-family: 'Press Start 2P', monospace;
+  font-family: var(--panel-font);
   font-size: 7px; padding: 6px 10px;
   cursor: pointer; transition: all 0.15s; white-space: nowrap;
   letter-spacing: 0.5px;
@@ -6247,7 +6566,7 @@ option {
   background: rgba(255,255,255,0.04);
   border: 1px solid rgba(255,255,255,0.1);
   color: #94a3b8;
-  font-family: 'Press Start 2P', monospace; font-size: 7px;
+  font-family: var(--panel-font); font-size: 7px;
   padding: 6px 10px; cursor: pointer; white-space: nowrap;
   transition: border-color 0.15s, color 0.15s;
 }
@@ -6266,7 +6585,7 @@ option {
 .lm-drop-list.lm-drop-right { left: auto; right: 0; }
 .lm-drop-wrap.lm-drop-open .lm-drop-list { display: block; }
 .lm-drop-item {
-  font-family: 'Press Start 2P', monospace; font-size: 7px;
+  font-family: var(--panel-font); font-size: 7px;
   color: #64748b; padding: 8px 12px; cursor: pointer;
   transition: background 0.1s, color 0.1s;
   border-bottom: 1px solid rgba(255,255,255,0.03);
@@ -6286,7 +6605,7 @@ option {
 
 .lm-empty {
   text-align: center;
-  font-family: 'Press Start 2P', monospace;
+  font-family: var(--panel-font);
   font-size: 8px; color: #334155;
   padding: 40px; letter-spacing: 1px;
 }
@@ -6331,7 +6650,7 @@ option {
   display: flex; align-items: baseline; gap: 4px;
 }
 .lm-expand-btn {
-  font-family: 'Press Start 2P', monospace;
+  font-family: var(--panel-font);
   font-size: 5px; color: var(--ui-accent);
   background: rgba(79,172,254,0.08); border: 1px solid rgba(79,172,254,0.2);
   padding: 1px 4px; cursor: pointer; flex-shrink: 0;
@@ -6347,7 +6666,7 @@ option {
   max-height: 300px; overflow-y: auto; line-height: 1.6;
 }
 .lm-live-label {
-  font-family: 'Press Start 2P', monospace;
+  font-family: var(--panel-font);
   font-size: 7px; color: var(--ui-accent2);
   display: flex; align-items: center; gap: 4px; cursor: pointer;
 }
@@ -6472,7 +6791,7 @@ option {
 .pc-md-p:last-child { margin-bottom: 0; }
 
 .pc-md-h {
-  font-family: 'Press Start 2P', monospace;
+  font-family: var(--panel-font);
   color: #4facfe;
   margin: 12px 0 6px;
   line-height: 1.4;
@@ -6572,7 +6891,7 @@ h4.pc-md-h { font-size: 8px; color: #94a3b8; }
   padding: 7px 10px; flex-shrink: 0;
 }
 .ml-cat-title {
-  font-family: 'Press Start 2P', monospace; font-size: 7px; letter-spacing: 1px;
+  font-family: var(--panel-font); font-size: 7px; letter-spacing: 1px;
 }
 .ml-cat-count {
   font-family: 'Courier New', monospace; font-size: 9px; color: #475569;
@@ -6588,7 +6907,7 @@ h4.pc-md-h { font-size: 8px; color: #94a3b8; }
 .ml-cat-cards::-webkit-scrollbar { width: 3px; }
 .ml-cat-cards::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); }
 .ml-cat-empty {
-  font-family: 'Press Start 2P', monospace; font-size: 6px;
+  font-family: var(--panel-font); font-size: 6px;
   color: #1e293b; text-align: center; padding: 20px 8px;
   border: 1px dashed rgba(255,255,255,0.06);
 }
@@ -6806,7 +7125,7 @@ h4.pc-md-h { font-size: 8px; color: #94a3b8; }
   border-bottom: 2px solid transparent;
   color: var(--text-secondary);
   cursor: pointer;
-  font-family: 'Press Start 2P', monospace;
+  font-family: var(--panel-font);
   font-size: 8px;
   padding: 10px 6px;
   display: flex;
@@ -6864,7 +7183,7 @@ h4.pc-md-h { font-size: 8px; color: #94a3b8; }
   color: #000;
   border-radius: 50%;
   font-size: 8px;
-  font-family: 'Press Start 2P', monospace;
+  font-family: var(--panel-font);
   display: flex; align-items: center; justify-content: center;
   font-weight: bold;
 }
@@ -6882,7 +7201,7 @@ h4.pc-md-h { font-size: 8px; color: #94a3b8; }
 .comms-field-group { margin-bottom: 12px; }
 .comms-label {
   display: block;
-  font-family: 'Press Start 2P', monospace;
+  font-family: var(--panel-font);
   font-size: 8px;
   color: var(--text-secondary);
   margin-bottom: 5px;
@@ -6927,7 +7246,7 @@ h4.pc-md-h { font-size: 8px; color: #94a3b8; }
 }
 .comms-status-on  { background: var(--success); box-shadow: 0 0 6px var(--success); animation: pulse-dot 2s infinite; }
 .comms-status-off { background: rgba(255,255,255,0.2); }
-.comms-status-bar span { font-size: 9px; color: var(--text-secondary); font-family: 'Press Start 2P', monospace; }
+.comms-status-bar span { font-size: 9px; color: var(--text-secondary); font-family: var(--panel-font); }
 .comms-bot-name { color: var(--accent) !important; margin-left: auto; }
 
 /* ── Actions ── */
@@ -6952,7 +7271,7 @@ h4.pc-md-h { font-size: 8px; color: #94a3b8; }
   margin-bottom: 8px;
 }
 .comms-section-title {
-  font-family: 'Press Start 2P', monospace;
+  font-family: var(--panel-font);
   font-size: 8px;
   color: var(--text-secondary);
 }
@@ -7000,7 +7319,7 @@ h4.pc-md-h { font-size: 8px; color: #94a3b8; }
 .tq-detail-body { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
 .tq-detail-field { display: flex; flex-direction: column; gap: 4px; }
 .tq-detail-field label {
-  font-family: 'Press Start 2P', monospace;
+  font-family: var(--panel-font);
   font-size: 8px; color: var(--text-secondary);
 }
 .tq-detail-field input, .tq-detail-field textarea, .tq-detail-field select {
@@ -7062,7 +7381,7 @@ h4.pc-md-h { font-size: 8px; color: #94a3b8; }
   flex-shrink: 0;
 }
 .tq-pane-title {
-  font-family: 'Press Start 2P', monospace; font-size: 7px;
+  font-family: var(--panel-font); font-size: 7px;
   color: #475569; letter-spacing: 1px;
 }
 .tq-pane-count {
@@ -7077,7 +7396,7 @@ h4.pc-md-h { font-size: 8px; color: #94a3b8; }
 .tq-pane-body::-webkit-scrollbar { width: 3px; }
 .tq-pane-body::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); }
 .tq-del-all-btn {
-  font-family: 'Press Start 2P', monospace; font-size: 5px;
+  font-family: var(--panel-font); font-size: 5px;
   background: rgba(239,68,68,0.08); border: 1px solid rgba(239,68,68,0.2);
   color: #f87171; padding: 2px 6px; cursor: pointer; margin-left: auto;
   transition: background 0.12s;
@@ -7096,7 +7415,7 @@ h4.pc-md-h { font-size: 8px; color: #94a3b8; }
 .tq-done-section { margin-top: 0; border-top: none; padding-top: 0; }
 .tq-done-header {
   display: flex; align-items: center; justify-content: space-between;
-  font-family: 'Press Start 2P', monospace; font-size: 8px;
+  font-family: var(--panel-font), monospace; font-size: 8px;
   color: var(--text-secondary); margin-bottom: 6px;
 }
 .tq-done-toggle {
@@ -7141,7 +7460,7 @@ h4.pc-md-h { font-size: 8px; color: #94a3b8; }
 .tq-img-placeholder {
   width: 100%; height: 100%;
   display: flex; align-items: center; justify-content: center;
-  font-family: 'Press Start 2P', monospace; font-size: 6px; color: #334155;
+  font-family: var(--panel-font); font-size: 6px; color: #334155;
 }
 .tq-img-meta {
   padding: 4px 6px;
@@ -7175,7 +7494,7 @@ h4.pc-md-h { font-size: 8px; color: #94a3b8; }
 .tq-status-label {
   font-size: 8px;
   color: var(--text-secondary);
-  font-family: 'Press Start 2P', monospace;
+  font-family: var(--panel-font);
   letter-spacing: 0.5px;
 }
 .tq-cron-badge {
@@ -7237,7 +7556,7 @@ h4.pc-md-h { font-size: 8px; color: #94a3b8; }
   font-size: 8px;
   padding: 1px 6px;
   border-radius: 3px;
-  font-family: 'Press Start 2P', monospace;
+  font-family: var(--panel-font);
   white-space: nowrap;
   flex-shrink: 0;
 }
@@ -7367,13 +7686,13 @@ h4.pc-md-h { font-size: 8px; color: #94a3b8; }
 }
 .skills-title {
   display: flex; align-items: center; gap: 8px;
-  font-family: 'Press Start 2P', monospace;
+  font-family: var(--panel-font);
   font-size: 10px; color: #4facfe; letter-spacing: 2px;
 }
 .skills-icon { opacity: 0.7; font-size: 12px; }
 .skills-header-right { display: flex; gap: 6px; align-items: center; }
 .skills-new-btn {
-  font-family: 'Press Start 2P', monospace; font-size: 7px;
+  font-family: var(--panel-font); font-size: 7px;
   background: rgba(6,255,165,0.12); border: 1px solid rgba(6,255,165,0.3);
   color: #06ffa5; padding: 5px 10px; cursor: pointer;
   transition: background 0.15s;
@@ -7395,7 +7714,7 @@ h4.pc-md-h { font-size: 8px; color: #94a3b8; }
 .skills-body::-webkit-scrollbar { width: 4px; }
 .skills-body::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); }
 .skills-loading, .skills-empty, .skills-err {
-  font-family: 'Press Start 2P', monospace; font-size: 8px;
+  font-family: var(--panel-font); font-size: 8px;
   text-align: center; padding: 40px; color: #334155;
 }
 .skills-err { color: #ef4444; }
@@ -7409,7 +7728,7 @@ h4.pc-md-h { font-size: 8px; color: #94a3b8; }
   display: flex; flex-direction: column; align-items: center; gap: 3px;
 }
 .skills-stat span {
-  font-family: 'Press Start 2P', monospace; font-size: 14px; color: #4facfe;
+  font-family: var(--panel-font); font-size: 14px; color: #4facfe;
 }
 .skills-stat label {
   font-family: 'Courier New', monospace; font-size: 8px; color: #475569;
@@ -7433,11 +7752,11 @@ h4.pc-md-h { font-size: 8px; color: #94a3b8; }
   display: flex; align-items: center; justify-content: space-between; gap: 8px;
 }
 .skill-name {
-  font-family: 'Press Start 2P', monospace; font-size: 7px; color: #e2e8f0;
+  font-family: var(--panel-font); font-size: 7px; color: #e2e8f0;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1;
 }
 .skill-version {
-  font-family: 'Press Start 2P', monospace; font-size: 7px; flex-shrink: 0;
+  font-family: var(--panel-font); font-size: 7px; flex-shrink: 0;
   background: rgba(255,255,255,0.04); padding: 2px 6px;
 }
 .skill-id {
@@ -7451,7 +7770,7 @@ h4.pc-md-h { font-size: 8px; color: #94a3b8; }
   display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
 }
 .skill-health {
-  font-family: 'Press Start 2P', monospace; font-size: 6px;
+  font-family: var(--panel-font); font-size: 6px;
 }
 .skill-steps, .skill-age {
   font-family: 'Courier New', monospace; font-size: 8px; color: #475569;
@@ -7464,7 +7783,7 @@ h4.pc-md-h { font-size: 8px; color: #94a3b8; }
 }
 .skill-actions { display: flex; gap: 6px; margin-top: 4px; }
 .skill-btn {
-  font-family: 'Press Start 2P', monospace; font-size: 6px;
+  font-family: var(--panel-font); font-size: 6px;
   padding: 4px 8px; cursor: pointer; border: none; transition: background 0.12s;
 }
 .skill-btn-edit {
@@ -7498,7 +7817,7 @@ h4.pc-md-h { font-size: 8px; color: #94a3b8; }
 }
 .skill-field { display: flex; flex-direction: column; gap: 5px; }
 .skill-field label {
-  font-family: 'Press Start 2P', monospace; font-size: 7px; color: #475569;
+  font-family: var(--panel-font); font-size: 7px; color: #475569;
   letter-spacing: 1px;
 }
 .skill-field input, .skill-field textarea {
