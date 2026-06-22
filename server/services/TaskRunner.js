@@ -439,10 +439,53 @@ class TaskRunner {
         return;
       }
 
+      // ── ROUTING DECISION ──────────────────────────────────────────────────
+      // If the assigned agent has a DIFFERENT preferred_model_id than Poseidon,
+      // route through AgentWorkerPool (own model, own session, own skills).
+      // Otherwise route through Poseidon BG (same model, sequence-shared, faster).
+      //
+      // AgentWorkerPool handles VRAM safely: broker is acquired BEFORE any eviction,
+      // so no other inference can race into a half-evicted state.
+      let usedAgentWorker = false;
+      if (agentId && agentId !== 'poseidon_main' && this.agentPool) {
+        try {
+          const agentReg = await this.rm.getAgentRegistry();
+          const agentEntry = agentReg.agents?.[agentId];
+          if (agentEntry) {
+            const brain = await this.rm.read(`agents/${agentEntry.brain_file}`).catch(() => null);
+            const preferredModel = brain?.brain_config?.model_binding?.preferred_model_id || null;
+            const poseidonModel  = this.modelService.poseidonModelId;
+            // Only route to AgentWorkerPool if agent explicitly has a DIFFERENT model configured
+            const needsOwnModel  = preferredModel && preferredModel !== poseidonModel;
+
+            if (needsOwnModel) {
+              console.log(`[TaskRunner] ▶ ${taskId} → AgentWorkerPool (agent model: ${preferredModel})`);
+              usedAgentWorker = true;
+              const gen = await this.agentPool.dispatch(agentId, msg);
+              for await (const ev of gen) {
+                if (ev.type === 'text')           output += ev.chunk;
+                if (ev.type === 'error')          { output += `\nError: ${ev.error}`; failed = true; }
+                const bus = global.ReasoningBus;
+                if (bus) {
+                  if (ev.type === 'text')          bus.push({ type: 'text',          task_id: taskId, chunk: ev.chunk });
+                  if (ev.type === 'thinking')      bus.push({ type: 'thinking',      task_id: taskId, chunk: ev.chunk });
+                  if (ev.type === 'thinking_start') bus.push({ type: 'thinking_start', task_id: taskId });
+                  if (ev.type === 'thinking_end')   bus.push({ type: 'thinking_end',   task_id: taskId });
+                  if (ev.type === 'tool_call')      bus.push({ type: 'tool_call',    task_id: taskId, name: ev.name, args: ev.args });
+                  if (ev.type === 'tool_result')    bus.push({ type: 'tool_result',  task_id: taskId, name: ev.name, ok: ev.result?.ok !== false, summary: String(ev.result?.message || '').slice(0, 200) });
+                }
+              }
+            }
+          }
+        } catch (agentErr) {
+          console.warn(`[TaskRunner] AgentWorkerPool dispatch failed for ${taskId}, falling back to Poseidon BG:`, agentErr.message);
+          usedAgentWorker = false; // fall through to Poseidon BG path
+        }
+      }
+
+      if (!usedAgentWorker) {
       try {
-        // ALL tasks go through Poseidon (single model, single sequence).
-        // If assigned to an agent, inject its personality as a role prefix so
-        // Poseidon adopts the sub-personality for this task.
+        // Poseidon BG path: same model, inject agent persona as prefix.
         const bgToken = await this.modelService.broker.acquire(
           PRIORITY.POSEIDON_BG, `bg_task_${taskId}`,
           { timeoutMs: 10 * 60 * 1000 }
@@ -557,6 +600,7 @@ class TaskRunner {
         output = `Execution error: ${e.message}`;
         failed = true;
       }
+      } // end if (!usedAgentWorker)
 
       if (output.trim().length > 0 && !output.startsWith('Execution error:')) {
         await this._saveOutput(taskId, output);

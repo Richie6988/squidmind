@@ -181,20 +181,60 @@ class AgentWorker extends EventEmitter {
     if (!modelId) throw new Error(`No model available for agent ${this.agentId}`);
     this._modelId = modelId;
 
-    if (!this.modelService.loaded.has(modelId)) {
-      await this.modelService.ensureLoaded(modelId);
-    }
-
-    const entry = this.modelService.loaded.get(modelId);
-    if (!entry) throw new Error(`Model ${modelId} failed to load`);
-
-    // Wait for Poseidon (or another agent) to free the model before grabbing a sequence
-    // Acquire model slot through broker — guaranteed sequential access
+    // ── BROKER FIRST — always acquire the slot BEFORE touching VRAM ─────────
+    // Acquiring first means: no other inference can start, and Poseidon is idle.
+    // Only then can we safely evict Poseidon's model and load the agent's own model.
+    // Previous order (ensureLoaded → acquire) had a race window where a CHAT request
+    // could grab the broker between the eviction and our acquire, crashing into a
+    // half-evicted VRAM state.
     const { PRIORITY } = require('./ModelBroker');
     this._brokerToken = await this.broker.acquire(
       PRIORITY.AGENT, this.agentId,
       { timeoutMs: 10 * 60 * 1000 }   // 10 min max wait
     );
+
+    // Now we hold the broker slot — safe to prepare the model.
+    //
+    // Case A: Agent uses a DIFFERENT model from Poseidon → ensureLoaded evicts and loads.
+    // Case B: Agent shares Poseidon's model → dispose Poseidon's session first
+    //         so we can get a clean sequence (same pattern as TaskRunner BG path).
+    //         We do NOT unload the model — only dispose the chat session.
+    if (modelId === this.modelService.poseidonModelId) {
+      const posEntry = this.modelService.loaded.get(modelId);
+      if (posEntry) {
+        // Dispose Poseidon's session (releases context sequence slot back to pool)
+        if (posEntry.session) {
+          try { await posEntry.session.dispose?.(); } catch {}
+          posEntry.session = null;
+        }
+        if (posEntry._currentSequence) {
+          try { await posEntry._currentSequence.dispose?.(); } catch {}
+          posEntry._currentSequence = null;
+        }
+        // Small grace period for native llama.cpp slot release
+        await new Promise(r => setTimeout(r, 200));
+        console.log(`[AgentWorker] Disposed Poseidon session — agent ${this.agentId} getting sequence on ${modelId}`);
+      }
+    }
+
+    // Now safe to evict and load the agent's model if needed.
+    if (!this.modelService.loaded.has(modelId)) {
+      try {
+        await this.modelService.ensureLoaded(modelId);
+      } catch (loadErr) {
+        // Release broker before propagating — never hold a slot after a load failure
+        this.broker.release(this._brokerToken);
+        this._brokerToken = null;
+        throw loadErr;
+      }
+    }
+
+    const entry = this.modelService.loaded.get(modelId);
+    if (!entry) {
+      this.broker.release(this._brokerToken);
+      this._brokerToken = null;
+      throw new Error(`Model ${modelId} failed to load for agent ${this.agentId}`);
+    }
 
     const llamaCpp = await import('node-llama-cpp');
     const { defineChatSessionFunction } = llamaCpp;
@@ -391,6 +431,17 @@ class AgentWorker extends EventEmitter {
     }
     // Null sequence so image gen eviction can't hit a dangling pointer
     this.sequence = null;
+
+    // If agent used a DIFFERENT model, warm Poseidon's model back up in the background.
+    // This avoids a cold-start delay on the next user chat after a multi-model agent task.
+    const poseidonId = this.modelService.poseidonModelId;
+    if (this._modelId && poseidonId && this._modelId !== poseidonId) {
+      setImmediate(() => {
+        this.modelService.ensureLoaded(poseidonId).catch(err =>
+          console.warn(`[AgentWorker] Poseidon model warm-up failed after agent task:`, err.message)
+        );
+      });
+    }
   }
 
   /** Dispose session — releases the sequence back to Poseidon's context pool */
