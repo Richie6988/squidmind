@@ -519,39 +519,46 @@ function buildPoseidonChatRoute(v2ModelService) {
 
     let chunkCount = 0;
     let toolCallCount = 0;
+    const bus = global.ReasoningBus;
+    if (bus) bus.push({ type: 'task_start', task_id: 'poseidon_chat', title: message.slice(0, 80), agent: 'poseidon' });
     try {
       for await (const ev of v2ModelService.chatWithPoseidon(message, history || [])) {
-        // chatWithPoseidon now yields { type: 'text'|'tool_call'|'tool_result', ... }
         if (ev.type === 'text') {
           chunkCount++;
           res.write(`data: ${JSON.stringify({ text: ev.chunk })}\n\n`);
+          bus?.push({ type: 'text', task_id: 'poseidon_chat', chunk: ev.chunk });
         } else if (ev.type === 'tool_call') {
           toolCallCount++;
           res.write(`event: tool_call\ndata: ${JSON.stringify({ name: ev.name, args: ev.args })}\n\n`);
+          bus?.push({ type: 'tool_call', task_id: 'poseidon_chat', name: ev.name, args: ev.args });
         } else if (ev.type === 'tool_result') {
           const summary = ev.result?.message
             || (ev.result?.ok ? (Object.keys(ev.result).length > 2 ? 'success' : ev.result.ok) : (ev.result?.error || 'failed'));
+          const summaryStr = typeof summary === 'string' ? summary.slice(0, 300) : String(summary).slice(0, 300);
           res.write(`event: tool_result\ndata: ${JSON.stringify({
-            name: ev.name,
-            ok: ev.result?.ok !== false,
-            summary: typeof summary === 'string' ? summary.slice(0, 300) : String(summary).slice(0, 300),
-            duration_ms: ev.duration_ms
+            name: ev.name, ok: ev.result?.ok !== false,
+            summary: summaryStr, duration_ms: ev.duration_ms
           })}\n\n`);
+          bus?.push({ type: 'tool_result', task_id: 'poseidon_chat', name: ev.name, ok: ev.result?.ok !== false, summary: summaryStr });
         } else if (ev.type === 'thinking_start') {
           res.write(`event: thinking_start\ndata: {}\n\n`);
+          bus?.push({ type: 'thinking_start', task_id: 'poseidon_chat' });
         } else if (ev.type === 'thinking') {
           res.write(`event: thinking\ndata: ${JSON.stringify({ text: ev.chunk })}\n\n`);
+          bus?.push({ type: 'thinking', task_id: 'poseidon_chat', chunk: ev.chunk });
         } else if (ev.type === 'thinking_end') {
           res.write(`event: thinking_end\ndata: {}\n\n`);
+          bus?.push({ type: 'thinking_end', task_id: 'poseidon_chat' });
         }
       }
+      if (bus) bus.push({ type: 'task_end', task_id: 'poseidon_chat' });
       res.write(`event: end\ndata: ${JSON.stringify({
-        chunks: chunkCount,
-        tool_calls: toolCallCount,
+        chunks: chunkCount, tool_calls: toolCallCount,
         turn: v2ModelService.loaded.get(v2ModelService.poseidonModelId)?.sessionTurns ?? 0,
       })}\n\n`);
     } catch (err) {
       console.error('[Chat SSE] chatWithPoseidon error:', err.message, err.stack?.split('\n').slice(1,3).join(' '));
+      if (bus) bus.push({ type: 'task_end', task_id: 'poseidon_chat' });
       res.write(`event: error\ndata: ${JSON.stringify({ error: err.message })}\n\n`);
     } finally {
       res.end();
