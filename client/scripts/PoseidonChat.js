@@ -137,8 +137,12 @@ const PoseidonChat = {
     // Keep overlay synced if window resizes (e.g. panel drag)
     if (!this._resizeObserver) {
       this._resizeObserver = new ResizeObserver(() => this._syncOverlayBounds());
-      const proj = document.getElementById('projects-container');
-      if (proj) this._resizeObserver.observe(proj);
+      // Watch aquarium (resizes when control tower is dragged)
+      const aq = document.querySelector('.aquarium-wrapper');
+      if (aq) this._resizeObserver.observe(aq);
+      // Also watch right-panel for drag-to-resize events
+      const rp = document.getElementById('right-panel');
+      if (rp) this._resizeObserver.observe(rp);
       window.addEventListener('resize', () => this._syncOverlayBounds());
     }
 
@@ -614,27 +618,26 @@ const PoseidonChat = {
 
   _syncOverlayBounds() {
     if (!this.modal) return;
-    // Measure projects-container left edge = right boundary for overlay
-    // The overlay covers ONLY the aquarium, NOT the projects panel or control tower
-    const proj = document.getElementById('projects-container');
-    const hdr  = document.querySelector('header');
+    // Use aquarium bounding box as the exact target area
+    const aq  = document.querySelector('.aquarium-wrapper');
+    const hdr = document.querySelector('header');
 
-    if (proj) {
-      const pRect = proj.getBoundingClientRect();
-      // right = distance from window right edge to projects-container left edge
-      this.modal.style.left   = '0px';
-      this.modal.style.right  = (window.innerWidth - pRect.left) + 'px';
+    if (aq) {
+      const r = aq.getBoundingClientRect();
+      this.modal.style.left   = r.left   + 'px';
+      this.modal.style.top    = (hdr ? hdr.getBoundingClientRect().bottom : r.top) + 'px';
+      this.modal.style.width  = r.width  + 'px';
+      this.modal.style.right  = '';       // use left+width instead of right
       this.modal.style.bottom = '0px';
     } else {
+      // Fallback: cover everything left of projects-container
+      const proj = document.getElementById('projects-container');
+      const t = hdr ? hdr.getBoundingClientRect().bottom : 70;
       this.modal.style.left   = '0px';
-      this.modal.style.right  = '480px'; // fallback: projects(200) + tower(280)
+      this.modal.style.top    = t + 'px';
+      this.modal.style.right  = proj ? (window.innerWidth - proj.getBoundingClientRect().left) + 'px' : '480px';
+      this.modal.style.width  = '';
       this.modal.style.bottom = '0px';
-    }
-
-    if (hdr) {
-      this.modal.style.top = hdr.getBoundingClientRect().bottom + 'px';
-    } else {
-      this.modal.style.top = '70px';
     }
   },
 
