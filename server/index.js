@@ -593,11 +593,12 @@ app.get('/api/v2/projects/:projectId/outputs', async (req, res) => {
     const outputDir = path.join(AQUARIUM.PROJECTS, folder, 'output');
     try {
       const entries = await fsp2.readdir(outputDir, { withFileTypes: true });
-      const files = entries.filter(e => e.isFile()).map(e => ({
-        name: e.name,
-        path: path.join(outputDir, e.name),
-        size: (() => { try { return require('fs').statSync(path.join(outputDir, e.name)).size; } catch { return 0; } })()
-      }));
+      const files = entries.filter(e => e.isFile()).map(e => {
+        const fp = path.join(outputDir, e.name);
+        let size = 0, mtime = null;
+        try { const s = require('fs').statSync(fp); size = s.size; mtime = s.mtime.toISOString(); } catch {}
+        return { name: e.name, path: fp, size, mtime };
+      });
       res.json({ success: true, files, dir: outputDir });
     } catch {
       res.json({ success: true, files: [], dir: outputDir });

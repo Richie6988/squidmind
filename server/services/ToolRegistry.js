@@ -46,15 +46,23 @@ class ToolRegistry {
 
     this.registerTool({
       name: 'write_file',
-      description: 'Write content to a file',
+      description: 'Write content to a file. For project outputs, always write to the project output/ folder, never input/.',
       parameters: {
-        path: { type: 'string', required: true, description: 'File path to write' },
+        path: { type: 'string', required: true, description: 'File path to write. Use project output/ folder for results.' },
         content: { type: 'string', required: true, description: 'Content to write' }
       },
       execute: async ({ path: filePath, content }) => {
         try {
-          await fs.writeFile(filePath, content, 'utf8');
-          return { success: true, message: `File written: ${filePath}` };
+          // Guard: prevent writing to project input/ folders — redirect to output/
+          let resolvedPath = filePath;
+          const inputMatch = filePath.match(/^(.*\/(?:PROJECTS|projects)\/[^/]+)\/input\/(.+)$/i);
+          if (inputMatch) {
+            resolvedPath = inputMatch[1] + '/output/' + inputMatch[2];
+            console.warn(`[write_file] Redirected from input/ to output/: ${filePath} → ${resolvedPath}`);
+          }
+          await fs.mkdir(require('path').dirname(resolvedPath), { recursive: true });
+          await fs.writeFile(resolvedPath, content, 'utf8');
+          return { success: true, message: `File written: ${resolvedPath}${inputMatch ? ' (redirected from input/ to output/)' : ''}` };
         } catch (error) {
           return { success: false, error: error.message };
         }

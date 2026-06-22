@@ -487,9 +487,11 @@ const TempleInterior = {
           : `<span class="ti-file-icon">${this._ficon(f.name)}</span>`;
         const ename = this._esc(f.name);
         const sz    = f.size ? `<span class="ti-file-size">${this._fmtSize(f.size)}</span>` : '';
+        const ts    = (type === 'output' && f.mtime)
+          ? `<span class="ti-file-mtime" title="${f.mtime}">${this._relTime(f.mtime)}</span>` : '';
         return `<div class="ti-file" onclick="TempleInterior._openFile('${ename}','${this._esc(f.path||'')}','${type}','${folder}')">
           ${thumb}
-          <span class="ti-file-name" title="${ename}">${ename}</span>${sz}
+          <span class="ti-file-name" title="${ename}">${ename}</span>${sz}${ts}
           <button class="ti-file-del" onclick="event.stopPropagation();TempleInterior._deleteFile('${folder}','${ename}','${type}')">X</button>
         </div>`;
       }).join('');
@@ -1925,6 +1927,15 @@ const TempleInterior = {
     return ({ js:'JS',ts:'TS',jsx:'JSX',tsx:'TSX',py:'PY',json:'{}',yaml:'YML',yml:'YML',
       md:'MD',txt:'TXT',html:'HTM',css:'CSS',csv:'CSV',sh:'SH',
       pdf:'PDF',zip:'ZIP',mp4:'MP4',mp3:'MP3' })[ext] || '??';
+  },
+
+  _relTime(iso) {
+    if (!iso) return '';
+    const s = Math.floor((Date.now() - new Date(iso)) / 1000);
+    if (s < 60)    return `${s}s ago`;
+    if (s < 3600)  return `${Math.floor(s/60)}m ago`;
+    if (s < 86400) return `${Math.floor(s/3600)}h ago`;
+    return `${Math.floor(s/86400)}d ago`;
   },
 
   _fmtSize(b) {

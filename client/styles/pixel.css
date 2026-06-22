@@ -1431,7 +1431,8 @@ input[type="color"]::-webkit-color-swatch {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.ti-file-size { font-family: 'Courier New', monospace; font-size: 8px; color: var(--ui-muted); flex-shrink: 0; }
+.ti-file-size  { font-family: 'Courier New', monospace; font-size: 8px; color: var(--ui-muted); flex-shrink: 0; }
+.ti-file-mtime { font-family: 'Courier New', monospace; font-size: 8px; color: #4facfe; flex-shrink: 0; opacity: .7; }
 .ti-file-del {
   font-family: 'Press Start 2P', monospace;
   font-size: 6px;
