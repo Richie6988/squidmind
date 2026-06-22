@@ -45,11 +45,9 @@ const TempleInterior = {
     if (agentSection) this._renderAgentsCompact(agentSection);
 
     // Auto-start reasoning stream
-    const _rPanel = document.getElementById('ti-reasoning-panel');
-    if (_rPanel && !this._reasoningEvtSource) {
-      this._startReasoningStream(_rPanel);
-      const _rBtn = document.getElementById('ti-reasoning-toggle');
-      if (_rBtn) { _rBtn.style.background = '#00ffb4'; _rBtn.style.color = '#020810'; _rBtn.style.borderColor = '#00ffb4'; _rBtn.textContent = '⏹ STOP'; }
+    if (!this._reasoningEvtSource) {
+      const _rPanel = document.getElementById('ti-reasoning-panel');
+      if (_rPanel) this._startReasoningStream(_rPanel);
     }
 
     this._pollTimer = setInterval(() => {
@@ -118,10 +116,8 @@ const TempleInterior = {
     <div class="ti-ide-tabbar" id="ti-ide-tabbar"
       style="display:flex;align-items:center;gap:2px;padding:0 6px;flex-shrink:0;border-bottom:1px solid var(--border);min-height:26px;background:#030d1a;z-index:2;">
       <span class="ti-ide-notabs" id="ti-ide-notabs"
-        style="font-size:8px;opacity:.3;pointer-events:none;user-select:none;">NO FILE OPEN</span>
+        style="font-size:8px;opacity:.3;pointer-events:none;user-select:none;">LIVE STREAM</span>
       <span style="flex:1;min-width:0;"></span>
-      <button class="ti-tab-sm" id="ti-reasoning-toggle" onclick="TempleInterior._toggleReasoningStream()"
-        style="flex-shrink:0;border-color:rgba(0,255,180,0.35);color:#00ffb4;font-size:8px;">&#x25CF; LIVE</button>
     </div>
     <!-- File toolbar — visible only when a file is open -->
     <div class="ti-ide-toolbar" id="ti-ide-toolbar"
@@ -129,7 +125,8 @@ const TempleInterior = {
       <span class="ti-ide-fname" id="ti-ide-fname"
         style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:9px;color:#94a3b8;"></span>
       <button class="ti-tab-sm accent" onclick="TempleInterior._ideSave()" id="ti-ide-save-btn">SAVE</button>
-      <button class="ti-tab-sm" onclick="TempleInterior._ideTogglePreview()" id="ti-prev-toggle" style="display:none;">PREVIEW</button>
+      <button class="ti-tab-sm" onclick="TempleInterior._closeAllFiles()" title="Close all open files and return to live stream"
+        style="border-color:rgba(239,68,68,0.3);color:#94a3b8;">CLOSE ALL</button>
     </div>
     <!-- Content area: flex:1 — ONE child visible at a time fills the remaining space -->
     <div id="ti-content-area" style="flex:1;min-height:0;position:relative;overflow:hidden;">
@@ -1502,14 +1499,13 @@ const TempleInterior = {
 
 
   _renderIdeTabs() {
-    const bar     = document.getElementById('ti-ide-tabbar');
     const noTabs  = document.getElementById('ti-ide-notabs');
     const toolbar = document.getElementById('ti-ide-toolbar');
     if (!bar) return;
     bar.querySelectorAll('.ti-ide-filetab').forEach(t => t.remove());
 
     if (!this._openFiles.length) {
-      if (noTabs)  noTabs.style.display  = '';
+      if (noTabs)  { noTabs.style.display = ''; noTabs.textContent = 'LIVE STREAM'; }
       if (toolbar) toolbar.style.display = 'none';
       // Bring reasoning back to front
       const rPanel = document.getElementById('ti-reasoning-panel');
@@ -1521,13 +1517,12 @@ const TempleInterior = {
       const fnEl = document.getElementById('ti-ide-fname');
       if (fnEl) fnEl.textContent = '';
       const status = document.getElementById('ti-ide-status');
-      if (status) status.textContent = 'LIVE STREAM';
+      if (status) status.textContent = 'LIVE';
       return;
     }
 
     if (noTabs) noTabs.style.display = 'none';
 
-    const liveBtn = bar.querySelector('#ti-reasoning-toggle');
     this._openFiles.forEach((f, i) => {
       const btn = document.createElement('button');
       btn.className = `ti-ide-filetab${i === this._activeFileIdx ? ' active' : ''}${f.dirty ? ' dirty' : ''}`;
@@ -1535,7 +1530,7 @@ const TempleInterior = {
       btn.innerHTML = `${this._esc(f.name.slice(0, 20))}${f.dirty ? ' ●' : ''} <span class="ti-ide-tabclose" onclick="event.stopPropagation();TempleInterior._ideClose(${i})">×</span>`;
       btn.onclick = () => this._ideActivate(i);
       btn.onmousedown = (e) => { if (e.button === 1) { e.preventDefault(); this._ideClose(i); } };
-      bar.insertBefore(btn, liveBtn || null);
+      bar.appendChild(btn);
     });
   },
 
@@ -1629,6 +1624,17 @@ const TempleInterior = {
   },
 
   // Toggle SSE stream on/off — reasoning panel stays visible either way
+  _closeAllFiles() {
+    // Save current file first
+    const ed = document.getElementById('ti-editor');
+    if (ed && this._activeFileIdx >= 0 && this._openFiles[this._activeFileIdx]) {
+      this._openFiles[this._activeFileIdx].content = ed.value;
+    }
+    this._openFiles = [];
+    this._activeFileIdx = -1;
+    this._renderIdeTabs(); // will restore reasoning to front
+  },
+
   _toggleReasoningStream() {
     const btn = document.getElementById('ti-reasoning-toggle');
     const panel = document.getElementById('ti-reasoning-panel');
