@@ -411,7 +411,7 @@ Runs a single task for a single agent.
 
 **System prompt sections for agents:** identity, specialization, role, personality traits, current task, project context, skill list with steps.
 
-**AgentWorkerPool (417 lines):** Manages concurrent workers. Enforces the single-task-per-agent constraint already enforced by TaskRunner filter. Emits events on task start/complete/fail.
+**AgentWorkerPool (417 lines):** Manages a pool of AgentWorker instances. Used exclusively by the `/api/v2/agents/:id/run` manual dispatch route — it is NOT used by TaskRunner for automated task execution (TaskRunner runs all scheduled tasks via Poseidon BG mode via `chatWithPoseidon`). Useful for direct manual agent invocation from the UI or external API calls.
 
 ---
 
@@ -1017,6 +1017,7 @@ Skills are JSON instruction sets stored in `server/skills/` (seeded once) and `a
 | `generate_image` | Generate Image | Stable diffusion prompt engineering + generation |
 | `find_image` | Find Image | Web image search + download to project |
 | `metacognition` | Metacognition | Self-reflection on quality, errors, improvement |
+| `git_workflow` | Git Workflow | Commit + push changes: diff review → commit with conventional message → push |
 | `self_improve` | Self-Improve | Update own soul.json / skills based on performance |
 
 **Skill file structure:**

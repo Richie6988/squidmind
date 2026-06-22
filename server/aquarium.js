@@ -219,9 +219,20 @@ const AQUARIUM = {
     fs.mkdirSync(AQUARIUM.OUTPUT, { recursive: true });
 
     if (fs.existsSync(SKILLS_SEED)) {
+      // Load deletion blocklist — skills deleted via DELETE route are never re-seeded
+      const blocklistPath = path.join(AQUARIUM.SKILLS, '.skills_deleted');
+      let deletedSet = new Set();
+      try {
+        const bl = JSON.parse(fs.readFileSync(blocklistPath, 'utf8'));
+        if (Array.isArray(bl)) bl.forEach(id => deletedSet.add(id));
+      } catch {}
+      AQUARIUM.skillsDeletedPath = blocklistPath; // expose for DELETE route
+
       let n = 0;
       for (const f of fs.readdirSync(SKILLS_SEED)) {
         if (!f.endsWith('.json')) continue;
+        const skillId = f.replace('.json', '');
+        if (deletedSet.has(skillId)) continue; // respect user deletion
         const dst = path.join(AQUARIUM.SKILLS, f);
         if (!fs.existsSync(dst)) { fs.copyFileSync(path.join(SKILLS_SEED, f), dst); n++; }
       }

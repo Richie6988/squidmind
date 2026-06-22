@@ -70,7 +70,7 @@ const PanelResizer = {
       window.ApiV2._fetch('/field', {
         method: 'PATCH',
         body: JSON.stringify({
-          filePath: 'main/poseidon_brain.json',
+          filePath: 'BRAIN/poseidon_brain.json',
           fieldPath: 'settings.right_panel_width',
           newValue: px,
           reason: 'user resized panel'

@@ -467,6 +467,18 @@ router.delete('/skills/:id', async (req, res) => {
     const skillId = req.params.id;
     await fsp.unlink(path.join(AQUARIUM.SKILLS, skillId + '.json')).catch(() => {});
     await fsp.unlink(path.join(__dirname, '../skills', skillId + '.json')).catch(() => {});
+
+    // Persist to blocklist so skill is never re-seeded on restart (IC-15)
+    const blocklistPath = AQUARIUM.skillsDeletedPath || path.join(AQUARIUM.SKILLS, '.skills_deleted');
+    try {
+      let deleted = [];
+      try { deleted = JSON.parse(fs.readFileSync(blocklistPath, 'utf8')); } catch {}
+      if (!deleted.includes(skillId)) {
+        deleted.push(skillId);
+        await fsp.writeFile(blocklistPath, JSON.stringify(deleted, null, 2), 'utf8');
+      }
+    } catch {}
+
     // Rebuild positive registry
     const regPath = path.join(AQUARIUM.SKILLS, 'skills_registry.json');
     try {

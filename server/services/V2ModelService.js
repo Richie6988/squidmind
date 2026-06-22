@@ -1585,7 +1585,7 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
         '  - Increment dream_count',
         '  - Output ONLY valid JSON between ```json and ``` markers',
         '### PHASE 4 — SKILLS: After the JSON, list 0-2 skills to write/update.',
-        '  Format: SKILL_UPDATE: <skill_id> | <name> | <summary> | <steps>',
+        '  Format: SKILL_UPDATE: <skill_id> | <name> | <summary> | <step1> ;; <step2> ;; <step3>',
         '  Only write skills for patterns you ACTUALLY observed in the log.',
       ].join('\n');
 
@@ -1676,7 +1676,7 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
             ? JSON.parse(fsSync.readFileSync(skillPath, 'utf8')) : { version: 0 };
           const updated = {
             skill_id: skillId.trim(), name: name.trim(), summary: summary.trim(),
-            steps: steps.trim().split(/\s*\|\s*/).filter(Boolean),
+            steps: steps.trim().split(/\s*;;\s*/).filter(Boolean),
             version: (existing.version || 0) + 1,
             updated_at: new Date().toISOString()
           };
