@@ -433,60 +433,59 @@ const AgentForm = {
     const ctx = canvas.getContext('2d');
     const W = canvas.width, H = canvas.height;
     ctx.clearRect(0, 0, W, H);
-    const bg = ctx.createRadialGradient(W/2,H/2,0,W/2,H/2,W/1.3);
+    const bg = ctx.createRadialGradient(W/2,H/2,0,W/2,H/2,W/1.5);
     bg.addColorStop(0,'#0d2340'); bg.addColorStop(1,'#020810');
     ctx.fillStyle = bg; ctx.fillRect(0,0,W,H);
     if (!opt || opt === 'none') {
-      ctx.fillStyle = '#2a3a4a'; ctx.font = 'bold 9px monospace';
-      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.fillText('\u2013', W/2, H/2); return;
+      ctx.fillStyle='#334155'; ctx.font='bold 14px monospace';
+      ctx.textAlign='center'; ctx.textBaseline='middle';
+      ctx.fillText('–',W/2,H/2); return;
     }
-    if (typeof Squid === 'undefined') return;
-    const app = this.brain?.appearance || {};
-    try {
-      const sq = new Squid({
-        id: '__tile__', name: '',
-        appearance: { ...app, size: 'medium', accessories: { [key]: opt } },
-        accessories: { [key]: opt }, status: 'idle', x: W/2, y: H/2,
-      });
-      sq.animFrame=0; sq.bobOffset=0; sq.glowPulse=0; sq.isSleeping=false;
-      sq.isHovered=false; sq.alpha=1; sq.insideTemple=null;
-      sq.jumpHeight=0; sq.heartParticles=[]; sq.isDragging=false;
-      sq.baseSize = 0.30;
-      sq.x = W/2; sq.y = H/2 + 4;
-      ctx.save(); ctx.beginPath(); ctx.rect(0,0,W,H); ctx.clip();
-      sq.draw(ctx); ctx.restore();
-    } catch {}
+    const SA = window.SquidAccessories;
+    if (!SA) return;
+    // Draw ONLY the accessory (no body/tentacles)
+    const size = W * 0.72;
+    ctx.save(); ctx.translate(W/2, H/2);
+    if      (key==='hat')     SA.drawHat(ctx, opt, size);
+    else if (key==='glasses') SA.drawGlasses(ctx, opt, size);
+    else if (key==='eyes')    SA.drawEyes(ctx, opt, size);
+    else if (key==='outfit')  SA.drawOutfit(ctx, opt, size, 0);
+    ctx.restore();
   },
   _updateAppearancePreview() {
     const canvas = this.modal?.querySelector('#af-preview-canvas');
-    if (!canvas) return;
-    if (typeof Squid === 'undefined') return;
+    if (!canvas || typeof Squid === 'undefined') return;
     const ctx = canvas.getContext('2d');
     const W = canvas.width, H = canvas.height;
     ctx.clearRect(0, 0, W, H);
-    const bg = ctx.createRadialGradient(W/2,H/2,0,W/2,H/2,W/1.3);
+    const bg = ctx.createRadialGradient(W/2,H/2,0,W/2,H/2,W*0.8);
     bg.addColorStop(0,'#0d2340'); bg.addColorStop(1,'#020810');
     ctx.fillStyle = bg; ctx.fillRect(0,0,W,H);
-    ctx.strokeStyle = 'rgba(79,172,254,0.05)'; ctx.lineWidth = 1;
-    for (let x=0;x<W;x+=20){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke();}
-    for (let y=0;y<H;y+=20){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();}
+    ctx.strokeStyle='rgba(79,172,254,0.04)'; ctx.lineWidth=1;
+    for(let x=0;x<W;x+=16){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke();}
+    for(let y=0;y<H;y+=16){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();}
     const app = this.brain?.appearance || {};
     try {
       const sq = new Squid({
-        id: '__preview__', name: this.brain?.identity?.display_name || 'Preview',
-        appearance: { ...app, size: 'medium' },
-        accessories: app.accessories || null,
-        status: 'idle', x: W/2, y: H/2,
+        id:'__preview__',
+        name: this.brain?.identity?.display_name || this.brain?.display_name || 'Agent',
+        appearance:{...app, size:'medium'},
+        accessories: app.accessories||null,
+        status:'idle', x:W/2, y:H/2,
       });
-      sq.animFrame=0; sq.bobOffset=0; sq.glowPulse=0; sq.isSleeping=false;
-      sq.isHovered=false; sq.alpha=1; sq.insideTemple=null;
-      sq.jumpHeight=0; sq.heartParticles=[]; sq.isDragging=false;
-      sq.baseSize = 0.24;
-      sq.x = W/2; sq.y = H/2 + H*0.05;
+      sq.animFrame=0; sq.bobOffset=0; sq.glowPulse=0;
+      sq.isSleeping=false; sq.isHovered=false; sq.alpha=1;
+      sq.insideTemple=null; sq.jumpHeight=0; sq.heartParticles=[]; sq.isDragging=false;
+      sq.baseSize = 0.36;
+      sq.x=W/2; sq.y=H/2 - H*0.06;
       ctx.save(); ctx.beginPath(); ctx.rect(0,0,W,H); ctx.clip();
       sq.draw(ctx); ctx.restore();
-    } catch (e) { console.warn('[preview]', e.message); }
+      const agName=(sq.name||'Agent').slice(0,16);
+      ctx.fillStyle='rgba(2,8,16,0.75)'; ctx.fillRect(0,H-26,W,26);
+      ctx.fillStyle='#facc15'; ctx.font='6px "Press Start 2P",monospace';
+      ctx.textAlign='center'; ctx.textBaseline='middle';
+      ctx.fillText(agName,W/2,H-13);
+    } catch(e){console.warn('[preview]',e.message);}
   },
   _addToolsGrid(parent, allTools, allowedTools, brainFile) {
     const section = document.createElement('div');
