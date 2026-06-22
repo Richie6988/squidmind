@@ -504,7 +504,9 @@ class TaskRunner {
               try { await posEntry._currentSequence.dispose?.(); } catch {}
               posEntry._currentSequence = null;
             }
-            posEntry.sessionTurns = 0;
+            posEntry.sessionTurns      = 0;
+            posEntry.contextPct        = 0;
+            posEntry.contextUsedTokens = 0;
             // Wait for llama.cpp native release — dispose() is async but
             // the native slot release can lag; 500ms is safe on most hardware.
             await new Promise(r => setTimeout(r, 500));
@@ -586,7 +588,9 @@ class TaskRunner {
               try { await posEnt._currentSequence.dispose?.(); } catch {}
               posEnt._currentSequence = null;
             }
-            posEnt.sessionTurns = 0;
+            posEnt.sessionTurns      = 0;
+            posEnt.contextPct        = 0;
+            posEnt.contextUsedTokens = 0;
             await new Promise(r => setTimeout(r, 500));  // ensure llama.cpp frees the slot
           }
           this.modelService.broker.release(bgToken);

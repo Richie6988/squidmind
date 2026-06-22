@@ -324,6 +324,7 @@ class AgentWorker extends EventEmitter {
     }
     this.generating = true;
     this.status     = 'running';
+    this._pendingError = null;
 
     // Update agent status in registry
     try {
@@ -341,6 +342,9 @@ class AgentWorker extends EventEmitter {
 
     yield { type: 'start', agent_id: this.agentId, model_id: this._modelId };
 
+    // Wrap entire execution in try/finally so broker is always released
+    // even if the caller abandons the for-await generator mid-stream
+    try {
     const events = this._pendingToolEvents;
     events.length = 0; // clear stale
 
@@ -416,31 +420,52 @@ class AgentWorker extends EventEmitter {
       yield { type: 'end', agent_id: this.agentId };
     }
 
-    // Update task completion in registry
-    try {
-      await this.rm.updateAgentStatus(this.agentId, 'sleeping');
-    } catch {}
+    } catch (_runErr) {
+      // Can't yield inside catch in async generators — store for post-finally
+      this._pendingError = _runErr.message;
+    } finally {
+      // ── Guaranteed cleanup — even if caller abandons the generator mid-stream ──
+      this.generating = false;
+      this.status     = 'idle';
 
-    this.generating = false;
-    this.status     = 'idle';
+      try { await this.rm.updateAgentStatus(this.agentId, 'sleeping'); } catch {}
 
-    // Release model slot — lets next agent/task/dream proceed
-    if (this._brokerToken) {
-      this.broker.release(this._brokerToken);
-      this._brokerToken = null;
+      // Release broker — MUST happen before any subsequent inference can proceed
+      if (this._brokerToken) {
+        this.broker.release(this._brokerToken);
+        this._brokerToken = null;
+      }
+
+      // Null sequence so image gen eviction cannot hit a dangling pointer
+      this.sequence = null;
+
+      // Reset Poseidon context stats (stale % on Control Tower after session share)
+      const poseidonId = this.modelService.poseidonModelId;
+      if (this._modelId === poseidonId) {
+        const posEntry = this.modelService.loaded.get(poseidonId);
+        if (posEntry) {
+          posEntry.contextPct        = 0;
+          posEntry.contextUsedTokens = 0;
+          posEntry.sessionTurns      = 0;
+        }
+      }
+
+      // If agent had its OWN model: warm Poseidon's model back up.
+      // setImmediate = after current event loop tick; no broker held deliberately —
+      // chatWithPoseidon will call ensureLoaded itself if needed, this just pre-warms.
+      if (this._modelId && poseidonId && this._modelId !== poseidonId) {
+        setImmediate(() => {
+          this.modelService.ensureLoaded(poseidonId).catch(err =>
+            console.warn('[AgentWorker] Poseidon warm-up failed after agent task:', err.message)
+          );
+        });
+      }
     }
-    // Null sequence so image gen eviction can't hit a dangling pointer
-    this.sequence = null;
-
-    // If agent used a DIFFERENT model, warm Poseidon's model back up in the background.
-    // This avoids a cold-start delay on the next user chat after a multi-model agent task.
-    const poseidonId = this.modelService.poseidonModelId;
-    if (this._modelId && poseidonId && this._modelId !== poseidonId) {
-      setImmediate(() => {
-        this.modelService.ensureLoaded(poseidonId).catch(err =>
-          console.warn(`[AgentWorker] Poseidon model warm-up failed after agent task:`, err.message)
-        );
-      });
+    // Yield pending error after finally (can't yield inside finally in async generators)
+    if (this._pendingError) {
+      const msg = this._pendingError;
+      this._pendingError = null;
+      yield { type: 'error', error: msg };
     }
   }
 
