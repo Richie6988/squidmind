@@ -1527,7 +1527,9 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
       let tempLog = '';
       try { tempLog = fsSync.readFileSync(AQUARIUM.TEMP_LOG, 'utf8').trim(); } catch {}
       if (!tempLog || tempLog.startsWith('<!--')) {
-        console.log('[Dream] 💤 temp.md is empty — nothing to consolidate. Skipping.');
+        console.log('[Dream] 💤 temp.md is empty or already cleared — nothing to consolidate. Skipping.');
+        this.broker.release(dreamBrokerToken);
+        entry.dreaming = false;
         return;
       }
       // Truncate to last 12k chars if very long (fits in context window)
@@ -1683,11 +1685,12 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
         } catch {}
       }
 
-      // ── 8. Clear temp.md ──────────────────────────────────────────────────
-      const header = `<!-- POSEIDON INTERACTION LOG — cleared after dream #${(soul.dream_count || 0) + 1} on ${new Date().toISOString()} -->
-`;
-      fsSync.writeFileSync(AQUARIUM.TEMP_LOG, header, 'utf8');
-      console.log('[Dream] ✓ temp.md cleared');
+      // ── 8. Clear temp.md — always after processing ─────────────────────
+      try {
+        const header = `<!-- cleared after dream on ${new Date().toISOString()} -->\n`;
+        fsSync.writeFileSync(AQUARIUM.TEMP_LOG, header, 'utf8');
+        console.log('[Dream] ✓ temp.md cleared');
+      } catch (ce) { console.warn('[Dream] temp.md clear failed:', ce.message); }
 
       // ── 9. Save dream summary to dream_memory.json ────────────────────────
       const summaryMatch = dreamResponse.match(/evolution_log[\s\S]{0,200}?"([^"]{20,200})"/);
@@ -1700,6 +1703,13 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
       console.log('[Dream] 💤 Dream cycle complete');
     } catch (err) {
       console.error('[Dream] Dream error:', err.message);
+      // Safety: clear temp.md even on error so we don't loop on bad content
+      try {
+        const AQUARIUM = require('../aquarium');
+        const fsSync   = require('fs');
+        fsSync.writeFileSync(AQUARIUM.TEMP_LOG, `<!-- cleared after dream error on ${new Date().toISOString()} -->\n`, 'utf8');
+        console.log('[Dream] ✓ temp.md cleared (error recovery)');
+      } catch {}
     } finally {
       entry.dreaming = false;
       if (this.broker.release) this.broker.release(dreamBrokerToken);
