@@ -1289,9 +1289,9 @@ const TempleInterior = {
       const f = this._openFiles[idx];
       if (f) { f.content = content; f.loading = false; }
       if (this._activeFileIdx === idx) {
-        const ed = document.getElementById('ti-editor');
-        if (ed) ed.value = content;
-        this._setStatus(`${name} — ${content.length} chars`);
+        // Re-activate with loaded content — _ideActivate handles all file types
+        this._ideActivate(idx);
+        this._setStatus(`${name} loaded`);
       }
     })();
   },
@@ -1357,33 +1357,36 @@ const TempleInterior = {
       if (status) status.textContent = f.name + ' [HTML PREVIEW]';
 
     } else {
-      // Text / code — full-area editor
+      // Text / code — show syntax-highlighted preview in iframe, editor hidden
       if (ed) {
-        ed.style.display = 'block';
-        ed.style.zIndex  = '2';
-        ed.value = f.loading ? 'Loading...' : (f.content || '');
-
+        ed.style.display = 'none'; // hidden by default
+        ed.value = f.loading ? '' : (f.content || '');
         const fileLang = f.name.match(/\.(\w+)$/)?.[1] || 'text';
         ed.setAttribute('data-lang', fileLang);
+      }
 
-        if (isCode) {
-          // IDE-dark theme for code files
-          ed.style.fontFamily   = "'JetBrains Mono','Fira Code','Cascadia Code','Consolas','Courier New',monospace";
-          ed.style.fontSize     = '12px';
-          ed.style.lineHeight   = '1.7';
-          ed.style.color        = '#abb2bf';
-          ed.style.background   = '#1e2127';
-          ed.style.padding      = '14px 16px';
-          ed.style.letterSpacing= '0';
-        } else if (isJson) {
-          ed.style.fontFamily = "'Courier New',monospace";
-          ed.style.fontSize   = '11px';
-          ed.style.lineHeight = '1.6';
-          ed.style.color      = '#e6db74';
-          ed.style.background = '#1a1a2e';
-          ed.style.padding    = '12px';
-        } else {
-          // Plain text / markdown source
+      if (isCode && !f.loading) {
+        // Syntax highlighted view
+        if (frame) {
+          frame.style.display = 'block';
+          frame.style.zIndex  = '2';
+          const fileLang2 = f.name.match(/\.(\w+)$/)?.[1] || 'text';
+          this._renderCodePreview(f.content || '', fileLang2);
+        }
+        if (prevBtn) prevBtn.style.display = ''; // allow toggle to raw editor
+      } else if (isCode && f.loading) {
+        // Still loading — show placeholder
+        if (frame) {
+          frame.style.display = 'block';
+          frame.style.zIndex  = '2';
+          frame.srcdoc = '<html><body style="margin:0;background:#1e2127;color:#5c6370;font-family:monospace;padding:20px;">Loading…</body></html>';
+        }
+      } else {
+        // Plain text — raw editor
+        if (ed) {
+          ed.style.display    = 'block';
+          ed.style.zIndex     = '2';
+          ed.value            = f.loading ? 'Loading...' : (f.content || '');
           ed.style.fontFamily = "'Courier New',monospace";
           ed.style.fontSize   = '11px';
           ed.style.lineHeight = '1.6';
@@ -1392,7 +1395,7 @@ const TempleInterior = {
           ed.style.padding    = '12px';
         }
       }
-      if (prevBtn) prevBtn.style.display = 'none';
+      if (prevBtn && !isCode) prevBtn.style.display = 'none';
       const lang = f.name.match(/\.(\w+)$/)?.[1] || 'text';
       const langLabel = isCode ? lang.toUpperCase() : (isJson ? 'JSON' : 'TEXT');
       if (status) status.textContent = f.name + ` [${langLabel}]`;
@@ -1445,6 +1448,56 @@ const TempleInterior = {
       p{margin:.4em 0;}
     </style></head><body><p>${html}</p></body></html>`;
   },
+
+  _renderCodePreview(code, lang) {
+    const frame = document.getElementById('ti-preview-frame');
+    if (!frame) return;
+
+    // Minimal syntax highlighting via regex
+    const esc = s => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+    const keywords = {
+      py:   /\b(def|class|import|from|return|if|elif|else|for|while|in|not|and|or|is|None|True|False|pass|break|continue|raise|try|except|finally|with|as|lambda|yield|async|await|self|print|len|range|type|str|int|float|list|dict|set|tuple)\b/g,
+      js:   /\b(function|const|let|var|return|if|else|for|while|do|in|of|class|extends|import|export|default|new|this|typeof|instanceof|null|undefined|true|false|async|await|try|catch|finally|throw|switch|case|break|continue|=>)\b/g,
+      json: /("[\w\-]+")\s*:/g,
+      sh:   /\b(echo|if|then|else|fi|for|do|done|while|case|esac|function|export|local|return|source|exit)\b/g,
+    };
+
+    let highlighted = esc(code);
+    const kw = keywords[lang] || keywords.py;
+
+    // Strings
+    highlighted = highlighted.replace(/(&#39;.*?&#39;|&quot;.*?&quot;|`[^`]*`)/g, '<span class="ck-str">$1</span>');
+    // Comments
+    if (['py','sh'].includes(lang))
+      highlighted = highlighted.replace(/(#[^\n]*)/g, '<span class="ck-cmt">$1</span>');
+    if (['js','ts','java','c','cpp'].includes(lang))
+      highlighted = highlighted.replace(/(\/\/[^\n]*)/g, '<span class="ck-cmt">$1</span>');
+    // Numbers
+    highlighted = highlighted.replace(/\b(\d+\.?\d*)\b/g, '<span class="ck-num">$1</span>');
+    // Keywords (applied to raw escaped text)
+    highlighted = highlighted.replace(kw, '<span class="ck-kw">$&</span>');
+    // Function/class names
+    highlighted = highlighted.replace(/\b([a-zA-Z_]\w*)\s*(?=\()/g, '<span class="ck-fn">$1</span>');
+    // Line numbers
+    const lines = highlighted.split('\n');
+    const numbered = lines.map((l, i) =>
+      `<span class="ln">${String(i+1).padStart(4,' ')}</span>${l}`
+    ).join('\n');
+
+    frame.srcdoc = `<!DOCTYPE html><html><head><style>
+      body { margin:0; background:#1e2127; color:#abb2bf; font-family:'JetBrains Mono','Fira Code','Consolas','Courier New',monospace; font-size:12px; line-height:1.7; overflow-x:auto; }
+      pre  { margin:0; padding:12px 0; white-space:pre; }
+      .ln  { display:inline-block; width:3em; color:#4a5568; text-align:right; padding-right:1em; margin-right:.5em; border-right:1px solid #2d3748; user-select:none; }
+      .ck-kw  { color:#c678dd; font-weight:600; }
+      .ck-str { color:#98c379; }
+      .ck-cmt { color:#5c6370; font-style:italic; }
+      .ck-num { color:#d19a66; }
+      .ck-fn  { color:#61afef; }
+      ::selection { background:#3d4a5f; }
+    </style></head><body><pre>${numbered}</pre></body></html>`;
+  },
+
 
   _renderIdeTabs() {
     const bar     = document.getElementById('ti-ide-tabbar');
