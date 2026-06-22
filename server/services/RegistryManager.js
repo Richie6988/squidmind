@@ -160,6 +160,8 @@ class RegistryManager {
 
     } finally {
       resolveMutex(); // always release — unblocks the next waiting call
+      // Clean up resolved promise if no newer call has replaced it (prevents memory leak)
+      if (this._idMutex.get(rp) === current) this._idMutex.delete(rp);
     }
   }
 
@@ -168,7 +170,7 @@ class RegistryManager {
   _defaultIdFormat(registryPath) {
     if (registryPath.includes('agent'))   return 'agent_NNN';
     if (registryPath.includes('project')) return 'project_NNN';
-    if (registryPath.includes('task'))    return 'task_NNN';
+    if (registryPath.includes('task'))    return 'task_NNNN';
     if (registryPath.includes('model'))   return 'model_NNN';
     return 'item_NNN';
   }
@@ -1077,10 +1079,10 @@ class RegistryManager {
     const path = require('path');
     const AQUARIUM = require('../aquarium');
     const flatPath = path.join(AQUARIUM.TASKS, 'tasks_registry.json');
-    let reg = { metadata: { next_id: 1, id_format: 'task_NNN' }, tasks: {} };
+    let reg = { metadata: { next_id: 1, id_format: 'task_NNNN' }, tasks: {} };
     try { reg = JSON.parse(await fs.readFile(flatPath, 'utf8')); } catch {}
 
-    const terminalStatuses = new Set(['completed', 'cancelled', 'archived']);
+    const terminalStatuses = new Set(['completed', 'cancelled', 'archived', 'failed']);
     const status = task.lifecycle?.status || task.status || '';
     if (terminalStatuses.has(status)) {
       // Remove terminal tasks from registry — output is in result_file on disk
@@ -1098,7 +1100,7 @@ class RegistryManager {
     const path = require('path');
     const AQUARIUM = require('../aquarium');
     const flatPath = path.join(AQUARIUM.TASKS, 'tasks_registry.json');
-    let reg = { metadata: { next_id: 1, id_format: 'task_NNN' }, tasks: {} };
+    let reg = { metadata: { next_id: 1, id_format: 'task_NNNN' }, tasks: {} };
     if (fs.existsSync(flatPath)) {
       try { reg = JSON.parse(fs.readFileSync(flatPath, 'utf8')); } catch {}
     }
