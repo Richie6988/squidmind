@@ -614,30 +614,28 @@ const PoseidonChat = {
 
   _syncOverlayBounds() {
     if (!this.modal) return;
-    // Overlay should cover only the aquarium area:
-    // right edge = left edge of projects-container (first right panel)
-    // This excludes both projects panel and control tower from the backdrop.
-    const aquarium = document.querySelector('.aquarium-wrapper');
-    const proj     = document.getElementById('projects-container');
-    if (aquarium) {
-      const rect = aquarium.getBoundingClientRect();
-      // left = aquarium left, right = window.innerWidth - aquarium right edge
-      this.modal.style.left  = rect.left + 'px';
-      this.modal.style.right = (window.innerWidth - rect.right) + 'px';
-    } else if (proj) {
-      const rect = proj.getBoundingClientRect();
-      this.modal.style.left  = '0px';
-      this.modal.style.right = (window.innerWidth - rect.left) + 'px';
+    // Measure projects-container left edge = right boundary for overlay
+    // The overlay covers ONLY the aquarium, NOT the projects panel or control tower
+    const proj = document.getElementById('projects-container');
+    const hdr  = document.querySelector('header');
+
+    if (proj) {
+      const pRect = proj.getBoundingClientRect();
+      // right = distance from window right edge to projects-container left edge
+      this.modal.style.left   = '0px';
+      this.modal.style.right  = (window.innerWidth - pRect.left) + 'px';
+      this.modal.style.bottom = '0px';
     } else {
-      this.modal.style.left  = '0px';
-      this.modal.style.right = '480px'; // fallback: 200+280
+      this.modal.style.left   = '0px';
+      this.modal.style.right  = '480px'; // fallback: projects(200) + tower(280)
+      this.modal.style.bottom = '0px';
     }
-    // Top = header bottom
-    const hdr = document.querySelector('header');
+
     if (hdr) {
       this.modal.style.top = hdr.getBoundingClientRect().bottom + 'px';
+    } else {
+      this.modal.style.top = '70px';
     }
-    this.modal.style.bottom = '0px';
   },
 
   close() {
