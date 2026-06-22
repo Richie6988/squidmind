@@ -132,7 +132,7 @@ My response: "${ss.last_response_preview}"${tools}
       const tempPath = path.join(AQUARIUM.BRAIN, 'temp.md');
       if (fs.existsSync(tempPath)) {
         const raw = fs.readFileSync(tempPath, 'utf8').trim();
-        if (raw.length > 50) {
+        if (raw.length > 50 && !raw.startsWith('<!--')) {
           // Keep only the last ~3000 chars to avoid bloating context on reload
           const excerpt = raw.length > 3000 ? '…' + raw.slice(-3000) : raw;
           tempMdSection = `# RECENT INTERACTION LOG (last exchanges — context was just reloaded)\nThis is your short-term memory of recent turns. Use it to resume naturally.\n\n${excerpt}\n\n(End of interaction log — continue from where you left off.)`;
