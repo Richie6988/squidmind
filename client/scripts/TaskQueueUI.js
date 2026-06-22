@@ -116,8 +116,9 @@ const TaskQueueUI = {
       } else {
         // Image tasks pinned at top, then rest sorted by recency
         const isImg = t => (t.task_type === 'image_gen') || /^generate[: ]/i.test(t.title);
-        const imgTasks  = doneTasks.filter(t => isImg(t) && t.lifecycle?.status === 'completed');
-        const restTasks = doneTasks.filter(t => !isImg(t) || t.lifecycle?.status !== 'completed');
+        const getStatus = t => t.lifecycle?.status || t.status || '';
+        const imgTasks  = doneTasks.filter(t => isImg(t) && getStatus(t) === 'completed');
+        const restTasks = doneTasks.filter(t => !isImg(t) || getStatus(t) !== 'completed');
         resultsEl.innerHTML =
           (imgTasks.length  ? `<div class="tq-img-pinned">${imgTasks.map(t => this._makeImageCard(t)).join('')}</div>` : '') +
           restTasks.map(t => this._makeDoneItem(t)).join('');
@@ -127,11 +128,12 @@ const TaskQueueUI = {
     }
   },
   _makeDoneItem(t) {
-    const ok      = t.lifecycle?.status === 'completed';
-    const icon    = ok ? '✓' : '✗';
-    const agent   = t.assignment?.assigned_name || t.assignment?.assigned_to || '—';
-    const when    = t.lifecycle?.completed_at ? this._elapsed(t.lifecycle.completed_at) : '';
-    // Image generation tasks: show thumbnail from output_preview url
+    // results_log entries have flat structure: status, completed_at, assigned_name at top level
+    const ok    = (t.lifecycle?.status || t.status) === 'completed';
+    const icon  = ok ? '✓' : '✗';
+    const agent = t.assignment?.assigned_name || t.assignment?.assigned_to || t.assigned_name || '—';
+    const completedAt = t.lifecycle?.completed_at || t.completed_at;
+    const when  = completedAt ? this._elapsed(completedAt) : '';
     const isImageTask = t.task_type === 'image_gen' || /^generate[: ]/i.test(t.title || '');
     const imgPreview = (isImageTask && t.output_preview)
       ? `<div style="margin:4px 0;"><img src="${t.output_preview}" style="max-width:100%;max-height:140px;border:1px solid rgba(255,255,255,0.1);border-radius:3px;" onerror="this.style.display='none'"></div>`
@@ -145,7 +147,7 @@ const TaskQueueUI = {
         <button onclick="event.stopPropagation();TaskQueueUI.dismissResult('${t.task_id}')" title="Dismiss" style="position:absolute;top:4px;right:4px;background:rgba(239,68,68,0.12);border:1px solid rgba(239,68,68,0.25);color:#ef4444;border-radius:4px;padding:0 5px;font-size:8px;cursor:pointer;line-height:18px;">✕</button>
         <div style="cursor:pointer" onclick="TaskQueueUI.openTaskResult('${t.task_id}')">
         <div class="tq-done-row1">
-          <span class="tq-done-icon">${icon}</span>
+          <span class="tq-done-icon ${ok ? 'ok' : 'fail'}">${icon}</span>
           <span class="tq-done-title">${this._esc(t.title)}</span>
         </div>
         <div class="tq-done-agent" style="display:flex;gap:8px;align-items:center;">
