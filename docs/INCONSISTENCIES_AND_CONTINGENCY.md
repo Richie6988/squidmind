@@ -1,5 +1,8 @@
 # IAQUA — Audit des Inconsistances & Plan de Contingence
 
+> **STATUS : TOUTES LES INCONSISTANCES RÉSOLUES** — commits `137f938` → `a3326b6`  
+> Audit initial : 2026-06-22 · Résolution : 2026-06-22
+
 **Audit effectué le :** 2026-06-22  
 **Méthode :** Cross-check ligne par ligne entre README, code serveur et code client.  
 **Criticité :** 🔴 Critique (fonctionnalité cassée) · 🟠 Significatif (comportement incorrect) · 🟡 Mineur (cosmétique ou dette technique)
@@ -14,7 +17,7 @@ L'audit révèle **4 bugs critiques structurels** qui rendent des fonctionnalit�
 
 ## BLOC 1 — CRITIQUES 🔴
 
-### IC-01 : TaskRunner ne calle jamais `closeTask()` → results_log vide
+### ✅ IC-01 : TaskRunner ne calle jamais `closeTask()` → results_log vide
 
 **Impact :** Les tâches terminées par TaskRunner disparaissent du registry (`_writeTaskDetails` les purge) mais ne sont **jamais** écrites dans `results_log.json`. La pane Results dans le Control Tower reste vide. `closeTask()` dans RegistryManager est la **seule** méthode qui écrit dans results_log — elle n'est jamais appelée par TaskRunner.
 
@@ -54,7 +57,7 @@ if (status === 'completed' || status === 'failed') {
 
 ---
 
-### IC-02 : TaskRunner lit `task.assignment?.assigned_to` mais les tâches ont `task.assigned_to`
+### ✅ IC-02 : TaskRunner lit `task.assignment?.assigned_to` mais les tâches ont `task.assigned_to`
 
 **Impact :** `agentId` est **toujours `null`** dans TaskRunner. Conséquences en cascade :
 - Toutes les tâches s'exécutent via Poseidon BG mode même si assignées à un agent
@@ -86,7 +89,7 @@ const agentName  = agentEntry?.display_name || agentId;
 
 ---
 
-### IC-03 : `cascadeTaskClosure()` utilise `task.assignment.assigned_to` et `task.context.project_id` — jamais définis
+### ✅ IC-03 : `cascadeTaskClosure()` utilise `task.assignment.assigned_to` et `task.context.project_id` — jamais définis
 
 **Impact :** `cascadeTaskClosure()` dans RegistryManager (appelé uniquement depuis `closeTask()`) ne met jamais à jour :
 - `agent.performance_summary.tasks_completed` → les squids ne montent **jamais de niveau**
@@ -111,7 +114,7 @@ const projectId = task.context?.project_id     || task.project_id  || null;
 
 ---
 
-### IC-04 : `buildSystemPrompt()` injecte temp.md même si elle contient uniquement le marqueur `<!-- cleared -->`
+### ✅ IC-04 : `buildSystemPrompt()` injecte temp.md même si elle contient uniquement le marqueur `<!-- cleared -->`
 
 **Impact :** Après un dream, temp.md est effacée avec `<!-- cleared after dream on 2025-... -->` (~56 chars). `buildSystemPrompt` vérifie seulement `raw.length > 50` — le marqueur PASSE ce seuil. Poseidon reçoit donc le marqueur HTML comme "log d'interactions récentes", ce qui pollue le contexte et peut perturber le comportement.
 
@@ -132,7 +135,7 @@ if (raw.length > 50 && !raw.startsWith('<!--')) {
 
 ## BLOC 2 — SIGNIFICATIFS 🟠
 
-### IC-05 : AgentWorker / AgentWorkerPool est du code mort pour l'exécution automatique
+### ✅ IC-05 : AgentWorker / AgentWorkerPool est du code mort pour l'exécution automatique
 
 **Impact :** Le README décrit AgentWorker comme le moteur d'exécution des tâches agent. En réalité, TaskRunner stocke `this.agentPool` mais **ne l'appelle jamais** (`this.agentPool.` n'apparaît qu'à la ligne de déclaration). PoseidonOrchestrator stocke `this.agentWorkerPool` mais ne l'utilise pas non plus. AgentWorker n'est utilisé que via la route manuelle `/api/v2/agents/:id/run`.
 
@@ -144,7 +147,7 @@ if (raw.length > 50 && !raw.startsWith('<!--')) {
 
 ---
 
-### IC-06 : `failed` non inclus dans `terminalStatuses` → accumulation indéfinie dans le registry
+### ✅ IC-06 : `failed` non inclus dans `terminalStatuses` → accumulation indéfinie dans le registry
 
 **Impact :** Les tâches `failed` restent dans `tasks_registry.json` indéfiniment. `_writeTaskDetails` avec status `failed` ne les purge pas (terminalStatuses = `['completed', 'cancelled', 'archived']`, pas `'failed'`). Sur un système long-terme, le registry gonfle.
 
@@ -154,7 +157,7 @@ if (raw.length > 50 && !raw.startsWith('<!--')) {
 
 ---
 
-### IC-07 : ReasoningBus — Temple n'affiche que les tâches Poseidon BG, pas les tâches agent ni le chat utilisateur
+### ✅ IC-07 : ReasoningBus — Temple n'affiche que les tâches Poseidon BG, pas les tâches agent ni le chat utilisateur
 
 **Impact :** Le stream de raisonnement dans le Temple (panneau live) est alimenté uniquement par `TaskRunner.chatWithPoseidon` (les tâches BG). Ni le chat utilisateur avec Poseidon (`buildPoseidonChatRoute`), ni les tâches exécutées via AgentWorker (`/agents/:id/run`) ne poussent vers `ReasoningBus`. Le stream paraît vide en utilisation normale.
 
@@ -168,7 +171,7 @@ Dans AgentWorkerPool.dispatch, également pousser les events au bus.
 
 ---
 
-### IC-08 : `_idMutex` dans RegistryManager — fuite mémoire sur longue durée
+### ✅ IC-08 : `_idMutex` dans RegistryManager — fuite mémoire sur longue durée
 
 **Impact :** La chaîne de promesses `_idMutex` n'est jamais nettoyée. Pour des serveurs long-lived avec beaucoup de génération d'IDs, la Map grandit indéfiniment. Pas un crash risk immédiat mais une fuite réelle.
 
@@ -183,7 +186,7 @@ Dans AgentWorkerPool.dispatch, également pousser les events au bus.
 
 ---
 
-### IC-09 : `_defaultIdFormat` retourne `'task_NNN'` (3 chiffres) mais `padStart(4, '0')` génère 4 chiffres
+### ✅ IC-09 : `_defaultIdFormat` retourne `'task_NNN'` (3 chiffres) mais `padStart(4, '0')` génère 4 chiffres
 
 **Impact :** Format incohérent. Les métadonnées stockent `id_format: 'task_NNN'` mais les IDs produits sont `task_0120` (4 chiffres). Pas fonctionnellement cassé mais le format stocké est trompeur. Les anciens IDs `task_119` coexistent avec les nouveaux `task_0120`.
 
@@ -194,7 +197,7 @@ if (registryPath.includes('task')) return 'task_NNNN';
 
 ---
 
-### IC-10 : `git_workflow.json` existe dans `server/skills/` mais absent du README catalog
+### ✅ IC-10 : `git_workflow.json` existe dans `server/skills/` mais absent du README catalog
 
 **Impact :** Une skill entière (workflow git automatisé) n'est pas documentée. Les utilisateurs et Poseidon ne savent pas qu'elle existe. Le README liste 14 skills mais il y en a 15.
 
@@ -204,7 +207,7 @@ if (registryPath.includes('task')) return 'task_NNNN';
 
 ## BLOC 3 — MINEURS 🟡
 
-### IC-11 : `api.js` (legacy) est chargé dans index.html mais n'est pas utilisé
+### ✅ IC-11 : `api.js` (legacy) est chargé dans index.html mais n'est pas utilisé
 
 **Impact :** 43 lignes de code mort chargées inutilement. Pas de conflit (il définit `window.api` que rien n'utilise), mais pollution de l'espace global.
 
@@ -212,7 +215,7 @@ if (registryPath.includes('task')) return 'task_NNNN';
 
 ---
 
-### IC-12 : `PanelResizer._persistWidth` utilise `'main/poseidon_brain.json'` (ancien chemin legacy)
+### ✅ IC-12 : `PanelResizer._persistWidth` utilise `'main/poseidon_brain.json'` (ancien chemin legacy)
 
 **Impact :** La persistance de la largeur du panneau Control Tower via l'API `/field` utilise le chemin `main/poseidon_brain.json` qui correspond à l'ancien layout `data/`. En layout `aquarium/`, le bon chemin est `BRAIN/poseidon_brain.json`. La largeur du panneau ne se sauvegarde jamais côté serveur (localStorage fonctionne en fallback).
 
@@ -223,7 +226,7 @@ filePath: 'BRAIN/poseidon_brain.json',
 
 ---
 
-### IC-13 : `SKILL_UPDATE` du dream — le format pipe-séparé est ambigu si les steps contiennent des pipes
+### ✅ IC-13 : `SKILL_UPDATE` du dream — le format pipe-séparé est ambigu si les steps contiennent des pipes
 
 **Impact :** Le regex `^SKILL_UPDATE: skill_id|name|summary|steps...` capture tout après le 4e pipe comme steps à splitter sur pipe. Si un step contient ` | ` naturellement (ex: "Use web_fetch | save to file"), il sera splitté incorrectement.
 
@@ -231,7 +234,7 @@ filePath: 'BRAIN/poseidon_brain.json',
 
 ---
 
-### IC-14 : Squids "RUN" vs "IDLE" dans TempleInterior basé sur une heuristique de nom
+### ✅ IC-14 : Squids "RUN" vs "IDLE" dans TempleInterior basé sur une heuristique de nom
 
 **Impact :** Temple détermine si un agent "tourne" en comparant des chaînes de noms (`isRun`). Sans branchement vers l'état réel des tâches, un agent peut afficher "RUN" incorrectement si le nom coïncide avec un critère heuristique.
 
@@ -239,7 +242,7 @@ filePath: 'BRAIN/poseidon_brain.json',
 
 ---
 
-### IC-15 : Skill seeds re-seedent si le fichier aquarium est supprimé manuellement
+### ✅ IC-15 : Skill seeds re-seedent si le fichier aquarium est supprimé manuellement
 
 **Comportement :** Si un utilisateur supprime manuellement `aquarium/SKILLS/research_flow.json` (sans passer par DELETE route), la skill sera re-créée au prochain démarrage car `!existsSync(dst) = true`. DELETE route supprime aussi le fichier seed source, mais la suppression manuelle ne touche pas le seed.
 
