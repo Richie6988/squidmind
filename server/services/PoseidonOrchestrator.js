@@ -21,6 +21,7 @@
  */
 
 const path = require('path');
+const log = require('../utils/logger').createLogger('PoseidonOrchestrator');
 const fs = require('fs').promises;
 const OrchestratorTools = require('./OrchestratorTools');
 
@@ -163,7 +164,7 @@ My response: "${ss.last_response_preview}"${tools}
         if (!skip) bgLines.push(line);
       }
       const compact = bgLines.join('\n');
-      console.log(`[Poseidon] BG system prompt: ${compact.length} chars (was ${fullPrompt.length})`);
+      log.info(`BG system prompt: ${compact.length} chars (was ${fullPrompt.length})`);
       return compact;
     }
 
@@ -1504,7 +1505,7 @@ Never describe a bash command you could call instead.`;
       for (const [k, v] of Object.entries(allFunctions)) {
         if (BG_TOOLS.has(k)) slim[k] = v;
       }
-      console.log(`[Poseidon] BG mode: ${Object.keys(slim).length} tools (was ${Object.keys(allFunctions).length})`);
+      log.info(`BG mode: ${Object.keys(slim).length} tools (was ${Object.keys(allFunctions).length})`);
       return slim;
     }
 
@@ -1754,7 +1755,7 @@ Never describe a bash command you could call instead.`;
       try {
         await fsp.rm(projectDir, { recursive: true, force: true });
       } catch (e) {
-        console.warn(`[Poseidon] Could not delete project folder ${projectDir}:`, e.message);
+        log.warn(`Could not delete project folder ${projectDir}:`, e.message);
       }
 
       // Remove from registry

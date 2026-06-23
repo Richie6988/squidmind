@@ -38,16 +38,16 @@ class HeartbeatService {
     // Initial reading needs two samples for CPU delta
     this.lastCpuTimes = this._readCpuTimes();
     this.timer = setInterval(() => this.tick().catch(err =>
-      console.error('[Heartbeat] tick failed:', err.message)
+      log.error('[Heartbeat] tick failed:', err.message)
     ), this.intervalMs);
-    console.log(`[Heartbeat] Started (every ${this.intervalMs}ms)`);
+    log.info(`[Heartbeat] Started (every ${this.intervalMs}ms)`);
   }
 
   stop() {
     if (this.timer) {
       clearInterval(this.timer);
       this.timer = null;
-      console.log('[Heartbeat] Stopped');
+      log.info('[Heartbeat] Stopped');
     }
   }
 
@@ -123,9 +123,9 @@ class HeartbeatService {
             const cooldownOk = (Date.now() - this._lastDreamAt) > this.dreamCooldownMinutes * 60 * 1000;
             if (cooldownOk) {
               this._lastDreamAt = Date.now();
-              console.log(`[Heartbeat] 💤 Poseidon idle ${pm.idle_minutes.toFixed(1)}min, broker IDLE — triggering dream`);
+              log.info(`[Heartbeat] 💤 Poseidon idle ${pm.idle_minutes.toFixed(1)}min, broker IDLE — triggering dream`);
               this.modelService.triggerDream().catch(e =>
-                console.warn('[Heartbeat] Dream trigger error:', e.message)
+                log.warn('[Heartbeat] Dream trigger error:', e.message)
               );
             }
           }
@@ -138,10 +138,10 @@ class HeartbeatService {
     // This is the proactive agentic loop: Poseidon assigns or executes pending work
     if (this.taskRunner && this.modelService) {
       this._plannerTick().catch(e =>
-        console.warn('[Heartbeat] Planner tick error:', e.message)
+        log.warn('[Heartbeat] Planner tick error:', e.message)
       );
       this._projectAuditTick().catch(e =>
-        console.warn('[Heartbeat] Project audit tick error:', e.message)
+        log.warn('[Heartbeat] Project audit tick error:', e.message)
       );
     }
   }
@@ -174,7 +174,7 @@ class HeartbeatService {
         .map(t => `  - [${t.task_id}] ${t.title} (priority: ${t.priority?.label || 'medium'})`)
         .join('\n');
 
-      console.log(`[Heartbeat] 📋 Planner: ${unassigned.length} unassigned tasks — injecting planning nudge`);
+      log.info(`[Heartbeat] 📋 Planner: ${unassigned.length} unassigned tasks — injecting planning nudge`);
 
       // Store pending planner message — picked up by next Poseidon chat turn
       if (!entry._pendingPlannerNudge) {
@@ -220,7 +220,7 @@ class HeartbeatService {
         if (now - lastAudit < this.projectAuditIntervalMs) continue;
 
         this._lastProjectAuditAt[projId] = now;
-        console.log(`[Heartbeat] 🔍 Auto-audit: project ${proj.name} (${active.length} active/planned tasks)`);
+        log.info(`[Heartbeat] 🔍 Auto-audit: project ${proj.name} (${active.length} active/planned tasks)`);
 
         // Build the BG audit message for Poseidon
         const msg = [
@@ -240,7 +240,7 @@ class HeartbeatService {
         break; // audit one project per tick to avoid flooding
       }
     } catch (e) {
-      console.warn('[Heartbeat] _projectAuditTick error:', e.message);
+      log.warn('[Heartbeat] _projectAuditTick error:', e.message);
     }
   }
 

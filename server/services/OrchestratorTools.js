@@ -18,6 +18,7 @@
 
 const fs = require('fs').promises;
 const fsSync = require('fs');
+const log = require('../utils/logger').createLogger('OrchestratorTools');
 const path = require('path');
 const { exec } = require('child_process');
 const { promisify } = require('util');
@@ -498,9 +499,9 @@ class OrchestratorTools {
           };
           await this.rm._writeTaskDetails(taskId, taskObj);
           this.rm.invalidateCache();
-          console.log('[generateImage] task created:', taskId, '— status: in_progress');
+          log.info('task created:', taskId, '— status: in_progress');
         }
-      } catch(e) { console.warn('[generateImage] task creation failed:', e.message); }
+      } catch(e) { log.warn('task creation failed:', e.message); }
 
       // Route output: project → PROJECTS/<folder>/output/, else → TASKS/<task_id>/
       const AQUARIUM = require('../aquarium');
@@ -545,7 +546,7 @@ class OrchestratorTools {
           if (result.ok) taskObj.output_preview = serveUrl;
           await this.rm._writeTaskDetails(taskId, taskObj);
           this.rm.invalidateCache();
-        } catch(e) { console.warn('[generateImage] task status update failed:', e.message); }
+        } catch(e) { log.warn('task status update failed:', e.message); }
       }
 
       if (!result.ok) return result;

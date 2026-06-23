@@ -7,6 +7,7 @@
  */
 
 const fs = require('fs');
+const log = require('../utils/logger').createLogger('RegistryHealthCheck');
 const path = require('path');
 
 const AQUARIUM = require('../aquarium');
@@ -260,13 +261,13 @@ function repairAllRegistries(dataRoot) {
         if (fs.existsSync(fullPath)) {
           const backupPath = fullPath + '.broken.' + Date.now();
           fs.copyFileSync(fullPath, backupPath);
-          console.log(`[HealthCheck] Backed up corrupted file -> ${path.basename(backupPath)}`);
+          log.info(`[HealthCheck] Backed up corrupted file -> ${path.basename(backupPath)}`);
         }
         // Write default
         const data = makeDefault();
         fs.writeFileSync(fullPath, JSON.stringify(data, null, 2), 'utf8');
         report.repaired.push({ file: relPath, reason });
-        console.log(`[HealthCheck] REPAIRED ${relPath} (${reason})`);
+        log.info(`[HealthCheck] REPAIRED ${relPath} (${reason})`);
       }
       
       // Cleanup any stale .tmp files from interrupted writes
@@ -282,7 +283,7 @@ function repairAllRegistries(dataRoot) {
       }
     } catch (err) {
       report.errors.push({ file: relPath, error: err.message });
-      console.error(`[HealthCheck] FAILED ${relPath}: ${err.message}`);
+      log.error(`[HealthCheck] FAILED ${relPath}: ${err.message}`);
     }
   }
   

@@ -15,6 +15,7 @@
 
 const EventEmitter = require('events');
 
+const log = require('../utils/logger').createLogger('AgentWorker');
 // ─── System prompt builder ──────────────────────────────────────────────────
 
 function buildAgentSystemPrompt(brain, agentEntry, skillSummaries = []) {
@@ -213,7 +214,7 @@ class AgentWorker extends EventEmitter {
         }
         // Small grace period for native llama.cpp slot release
         await new Promise(r => setTimeout(r, 200));
-        console.log(`[AgentWorker] Disposed Poseidon session — agent ${this.agentId} getting sequence on ${modelId}`);
+        log.info(` Disposed Poseidon session — agent ${this.agentId} getting sequence on ${modelId}`);
       }
     }
 
@@ -286,10 +287,10 @@ class AgentWorker extends EventEmitter {
     try {
       sequence      = entry.context.getSequence();
       contextLength = entry.context.contextSize || entry.config?.contextLength || 4096;
-      console.log(`[AgentWorker] Sharing Poseidon context for ${this.agentId} on ${modelId} (ctx=${contextLength})`);
+      log.info(` Sharing Poseidon context for ${this.agentId} on ${modelId} (ctx=${contextLength})`);
     } catch (seqErr) {
       // If getSequence fails (no free slot), wait a bit and retry once
-      console.warn(`[AgentWorker] getSequence failed, waiting 3s: ${seqErr.message}`);
+      log.warn(` getSequence failed, waiting 3s: ${seqErr.message}`);
       await new Promise(r => setTimeout(r, 3000));
       sequence      = entry.context.getSequence();
       contextLength = entry.context.contextSize || entry.config?.contextLength || 4096;
@@ -309,7 +310,7 @@ class AgentWorker extends EventEmitter {
       chatWrapper:     'auto',
     });
 
-    console.log(`[AgentWorker] Session created for ${this.agentId} on model ${modelId} — ${toolsAllowed.length} tools, prompt ${Math.round(trimmedPrompt.length/4)} tok, ctx=${contextLength}`);
+    log.info(` Session created for ${this.agentId} on model ${modelId} — ${toolsAllowed.length} tools, prompt ${Math.round(trimmedPrompt.length/4)} tok, ctx=${contextLength}`);
   }
 
   /**
@@ -456,7 +457,7 @@ class AgentWorker extends EventEmitter {
       if (this._modelId && poseidonId && this._modelId !== poseidonId) {
         setImmediate(() => {
           this.modelService.ensureLoaded(poseidonId).catch(err =>
-            console.warn('[AgentWorker] Poseidon warm-up failed after agent task:', err.message)
+            log.warn(' Poseidon warm-up failed after agent task:', err.message)
           );
         });
       }

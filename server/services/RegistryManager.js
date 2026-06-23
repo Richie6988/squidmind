@@ -458,7 +458,7 @@ class RegistryManager {
       const brainPath = path.join(this.dataRoot, 'agents', brainFile);
       await fs.unlink(brainPath);
     } catch (err) {
-      console.warn(`[deleteAgent] could not delete brain file ${brainFile}:`, err.message);
+      log.warn(`[deleteAgent] could not delete brain file ${brainFile}:`, err.message);
     }
     
     // Remove from any project's assigned_agents list
@@ -1028,7 +1028,7 @@ class RegistryManager {
         }
         if (modified) await this.write('agents/agent_registry.json', agentReg);
       } catch (err) {
-        console.warn('[deleteProject] could not free agents:', err.message);
+        log.warn('[deleteProject] could not free agents:', err.message);
       }
     }
 

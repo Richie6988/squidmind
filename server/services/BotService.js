@@ -17,6 +17,7 @@
  */
 
 const EventEmitter = require('events');
+const log = require('../utils/logger').createLogger('BotService');
 const fetch = require('node-fetch');
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -93,7 +94,7 @@ class BotService extends EventEmitter {
         for (const [k, v] of Object.entries(DEFAULT_CONFIG)) {
           if (!this.config[k]) this.config[k] = v;
         }
-        console.log('[BotService] Loaded comms config from AQUARIUM:', AQUARIUM.COMMS_CONFIG);
+        log.info(' Loaded comms config from AQUARIUM:', AQUARIUM.COMMS_CONFIG);
         await this._saveConfig();
       } catch {
         this.config = JSON.parse(JSON.stringify(DEFAULT_CONFIG));
@@ -142,9 +143,9 @@ class BotService extends EventEmitter {
     await this.loadConfig();
     const tgEnabled = this.config.telegram?.enabled && this.config.telegram?.token;
     const dsEnabled = this.config.discord?.enabled  && this.config.discord?.token;
-    console.log(`[BotService] started — Telegram: ${tgEnabled ? 'ON' : 'off'}, Discord: ${dsEnabled ? 'ON' : 'off'}`);
-    if (tgEnabled) this.startTelegram().catch(e => console.warn('[BotService] Telegram start failed:', e.message));
-    if (dsEnabled) this.startDiscord().catch(e => console.warn('[BotService] Discord start failed:', e.message));
+    log.info(` started — Telegram: ${tgEnabled ? 'ON' : 'off'}, Discord: ${dsEnabled ? 'ON' : 'off'}`);
+    if (tgEnabled) this.startTelegram().catch(e => log.warn(' Telegram start failed:', e.message));
+    if (dsEnabled) this.startDiscord().catch(e => log.warn(' Discord start failed:', e.message));
   }
 
   async stop() {
@@ -189,7 +190,7 @@ class BotService extends EventEmitter {
       const me = await this._tgCall(token, 'getMe');
       this.config.telegram.bot_username = me.username;
       await this._saveConfig();
-      console.log(`[BotService/Telegram] Connected as @${me.username}`);
+      log.info(`Connected as @${me.username}`);
     } catch (err) {
       throw new Error(`Telegram token invalid: ${err.message}`);
     }
@@ -205,7 +206,7 @@ class BotService extends EventEmitter {
     this._tgLoopRunning = false;
     this._tgAbort?.abort?.();
     this._tgAbort = null;
-    console.log('[BotService/Telegram] stopped');
+    log.info('stopped');
   }
 
   async _tgLoop(token) {
@@ -227,13 +228,13 @@ class BotService extends EventEmitter {
           if (!msg?.text) continue;
           // Fire-and-forget per message
           this._handleTgMessage(token, msg).catch(e =>
-            console.warn('[BotService/Telegram] handler error:', e.message)
+            log.warn('handler error:', e.message)
           );
         }
       } catch (err) {
         if (!this._tgPolling) break;
         if (err.name === 'AbortError') break;
-        console.warn('[BotService/Telegram] poll error:', err.message);
+        log.warn('poll error:', err.message);
         await new Promise(r => setTimeout(r, 5000)); // back-off
       }
     }
@@ -250,7 +251,7 @@ class BotService extends EventEmitter {
     // Security: whitelist check
     const allowed = this.config.telegram.allowed_chat_ids;
     if (allowed.length > 0 && !allowed.map(String).includes(String(chatId))) {
-      console.warn(`[BotService/Telegram] Rejected message from chat ${chatId}`);
+      log.warn(`Rejected message from chat ${chatId}`);
       await this._tgCall(token, 'sendMessage', {
         chat_id: chatId,
         text: '⛔ Unauthorized. This Poseidon instance is private.'
@@ -350,7 +351,7 @@ class BotService extends EventEmitter {
       this._dsBotId = me.id;
       this.config.discord.bot_username = `${me.username}#${me.discriminator || '0'}`;
       await this._saveConfig();
-      console.log(`[BotService/Discord] Bot verified: ${this.config.discord.bot_username}`);
+      log.info(`Bot verified: ${this.config.discord.bot_username}`);
     } catch (err) {
       throw new Error(`Discord token invalid: ${err.message}`);
     }
@@ -376,13 +377,13 @@ class BotService extends EventEmitter {
       this._dsReady    = false;
       this._dsHeartbeat = null;
       if (this.config?.discord?.enabled) {
-        console.log(`[BotService/Discord] WS closed (${code}), reconnecting in 5s...`);
+        log.info(`WS closed (${code}), reconnecting in 5s...`);
         setTimeout(() => this._dsConnect(), 5000);
       }
     });
 
     this._dsWs.on('error', (err) => {
-      console.warn('[BotService/Discord] WS error:', err.message);
+      log.warn('WS error:', err.message);
     });
   }
 
@@ -414,7 +415,7 @@ class BotService extends EventEmitter {
 
     // Opcode 9: Invalid session
     if (op === 9) {
-      console.warn('[BotService/Discord] Invalid session, reconnecting...');
+      log.warn('Invalid session, reconnecting...');
       this._dsWs?.close();
       return;
     }
@@ -424,7 +425,7 @@ class BotService extends EventEmitter {
       if (t === 'READY') {
         this._dsReady     = true;
         this._dsSessionId = d.session_id;
-        console.log(`[BotService/Discord] Gateway READY, connected as ${d.user?.username}`);
+        log.info(`Gateway READY, connected as ${d.user?.username}`);
       }
 
       if (t === 'MESSAGE_CREATE') {
@@ -457,7 +458,7 @@ class BotService extends EventEmitter {
         if (!cleanText) return;
 
         this._handleDsMessage(channelId, userId, username, cleanText).catch(e =>
-          console.warn('[BotService/Discord] handler error:', e.message)
+          log.warn('handler error:', e.message)
         );
       }
     }
@@ -469,7 +470,7 @@ class BotService extends EventEmitter {
     this._dsReady     = false;
     try { this._dsWs?.close(); } catch {}
     this._dsWs = null;
-    console.log('[BotService/Discord] stopped');
+    log.info('stopped');
   }
 
   async _handleDsMessage(channelId, userId, username, text) {
@@ -935,7 +936,7 @@ class BotService extends EventEmitter {
           catch (e) { errors.push(`DS ${channelId}: ${e.message}`); }
         }
       }
-      if (errors.length) console.warn('[BotService] notify partial errors:', errors.join(', '));
+      if (errors.length) log.warn(' notify partial errors:', errors.join(', '));
     }, 30_000); // 30s window
   }
 }

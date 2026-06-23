@@ -26,6 +26,7 @@
 
 const EventEmitter = require('events');
 
+const log = require('../utils/logger').createLogger('ModelBroker');
 const PRIORITY = Object.freeze({
   CHAT:         0,
   IMAGE:        1,   // image gen preempts agents — needs full VRAM, evicts LLM
@@ -115,7 +116,7 @@ class ModelBroker extends EventEmitter {
       this._queue.push(entry);
       this._queue.sort((a, b) => a.priority - b.priority || a.queuedAt - b.queuedAt);
 
-      console.log(`[Broker] QUEUED  ${reqId} (queue depth: ${this._queue.length})`);
+      log.info(`[Broker] QUEUED  ${reqId} (queue depth: ${this._queue.length})`);
 
       // Timeout
       const timer = setTimeout(() => {
@@ -123,7 +124,7 @@ class ModelBroker extends EventEmitter {
         if (idx !== -1) {
           this._queue.splice(idx, 1);
           this._stats.total_timeouts++;
-          console.warn(`[Broker] TIMEOUT ${reqId} after ${Math.round((Date.now()-queuedAt)/1000)}s`);
+          log.warn(`[Broker] TIMEOUT ${reqId} after ${Math.round((Date.now()-queuedAt)/1000)}s`);
           reject(new Error(`BROKER_TIMEOUT: ${reqId} waited too long`));
         }
       }, timeoutMs);
@@ -140,12 +141,12 @@ class ModelBroker extends EventEmitter {
    */
   release(token) {
     if (!this._token || this._token.id !== token?.id) {
-      console.warn(`[Broker] release() called with stale/wrong token ${token?.id}`);
+      log.warn(`[Broker] release() called with stale/wrong token ${token?.id}`);
       return;
     }
 
     const held = Date.now() - this._token.acquiredAt;
-    console.log(`[Broker] RELEASE ${this._token.id} held=${Math.round(held/1000)}s`);
+    log.info(`[Broker] RELEASE ${this._token.id} held=${Math.round(held/1000)}s`);
 
     this._token = null;
     this._lastReleasedAt = Date.now();
@@ -227,9 +228,9 @@ class ModelBroker extends EventEmitter {
     };
 
     if (waitMs > 500) {
-      console.log(`[Broker] ACQUIRE ${reqId} waited=${Math.round(waitMs/1000)}s`);
+      log.info(`[Broker] ACQUIRE ${reqId} waited=${Math.round(waitMs/1000)}s`);
     } else {
-      console.log(`[Broker] ACQUIRE ${reqId}`);
+      log.info(`[Broker] ACQUIRE ${reqId}`);
     }
 
     this.emit('acquired', this._token);
@@ -248,7 +249,7 @@ class ModelBroker extends EventEmitter {
   _checkExpiry() {
     if (!this._token) return;
     if (Date.now() > this._token.expiresAt) {
-      console.error(`[Broker] EXPIRY  ${this._token.id} — force-releasing after ${Math.round(MAX_HOLD_MS/60000)}min`);
+      log.error(`[Broker] EXPIRY  ${this._token.id} — force-releasing after ${Math.round(MAX_HOLD_MS/60000)}min`);
       const stale = this._token;
       this._token = null;
       this._lastReleasedAt = Date.now();

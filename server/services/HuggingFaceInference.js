@@ -1,4 +1,5 @@
 const fetch = require('node-fetch');
+const log = require('../utils/logger').createLogger('HuggingFaceInference');
 const { fetchWithRetry } = require('../utils/fetchWithRetry');
 
 /**
@@ -46,7 +47,7 @@ class HuggingFaceInference {
       const response = await fetch(`${this.searchUrl}?limit=1`);
       return response.ok;
     } catch (error) {
-      console.error('HuggingFace API connection failed:', error.message);
+      log.error('HuggingFace API connection failed:', error.message);
       return false;
     }
   }
@@ -86,7 +87,7 @@ class HuggingFaceInference {
         gated: model.gated || false
       }));
     } catch (error) {
-      console.error('Model search failed:', error);
+      log.error('Model search failed:', error);
       return [];
     }
   }
@@ -104,7 +105,7 @@ class HuggingFaceInference {
 
       return await response.json();
     } catch (error) {
-      console.error('Failed to get model info:', error);
+      log.error('Failed to get model info:', error);
       return null;
     }
   }
@@ -167,7 +168,7 @@ class HuggingFaceInference {
 
       return result;
     } catch (error) {
-      console.error(`HuggingFace inference error (${modelId}):`, error.message);
+      log.error(`HuggingFace inference error (${modelId}):`, error.message);
       throw error;
     }
   }
@@ -227,7 +228,7 @@ class HuggingFaceInference {
       
       return result.generated_text || result.text || result;
     } catch (error) {
-      console.error(`HuggingFace chat error (${modelId}):`, error.message);
+      log.error(`HuggingFace chat error (${modelId}):`, error.message);
       throw error;
     }
   }

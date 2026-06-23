@@ -507,8 +507,8 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
       try { if (llama.getVramState) vramBefore = await llama.getVramState(); } catch {}
       const freeBeforeGb = vramBefore ? vramBefore.free  / (1024 ** 3) : 0;
       const totalGb      = vramBefore ? vramBefore.total / (1024 ** 3) : 0;
-      if (vramBefore) console.log(`  VRAM before load: ${freeBeforeGb.toFixed(2)} / ${totalGb.toFixed(2)} GB free`);
-      try { if (llama.gpu) console.log(`  GPU backend: ${llama.gpu}`); } catch {}
+      if (vramBefore) log.info(`  VRAM before load: ${freeBeforeGb.toFixed(2)} / ${totalGb.toFixed(2)} GB free`);
+      try { if (llama.gpu) log.info(`  GPU backend: ${llama.gpu}`); } catch {}
 
       // Estimate total layers for gpu_layers auto-resolve.
       // ~160 MB/layer at Q4_K_M. Clamp to [20, 80].
@@ -528,10 +528,10 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
           const reserved = 4;
           const gpuTarget = config.gpuLayers === 'max' ? estLayers : Math.max(1, computed - reserved);
           config.gpuLayers = gpuTarget;
-          console.log(`  [auto] gpuLayers: ${config.gpuLayers} / ${estLayers} (${reserved} layers on CPU → ~${reserved*160}MB freed for KV)`);
+          log.info(`  [auto] gpuLayers: ${config.gpuLayers} / ${estLayers} (${reserved} layers on CPU → ~${reserved*160}MB freed for KV)`);
         } else {
           config.gpuLayers = 0;
-          console.log(`  [auto] gpuLayers: 0 (no VRAM info, CPU only)`);
+          log.info(`  [auto] gpuLayers: 0 (no VRAM info, CPU only)`);
         }
       }
 
@@ -545,7 +545,7 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
       });
 
       const trainCtx = model.trainContextSize;
-      console.log(`  Weights loaded. trainCtx=${trainCtx}, gpuLayers=${config.gpuLayers}`);
+      log.info(`  Weights loaded. trainCtx=${trainCtx}, gpuLayers=${config.gpuLayers}`);
 
       if (trainCtx < V2ModelService.MIN_VIABLE_CTX) {
         await model.dispose(); model = null;
@@ -559,7 +559,7 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
       let vramAfter = null;
       try { if (llama.getVramState) vramAfter = await llama.getVramState(); } catch {}
       const freeAfterGb = vramAfter ? vramAfter.free / (1024 ** 3) : 0;
-      if (vramAfter) console.log(`  VRAM after weights: ${freeAfterGb.toFixed(2)} GB free`);
+      if (vramAfter) log.info(`  VRAM after weights: ${freeAfterGb.toFixed(2)} GB free`);
 
       // ── Step 4: Compute contextLength from REAL remaining VRAM ─────────
       // Always recompute — never trust the stored value (stale, wrong GPU, etc.)
@@ -576,15 +576,15 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
           const toksFit   = Math.floor(availKvGb * 1024 ** 3 / bytesPerTok);
           const computed  = Math.max(V2ModelService.MIN_VIABLE_CTX, Math.floor(toksFit / 1024) * 1024);
           config.contextLength = Math.min(computed, trainCtx);
-          console.log(`  [auto] contextLength: ${config.contextLength} (availKv=${availKvGb.toFixed(2)}GB, ${bytesPerTok/1024}KB/tok, isGQA=${isGQA}, toksFit=${toksFit})`);
+          log.info(`  [auto] contextLength: ${config.contextLength} (availKv=${availKvGb.toFixed(2)}GB, ${bytesPerTok/1024}KB/tok, isGQA=${isGQA}, toksFit=${toksFit})`);
         } else if (!vramAfter) {
           // No VRAM info — use a conservative default
           config.contextLength = 8192;
-          console.log(`  [auto] contextLength: ${config.contextLength} (no VRAM info, conservative default)`);
+          log.info(`  [auto] contextLength: ${config.contextLength} (no VRAM info, conservative default)`);
         } else {
           // Very little VRAM left — use minimum viable
           config.contextLength = V2ModelService.MIN_VIABLE_CTX;
-          console.log(`  [auto] contextLength: ${config.contextLength} (low VRAM: ${freeAfterGb.toFixed(2)}GB free)`);
+          log.info(`  [auto] contextLength: ${config.contextLength} (low VRAM: ${freeAfterGb.toFixed(2)}GB free)`);
         }
       }
 
@@ -602,7 +602,7 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
         const tryCtx = ctxLadder[i];
         if (context) { try { await context.dispose(); } catch {} context = null; }
         try {
-          if (i > 0) console.log(`  [ctx retry ${i}] trying ctx=${tryCtx}`);
+          if (i > 0) log.info(`  [ctx retry ${i}] trying ctx=${tryCtx}`);
           context = await model.createContext({
             contextSize:    tryCtx,
             batchSize:      config.batchSize,
@@ -611,14 +611,14 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
             flashAttention: config.flashAttention
           });
           config.contextLength = context.contextSize;
-          console.log(`  Context created: ${config.contextLength} tokens${i > 0 ? ` (after ${i} retry/ies)` : ''}`);
+          log.info(`  Context created: ${config.contextLength} tokens${i > 0 ? ` (after ${i} retry/ies)` : ''}`);
           ctxErr = null;
           break;
         } catch (e) {
           ctxErr = e;
           const isOOM = /out of memory|VRAM|allocation|context size.*too large|insufficient/i.test(e.message);
           if (!isOOM) throw e;  // non-OOM error → propagate immediately
-          console.warn(`  [ctx retry ${i}] OOM at ctx=${tryCtx}: ${e.message.slice(0, 80)}`);
+          log.warn(`  [ctx retry ${i}] OOM at ctx=${tryCtx}: ${e.message.slice(0, 80)}`);
         }
       }
       if (!context) {
@@ -628,7 +628,7 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
 
       // Warn if context ended up too small for the system prompt
       if (config.contextLength < V2ModelService.MIN_VIABLE_CTX) {
-        console.warn(
+        log.warn(
           `[V2ModelService] ⚠ Context ${config.contextLength} < ${V2ModelService.MIN_VIABLE_CTX} minimum. ` +
           `Chat may fail. Try: smaller model, fewer GPU layers, or CPU-only mode.`
         );
@@ -1458,7 +1458,7 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
       // Log every error — 0s broker release with no log makes debugging impossible
       const isKnown = /no sequences|sequence|context|too long|compress|prompt|system message/i.test(err.message);
       log.error(` chatWithPoseidon error (${isKnown ? 'session' : 'unknown'}):`, err.message);
-      if (!isKnown) console.error(err.stack?.split('\n').slice(0,4).join('\n'));
+      if (!isKnown) log.error(err.stack?.split('\n').slice(0,4).join('\n'));
       // Catch all session/context/prompt errors and reset session state fully
       const isSessionErr = isKnown;
       if (isSessionErr) {
@@ -1554,7 +1554,7 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
       let tempLog = '';
       try { tempLog = fsSync.readFileSync(AQUARIUM.TEMP_LOG, 'utf8').trim(); } catch {}
       if (!tempLog || tempLog.startsWith('<!--')) {
-        console.log('[Dream] 💤 temp.md is empty or already cleared — nothing to consolidate. Skipping.');
+        log.info('[Dream] 💤 temp.md is empty or already cleared — nothing to consolidate. Skipping.');
         this.broker.release(dreamBrokerToken);
         entry.dreaming = false;
         return;
@@ -1649,7 +1649,7 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
         try { dreamSeq = entry.context.getSequence(); break; } catch {}
         await new Promise(r => setTimeout(r, 1000));
       }
-      if (!dreamSeq) { console.warn('[Dream] Could not get sequence — skipping'); return; }
+      if (!dreamSeq) { log.warn('[Dream] Could not get sequence — skipping'); return; }
 
       const dreamSession = new llamaCpp.LlamaChatSession({
         contextSequence: dreamSeq,
@@ -1670,7 +1670,7 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
         } catch {}
       }
 
-      console.log('[Dream] Starting soul consolidation with', Object.keys(dreamFunctions).length, 'tools');
+      log.info('[Dream] Starting soul consolidation with', Object.keys(dreamFunctions).length, 'tools');
       let dreamResponse = '';
       await dreamSession.prompt(dreamUserPrompt, {
         maxTokens: 3000,
@@ -1686,12 +1686,12 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
           newSoul.last_updated = new Date().toISOString();
           newSoul.dream_count  = (soul.dream_count || 0) + 1;
           fsSync.writeFileSync(AQUARIUM.SOUL, JSON.stringify(newSoul, null, 2), 'utf8');
-          console.log(`[Dream] ✓ soul.json updated (dream #${newSoul.dream_count})`);
+          log.info(`[Dream] ✓ soul.json updated (dream #${newSoul.dream_count})`);
         } catch (e) {
-          console.warn('[Dream] Failed to parse soul.json update:', e.message.slice(0, 80));
+          log.warn('[Dream] Failed to parse soul.json update:', e.message.slice(0, 80));
         }
       } else {
-        console.warn('[Dream] No ```json block found in response — soul.json unchanged');
+        log.warn('[Dream] No ```json block found in response — soul.json unchanged');
       }
 
       // ── 7. Apply SKILL_UPDATE lines ───────────────────────────────────────
@@ -1708,7 +1708,7 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
             updated_at: new Date().toISOString()
           };
           fsSync.writeFileSync(skillPath, JSON.stringify(updated, null, 2), 'utf8');
-          console.log(`[Dream] ✓ Skill updated: ${skillId.trim()} v${updated.version}`);
+          log.info(`[Dream] ✓ Skill updated: ${skillId.trim()} v${updated.version}`);
         } catch {}
       }
 
@@ -1716,8 +1716,8 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
       try {
         const header = `<!-- cleared after dream on ${new Date().toISOString()} -->\n`;
         fsSync.writeFileSync(AQUARIUM.TEMP_LOG, header, 'utf8');
-        console.log('[Dream] ✓ temp.md cleared');
-      } catch (ce) { console.warn('[Dream] temp.md clear failed:', ce.message); }
+        log.info('[Dream] ✓ temp.md cleared');
+      } catch (ce) { log.warn('[Dream] temp.md clear failed:', ce.message); }
 
       // ── 9. Save dream summary to dream_memory.json ────────────────────────
       const summaryMatch = dreamResponse.match(/evolution_log[\s\S]{0,200}?"([^"]{20,200})"/);
@@ -1727,15 +1727,15 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
         reflection: summary, soul_updated: !!jsonMatch, skills_updated: skillUpdates.length
       }).catch(() => {});
 
-      console.log('[Dream] 💤 Dream cycle complete');
+      log.info('[Dream] 💤 Dream cycle complete');
     } catch (err) {
-      console.error('[Dream] Dream error:', err.message);
+      log.error('[Dream] Dream error:', err.message);
       // Safety: clear temp.md even on error so we don't loop on bad content
       try {
         const AQUARIUM = require('../aquarium');
         const fsSync   = require('fs');
         fsSync.writeFileSync(AQUARIUM.TEMP_LOG, `<!-- cleared after dream error on ${new Date().toISOString()} -->\n`, 'utf8');
-        console.log('[Dream] ✓ temp.md cleared (error recovery)');
+        log.info('[Dream] ✓ temp.md cleared (error recovery)');
       } catch {}
     } finally {
       entry.dreaming = false;

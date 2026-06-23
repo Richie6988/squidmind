@@ -1,5 +1,6 @@
 const fs = require('fs').promises;
 const path = require('path');
+const log = require('../utils/logger').createLogger('LocalModelScanner');
 const os = require('os');
 const { execSync } = require('child_process');
 
@@ -54,7 +55,7 @@ class LocalModelScanner {
    * Full system scan for GGUF models
    */
   async scanSystem() {
-    console.log('🔍 Starting deep model scan...');
+    log.info('🔍 Starting deep model scan...');
     this.foundModels = [];
 
     // Scan all paths
@@ -65,7 +66,7 @@ class LocalModelScanner {
     // Remove duplicates (same file in multiple locations)
     this.foundModels = this.deduplicateModels(this.foundModels);
 
-    console.log(`✅ Scan complete: Found ${this.foundModels.length} models`);
+    log.info(`✅ Scan complete: Found ${this.foundModels.length} models`);
     
     return this.foundModels;
   }
@@ -101,7 +102,7 @@ class LocalModelScanner {
     } catch (error) {
       // Silent fail for permission errors
       if (error.code !== 'EACCES' && error.code !== 'EPERM') {
-        console.log(`⚠️  Error scanning ${dirPath}:`, error.message);
+        log.info(`⚠️  Error scanning ${dirPath}:`, error.message);
       }
     }
   }
@@ -168,7 +169,7 @@ class LocalModelScanner {
 
       this.foundModels.push(model);
     } catch (error) {
-      console.log(`⚠️  Error reading ${fullPath}:`, error.message);
+      log.info(`⚠️  Error reading ${fullPath}:`, error.message);
     }
   }
 

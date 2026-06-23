@@ -12,6 +12,7 @@
  */
 
 const { spawn, exec } = require('child_process');
+const log = require('../utils/logger').createLogger('ImageGenerationService');
 const { promisify } = require('util');
 const execAsync = promisify(exec);
 const fs = require('fs').promises;
@@ -52,17 +53,17 @@ class ImageGenerationService {
         const { stdout } = await execAsync(`"${bin}" --version 2>&1`, { timeout: 3000 });
         // Rust 'sd' tool prints "sd v1.0.0 An intuitive find & replace CLI" — skip it
         if (/find.replace|replace.cli|intuitive/i.test(stdout)) {
-          console.log(`[ImageGen] Skipping ${bin} — this is the Rust sd tool, not stable-diffusion.cpp`);
+          log.info(`Skipping ${bin} — this is the Rust sd tool, not stable-diffusion.cpp`);
           continue;
         }
         this._backend = { type: 'sd', bin };
-        console.log(`[ImageGen] Backend found: ${bin}`);
+        log.info(`Backend found: ${bin}`);
         return this._backend;
       } catch {}
     }
 
     this._backend = { type: 'none', bin: null };
-    console.warn('[ImageGen] No image generation backend found (sd / stable-diffusion.cpp)');
+    log.warn('No image generation backend found (sd / stable-diffusion.cpp)');
     return this._backend;
   }
 
@@ -157,7 +158,7 @@ class ImageGenerationService {
       const forceCPU = quantNum >= 4 || resolutionOOM;
       if (forceCPU) {
         const reason = quantNum >= 4 ? `Q${quantNum} quant` : `${width}x${height} resolution (~${vramEstimate.toFixed(1)}GB est.)`;
-        console.log('[ImageGen] Forcing CPU:', reason, '(avoids VRAM OOM)');
+        log.info('Forcing CPU:', reason, '(avoids VRAM OOM)');
       }
 
       if (forceCPU) {
@@ -191,7 +192,7 @@ class ImageGenerationService {
         const clip = scanFind([/clip_l\.safetensors$/i, /clip_l\.sft$/i]);
         const t5   = scanFind([/t5.*encoder.*\.gguf$/i, /t5xxl.*\.gguf$/i,
                                 /t5xxl_fp8/i, /t5xxl_fp16/i, /t5xxl\.safetensors$/i]);
-        console.log('[ImageGen] companion scan in ' + modelDir + ':',
+        log.info('companion scan in ' + modelDir + ':',
           dirFiles.filter(f => /ae|clip|t5/i.test(f)).join(', ') || 'none',
           '| vae:', vae ? 'found' : 'MISSING',
           '| clip:', clip ? 'found' : 'MISSING',
@@ -204,7 +205,7 @@ class ImageGenerationService {
 
         if (!vae || !clip || !t5) {
           const missing = [!vae&&'ae.safetensors', !clip&&'clip_l.safetensors', !t5&&'t5-v1_1-xxl-encoder-Q4_K_M.gguf (or t5xxl_fp8_e4m3fn.safetensors)'].filter(Boolean);
-          console.warn(`[ImageGen] Flux missing companion files: ${missing.join(', ')} — download to ${modelDir}`);
+          log.warn(`Flux missing companion files: ${missing.join(', ')} — download to ${modelDir}`);
           return resolve({ ok: false, error:
             `Flux requires companion files in ${modelDir}:\n` +
             missing.map(f => `  Missing: ${f}`).join('\n') + '\n\n' +
@@ -220,7 +221,7 @@ class ImageGenerationService {
       // negativePrompt applies to both Flux and SD
       if (negativePrompt) args.push('--negative-prompt', negativePrompt);
 
-      console.log(`[ImageGen] Spawning: ${bin} ${args.slice(0, 4).join(' ')} ... forceCPU=${forceCPU}`);
+      log.info(`Spawning: ${bin} ${args.slice(0, 4).join(' ')} ... forceCPU=${forceCPU}`);
       // When forceCPU: set CUDA_VISIBLE_DEVICES="" to blind the process to all GPUs at driver level
       // This works regardless of sd.cpp version — no CUDA backend = no CUDA OOM
       const spawnEnv = forceCPU

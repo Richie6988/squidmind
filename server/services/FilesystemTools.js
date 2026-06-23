@@ -1,5 +1,6 @@
 const fs = require('fs').promises;
 const path = require('path');
+const log = require('../utils/logger').createLogger('FilesystemTools');
 const { execSync } = require('child_process');
 
 /**
@@ -39,8 +40,8 @@ class FilesystemTools {
   async init() {
     // Ensure workspace exists
     await fs.mkdir(this.workDir, { recursive: true });
-    console.log('📁 Filesystem tools initialized');
-    console.log(`   Workspace: ${this.workDir}`);
+    log.info('📁 Filesystem tools initialized');
+    log.info(`   Workspace: ${this.workDir}`);
   }
 
   /**

@@ -18,6 +18,7 @@
  */
 
 const fs   = require('fs');
+const log = require('../utils/logger').createLogger('BackupService');
 const fsp  = require('fs').promises;
 const path = require('path');
 
@@ -49,11 +50,11 @@ class BackupService {
 
     // Initial snapshot on startup (5s delay to let services settle)
     setTimeout(() => this.snapshot('hourly').catch(e =>
-      console.warn('[Backup] initial snapshot failed:', e.message)
+      log.warn('[Backup] initial snapshot failed:', e.message)
     ), 5000);
 
     this.timer = setInterval(() => this._tick(), this.intervalMs);
-    console.log(`[Backup] Started — hourly snapshots, ${this.hourlyMax} hourly + ${this.dailyMax} daily retained`);
+    log.info(`[Backup] Started — hourly snapshots, ${this.hourlyMax} hourly + ${this.dailyMax} daily retained`);
   }
 
   stop() {
@@ -70,7 +71,7 @@ class BackupService {
       if (!lastDaily || (Date.now() - new Date(lastDaily.replace(/_/g, ':')).getTime()) > 24 * 60 * 60 * 1000) {
         await this.snapshot('daily');
       }
-    } catch (e) { console.warn('[Backup] tick error:', e.message); }
+    } catch (e) { log.warn('[Backup] tick error:', e.message); }
   }
 
   async snapshot(bucket = 'hourly') {
@@ -89,7 +90,7 @@ class BackupService {
         copied++;
       } catch { /* file may not exist yet */ }
     }
-    console.log(`[Backup] Snapshot ${bucket}/${stamp} — ${copied} files`);
+    log.info(`[Backup] Snapshot ${bucket}/${stamp} — ${copied} files`);
 
     // Prune old snapshots
     await this._prune(bucket, bucket === 'hourly' ? this.hourlyMax : this.dailyMax);
@@ -104,8 +105,8 @@ class BackupService {
       for (const e of toDelete) {
         await fsp.rm(path.join(dir, e), { recursive: true, force: true });
       }
-      if (toDelete.length) console.log(`[Backup] Pruned ${toDelete.length} old ${bucket} snapshot(s)`);
-    } catch (e) { console.warn('[Backup] prune error:', e.message); }
+      if (toDelete.length) log.info(`[Backup] Pruned ${toDelete.length} old ${bucket} snapshot(s)`);
+    } catch (e) { log.warn('[Backup] prune error:', e.message); }
   }
 
   async listSnapshots() {

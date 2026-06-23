@@ -1,5 +1,6 @@
 const fs = require('fs').promises;
 const path = require('path');
+const log = require('../utils/logger').createLogger('ToolRegistry');
 const axios = require('axios');
 const cheerio = require('cheerio');
 const { evaluate } = require('mathjs');
@@ -58,7 +59,7 @@ class ToolRegistry {
           const inputMatch = filePath.match(/^(.*\/(?:PROJECTS|projects)\/[^/]+)\/input\/(.+)$/i);
           if (inputMatch) {
             resolvedPath = inputMatch[1] + '/output/' + inputMatch[2];
-            console.warn(`[write_file] Redirected from input/ to output/: ${filePath} → ${resolvedPath}`);
+            log.warn(`Redirected from input/ to output/: ${filePath} → ${resolvedPath}`);
           }
           await fs.mkdir(require('path').dirname(resolvedPath), { recursive: true });
           await fs.writeFile(resolvedPath, content, 'utf8');
@@ -508,7 +509,7 @@ class ToolRegistry {
       }
     });
 
-    console.log(`✅ Registered ${this.tools.size} built-in tools`);
+    log.info(`✅ Registered ${this.tools.size} built-in tools`);
   }
 
   /**
@@ -558,10 +559,10 @@ class ToolRegistry {
         registry.metadata.last_id_used = nextId - 1;
         registry.metadata.total_available = Object.keys(registry.tools).length;
         await sharedRm.write('tools/tool_registry.json', registry);
-        console.log(`[ToolRegistry] Synced ${added} built-in tools to V2 registry (total: ${registry.metadata.total_available})`);
+        log.info(`Synced ${added} built-in tools to V2 registry (total: ${registry.metadata.total_available})`);
       }
     } catch (err) {
-      console.warn('[ToolRegistry] syncToRegistryFile failed:', err.message);
+      log.warn('syncToRegistryFile failed:', err.message);
     }
   }
 
@@ -593,11 +594,11 @@ class ToolRegistry {
     }
 
     try {
-      console.log(`🔧 Executing tool: ${toolName}`);
+      log.info(`🔧 Executing tool: ${toolName}`);
       const result = await tool.execute(parameters);
       return result;
     } catch (error) {
-      console.error(`Tool execution error (${toolName}):`, error);
+      log.error(`Tool execution error (${toolName}):`, error);
       return { 
         success: false, 
         error: error.message 
