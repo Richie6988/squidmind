@@ -10,6 +10,7 @@
  */
 
 const os = require('os');
+const log = require('../utils/logger').createLogger('HeartbeatService');
 const { execSync } = require('child_process');
 
 class HeartbeatService {

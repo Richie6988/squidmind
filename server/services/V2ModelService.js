@@ -10,6 +10,7 @@
  */
 
 const path = require('path');
+const log = require('../utils/logger').createLogger('V2ModelService');
 const ModelBroker = require('./ModelBroker');
 const { PRIORITY } = ModelBroker;
 const ImageGenerationService = require('./ImageGenerationService');
@@ -43,7 +44,7 @@ class V2ModelService {
     this.orchestrator = orchestrator;
     // Restore last-used Poseidon model from brain (fire-and-forget)
     this._restorePoseidonModel().catch(err =>
-      console.warn('[V2ModelService] Could not restore Poseidon model:', err.message)
+      log.warn(' Could not restore Poseidon model:', err.message)
     );
   }
 
@@ -60,14 +61,14 @@ class V2ModelService {
 
       const reg = await this.rm.read('models/model_registry.json').catch(() => ({ models: {} }));
       if (!reg.models?.[savedId]) {
-        console.log(`[V2ModelService] Saved Poseidon model ${savedId} not in registry — skipping restore`);
+        log.info(` Saved Poseidon model ${savedId} not in registry — skipping restore`);
         return;
       }
       this.poseidonModelId = savedId;
-      console.log(`[V2ModelService] ✓ Restored Poseidon model from brain: ${savedId} — pre-loading into VRAM...`);
+      log.info(` ✓ Restored Poseidon model from brain: ${savedId} — pre-loading into VRAM...`);
       // Eagerly load so first chat is instant (not lazy on first message)
       this.ensureLoaded(savedId).catch(err =>
-        console.warn(`[V2ModelService] Startup pre-load failed for ${savedId}:`, err.message)
+        log.warn(` Startup pre-load failed for ${savedId}:`, err.message)
       );
     } catch (err) {
       // non-fatal
@@ -116,7 +117,7 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
     entry._thinkBuf         = '';
     entry.contextPct        = 0;
     entry.contextUsedTokens = 0;
-    console.log('[V2ModelService] Emergency reset — session cleared after crash');
+    log.info(' Emergency reset — session cleared after crash');
 
     await this.rm.log({
       event_type: 'poseidon_decision', severity: 'warning',
@@ -146,10 +147,10 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
         const llamaCpp = await import('node-llama-cpp');
         try {
           this.llama = await llamaCpp.getLlama('lastBuild');
-          console.log('[V2ModelService] node-llama-cpp initialized (custom build)');
+          log.info(' node-llama-cpp initialized (custom build)');
         } catch {
           this.llama = await llamaCpp.getLlama();
-          console.log('[V2ModelService] node-llama-cpp initialized (prebuilt)');
+          log.info(' node-llama-cpp initialized (prebuilt)');
         }
         return this.llama;
       })();
@@ -214,7 +215,7 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
         });
       }
     } catch (err) {
-      console.warn('[V2ModelService] scanLocalModels:', err.message);
+      log.warn(' scanLocalModels:', err.message);
     }
     return result;
   }
@@ -403,7 +404,7 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
     // existing promise instead of starting a second concurrent load.
     if (!this._loadingPromises) this._loadingPromises = new Map();
     if (this._loadingPromises.has(modelId)) {
-      console.log(`[V2ModelService] Joining existing load for ${modelId} (dedup)`);
+      log.info(` Joining existing load for ${modelId} (dedup)`);
       return this._loadingPromises.get(modelId);
     }
 
@@ -417,7 +418,7 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
     // node-llama-cpp keeps weights in VRAM — two models can't coexist on a consumer GPU.
     for (const [loadedId] of this.loaded) {
       if (loadedId !== modelId) {
-        console.log(`[V2ModelService] Unloading ${loadedId} to free VRAM for ${modelId}`);
+        log.info(` Unloading ${loadedId} to free VRAM for ${modelId}`);
         await this.unloadModel(loadedId).catch(() => {});
       }
     }
@@ -499,7 +500,7 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
     let model = null, context = null;
     try {
       const llama = await this._ensureLib();
-      console.log(`[V2ModelService] Loading ${fileName} (${fileSizeGb} GB)`);
+      log.info(` Loading ${fileName} (${fileSizeGb} GB)`);
 
       // ── Step 1: VRAM snapshot before weights ──────────────────────────────
       let vramBefore = null;
@@ -655,7 +656,7 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
         action: `Loaded ${fileName} (ctx=${config.contextLength}, gpu_layers=${config.gpuLayers})`,
         context: { config }
       });
-      console.log(`[V2ModelService] ✓ ${fileName} ready (ctx=${config.contextLength})`);
+      log.info(` ✓ ${fileName} ready (ctx=${config.contextLength})`);
       return { success: true, model_id: modelId, config };
 
     } catch (err) {
@@ -729,7 +730,7 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
       action: `Unloaded model ${modelId}`
     });
 
-    console.log(`[V2ModelService] Unloaded ${modelId}`);
+    log.info(` Unloaded ${modelId}`);
     return { success: true, model_id: modelId };
   }
 
@@ -758,7 +759,7 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
           flashAttention: entry.config?.flashAttention
         });
         const sequence = context.getSequence();
-        console.log(`[V2ModelService] Agent context created on ${modelId}: ctx=${tryCtx}`);
+        log.info(` Agent context created on ${modelId}: ctx=${tryCtx}`);
         return { context, sequence, contextLength: tryCtx };
       } catch (e) {
         const isOOM = /out of memory|VRAM|allocation|sequences/i.test(e.message);
@@ -817,12 +818,12 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
     // not surfaced to the assign call (user will see them when they actually chat).
     if (!this.loaded.has(modelId)) {
       const entry = reg.models[modelId];
-      console.log(`[V2ModelService] Pre-loading ${modelId} after assignment to Poseidon...`);
+      log.info(` Pre-loading ${modelId} after assignment to Poseidon...`);
       // Important: don't return this promise - let it run in background
       this.ensureLoaded(modelId).then(() => {
-        console.log(`[V2ModelService] ✓ Pre-load complete for ${modelId}, ready for chat`);
+        log.info(` ✓ Pre-load complete for ${modelId}, ready for chat`);
       }).catch(err => {
-        console.warn(`[V2ModelService] Pre-load failed for ${modelId}:`, err.message);
+        log.warn(` Pre-load failed for ${modelId}:`, err.message);
       });
     }
 
@@ -932,7 +933,7 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
           }
         }
       } catch (e) {
-        console.warn(`[V2ModelService] queueBgMessage(${key}) error:`, e.message);
+        log.warn(` queueBgMessage(${key}) error:`, e.message);
       } finally {
         this._bgQueue.delete(key);
       }
@@ -950,7 +951,7 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
     
     // Auto-load if not yet loaded
     if (!this.loaded.has(this.poseidonModelId)) {
-      console.log(`[V2ModelService] Auto-loading ${this.poseidonModelId} for Poseidon chat...`);
+      log.info(` Auto-loading ${this.poseidonModelId} for Poseidon chat...`);
       await this.ensureLoaded(this.poseidonModelId);
     }
     
@@ -960,12 +961,12 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
     // If loaded entry has a tiny context (stale load with wrong config), evict and reload
     const entryCtx = entry.config?.contextLength || entry.context?.contextSize || 0;
     if (entryCtx > 0 && entryCtx < 8192) {
-      console.log(`[V2ModelService] Entry ctx=${entryCtx} too small — evicting and reloading with VRAM-optimal ctx`);
+      log.info(` Entry ctx=${entryCtx} too small — evicting and reloading with VRAM-optimal ctx`);
       await this.unloadModel(this.poseidonModelId).catch(() => {});
       await this.ensureLoaded(this.poseidonModelId);
       entry = this.loaded.get(this.poseidonModelId);
       if (!entry) throw new Error('Poseidon model failed to reload');
-      console.log(`[V2ModelService] Reloaded with ctx=${entry.config?.contextLength}`);
+      log.info(` Reloaded with ctx=${entry.config?.contextLength}`);
     }
     // Acquire the model slot unless caller already holds it (e.g. TaskRunner BG)
     const brokerToken = _skipBroker
@@ -1000,7 +1001,7 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
         if (ss.emergency) {
           await this.rm.write('BRAIN/session_state.json', { ...ss, emergency: false }).catch(() => {});
         }
-        console.log('[V2ModelService] Auto-continue injected for turn ' + entry.sessionTurns + (ss.emergency ? ' (post-emergency)' : ''));
+        log.info(' Auto-continue injected for turn ' + entry.sessionTurns + (ss.emergency ? ' (post-emergency)' : ''));
       }
     } catch {}
     
@@ -1010,7 +1011,7 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
       userMessage = '[BACKGROUND NOTE — self-improvement protocol]: You have completed 5+ interactions. ' +
         'After responding to the user, call list_skills and check if any skills need updating based on ' +
         'what you have done this session. Do this silently after answering.\n\n' + userMessage;
-      console.log('[V2ModelService] Skill audit reminder injected');
+      log.info(' Skill audit reminder injected');
     }
 
     // Planner nudge: inject pending unassigned tasks notice
@@ -1020,7 +1021,7 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
       // Only inject if this isn't already a task-related message
       if (!/task|assign|dispatch|planner/i.test(userMessage)) {
         userMessage = nudge + '\n\n[USER MESSAGE]\n' + userMessage;
-        console.log('[V2ModelService] Planner nudge injected into user message');
+        log.info(' Planner nudge injected into user message');
       }
     }
 
@@ -1030,7 +1031,7 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
       let ss2;
       try { ss2 = await this.rm.read('BRAIN/session_state.json'); } catch {}
       if (ss2?.emergency) {
-        console.log('[V2ModelService] Post-emergency: clearing history to prevent context overflow');
+        log.info(' Post-emergency: clearing history to prevent context overflow');
         history = []; // start fresh — the auto-continue message above carries the context
       }
     }
@@ -1045,7 +1046,7 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
       // Rebuild session if mode changes (chat→bg or bg→chat) — different toolsets
       const neededMode = _bgMode ? 'bg' : 'chat';
       if (entry.session && entry._sessionMode && entry._sessionMode !== neededMode) {
-        console.log(`[V2ModelService] Session mode change ${entry._sessionMode}→${neededMode}, rebuilding session`);
+        log.info(` Session mode change ${entry._sessionMode}→${neededMode}, rebuilding session`);
         // Dispose session first (it owns the sequence internally), THEN null refs
         // Reversing the order caused "No sequences left" on the next getSequence() call
         try { if (entry.session?.dispose) await entry.session.dispose(); } catch {}
@@ -1065,7 +1066,7 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
             // BG tasks use a slim toolset (~16 tools vs 39) to save critical context tokens
             functions = await orchestrator.buildFunctions(_bgMode ? 'bg' : 'chat');
           } catch (err) {
-            console.warn('[V2ModelService] Function-calling setup failed:', err.message, '- continuing without functions');
+            log.warn(' Function-calling setup failed:', err.message, '- continuing without functions');
             functions = undefined;
           }
         } else {
@@ -1084,10 +1085,10 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
 
 [System prompt truncated: ${original}→${maxChars} chars, ctx=${ctxTokens}]`;
           systemPrompt    = systemPrompt.slice(0, maxChars - notice.length) + notice;
-          console.warn(`[V2ModelService] System prompt slimmed: ${original} → ${systemPrompt.length} chars (ctx=${ctxTokens})`);
+          log.warn(` System prompt slimmed: ${original} → ${systemPrompt.length} chars (ctx=${ctxTokens})`);
           // Drop function-calling if ctx is critically small
           if (ctxTokens < 3500) {
-            console.warn(`[V2ModelService] ctx=${ctxTokens} < 3500 — disabling function-calling to save space`);
+            log.warn(` ctx=${ctxTokens} < 3500 — disabling function-calling to save space`);
             functions = undefined;
           }
         }
@@ -1119,7 +1120,7 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
               }
             }
           }
-          if (saved > 0) console.log(`[V2ModelService] Tool descriptions compressed: ~${Math.round(saved/4)} tokens saved (ctx=${ctxTokens})`);
+          if (saved > 0) log.info(` Tool descriptions compressed: ~${Math.round(saved/4)} tokens saved (ctx=${ctxTokens})`);
         }
 
         // Get sequence slot — with sequences:1, the previous session must be disposed first.
@@ -1132,14 +1133,14 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
               if (!/no sequences/i.test(e.message)) throw e;
               if (attempt === 0) {
                 // Dispose stale session — this releases the held sequence slot
-                console.warn('[V2ModelService] No sequences left — disposing stale session to release slot');
+                log.warn(' No sequences left — disposing stale session to release slot');
                 try { if (entry.session?.dispose) await entry.session.dispose(); } catch {}
                 try { if (entry._currentSequence?.dispose) await entry._currentSequence.dispose(); } catch {}
                 entry.session = null; entry._currentSequence = null;
                 await new Promise(r => setTimeout(r, 400));
               } else if (attempt === 1) {
                 // Slot still held — force unload and recreate the context
-                console.warn('[V2ModelService] Sequence slot still stuck — unloading model to recover');
+                log.warn(' Sequence slot still stuck — unloading model to recover');
                 try { if (entry.context?.dispose) await entry.context.dispose(); } catch {}
                 entry.context = null;
                 // Recreate context
@@ -1152,7 +1153,7 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
                 });
                 entry.context = newCtx;
                 entry.config.contextLength = newCtx.contextSize;
-                console.log(`[V2ModelService] Context recreated: ctx=${newCtx.contextSize}`);
+                log.info(` Context recreated: ctx=${newCtx.contextSize}`);
                 await new Promise(r => setTimeout(r, 200));
               } else {
                 throw e;
@@ -1173,7 +1174,7 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
         entry._sessionMode       = neededMode;
         entry._lastSystemPromptChars = systemPrompt.length;
         const wrapper = entry.session.chatWrapper?.constructor?.name || 'unknown';
-        console.log(`[V2ModelService] Session created for ${this.poseidonModelId} (${wrapper}, ctx=${ctxTokens}, prompt=${promptTokens}tok${functions ? `, ${Object.keys(functions).length} tools` : ', no tools (ctx too small)'})`);
+        log.info(` Session created for ${this.poseidonModelId} (${wrapper}, ctx=${ctxTokens}, prompt=${promptTokens}tok${functions ? `, ${Object.keys(functions).length} tools` : ', no tools (ctx too small)'})`);
       }
       const session = entry.session;
 
@@ -1303,7 +1304,7 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
         // Stop button: abort requested from UI
         if (entry._abortRequested) {
           entry._abortRequested = false;
-          console.log('[V2ModelService] Generation aborted by user');
+          log.info(' Generation aborted by user');
           yield { type: 'text', chunk: '\n\n_[Generation stopped by user]_' };
           break;
         }
@@ -1312,7 +1313,7 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
         // Don't timeout while model is actively thinking (think block open)
         const isThinking = entry._inThink === true;
         if (!isThinking && idleMs > IDLE_TIMEOUT_MS) {
-          console.warn(`[V2ModelService] generation idle timeout (${Math.round(idleMs/1000)}s) — resetting session`);
+          log.warn(` generation idle timeout (${Math.round(idleMs/1000)}s) — resetting session`);
           // Reset session so next message reloads cleanly (user won't notice)
           try { if (entry.session?.dispose) await entry.session.dispose(); } catch {}
           entry.session = null;
@@ -1323,7 +1324,7 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
           break;
         }
         if (Date.now() - start > ABSOLUTE_MAX_MS) {
-          console.warn('[V2ModelService] absolute generation cap (30min) hit');
+          log.warn(' absolute generation cap (30min) hit');
           break;
         }
       }
@@ -1413,7 +1414,7 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
       // then wipe the session so the next turn starts fresh with the summary injected.
       if (ctxPct >= 75 && !entry._checkpointPending) {
         entry._checkpointPending = true;
-        console.log(`[V2ModelService] Context at ${ctxPct}% — saving continuity checkpoint and wiping session`);
+        log.info(` Context at ${ctxPct}% — saving continuity checkpoint and wiping session`);
 
         // Build a compact summary for the next session
         const openTasksSnap = (() => {
@@ -1450,18 +1451,18 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
         entry._currentSequence = null;
         entry.sessionTurns = 0;
         entry._checkpointPending = false;
-        console.log('[V2ModelService] Session wiped after checkpoint — will resume from dream_memory on next turn');
+        log.info(' Session wiped after checkpoint — will resume from dream_memory on next turn');
       }
       // Session wipe done (or not needed)
     } catch (err) {
       // Log every error — 0s broker release with no log makes debugging impossible
       const isKnown = /no sequences|sequence|context|too long|compress|prompt|system message/i.test(err.message);
-      console.error(`[V2ModelService] chatWithPoseidon error (${isKnown ? 'session' : 'unknown'}):`, err.message);
+      log.error(` chatWithPoseidon error (${isKnown ? 'session' : 'unknown'}):`, err.message);
       if (!isKnown) console.error(err.stack?.split('\n').slice(0,4).join('\n'));
       // Catch all session/context/prompt errors and reset session state fully
       const isSessionErr = isKnown;
       if (isSessionErr) {
-        console.warn(`[V2ModelService] Session error, emergency checkpoint + reset:`, err.message);
+        log.warn(` Session error, emergency checkpoint + reset:`, err.message);
         // Save what we can BEFORE losing the session — work is never silently lost
         await this._emergencyReset(entry).catch(() => {});
         entry.session = null;
@@ -1534,14 +1535,14 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
     if (!entry.model || !entry.context) return;
 
     if (!this.broker.isDreamAllowed()) {
-      console.log('[V2ModelService] 💤 Dream skipped — broker has pending work');
+      log.info(' 💤 Dream skipped — broker has pending work');
       return;
     }
     const dreamBrokerToken = await this.broker.acquire(PRIORITY.DREAM, 'dream', { timeoutMs: 5000 }).catch(() => null);
-    if (!dreamBrokerToken) { console.log('[V2ModelService] 💤 Dream skipped — could not acquire slot'); return; }
+    if (!dreamBrokerToken) { log.info(' 💤 Dream skipped — could not acquire slot'); return; }
 
     entry.dreaming = true;
-    console.log('[V2ModelService] 💤 Poseidon entering dream cycle — soul consolidation');
+    log.info(' 💤 Poseidon entering dream cycle — soul consolidation');
 
     try {
       const llamaCpp = await import('node-llama-cpp');
@@ -1749,11 +1750,11 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
       if (entry.generating) continue;
       const idleMinutes = (now - entry.lastUsedAt) / 60000;
       if (idleMinutes >= entry.config.autoUnloadIdleMinutes) {
-        console.log(`[V2ModelService] TTL: unloading ${modelId} after ${idleMinutes.toFixed(1)} min idle`);
+        log.info(` TTL: unloading ${modelId} after ${idleMinutes.toFixed(1)} min idle`);
         try {
           await this.unloadModel(modelId);
         } catch (err) {
-          console.warn(`[V2ModelService] TTL unload failed for ${modelId}:`, err.message);
+          log.warn(` TTL unload failed for ${modelId}:`, err.message);
         }
       }
     }
@@ -1779,7 +1780,7 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
       );
       if (!imgEntry) return { ok: false, error: 'No image model in library. Import a Flux/SD model and tag it as IMAGE.' };
       modelId = imgEntry[0];
-      console.log(`[V2ModelService] Auto-selected image model: ${modelId}`);
+      log.info(` Auto-selected image model: ${modelId}`);
     }
 
     const entry = reg.models?.[modelId];
@@ -1816,7 +1817,7 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
         if (e.message.includes('BROKER_IMAGE_REFUSED')) {
           // LLM tasks still queued — wait for them to drain
           const queueDepth = this.broker.getState().queue.length;
-          console.log(`[V2ModelService] Image gen waiting for LLM queue to drain (${queueDepth} queued)...`);
+          log.info(` Image gen waiting for LLM queue to drain (${queueDepth} queued)...`);
           if (Date.now() > imgDeadline) throw new Error('Image gen timed out waiting for LLM queue');
           await new Promise(r => setTimeout(r, 30_000));
           continue;
@@ -1829,7 +1830,7 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
       // Evict LLM from VRAM so image gen gets the full budget
       const loadedIds = [...this.loaded.keys()];
       if (loadedIds.length > 0) {
-        console.log(`[V2ModelService] Evicting ${loadedIds.length} LLM(s) before image gen`);
+        log.info(` Evicting ${loadedIds.length} LLM(s) before image gen`);
         for (const id of loadedIds) {
           try {
             const e = this.loaded.get(id);
@@ -1855,7 +1856,7 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
             }
             this.loaded.delete(id);
           } catch (evictErr) {
-            console.warn(`[V2ModelService] Eviction error for ${id}:`, evictErr.message);
+            log.warn(` Eviction error for ${id}:`, evictErr.message);
             this.loaded.delete(id); // remove entry even if dispose failed
           }
         }
@@ -1866,19 +1867,19 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
       prompt, outputPath, width, height, steps, cfg, seed, negativePrompt
     });
 
-      console.log(`[V2ModelService] Image generation ${result.ok ? 'completed' : 'failed'} — reloading Poseidon before releasing broker...`);
+      log.info(` Image generation ${result.ok ? 'completed' : 'failed'} — reloading Poseidon before releasing broker...`);
 
       // Reload Poseidon BEFORE releasing broker so TaskRunner can't grab
       // the slot while the LLM is still loading (would cause OOM)
       const savedPoseidonId = await this._getSavedPoseidonId();
       if (savedPoseidonId) {
         this.poseidonModelId = savedPoseidonId;
-        console.log(`[V2ModelService] Post-image: reloading Poseidon (${savedPoseidonId})...`);
+        log.info(` Post-image: reloading Poseidon (${savedPoseidonId})...`);
         try {
           await this.ensureLoaded(savedPoseidonId);
-          console.log(`[V2ModelService] ✓ Poseidon ready after image gen`);
+          log.info(` ✓ Poseidon ready after image gen`);
         } catch (e) {
-          console.warn('[V2ModelService] Post-image Poseidon reload failed:', e.message);
+          log.warn(' Post-image Poseidon reload failed:', e.message);
         }
       }
     } finally {

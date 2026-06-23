@@ -13,6 +13,7 @@
 const fs = require('fs').promises;
 const path = require('path');
 
+const log = require('../utils/logger').createLogger('RegistryManager');
 const AQUARIUM = require('../aquarium');
 
 class RegistryManager {
@@ -813,7 +814,7 @@ class RegistryManager {
       }
     } catch (e) {
       // Log but don't throw — agent status update is non-critical
-      console.warn(`[RegistryManager] updateAgentStatus(${agentId}, ${status}) failed:`, e.message);
+      log.warn(` updateAgentStatus(${agentId}, ${status}) failed:`, e.message);
     }
   }
 
@@ -1116,7 +1117,7 @@ class RegistryManager {
       }
       if (migrated > 0) {
         fs.writeFileSync(flatPath, JSON.stringify(reg, null, 2));
-        console.log('[RegistryManager] Migrated', migrated, 'legacy task folders → flat registry');
+        log.info(' Migrated', migrated, 'legacy task folders → flat registry');
       }
     } catch {}
     return reg;
@@ -1205,7 +1206,7 @@ class RegistryManager {
         lifecycle:     task.lifecycle
       };
       await fsp.writeFile(AQUARIUM.RESULTS_LOG, JSON.stringify(rlog, null, 2), 'utf8');
-    } catch (e) { console.warn('[RegistryManager] results_log write failed:', e.message); }
+    } catch (e) { log.warn(' results_log write failed:', e.message); }
 
     await this._writeTaskDetails(taskId, task);
 
@@ -1286,9 +1287,9 @@ class RegistryManager {
           const total = (perf.tasks_completed || 0) + (perf.tasks_failed || 0) + (perf.tasks_cancelled || 0);
           perf.success_rate = total > 0 ? perf.tasks_completed / total : 0;
           await this.write('agents/agent_registry.json', agentReg);
-          console.log(`[RegistryManager] cascade: agent ${agentId} tasks_completed=${perf.tasks_completed}`);
+          log.info(` cascade: agent ${agentId} tasks_completed=${perf.tasks_completed}`);
         }
-      } catch (e) { console.warn(`[RegistryManager] cascadeFlat agent update failed:`, e.message); }
+      } catch (e) { log.warn(` cascadeFlat agent update failed:`, e.message); }
     }
 
     // ── Project metrics ────────────────────────────────────────────────────
@@ -1304,7 +1305,7 @@ class RegistryManager {
           project.metrics.tasks_pending = Math.max(0, (project.metrics.tasks_pending || 0) - 1);
           await this.write('projects/project_registry.json', projReg);
         }
-      } catch (e) { console.warn(`[RegistryManager] cascadeFlat project update failed:`, e.message); }
+      } catch (e) { log.warn(` cascadeFlat project update failed:`, e.message); }
     }
   }
 

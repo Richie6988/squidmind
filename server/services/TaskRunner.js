@@ -1,5 +1,6 @@
 'use strict';
 const { PRIORITY } = require('./ModelBroker');
+const log = require('../utils/logger').createLogger('TaskRunner');
 /**
  * TaskRunner — automatic task execution engine.
  * Polls open/planned tasks every heartbeat tick and executes them.
@@ -51,7 +52,7 @@ class TaskRunner {
       const raw = await fs.readFile(DONE_FILE, 'utf8');
       const ids = JSON.parse(raw);
       if (Array.isArray(ids)) ids.forEach(id => this._done.add(id));
-      console.log(`[TaskRunner] Loaded ${this._done.size} completed tasks from _done.json`);
+      log.info(`Loaded ${this._done.size} completed tasks from _done.json`);
     } catch { /* file doesn't exist yet — start fresh */ }
 
     // Also pre-populate from flat registry tasks already in terminal state
@@ -76,7 +77,7 @@ class TaskRunner {
       await fs.mkdir(AQUARIUM.TASKS, { recursive: true });
       await fs.writeFile(DONE_FILE, JSON.stringify([...this._done]), 'utf8');
     } catch (e) {
-      console.warn('[TaskRunner] _saveDone failed:', e.message);
+      log.warn(' _saveDone failed:', e.message);
     }
   }
 
@@ -89,7 +90,7 @@ class TaskRunner {
     this._retryAfter.delete(taskId);
     // Persist so it survives restart
     this._markDone(taskId).catch(() => {});
-    console.log(`[TaskRunner] Task ${taskId} marked as deleted (will not run)`);
+    log.info(`Task ${taskId} marked as deleted (will not run)`);
   }
 
   async _markDone(taskId) {
@@ -128,7 +129,7 @@ class TaskRunner {
       this.rm.invalidateCache();
       reg = await this.rm.getTasksRegistry();
     } catch (e) {
-      console.warn('[TaskRunner] tick read error:', e.message);
+      log.warn(' tick read error:', e.message);
       return;
     }
 
@@ -142,7 +143,7 @@ class TaskRunner {
       const lastRun = this._lastCronRun.get(task.task_id) || 0;
       if (this._isCronDue(cronStr, lastRun, now)) {
         this._lastCronRun.set(task.task_id, now);
-        console.log(`[TaskRunner] Cron task due: ${task.task_id} "${task.title}"`);
+        log.info(`Cron task due: ${task.task_id} "${task.title}"`);
         // Spawn a FRESH task so each cron run is independently tracked.
         // The original task stays in registry as the cron template.
         try {
@@ -167,10 +168,10 @@ class TaskRunner {
           // Run the fresh task
           const freshTask = reg.tasks[cronTaskId];
           this._runTask(freshTask).catch(e =>
-            console.error(`[TaskRunner] Cron task ${cronTaskId} error:`, e.message)
+            log.error(`Cron task ${cronTaskId} error:`, e.message)
           );
         } catch (e) {
-          console.error(`[TaskRunner] Failed to create cron instance for ${task.task_id}:`, e.message);
+          log.error(`Failed to create cron instance for ${task.task_id}:`, e.message);
         }
         return; // one task per tick
       }
@@ -189,17 +190,17 @@ class TaskRunner {
       const s = t.lifecycle?.status || t.status;
       const fails = this._failCounts.get(t.task_id) || 0;
       if (s === 'in_progress' && !this._running.has(t.task_id) && !this._done.has(t.task_id)) {
-        console.log(`[TaskRunner] Resetting stale in_progress task ${t.task_id} → planned`);
+        log.info(`Resetting stale in_progress task ${t.task_id} → planned`);
         this._setStatus(t.task_id, 'planned').catch(() => {});
       }
       // Failed with 0 counted retries = set externally (session crash, manual) — retry it
       if (s === 'failed' && fails === 0 && !this._done.has(t.task_id)) {
-        console.log(`[TaskRunner] Resetting externally-failed ${t.task_id} → planned (fails=${fails})`);
+        log.info(`Resetting externally-failed ${t.task_id} → planned (fails=${fails})`);
         this._setStatus(t.task_id, 'planned').catch(() => {});
       }
       // If a task has been retried MAX_RETRIES times, mark done so it stops blocking
       if (s === 'failed' && fails >= this.MAX_RETRIES) {
-        console.log(`[TaskRunner] Permanently failed ${t.task_id} — adding to done set`);
+        log.info(`Permanently failed ${t.task_id} — adding to done set`);
         this._done.add(t.task_id);
         this._markDone(t.task_id).catch(() => {});
       }
@@ -238,7 +239,7 @@ class TaskRunner {
     if (runnable.length === 0) return;
     const task = runnable[0];
     this._runTask(task).catch(e =>
-      console.error(`[TaskRunner] Task ${task.task_id} error:`, e.message)
+      log.error(`Task ${task.task_id} error:`, e.message)
     );
   }
 
@@ -274,7 +275,7 @@ class TaskRunner {
     const agentId = task.assigned_to || task.assignment?.assigned_to || null;
     this._running.add(taskId);
 
-    console.log(`[TaskRunner] ▶ ${taskId}: "${task.title}"${agentId ? ' → ' + agentId : ' → poseidon'}`);
+    log.info(`▶ ${taskId}: "${task.title}"${agentId ? ' → ' + agentId : ' → poseidon'}`);
 
     try {
       await this._setStatus(taskId, 'in_progress', { started_at: new Date().toISOString() });
@@ -366,7 +367,7 @@ class TaskRunner {
           const filename     = ip?.filename || `image_${Date.now()}.png`;
           const reqModelId   = ip?.model_id || null;
 
-          console.log(`[TaskRunner] Image gen ${taskId}: model="${reqModelId}" prompt="${prompt.slice(0,60)}"`);
+          log.info(`Image gen ${taskId}: model="${reqModelId}" prompt="${prompt.slice(0,60)}"`);
 
           const result = await this.modelService.generateImage({
             modelId:        reqModelId,
@@ -403,7 +404,7 @@ class TaskRunner {
           const backoff = RETRY_BACKOFF[attempt] || RETRY_BACKOFF[RETRY_BACKOFF.length - 1];
           this._retryAfter.set(taskId, Date.now() + backoff);
           await this._setStatus(taskId, 'open');
-          console.warn(`[TaskRunner] ✗ image ${taskId} (attempt ${attempt}/${this.MAX_RETRIES}) — retry in ${backoff/1000}s`);
+          log.warn(`✗ image ${taskId} (attempt ${attempt}/${this.MAX_RETRIES}) — retry in ${backoff/1000}s`);
         } else {
           await this._markDone(taskId);
           if (failed) { this._failCounts.set(taskId, this.MAX_RETRIES); }
@@ -413,7 +414,7 @@ class TaskRunner {
             ...(imageServeUrl ? { output_preview: imageServeUrl } : {})
           };
           await this._setStatus(taskId, status, extra);
-          console.log(`[TaskRunner] ${failed ? '✗✗' : '✓'} image ${taskId} ${status}`);
+          log.info(`${failed ? '✗✗' : '✓'} image ${taskId} ${status}`);
 
           if (!failed && resolvedModelId) {
             // Auto-update Poseidon's generate_image skill with the confirmed working model id
@@ -429,7 +430,7 @@ class TaskRunner {
               skill.notes      = (skill.notes || '') + `\n[${new Date().toISOString().slice(0,10)}] Confirmed working model: ${resolvedModelId}`;
               skill.confirmed_image_model = resolvedModelId;
               fs.writeFileSync(skillPath, JSON.stringify(skill, null, 2), 'utf8');
-              console.log(`[TaskRunner] Updated generate_image skill with model: ${resolvedModelId}`);
+              log.info(`Updated generate_image skill with model: ${resolvedModelId}`);
             } catch {}
           }
 
@@ -459,7 +460,7 @@ class TaskRunner {
             const needsOwnModel  = preferredModel && preferredModel !== poseidonModel;
 
             if (needsOwnModel) {
-              console.log(`[TaskRunner] ▶ ${taskId} → AgentWorkerPool (agent model: ${preferredModel})`);
+              log.info(`▶ ${taskId} → AgentWorkerPool (agent model: ${preferredModel})`);
               usedAgentWorker = true;
               const gen = await this.agentPool.dispatch(agentId, msg);
               for await (const ev of gen) {
@@ -478,7 +479,7 @@ class TaskRunner {
             }
           }
         } catch (agentErr) {
-          console.warn(`[TaskRunner] AgentWorkerPool dispatch failed for ${taskId}, falling back to Poseidon BG:`, agentErr.message);
+          log.warn(`AgentWorkerPool dispatch failed for ${taskId}, falling back to Poseidon BG:`, agentErr.message);
           usedAgentWorker = false; // fall through to Poseidon BG path
         }
       }
@@ -546,7 +547,7 @@ class TaskRunner {
                 agentPrefix += modelPref + `---\n`;
               }
             } catch (e) {
-              console.warn(`[TaskRunner] Could not load agent brain for ${agentId}:`, e.message);
+              log.warn(`Could not load agent brain for ${agentId}:`, e.message);
             }
           }
 
@@ -571,7 +572,7 @@ class TaskRunner {
           }
           if (bus) bus.push({ type: 'task_end', task_id: taskId });
           if (preempted) {
-            console.log(`[TaskRunner] BG task ${taskId} preempted by CHAT — will retry`);
+            log.info(`BG task ${taskId} preempted by CHAT — will retry`);
             throw new Error('PREEMPTED_BY_CHAT');
           }
         } finally {
@@ -625,7 +626,7 @@ class TaskRunner {
         const effectiveFails = isResourceError ? 0 : prevFails;
 
         if (!isResourceError && effectiveFails >= this.MAX_RETRIES) {
-          console.warn(`[TaskRunner] ✗✗ ${taskId} hit ${this.MAX_RETRIES} failures (${errType}) — permanently failed`);
+          log.warn(`✗✗ ${taskId} hit ${this.MAX_RETRIES} failures (${errType}) — permanently failed`);
           await this._markDone(taskId);
           await this._setStatus(taskId, 'failed', {
             completed_at: new Date().toISOString(),
@@ -640,7 +641,7 @@ class TaskRunner {
               : (RETRY_BACKOFF[prevFails] || 30_000);
           this._retryAfter.set(taskId, Date.now() + backoffMs);
           const label = isResourceError ? `[${errType}] resource contention` : `attempt ${prevFails}/${this.MAX_RETRIES} [${errType}]`;
-          console.warn(`[TaskRunner] ✗ ${taskId} ${label} — retry in ${Math.round(backoffMs/1000)}s`);
+          log.warn(`✗ ${taskId} ${label} — retry in ${Math.round(backoffMs/1000)}s`);
           await this._setStatus(taskId, 'planned', {
             output_preview: `${label}: retry in ${Math.round(backoffMs/1000)}s`
           });
@@ -670,7 +671,7 @@ class TaskRunner {
         context: { output_chars: output.length, agent: agentId || 'poseidon' }
       }).catch(() => {});
 
-      console.log(`[TaskRunner] ${failed?'✗':'✓'} ${taskId} ${finalStatus} (${output.length} chars)`);
+      log.info(`${failed?'✗':'✓'} ${taskId} ${finalStatus} (${output.length} chars)`);
     } finally {
       // Put agent back to sleep
       if (agentId && agentId !== 'poseidon_main') {
@@ -683,7 +684,7 @@ class TaskRunner {
   async _setStatus(taskId, status, extra = {}) {
     try {
       let task = await this.rm._readTaskDetails(taskId);
-      if (!task) { console.warn(`[TaskRunner] _setStatus: task ${taskId} not found`); return; }
+      if (!task) { log.warn(`_setStatus: task ${taskId} not found`); return; }
 
       task.status    = status;
       task.lifecycle = { ...(task.lifecycle || {}), status };
@@ -714,7 +715,7 @@ class TaskRunner {
             project_id:     task.project_id     || task.context?.project_id     || null,
           };
           await fsp.writeFile(AQUARIUM.RESULTS_LOG, JSON.stringify(rlog, null, 2), 'utf8');
-        } catch (re) { console.warn(`[TaskRunner] results_log write failed for ${taskId}:`, re.message); }
+        } catch (re) { log.warn(`results_log write failed for ${taskId}:`, re.message); }
       }
 
       await this.rm._writeTaskDetails(taskId, task);
@@ -723,10 +724,10 @@ class TaskRunner {
       if (TERMINAL_FOR_LOG.has(status)) {
         try {
           await this.rm.cascadeTaskClosureFlat(taskId, task, status);
-        } catch (ce) { console.warn(`[TaskRunner] cascade failed for ${taskId}:`, ce.message); }
+        } catch (ce) { log.warn(`cascade failed for ${taskId}:`, ce.message); }
       }
     } catch (e) {
-      console.warn(`[TaskRunner] setStatus failed for ${taskId}:`, e.message);
+      log.warn(`setStatus failed for ${taskId}:`, e.message);
     }
   }
 
@@ -773,7 +774,7 @@ class TaskRunner {
         await this.rm._writeTaskDetails(taskId, task);
       }
     } catch (e) {
-      console.warn(`[TaskRunner] saveOutput failed for ${taskId}:`, e.message);
+      log.warn(`saveOutput failed for ${taskId}:`, e.message);
     }
   }
 
@@ -828,9 +829,9 @@ class TaskRunner {
         failed
       }, by);
 
-      console.log(`[TaskRunner] Updated project memory for ${pid}: ${done}/${allProjectTasks.length} tasks done`);
+      log.info(`Updated project memory for ${pid}: ${done}/${allProjectTasks.length} tasks done`);
     } catch (e) {
-      console.warn('[TaskRunner] _updateProjectMemoryForTask failed:', e.message);
+      log.warn(' _updateProjectMemoryForTask failed:', e.message);
     }
   }
 }
