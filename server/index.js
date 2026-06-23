@@ -11,9 +11,41 @@ const toolRegistry = require('./services/ToolRegistry');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Middleware
-app.use(cors());
-app.use(bodyParser.json());
+// ── Security middleware ────────────────────────────────────────────────────
+// CORS: localhost-only by default. To expose, set IAQUA_CORS_ORIGIN=https://example.com
+const corsOrigin = process.env.IAQUA_CORS_ORIGIN || 'http://localhost:3000';
+app.use(cors({
+  origin: corsOrigin === '*' ? true : corsOrigin.split(',').map(s => s.trim()),
+  credentials: true,
+  methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE'],
+}));
+
+// Body limits — protect against memory exhaustion via huge payloads
+app.use(bodyParser.json({ limit: '2mb' }));   // most routes need < 100 KB
+app.use(bodyParser.urlencoded({ extended: true, limit: '2mb' }));
+
+// Optional token auth: set IAQUA_API_TOKEN to require Bearer token on destructive routes.
+// Read-only routes (GET) remain open. POST/PATCH/DELETE require the token when set.
+const apiToken = process.env.IAQUA_API_TOKEN || null;
+if (apiToken) {
+  console.log('[Auth] IAQUA_API_TOKEN set — destructive routes require Bearer token');
+  app.use((req, res, next) => {
+    // Always allow GET, OPTIONS, HEAD
+    if (['GET', 'OPTIONS', 'HEAD'].includes(req.method)) return next();
+    // Allow SSE chat endpoint to be reached without token IF on localhost (browser convenience)
+    const isLocal = req.ip === '::1' || req.ip === '127.0.0.1' || req.ip?.includes('::ffff:127.0.0.1');
+    const isStatic = req.path.startsWith('/scripts/') || req.path.startsWith('/styles/');
+    if (isStatic) return next();
+    const header = req.get('Authorization') || '';
+    const token = header.startsWith('Bearer ') ? header.slice(7) : null;
+    if (token === apiToken) return next();
+    if (isLocal && req.path.startsWith('/api/')) return next(); // localhost dev convenience
+    return res.status(401).json({ success: false, error: 'Unauthorized — Bearer token required' });
+  });
+} else {
+  console.log('[Auth] No IAQUA_API_TOKEN set — all routes open (local-only deployment assumed)');
+}
+
 app.use(express.static(path.join(__dirname, '../client')));
 
 // === V2 NEURONAL ARCHITECTURE (single shared RegistryManager instance) ===
