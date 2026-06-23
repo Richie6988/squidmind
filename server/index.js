@@ -7,6 +7,7 @@ const fs   = require('fs').promises;
 const os = require('os');
 const Agent = require('./models/Agent');
 const toolRegistry = require('./services/ToolRegistry');
+const { fetchWithRetry } = require('./utils/fetchWithRetry');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -342,7 +343,8 @@ app.post('/api/v2/voice/stt', async (req, res) => {
     await new Promise(r => req.on('end', r));
     const body = Buffer.concat(chunks);
 
-    const response = await fetch(`${baseUrl}/v1/audio/transcriptions`, {
+    const response = await fetchWithRetry(`${baseUrl}/v1/audio/transcriptions`, {
+      retries: 2, baseDelayMs: 500, timeoutMs: 60_000,
       method: 'POST',
       headers: {
         'Content-Type': req.headers['content-type'],
@@ -386,7 +388,8 @@ app.post('/api/v2/voice/tts', express.json({ limit: '50kb' }), async (req, res) 
     const baseUrl = (cfg.speaches_url || 'http://localhost:8000').replace(/\/$/, '');
     const { default: fetch } = await import('node-fetch');
 
-    const response = await fetch(`${baseUrl}/v1/audio/speech`, {
+    const response = await fetchWithRetry(`${baseUrl}/v1/audio/speech`, {
+      retries: 2, baseDelayMs: 500, timeoutMs: 60_000,
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

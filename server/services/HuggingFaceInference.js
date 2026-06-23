@@ -1,4 +1,5 @@
 const fetch = require('node-fetch');
+const { fetchWithRetry } = require('../utils/fetchWithRetry');
 
 /**
  * HuggingFace Inference API Integration
@@ -124,7 +125,8 @@ class HuggingFaceInference {
     } = options;
 
     try {
-      const response = await fetch(`${this.baseUrl}/${modelId}`, {
+      const response = await fetchWithRetry(`${this.baseUrl}/${modelId}`, {
+        retries: 2, baseDelayMs: 1000, timeoutMs: 60_000,
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${this.apiKey}`,
@@ -191,7 +193,8 @@ class HuggingFaceInference {
         return { role: 'system', content: msg.content };
       });
 
-      const response = await fetch(`${this.baseUrl}/${modelId}`, {
+      const response = await fetchWithRetry(`${this.baseUrl}/${modelId}`, {
+        retries: 2, baseDelayMs: 1000, timeoutMs: 60_000,
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${this.apiKey}`,
@@ -261,7 +264,8 @@ class HuggingFaceInference {
    */
   async checkModelStatus(modelId) {
     try {
-      const response = await fetch(`${this.baseUrl}/${modelId}`, {
+      const response = await fetchWithRetry(`${this.baseUrl}/${modelId}`, {
+        retries: 2, baseDelayMs: 1000, timeoutMs: 60_000,
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${this.apiKey}`,

@@ -21,6 +21,7 @@ const fsSync = require('fs');
 const path = require('path');
 const { exec } = require('child_process');
 const { promisify } = require('util');
+const { fetchWithRetry } = require('../utils/fetchWithRetry');
 const execAsync = promisify(exec);
 
 class OrchestratorTools {
@@ -177,11 +178,10 @@ class OrchestratorTools {
       return { ok: false, error: 'url must be http(s)://...' };
     }
     try {
-      const res = await fetch(url, {
+      const res = await fetchWithRetry(url, {
+        retries: 2, baseDelayMs: 500, timeoutMs: 30_000,
         headers: { 'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) SquidMind/1.0' },
         redirect: 'follow',
-        // 30s timeout via AbortController
-        signal: AbortSignal.timeout(30000)
       });
       if (!res.ok) return { ok: false, error: `HTTP ${res.status}`, url };
       const contentType = res.headers.get('content-type') || '';
