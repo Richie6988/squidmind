@@ -86,21 +86,71 @@ app.post('/api/v2/repair', (req, res) => {
 
 // === V2 HEALTH ENDPOINT ===
 app.get('/api/v2/health', async (req, res) => {
+  // Lightweight check — for load balancers / monitors. Returns:
+  //   200 + status:'up'         all systems nominal
+  //   200 + status:'degraded'   running but some subsystems unhealthy
+  //   503 + status:'down'       core registry unreadable, server unusable
+  const startMs = Date.now();
+  const checks = {};
+
+  // Core registries (must all read for 'up')
+  const coreRegistries = [
+    'main/poseidon_brain.json',
+    'agents/agent_registry.json',
+    'tasks/tasks_registry.json',
+    'projects/project_registry.json',
+    'models/model_registry.json',
+  ];
+  let coreFailures = 0;
+  try { sharedRm.invalidateCache(); } catch {}
+  for (const reg of coreRegistries) {
+    try { await sharedRm.read(reg); checks[reg] = 'ok'; }
+    catch (err) { checks[reg] = 'error'; coreFailures++; }
+  }
+
+  // Optional subsystems (degrade-only)
+  const optional = {};
   try {
-    sharedRm.invalidateCache();
-    const checks = {};
-    for (const reg of ['main/poseidon_brain.json','agents/agent_registry.json','tasks/tasks_registry.json','projects/project_registry.json','models/model_registry.json','tools/tool_registry.json','logs/logs.json']) {
-      try {
-        await sharedRm.read(reg);
-        checks[reg] = 'ok';
-      } catch (err) {
-        checks[reg] = 'error: ' + err.message.slice(0, 100);
-      }
-    }
-    const allOk = Object.values(checks).every(v => v === 'ok');
-    res.json({ success: allOk, checks });
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+    optional.poseidon_model = v2ModelService.poseidonModelId ? 'configured' : 'not_assigned';
+    optional.model_loaded   = v2ModelService.loaded?.size > 0 ? 'yes' : 'no';
+    optional.broker_state   = v2ModelService.broker?.getState?.() || 'unknown';
+  } catch (e) { optional.broker_state = 'error'; }
+
+  let status, code;
+  if (coreFailures === 0) {
+    status = 'up';
+    code = 200;
+  } else if (coreFailures < coreRegistries.length) {
+    status = 'degraded';
+    code = 200;
+  } else {
+    status = 'down';
+    code = 503;
+  }
+
+  res.status(code).json({
+    status,
+    success: status !== 'down',
+    uptime_seconds: Math.floor(process.uptime()),
+    response_time_ms: Date.now() - startMs,
+    checks,
+    optional,
+    timestamp: new Date().toISOString(),
+  });
+});
+
+// Liveness — process is alive (cheap, no IO)
+app.get('/api/v2/livez', (req, res) => {
+  res.json({ status: 'alive', uptime_seconds: Math.floor(process.uptime()) });
+});
+
+// Readiness — server can accept traffic (registries readable)
+app.get('/api/v2/readyz', async (req, res) => {
+  try {
+    await sharedRm.read('main/poseidon_brain.json');
+    res.json({ status: 'ready' });
+  } catch (e) {
+    res.status(503).json({ status: 'not_ready', error: e.message });
   }
 });
 
