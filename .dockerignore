@@ -1,0 +1,12 @@
+node_modules
+aquarium
+.git
+.github
+*.log
+.env
+.env.local
+.DS_Store
+docs/
+tests/
+*.md
+!README.md
