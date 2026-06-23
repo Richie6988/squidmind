@@ -1,13 +1,14 @@
 {
   "name": "squidmind",
   "version": "1.0.0",
-  "description": "🦑 Multi-Agent Aquarium Orchestration System - Manage AI agents through a playful pixel art interface",
+  "description": "\ud83e\udd91 Multi-Agent Aquarium Orchestration System - Manage AI agents through a playful pixel art interface",
   "main": "server/index.js",
   "scripts": {
     "start": "node server/index.js",
     "dev": "node --watch server/index.js",
     "test": "echo \"Tests coming soon\" && exit 0",
-    "rebuild-llama": "bash scripts/rebuild-llama.sh"
+    "rebuild-llama": "bash scripts/rebuild-llama.sh",
+    "test:smoke": "node tests/smoke.test.js"
   },
   "keywords": [
     "ai",
