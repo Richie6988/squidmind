@@ -743,7 +743,7 @@ async function start() {
     // Mirror built-in tools to V2 tool_registry.json so AgentForm sees them
     await toolRegistry.syncToRegistryFile(sharedRm);
     // Start server
-    app.listen(PORT, () => {
+    const httpServer = app.listen(PORT, () => {
       // Start bots after port is bound
       botService.start().catch(err => console.warn('[BotService] startup error:', err.message));
       console.log(`\n🌊 SquidMind is live at http://localhost:${PORT}`);
@@ -754,6 +754,76 @@ async function start() {
       console.log('  /api/agents (GET only)      - Canvas reads agents from registry');
       console.log('  /api/projects (GET/POST)    - Project listing + creation');
       console.log('\n🎮 Open http://localhost:3000 in your browser!\n');
+    });
+
+    // ── Graceful shutdown ─────────────────────────────────────────────────
+    let shuttingDown = false;
+    async function gracefulShutdown(signal) {
+      if (shuttingDown) {
+        console.log(`[Shutdown] Already shutting down — second ${signal} forces exit`);
+        process.exit(1);
+      }
+      shuttingDown = true;
+      console.log(`\n[Shutdown] ${signal} received — beginning graceful shutdown…`);
+      const startMs = Date.now();
+      const hardTimeout = setTimeout(() => {
+        console.error('[Shutdown] Hard timeout (15s) — forcing exit');
+        process.exit(1);
+      }, 15_000);
+      hardTimeout.unref();
+
+      // Stop accepting new HTTP connections (drains existing ones)
+      try {
+        await new Promise(r => httpServer.close(r));
+        console.log('[Shutdown] ✓ HTTP server closed');
+      } catch (e) { console.warn('[Shutdown] HTTP close error:', e.message); }
+
+      // Stop heartbeat (prevents new dream/audit/planner triggers)
+      try { heartbeatService.stop?.(); console.log('[Shutdown] ✓ Heartbeat stopped'); }
+      catch (e) { console.warn('[Shutdown] Heartbeat stop error:', e.message); }
+
+      // Stop bot polling
+      try { await botService.stop?.(); console.log('[Shutdown] ✓ Bot stopped'); }
+      catch (e) { console.warn('[Shutdown] Bot stop error:', e.message); }
+
+      // Persist _done set (in-memory completed task IDs)
+      try { await taskRunner._saveDone?.(); console.log('[Shutdown] ✓ _done.json persisted'); }
+      catch (e) { console.warn('[Shutdown] _done persist error:', e.message); }
+
+      // Flush any pending registry writes (writeLocks chain)
+      try {
+        const locks = Array.from(sharedRm.writeLocks?.values?.() || []);
+        if (locks.length) {
+          console.log(`[Shutdown] Waiting for ${locks.length} pending registry write(s)…`);
+          await Promise.allSettled(locks);
+        }
+        console.log('[Shutdown] ✓ Registry writes flushed');
+      } catch (e) { console.warn('[Shutdown] Registry flush error:', e.message); }
+
+      // Unload all models (disposes LlamaContext + ChatSession, frees VRAM)
+      try {
+        const loaded = Array.from(v2ModelService.loaded?.keys?.() || []);
+        for (const id of loaded) {
+          await v2ModelService.unloadModel(id).catch(e =>
+            console.warn(`[Shutdown] unload ${id}:`, e.message));
+        }
+        console.log(`[Shutdown] ✓ Unloaded ${loaded.length} model(s)`);
+      } catch (e) { console.warn('[Shutdown] Model unload error:', e.message); }
+
+      clearTimeout(hardTimeout);
+      console.log(`[Shutdown] ✓ Complete in ${Date.now() - startMs}ms — exiting cleanly`);
+      process.exit(0);
+    }
+
+    process.on('SIGINT',  () => gracefulShutdown('SIGINT'));
+    process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+    process.on('uncaughtException', (err) => {
+      console.error('[FATAL] Uncaught exception:', err);
+      gracefulShutdown('uncaughtException').catch(() => process.exit(1));
+    });
+    process.on('unhandledRejection', (reason) => {
+      console.error('[FATAL] Unhandled rejection:', reason);
+      // Don't shutdown on unhandled rejection — too easy to trigger from a single bad fetch
     });
     
   } catch (error) {
