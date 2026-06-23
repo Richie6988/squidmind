@@ -197,6 +197,21 @@ const HeartbeatService = require('./services/HeartbeatService');
 const heartbeat = new HeartbeatService(sharedRm, 15000);
 heartbeat.start();
 
+// === BACKUP SERVICE (rolling snapshots of critical aquarium state) ===
+const BackupService = require('./services/BackupService');
+const backupService = new BackupService(AQUARIUM.ROOT);
+backupService.start();
+
+// Backup snapshot list endpoint
+app.get('/api/v2/backups', async (req, res) => {
+  try { res.json({ success: true, ...(await backupService.listSnapshots()) }); }
+  catch (e) { res.status(500).json({ success: false, error: e.message }); }
+});
+app.post('/api/v2/backups/snapshot', async (req, res) => {
+  try { const r = await backupService.snapshot(req.body?.bucket || 'hourly'); res.json({ success: true, ...r }); }
+  catch (e) { res.status(500).json({ success: false, error: e.message }); }
+});
+
 // === V2 MODEL SERVICE (GGUF loading + Poseidon chat) ===
 const V2ModelService = require('./services/V2ModelService');
 const PoseidonOrchestrator = require('./services/PoseidonOrchestrator');
@@ -861,8 +876,18 @@ async function start() {
       } catch (e) { console.warn('[Shutdown] HTTP close error:', e.message); }
 
       // Stop heartbeat (prevents new dream/audit/planner triggers)
-      try { heartbeatService.stop?.(); console.log('[Shutdown] ✓ Heartbeat stopped'); }
+      try { heartbeat.stop?.(); console.log('[Shutdown] ✓ Heartbeat stopped'); }
       catch (e) { console.warn('[Shutdown] Heartbeat stop error:', e.message); }
+
+      // Stop backup service
+      try { backupService.stop?.(); console.log('[Shutdown] ✓ Backup service stopped'); }
+      catch (e) { console.warn('[Shutdown] Backup stop error:', e.message); }
+
+      // Final snapshot before exit
+      try {
+        await backupService.snapshot('hourly');
+        console.log('[Shutdown] ✓ Final backup snapshot taken');
+      } catch (e) { console.warn('[Shutdown] Final snapshot error:', e.message); }
 
       // Stop bot polling
       try { await botService.stop?.(); console.log('[Shutdown] ✓ Bot stopped'); }
