@@ -913,6 +913,32 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
    * @param {Array<{role,content}>} history - prior turns
    * @yields {string} chunk of generated text
    */
+
+  /**
+   * queueBgMessage — queues a BG task for Poseidon (used by HeartbeatService for
+   * proactive project audits). Runs async, does not block caller.
+   * Deduplicates by key to avoid flooding if the previous audit hasn't finished.
+   */
+  queueBgMessage(message, key = 'bg') {
+    if (!this._bgQueue) this._bgQueue = new Map();
+    if (this._bgQueue.has(key)) return; // already queued
+    this._bgQueue.set(key, true);
+    setImmediate(async () => {
+      try {
+        for await (const ev of this.chatWithPoseidon(message, [], { _bgMode: true })) {
+          // Drain the generator — output goes to ReasoningBus via the chat route listener
+          if (global.ReasoningBus && ev.type === 'text') {
+            global.ReasoningBus.push({ type: 'text', task_id: key, chunk: ev.chunk });
+          }
+        }
+      } catch (e) {
+        console.warn(`[V2ModelService] queueBgMessage(${key}) error:`, e.message);
+      } finally {
+        this._bgQueue.delete(key);
+      }
+    });
+  }
+
   async *chatWithPoseidon(userMessage, historyIn = [], { _skipBroker = false, _bgMode = false } = {}) {
     let history = historyIn.slice(); // mutable copy
     if (!this.poseidonModelId) {

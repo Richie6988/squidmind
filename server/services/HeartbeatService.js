@@ -25,6 +25,8 @@ class HeartbeatService {
     this.dreamIdleMinutes = 10;        // dream after N minutes of Poseidon idle
     this._lastDreamAt = 0;
     this.dreamCooldownMinutes = 30;    // min gap between dream cycles
+    this._lastProjectAuditAt = {};     // project_id → last audit timestamp
+    this.projectAuditIntervalMs = 2 * 60 * 60 * 1000; // audit each project at most every 2h
   }
 
   setModelService(ms) { this.modelService = ms; }
@@ -137,6 +139,9 @@ class HeartbeatService {
       this._plannerTick().catch(e =>
         console.warn('[Heartbeat] Planner tick error:', e.message)
       );
+      this._projectAuditTick().catch(e =>
+        console.warn('[Heartbeat] Project audit tick error:', e.message)
+      );
     }
   }
 
@@ -180,6 +185,62 @@ class HeartbeatService {
         ].join('\n');
       }
     } catch {}
+  }
+
+  /**
+   * _projectAuditTick — periodically triggers Poseidon to audit each active project.
+   * Runs at most once per 2h per project. Only fires when broker is idle (same guard as dream).
+   * Poseidon calls audit_project(name) and updates project_memory.next_steps.
+   */
+  async _projectAuditTick() {
+    if (!this.modelService?.poseidonModelId) return;
+    const broker = this.modelService.broker;
+    if (!broker?.isDreamAllowed()) return;
+    const entry = this.modelService.loaded.get(this.modelService.poseidonModelId);
+    if (!entry || entry.generating || entry.dreaming) return;
+
+    try {
+      this.rm.invalidateCache();
+      const projReg = await this.rm.getProjectRegistry();
+      const taskReg = await this.rm.getTasksRegistry();
+      const allTasks = Object.values(taskReg.tasks || {});
+      const now = Date.now();
+
+      for (const [projId, proj] of Object.entries(projReg.projects || {})) {
+        // Only audit projects that have active or planned tasks
+        const active = allTasks.filter(t =>
+          (t.project_id === projId || t.project_name === proj.name) &&
+          ['planned', 'in_progress'].includes(t.lifecycle?.status || t.status)
+        );
+        if (active.length === 0) continue;
+
+        // Cooldown per project
+        const lastAudit = this._lastProjectAuditAt[projId] || 0;
+        if (now - lastAudit < this.projectAuditIntervalMs) continue;
+
+        this._lastProjectAuditAt[projId] = now;
+        console.log(`[Heartbeat] 🔍 Auto-audit: project ${proj.name} (${active.length} active/planned tasks)`);
+
+        // Build the BG audit message for Poseidon
+        const msg = [
+          `PROACTIVE PROJECT AUDIT: "${proj.name}"`,
+          `This project has ${active.length} active/planned task(s). No user is waiting.`,
+          `Please:`,
+          `1. Call audit_project("${proj.name}") to get full status.`,
+          `2. Evaluate: are any tasks blocked or redundant? Are the next steps still relevant?`,
+          `3. If next tasks are unclear: create 1-3 specific follow-up tasks and assign them.`,
+          `4. Update project memory (next_steps section) with your recommended roadmap.`,
+          `5. If all tasks are done: summarise completion and suggest archiving.`,
+          `Be concise. No user is present — just update state and plan.`
+        ].join('\n');
+
+        // Queue as BG Poseidon task (uses existing BG chat mechanism)
+        this.modelService.queueBgMessage?.(msg, `audit_${projId}`);
+        break; // audit one project per tick to avoid flooding
+      }
+    } catch (e) {
+      console.warn('[Heartbeat] _projectAuditTick error:', e.message);
+    }
   }
 
   _measure() {

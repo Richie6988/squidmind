@@ -335,6 +335,7 @@ My response: "${ss.last_response_preview}"${tools}
       lines.push('  WHEN making architecture/design decisions: call update_project_memory(project_name, "decision", "what and why").');
       lines.push('  AFTER planning next steps: call update_project_memory(project_name, "next_steps", "step1, step2, step3").');
       lines.push('  Agent sync: when one agent hands off to another, log via update_project_memory(name, "agent_sync", message).');
+      lines.push('  PROACTIVE AUDIT: call audit_project(project_name) when: asked for status, project has been running > 3 tasks, or before planning the next sprint. It returns completion %, active/planned/failed/done tasks, blockers, output files, and agent status in one call.');
       lines.push('TASK DECOMPOSITION — MANDATORY:');
       lines.push('  RULE: any request involving multiple items, sources, files, URLs, agents = ONE task per item. NEVER one big task.');
       lines.push('  RULE: before create_task, mentally list all items. Create N separate tasks, one per item.');
@@ -852,6 +853,111 @@ Never describe a bash command you could call instead.`;
           } catch (e) { return { ok: false, error: e.message }; }
         }
       }),
+
+      audit_project: defineChatSessionFunction({
+        description: 'Full project audit: reads project memory, all tasks (done + active + planned), agent status, and produces a structured completion assessment + recommended next tasks. Call this proactively when a project has been running a while or when the user asks for a status update.',
+        params: {
+          type: 'object',
+          properties: {
+            project_name: { type: 'string', description: 'Project name or ID to audit' }
+          },
+          required: ['project_name']
+        },
+        handler: async ({ project_name }) => {
+          try {
+            // 1. Resolve project
+            const proj = await self.rm.resolveProjectByNameOrId(project_name);
+            if (!proj) return { ok: false, error: `Project "${project_name}" not found` };
+            const { id: projectId, entry } = proj;
+
+            // 2. Project memory
+            const mem = await self.rm.getProjectMemory(projectId).catch(() => ({}));
+
+            // 3. Active + planned tasks (from registry)
+            const taskReg = await self.rm.read('tasks/tasks_registry.json');
+            const allTasks = Object.values(taskReg.tasks || {});
+            const projectTasks = allTasks.filter(t =>
+              t.project_id === projectId || t.project_name === entry.name
+            );
+            const planned     = projectTasks.filter(t => t.status === 'planned');
+            const inProgress  = projectTasks.filter(t => t.status === 'in_progress');
+            const failed      = projectTasks.filter(t => t.status === 'failed');
+
+            // 4. Completed tasks (from results_log)
+            const AQUARIUM = require('../aquarium');
+            let completed = [];
+            try {
+              const rlog = JSON.parse(require('fs').readFileSync(AQUARIUM.RESULTS_LOG, 'utf8'));
+              completed = Object.values(rlog.results || {}).filter(r =>
+                r.project_name === entry.name || r.project_id === projectId
+              );
+            } catch {}
+
+            // 5. Assigned agents status
+            const agentReg = await self.rm.read('agents/agent_registry.json');
+            const assignedAgents = (entry.assigned_agents || []).map(agId => {
+              const ag = agentReg.agents?.[agId];
+              return ag ? {
+                id: agId,
+                name: ag.display_name,
+                status: ag.status,
+                tasks_completed: ag.performance_summary?.tasks_completed || 0
+              } : { id: agId, name: agId, status: 'unknown' };
+            });
+
+            // 6. Output files
+            const path = require('path');
+            const fs   = require('fs');
+            const outputDir = path.join(AQUARIUM.PROJECTS, entry.folder, 'output');
+            let outputFiles = [];
+            try {
+              outputFiles = fs.readdirSync(outputDir).map(f => {
+                const stat = fs.statSync(path.join(outputDir, f));
+                return { name: f, size: stat.size, mtime: stat.mtime.toISOString() };
+              });
+            } catch {}
+
+            // 7. Compute metrics
+            const totalDone  = completed.length;
+            const totalTasks = totalDone + planned.length + inProgress.length + failed.length;
+            const pct = totalTasks > 0 ? Math.round(totalDone / totalTasks * 100) : 0;
+
+            return {
+              ok: true,
+              project: {
+                id: projectId,
+                name: entry.name,
+                folder: entry.folder,
+                created_at: entry.created_at || null,
+              },
+              completion: {
+                percent: pct,
+                total_tasks: totalTasks,
+                completed: totalDone,
+                in_progress: inProgress.length,
+                planned: planned.length,
+                failed: failed.length,
+              },
+              active_tasks: inProgress.map(t => ({ id: t.task_id, title: t.title, assigned_to: t.assigned_to })),
+              planned_tasks: planned.map(t => ({ id: t.task_id, title: t.title, assigned_to: t.assigned_to })),
+              failed_tasks:  failed.map(t => ({ id: t.task_id, title: t.title, fails: t.fail_count })),
+              recent_completed: completed.slice(-5).map(t => ({
+                id: t.task_id, title: t.title, assigned_name: t.assigned_name, completed_at: t.completed_at
+              })),
+              memory: {
+                blockers:    mem.progress?.blockers    || [],
+                next_steps:  mem.progress?.next_steps  || [],
+                decisions:   (mem.decisions || []).slice(-3),
+                achievements:(mem.progress?.recent_achievements || []).slice(-5),
+              },
+              agents: assignedAgents,
+              output_files: outputFiles.slice(-10),
+              vision: mem.vision || null,
+            };
+          } catch (e) { return { ok: false, error: e.message }; }
+        }
+      }),
+
       list_skills: defineChatSessionFunction({
         description: 'List all skills in aquarium/SKILLS/ with their summary, version, and triggers.',
         params: { type: 'object', properties: {} },
@@ -1390,7 +1496,7 @@ Never describe a bash command you could call instead.`;
         'read_file', 'write_file', 'list_files', 'edit_file',
         'web_search', 'web_fetch', 'fetch_and_save', 'fetch_image_url',
         'create_task', 'update_task', 'list_tasks',
-        'update_project_memory', 'read_project_memory',
+        'update_project_memory', 'read_project_memory', 'audit_project',
         'list_models', 'generate_image',
         'get_datetime',
       ]);
