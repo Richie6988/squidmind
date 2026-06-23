@@ -41,3 +41,6 @@ build/
 # Old migration scripts & backups
 migrate.js
 *.bak
+
+# Backup snapshots — never commit user state
+aquarium/.backups/
