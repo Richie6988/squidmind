@@ -891,32 +891,52 @@ const TempleInterior = {
 
     const makeCard = (task) => {
       const status = task.lifecycle?.status || task.status || 'open';
-      // Consider broker-running state even if status hasn't updated yet
       const isRun  = status === 'in_progress' || brokerRunningId === task.task_id;
       const isFail = status === 'failed' || status === 'cancelled';
       const isDone = status === 'completed';
       const cls    = isRun ? 'prog' : isDone ? 'done' : isFail ? 'fail' : '';
-      const agent  = task.assignment?.assigned_name || task.assignment?.assigned_to || '';
-      // Progress line: show for in_progress tasks
-      const progText = task.progress ? String(task.progress).slice(0, 80) : '';
-      const prog   = isRun && progText ? `<div class="ti-kcard-prog">&gt; ${this._esc(progText)}</div>` : '';
+      // Flat field fallback (IC-02 fix)
+      const agent  = task.assignment?.assigned_name || task.assigned_to || task.assignment?.assigned_to || '';
+      // Status icon
+      const statusIcon = isRun ? '●' : isDone ? '✓' : isFail ? '✗' : '○';
+      const statusColor = isRun ? '#06ffa5' : isDone ? '#4facfe' : isFail ? '#ef4444' : '#64748b';
+      // Elapsed timer for in_progress
+      let elapsed = '';
+      if (isRun && task.lifecycle?.started_at) {
+        const ms = Date.now() - new Date(task.lifecycle.started_at).getTime();
+        if (ms > 0 && ms < 24*60*60*1000) {
+          const s = Math.floor(ms / 1000);
+          elapsed = s < 60 ? `${s}s` : s < 3600 ? `${Math.floor(s/60)}m ${s%60}s` : `${Math.floor(s/3600)}h`;
+        }
+      }
+      // Progress line for in_progress tasks (from task.progress field updated by TaskRunner)
+      const progText = task.progress ? String(task.progress).slice(0, 100) : '';
+      const prog   = isRun && progText ? `<div class="ti-kcard-prog">› ${this._esc(progText)}</div>` : '';
       // Result summary for done tasks
       const summary = (isDone || isFail) && task.result_summary
-        ? `<div class="ti-kcard-prog">${this._esc(String(task.result_summary).slice(0, 100))}</div>` : '';
+        ? `<div class="ti-kcard-prog">${this._esc(String(task.result_summary).slice(0, 110))}</div>` : '';
+      // Progress bar (animated for running)
       const bar    = isRun ? `<div class="ti-kcard-bar"><div class="ti-kcard-bar-fill"></div></div>` : '';
       const agentBadge = agent
-        ? `<span class="ti-kcard-agent${isRun ? ' running' : ''}">${isRun ? (window.PixelIcons?.inline('bolt',10)||'▶') : '>'} ${this._esc(agent.slice(0,14))}</span>`
+        ? `<span class="ti-kcard-agent${isRun ? ' running' : ''}" title="Assigned to ${this._esc(agent)}">${isRun ? '▶' : '·'} ${this._esc(agent.slice(0,14))}</span>`
+        : '';
+      const elapsedBadge = elapsed
+        ? `<span class="ti-kcard-elapsed" style="color:#06ffa5;font-family:var(--panel-font-mono);font-size:9px;">${elapsed}</span>`
         : '';
       return `<div class="ti-kcard ${cls}" draggable="true" data-task-id="${task.task_id}"
           ondragstart="TempleInterior._kDragStart(event)"
           ondragover="event.preventDefault();event.currentTarget.classList.add('drag-over')"
           ondragleave="event.currentTarget.classList.remove('drag-over')"
-          onclick="TempleInterior._openTaskDetail('${task.task_id}')">
-        <div class="ti-kcard-title">${this._esc(task.title)}</div>
+          onclick="TempleInterior._openTaskDetail('${task.task_id}')"
+          title="${this._esc(task.title)} — click to open details">
+        <div class="ti-kcard-title">
+          <span style="color:${statusColor};margin-right:5px;">${statusIcon}</span>${this._esc(task.title)}
+        </div>
         ${prog}${summary}${bar}
         <div class="ti-kcard-foot">
           ${agentBadge}
-          <button class="ti-kcard-del" onclick="event.stopPropagation();TempleInterior._deleteTask('${task.task_id}')">X</button>
+          ${elapsedBadge}
+          <button class="ti-kcard-del" title="Delete task" onclick="event.stopPropagation();TempleInterior._deleteTask('${task.task_id}')">×</button>
         </div>
       </div>`;
     };
@@ -927,6 +947,11 @@ const TempleInterior = {
       { key: 'done', label: 'DONE',     cls: 'done', drop: 'completed' }
     ];
 
+    const emptyStateFor = (key) => {
+      if (key === 'todo') return `<div class="ti-empty" style="padding:14px 8px;text-align:center;color:#475569;font-size:11px;line-height:1.6;">No tasks yet.<br><button onclick="event.stopPropagation();TempleInterior._showAddTask()" style="margin-top:8px;background:rgba(79,172,254,0.15);border:1px solid rgba(79,172,254,0.3);color:#4facfe;padding:5px 11px;font-size:10px;border-radius:5px;cursor:pointer;font-family:var(--panel-font);">+ Add task</button></div>`;
+      if (key === 'prog') return `<p class="ti-empty" style="padding:10px 6px;text-align:center;font-size:10px;color:#475569;">Drag a task here<br>or wait for an agent</p>`;
+      return `<p class="ti-empty" style="padding:10px 6px;text-align:center;font-size:10px;color:#475569;">Completed tasks will appear here</p>`;
+    };
     c.innerHTML = `
 <div class="ti-kanban-wrap">
   <div class="ti-kanban-hdr">
@@ -945,7 +970,7 @@ const TempleInterior = {
       <div class="ti-kcards">
         ${(cols[col.key] || []).length
           ? (cols[col.key] || []).map(makeCard).join('')
-          : `<p class="ti-empty" style="padding:8px 6px;font-size:8px;">DROP HERE</p>`}
+          : emptyStateFor(col.key)}
       </div>
     </div>`).join('')}
   </div>
