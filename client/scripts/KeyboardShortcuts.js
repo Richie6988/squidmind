@@ -9,7 +9,8 @@
  */
 (function () {
   const TOPMOST_MODAL_SELECTORS = [
-    '.squid-modal-overlay',         // SquidModal.alert/confirm/prompt — highest priority
+    '#iaqua-cmd-palette',           // Command Palette — highest priority (above SquidModal)
+    '.squid-modal-overlay',         // SquidModal.alert/confirm/prompt
     '.agent-form-modal',
     '.modal[id="model-modal"]',
     '.modal[id="skills-modal"]',
@@ -32,6 +33,11 @@
   function closeTopmostModal() {
     const m = getTopmostOpenModal();
     if (!m) return false;
+
+    if (m.id === 'iaqua-cmd-palette' && window.CommandPalette?.close) {
+      window.CommandPalette.close();
+      return true;
+    }
 
     // Each modal has its own close logic — try the known handles in order
     if (m.classList.contains('squid-modal-overlay')) {
@@ -60,7 +66,7 @@
     window.ToastManager.show({
       type: 'info',
       title: 'Keyboard shortcuts',
-      body: 'Esc → close modal · Ctrl+Enter → send chat · ? → this help',
+      body: 'Ctrl+K → command palette · Esc → close modal · Ctrl+Enter → send chat · ? → this help',
       duration: 7000,
     });
   }
