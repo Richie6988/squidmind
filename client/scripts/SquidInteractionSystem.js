@@ -813,28 +813,39 @@ class SquidInteractionSystem {
         if (!project) throw new Error('Project not found');
 
         const agentCount = (project.assigned_agents || []).length;
-        const confirm = await SquidModal.confirm(
-          `Delete project "${templeName}"?
 
-` +
-          (agentCount > 0 ? `${agentCount} assigned agent${agentCount > 1 ? 's' : ''} will be freed.
+        if (!window.UndoManager) {
+          const ok = await SquidModal.confirm(
+            `Delete project "${templeName}"?` +
+            (agentCount > 0 ? ` ${agentCount} assigned agent${agentCount > 1 ? 's' : ''} will be freed.` : '')
+          );
+          if (!ok) return;
+          status.textContent = 'Deleting...';
+          await window.ApiV2._fetch(`/projects/${project.project_id}`, { method: 'DELETE' });
+          status.textContent = `Deleted. ${agentCount} agent${agentCount !== 1 ? 's' : ''} freed.`;
+          status.className = 'agent-form-status success';
+          if (typeof ProjectsPanel !== 'undefined') await ProjectsPanel.refresh();
+          if (window.aquarium?.loadSquids) window.aquarium.loadSquids();
+          setTimeout(() => modal.remove(), 900);
+          return;
+        }
 
-` : '') +
-          `This cannot be undone.`
-        );
-        if (!confirm) return;
-
-        status.textContent = 'Deleting...';
-        await window.ApiV2._fetch(`/projects/${project.project_id}`, { method: 'DELETE' });
-
-        status.textContent = `Deleted. ${agentCount} agent${agentCount !== 1 ? 's' : ''} freed.`;
-        status.className = 'agent-form-status success';
-
-        // Refresh UI
+        // Soft delete with 10s undo (projects are very destructive)
+        modal.remove();
         if (typeof ProjectsPanel !== 'undefined') await ProjectsPanel.refresh();
-        if (window.aquarium?.loadSquids) window.aquarium.loadSquids();
-
-        setTimeout(() => modal.remove(), 900);
+        window.UndoManager.scheduleDelete({
+          label: `Project "${templeName}"` + (agentCount > 0 ? ` (${agentCount} agent${agentCount > 1 ? 's' : ''} freed)` : ''),
+          delay: 10000,
+          onCommit: async () => {
+            await window.ApiV2._fetch(`/projects/${project.project_id}`, { method: 'DELETE' });
+            if (typeof ProjectsPanel !== 'undefined') await ProjectsPanel.refresh();
+            if (window.aquarium?.loadSquids) await window.aquarium.loadSquids();
+          },
+          onCancel: async () => {
+            if (typeof ProjectsPanel !== 'undefined') await ProjectsPanel.refresh();
+          },
+        });
+        return;
       } catch (err) {
         status.textContent = 'Delete failed: ' + err.message;
         status.className = 'agent-form-status error';

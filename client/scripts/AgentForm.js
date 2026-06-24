@@ -855,23 +855,45 @@ const AgentForm = {
 
   async deleteAgent() {
     if (!this.agentId || this.isCreating) return;
-    if (!confirm(`Delete ${this.registry.display_name || this.agentId}?\nThis removes the registry entry AND the brain file. Cannot be undone.`)) return;
-    
-    const status = this.modal.querySelector('.agent-form-status');
-    status.textContent = 'Deleting...';
-    try {
-      await window.ApiV2._fetch(`/agents/${this.agentId}`, { method: 'DELETE' });
-      status.textContent = 'Deleted';
-      status.className = 'agent-form-status success';
-      
-      // Refresh canvas
-      if (window.aquarium?.loadSquids) await window.aquarium.loadSquids();
-      
-      setTimeout(() => this.close(), 500);
-    } catch (err) {
-      status.textContent = 'Delete failed: ' + err.message;
-      status.className = 'agent-form-status error';
+    const name  = this.registry.display_name || this.agentId;
+    const aid   = this.agentId;
+
+    if (!window.UndoManager) {
+      if (!confirm(`Delete ${name}?\nThis removes the registry entry AND the brain file.`)) return;
+      try {
+        await window.ApiV2._fetch(`/agents/${aid}`, { method: 'DELETE' });
+        if (window.aquarium?.loadSquids) await window.aquarium.loadSquids();
+        this.close();
+      } catch (err) {
+        const status = this.modal.querySelector('.agent-form-status');
+        status.textContent = 'Delete failed: ' + err.message;
+        status.className = 'agent-form-status error';
+      }
+      return;
     }
+
+    // Optimistic: close modal immediately and hide squid from canvas
+    this.close();
+    if (window.aquarium?.hideSquid) window.aquarium.hideSquid(aid);
+    else if (window.aquarium?.loadSquids) await window.aquarium.loadSquids();
+
+    window.UndoManager.scheduleDelete({
+      label: 'Agent "' + name + '"',
+      delay: 8000,  // longer than tasks — agents are more destructive
+      onCommit: async () => {
+        try {
+          await window.ApiV2._fetch(`/agents/${aid}`, { method: 'DELETE' });
+          if (window.aquarium?.loadSquids) await window.aquarium.loadSquids();
+        } catch (e) {
+          if (window.aquarium?.loadSquids) await window.aquarium.loadSquids();
+          throw e;
+        }
+      },
+      onCancel: async () => {
+        // Restore by reloading the canvas (registry untouched)
+        if (window.aquarium?.loadSquids) await window.aquarium.loadSquids();
+      },
+    });
   },
   
   async duplicateAgent() {

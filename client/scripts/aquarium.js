@@ -73,6 +73,13 @@ const aquarium = {
     console.log(`Canvas resized to ${this.canvas.width}x${this.canvas.height}`);
   },
 
+  // Optimistic remove for UndoManager — visual only, no server call.
+  // Call loadSquids() to restore from registry.
+  hideSquid(agentId) {
+    if (!this.squids) return;
+    this.squids = this.squids.filter(s => s.id !== agentId && s.agent?.agent_id !== agentId);
+  },
+
   async loadSquids() {
     try {
       const response = await api.getAgents();

@@ -65,4 +65,31 @@ const ApiV2 = {
 };
 
 window.ApiV2 = ApiV2;
+
+// ── Legacy api shim (replaces removed scripts/api.js) ──
+// A few callsites in aquarium.js and ui.js still call api.getAgents() etc.
+// This delegates them through ApiV2 to keep them working.
+window.api = {
+  async getAgents() {
+    try {
+      const r = await fetch('/api/agents');
+      const data = await r.json();
+      return data.success ? data : { success: true, agents: data.agents || [] };
+    } catch (e) { return { success: false, error: e.message, agents: [] }; }
+  },
+  async getAgent(id) {
+    try {
+      const r = await fetch('/api/v2/agents/' + id);
+      const data = await r.json();
+      return data;
+    } catch (e) { return { success: false, error: e.message }; }
+  },
+  async getTaskStatus() {
+    try {
+      const r = await fetch('/api/v2/tasks');
+      const data = await r.json();
+      return data;
+    } catch (e) { return { tasks: [] }; }
+  },
+};
 console.log('[OK] ApiV2 client loaded');
