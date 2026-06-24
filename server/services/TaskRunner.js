@@ -725,6 +725,21 @@ class TaskRunner {
         try {
           await this.rm.cascadeTaskClosureFlat(taskId, task, status);
         } catch (ce) { log.warn(`cascade failed for ${taskId}:`, ce.message); }
+
+        // Broadcast lifecycle event for instant client notification (no 5s poll lag)
+        try {
+          global.ReasoningBus?.push({
+            type:           'task_lifecycle',
+            task_id:        taskId,
+            status,
+            title:          task.title,
+            assigned_name:  task.assigned_to || null,
+            project_name:   task.project_name || null,
+            result_summary: task.result_summary || null,
+            result_file:    task.result_file    || null,
+            timestamp:      Date.now(),
+          });
+        } catch {}
       }
     } catch (e) {
       log.warn(`setStatus failed for ${taskId}:`, e.message);

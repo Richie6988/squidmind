@@ -108,13 +108,55 @@
     }
   }
 
+  // ── Real-time lifecycle channel via SSE (instant, no 5s poll lag) ──
+  function connectSSE() {
+    try {
+      const sse = new EventSource('/api/v2/reasoning/stream');
+      sse.onmessage = (ev) => {
+        try {
+          const data = JSON.parse(ev.data);
+          if (data.type === 'task_lifecycle') {
+            const tid = data.task_id;
+            if (seen.results.has(tid)) return;
+            seen.results.add(tid);
+            const ok = data.status === 'completed';
+            window.ToastManager?.show({
+              id: 'result_' + tid,
+              type: ok ? 'success' : 'error',
+              icon: ok ? '✓' : '✗',
+              title: ok ? 'Task completed' : 'Task ' + data.status,
+              body: (data.title || tid).slice(0, 80) +
+                    (data.assigned_name ? ' · ' + data.assigned_name : ''),
+              action: ok && data.result_file ? {
+                label: 'VIEW',
+                onClick: () => {
+                  if (window.TaskQueueUI?.openTaskResult) window.TaskQueueUI.openTaskResult(tid);
+                }
+              } : null,
+              duration: 8000,
+            });
+          }
+        } catch {}
+      };
+      sse.onerror = () => {
+        // Reconnect with backoff
+        try { sse.close(); } catch {}
+        setTimeout(connectSSE, 5000);
+      };
+    } catch (e) {
+      setTimeout(connectSSE, 5000);
+    }
+  }
+
   // Start polling after page is interactive
   if (document.readyState === 'complete' || document.readyState === 'interactive') {
     poll(); setInterval(poll, POLL_MS);
+    connectSSE();
   } else {
     document.addEventListener('DOMContentLoaded', () => {
       poll(); setInterval(poll, POLL_MS);
+      connectSSE();
     });
   }
-  console.log('[OK] NotificationPoller started');
+  console.log('[OK] NotificationPoller started (poll + SSE)');
 })();
