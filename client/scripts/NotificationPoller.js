@@ -1,0 +1,120 @@
+/**
+ * NotificationPoller — polls registries every 5s, fires toasts on lifecycle events.
+ *
+ * Detects:
+ *   • Task completed/failed (results_log delta)
+ *   • Agent status changes (active ↔ sleeping)
+ *   • Dream cycle completed (dream_memory last_updated delta)
+ *
+ * Lightweight: a single fetch per poll, ETag-ish via timestamp comparison.
+ */
+(function () {
+  const POLL_MS = 5000;
+  const seen = {
+    results:  new Set(),     // task_ids already toasted
+    agents:   new Map(),     // agent_id → last status
+    dreamAt:  null,          // last dream_memory.last_updated
+  };
+  let initialized = false;
+  let initialResults = null; // capture initial state to avoid flooding on first poll
+
+  async function poll() {
+    try {
+      // 1. Results (completed/failed tasks)
+      const r = await fetch('/api/v2/tasks/results');
+      if (r.ok) {
+        const data = await r.json();
+        const results = data.results || data || {};
+        const entries = Object.values(results);
+
+        if (!initialized) {
+          initialResults = new Set(entries.map(e => e.task_id));
+          entries.forEach(e => seen.results.add(e.task_id));
+        } else {
+          for (const e of entries) {
+            if (seen.results.has(e.task_id)) continue;
+            seen.results.add(e.task_id);
+            const ok = e.status === 'completed';
+            window.ToastManager?.show({
+              id: 'result_' + e.task_id,
+              type: ok ? 'success' : 'error',
+              icon: ok ? '✓' : '✗',
+              title: ok ? 'Task completed' : 'Task failed',
+              body: (e.title || e.task_id).slice(0, 80) +
+                    (e.assigned_name ? ' · ' + e.assigned_name : ''),
+              action: ok && e.result_file ? {
+                label: 'VIEW',
+                onClick: () => {
+                  if (window.TaskQueueUI?.openTaskResult) window.TaskQueueUI.openTaskResult(e.task_id);
+                }
+              } : null,
+              duration: 8000,
+            });
+          }
+        }
+      }
+
+      // 2. Agents — status transitions
+      const ag = await fetch('/api/v2/agents');
+      if (ag.ok) {
+        const data = await ag.json();
+        const agents = data.agents || data.registry?.agents || (Array.isArray(data) ? data : {});
+        const arr = Array.isArray(agents) ? agents : Object.values(agents);
+        for (const a of arr) {
+          const aid = a.agent_id || a.id;
+          if (!aid) continue;
+          const prev = seen.agents.get(aid);
+          if (prev !== undefined && prev !== a.status && initialized) {
+            // Only toast meaningful transitions
+            if ((prev === 'sleeping' && a.status === 'active') ||
+                (prev === 'active'   && a.status === 'sleeping')) {
+              window.ToastManager?.show({
+                type: 'info',
+                icon: a.status === 'active' ? '◉' : '☾',
+                title: `${a.display_name || aid} ${a.status === 'active' ? 'woke up' : 'went to sleep'}`,
+                duration: 4000,
+              });
+            }
+          }
+          seen.agents.set(aid, a.status);
+        }
+      }
+
+      // 3. Dream cycle — check dream_memory.json for new entries
+      try {
+        const dm = await fetch('/api/files/read?path=BRAIN/dream_memory.json');
+        if (dm.ok) {
+          const dmText = await dm.text();
+          const dmJson = JSON.parse(dmText);
+          const updatedAt = dmJson.saved_at || dmJson.last_updated;
+          if (seen.dreamAt && updatedAt && updatedAt !== seen.dreamAt && initialized) {
+            window.ToastManager?.show({
+              type: 'dream',
+              icon: '☾',
+              title: 'Dream cycle completed',
+              body: dmJson.type === 'soul_update'
+                ? 'Soul updated' + (dmJson.skills_updated ? ` · ${dmJson.skills_updated} skill(s)` : '')
+                : (dmJson.reflection?.slice(0, 80) || 'Memory consolidated'),
+              duration: 7000,
+            });
+          }
+          seen.dreamAt = updatedAt;
+        }
+      } catch {}
+
+      initialized = true;
+    } catch (e) {
+      // Network or parse error — ignore, retry next tick
+    }
+  }
+
+  // Start polling after page is interactive
+  if (document.readyState === 'complete' || document.readyState === 'interactive') {
+    poll(); setInterval(poll, POLL_MS);
+  } else {
+    document.addEventListener('DOMContentLoaded', () => {
+      poll(); setInterval(poll, POLL_MS);
+    });
+  }
+  console.log('[OK] NotificationPoller started');
+})();
