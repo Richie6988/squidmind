@@ -465,13 +465,13 @@ const ModelLoader = {
       actions = `
         ${curType === 'image'
           ? `<button class="btn-primary" onclick="ModelLoader.openImageGen('${m.model_id}')" style="display:inline-flex;align-items:center;gap:4px;">${window.PixelIcons?.inline('image_model',11)||''}Generate Image</button>`
-          : `${!m.is_poseidon ? `<button class="btn-secondary" onclick="ModelLoader.assignPoseidon('${m.model_id}')">Use as Poseidon</button>` : ''}`
+          : `${!m.is_poseidon ? `<button class="btn-secondary" onclick="ModelLoader.assignPoseidon('${m.model_id}', this)" title="Assign this model as Poseidon's brain (will unload current model and load this one — may take 10-30s)">Use as Poseidon</button>` : ''}`
         }
         <button class="btn-secondary" onclick="ModelLoader.showImportDialog('${this._escape(m.file_name)}', '${m.model_id}')">Edit Params</button>
         <button class="btn-secondary" onclick="ModelLoader.renameModel('${m.model_id}', this)" style="display:inline-flex;align-items:center;gap:3px;">${window.PixelIcons?.inline('config',11)||''}Rename</button>
         <button class="btn-secondary" title="Toggle between text and image generation mode" onclick="ModelLoader.setModelType('${m.model_id}','${nextType}')">${toggleLabel}</button>
-        ${m.is_loaded ? `<button class="btn-secondary" onclick="ModelLoader.unload('${m.model_id}')">Unload from Memory</button>` : ''}
-        <button class="btn-secondary danger-action" onclick="ModelLoader.remove('${m.model_id}')">Remove</button>
+        ${m.is_loaded ? `<button class="btn-secondary" onclick="ModelLoader.unload('${m.model_id}', this)" title="Unload model from VRAM (auto-reloads on next request)">Unload from Memory</button>` : ''}
+        <button class="btn-secondary danger-action" onclick="ModelLoader.remove('${m.model_id}', this)" title="Remove model from library (file on disk is kept)">Remove</button>
       `;
     }
     
@@ -762,30 +762,46 @@ const ModelLoader = {
     }
   },
 
-  async assignPoseidon(modelId) {
+  async assignPoseidon(modelId, btnEl) {
     try {
-      await window.ApiV2._fetch(`/models/${modelId}/assign-poseidon`, { method: 'POST' });
-      await this._refresh();
+      const fn = async () => {
+        await window.ApiV2._fetch(`/models/${modelId}/assign-poseidon`, { method: 'POST' });
+        await this._refresh();
+        window.ToastManager?.show({ type: 'success', title: 'Poseidon model assigned', body: modelId, duration: 4000 });
+      };
+      if (btnEl && window.LoadingButton) {
+        await window.LoadingButton.run(btnEl, fn, 'Loading model…');
+      } else {
+        await fn();
+      }
     } catch (err) {
       await SquidModal.alert('Assignment failed: ' + err.message);
     }
   },
   
-  async unload(modelId) {
+  async unload(modelId, btnEl) {
     if (!await SquidModal.confirm(`Unload ${modelId} from memory? (will auto-reload on next request)`)) return;
     try {
-      await window.ApiV2._fetch(`/models/${modelId}/unload`, { method: 'POST' });
-      await this._refresh();
+      const fn = async () => {
+        await window.ApiV2._fetch(`/models/${modelId}/unload`, { method: 'POST' });
+        await this._refresh();
+      };
+      if (btnEl && window.LoadingButton) await window.LoadingButton.run(btnEl, fn, 'Unloading…');
+      else await fn();
     } catch (err) {
       await SquidModal.alert('Unload failed: ' + err.message);
     }
   },
   
-  async remove(modelId) {
+  async remove(modelId, btnEl) {
     if (!await SquidModal.confirm(`Remove ${modelId} from library? (file on disk is kept)`)) return;
     try {
-      await window.ApiV2._fetch(`/models/${modelId}`, { method: 'DELETE' });
-      await this._refresh();
+      const fn = async () => {
+        await window.ApiV2._fetch(`/models/${modelId}`, { method: 'DELETE' });
+        await this._refresh();
+      };
+      if (btnEl && window.LoadingButton) await window.LoadingButton.run(btnEl, fn, 'Removing…');
+      else await fn();
     } catch (err) {
       await SquidModal.alert('Remove failed: ' + err.message);
     }
