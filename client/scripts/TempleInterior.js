@@ -79,7 +79,7 @@ const TempleInterior = {
   <span class="ti-header-sep"></span>
   <button class="ti-hbtn" onclick="TempleInterior._newTaskModal()">+ TASK</button>
   <button class="ti-hbtn" onclick="TempleInterior._refreshAll()">REFRESH</button>
-  <button class="ti-hbtn ti-hbtn-danger" onclick="TempleInterior.close()">CLOSE X</button>
+  <button class="ti-hbtn ti-hbtn-danger" onclick="TempleInterior.close()" title="Close temple (Esc)">CLOSE X</button>
 </div>
 <div class="ti-body">
 
@@ -1682,36 +1682,90 @@ const TempleInterior = {
   _startReasoningStream(panel) {
     if (this._reasoningEvtSource) this._reasoningEvtSource.close();
 
-    // Rolling buffer: keep last 120 events max
+    // Rolling buffer: keep last 200 events max
     if (!this._reasoningLog) this._reasoningLog = [];
+    if (!this._reasoningCollapsed) this._reasoningCollapsed = {};
     const log = this._reasoningLog;
+    const self = this;
+
+    // Toggle a task group's collapsed state (called via inline onclick)
+    if (!window._tiReasonToggle) {
+      window._tiReasonToggle = (tid) => {
+        self._reasoningCollapsed[tid] = !self._reasoningCollapsed[tid];
+        render();
+      };
+    }
+
+    const renderEvent = (e) => {
+      if (e.type === 'thinking_start') return `<div style="color:#7c3aed;margin-top:6px;font-size:9px;opacity:0.7;">⟨think⟩</div>`;
+      if (e.type === 'thinking')       return `<span style="color:#a78bfa;white-space:pre-wrap;opacity:0.85;">${this._escR(e.chunk)}</span>`;
+      if (e.type === 'thinking_end')   return `<div style="color:#7c3aed;font-size:9px;opacity:0.7;">⟨/think⟩</div>`;
+      if (e.type === 'text')           return `<span style="color:#e2e8f0;white-space:pre-wrap;">${this._escR(e.chunk)}</span>`;
+      if (e.type === 'tool_call')  {
+        const argsStr = Object.entries(e.args || {}).map(([k,v]) => {
+          const vs = typeof v === 'string' ? v : JSON.stringify(v);
+          return `<span style="color:#94a3b8;">${this._escR(k)}</span>: <span style="color:#c8d8f0;">${this._escR(vs.slice(0,300))}${vs.length>300?'…':''}</span>`;
+        }).join('<br>&nbsp;&nbsp;');
+        return `<div style="background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.2);border-radius:4px;padding:4px 8px;margin:3px 0;font-size:9px;">
+          <div style="color:#fbbf24;font-weight:bold;margin-bottom:2px;">⚡ ${this._escR(e.name)}</div>
+          ${argsStr ? `<div style="color:#64748b;border-left:2px solid rgba(245,158,11,0.2);padding-left:8px;word-break:break-all;line-height:1.5;">${argsStr}</div>` : ''}
+        </div>`;
+      }
+      if (e.type === 'tool_result') return `<div style="color:${e.ok ? '#34d399' : '#f87171'};font-size:9px;padding:2px 8px;border-left:2px solid ${e.ok?'#34d399':'#f87171'};margin:2px 0 2px 10px;word-break:break-word;">${e.ok ? '✓' : '✗'} ${this._escR((e.summary||'').slice(0,400))}${(e.summary||'').length>400?'…':''}</div>`;
+      return '';
+    };
 
     const render = () => {
       if (panel.style.display === 'none') return;
-      const html = log.map(e => {
-        if (e.type === 'connected') return `<div style="color:#475569;padding:4px 0;">── Connected to reasoning stream ──</div>`;
-        if (e.type === 'task_start') return `<div style="color:#4facfe;margin-top:10px;border-top:1px solid #1e3a5f;padding-top:6px;">▶ <strong>${e.title || e.task_id}</strong> ${e.agent ? `[${e.agent}]` : ''}</div>`;
-        if (e.type === 'task_end')   return `<div style="color:#475569;padding:2px 0;">── task complete ──</div>`;
-        if (e.type === 'thinking_start') return `<div style="color:#7c3aed;margin-top:6px;font-size:9px;">⟨think⟩</div>`;
-        if (e.type === 'thinking')   return `<span style="color:#a78bfa;white-space:pre-wrap;">${this._escR(e.chunk)}</span>`;
-        if (e.type === 'thinking_end') return `<div style="color:#7c3aed;font-size:9px;">⟨/think⟩</div>`;
-        if (e.type === 'text')       return `<span style="color:#e2e8f0;white-space:pre-wrap;">${this._escR(e.chunk)}</span>`;
-        if (e.type === 'tool_call')  {
-          const argsStr = Object.entries(e.args || {}).map(([k,v]) => {
-            const vs = typeof v === 'string' ? v : JSON.stringify(v);
-            return `<span style="color:#94a3b8;">${this._escR(k)}</span>: <span style="color:#c8d8f0;">${this._escR(vs.slice(0,300))}${vs.length>300?'…':''}</span>`;
-          }).join('<br>&nbsp;&nbsp;');
-          return `<div style="background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.2);border-radius:4px;padding:4px 8px;margin:3px 0;font-size:9px;">
-            <div style="color:#fbbf24;font-weight:bold;margin-bottom:2px;">${window.PixelIcons?.inline('tools',10)||'⚡'} ${this._escR(e.name)}</div>
-            ${argsStr ? `<div style="color:#64748b;border-left:2px solid rgba(245,158,11,0.2);padding-left:8px;word-break:break-all;line-height:1.5;">${argsStr}</div>` : ''}
-          </div>`;
+
+      // Group events by task_id with start/end markers
+      const groups = [];
+      let current = null;
+      for (const e of log) {
+        if (e.type === 'connected') continue;
+        // task_lifecycle events go to notifications, not the reasoning panel
+        if (e.type === 'task_lifecycle') continue;
+        if (e.type === 'task_start') {
+          if (current) groups.push(current);
+          current = { task_id: e.task_id || 'unknown', title: e.title || e.task_id || 'task', agent: e.agent || '', events: [], ended: false };
+        } else if (e.type === 'task_end') {
+          if (current) { current.ended = true; groups.push(current); current = null; }
+        } else if (current) {
+          current.events.push(e);
+        } else {
+          // orphan events (no task_start) — make a default group
+          current = { task_id: 'orphan', title: 'reasoning', agent: '', events: [e], ended: false };
         }
-        if (e.type === 'tool_result') return `<div style="color:${e.ok ? '#34d399' : '#f87171'};font-size:9px;padding:2px 8px;border-left:2px solid ${e.ok?'#34d399':'#f87171'};margin:2px 0 2px 10px;word-break:break-word;">${e.ok ? (window.PixelIcons?.inline('ok',9)||'✓') : (window.PixelIcons?.inline('error',9)||'✗')} ${this._escR((e.summary||'').slice(0,400))}${(e.summary||'').length>400?'…':''}</div>`;
-        return '';
+      }
+      if (current) groups.push(current);
+
+      // Render each group
+      const groupsHtml = groups.map((g, i) => {
+        const collapsed = this._reasoningCollapsed[g.task_id + '_' + i];
+        const statusIcon = g.ended ? '✓' : '●';
+        const statusColor = g.ended ? '#06ffa5' : '#fbbf24';
+        const arrow = collapsed ? '▶' : '▼';
+        const header = `<div onclick="window._tiReasonToggle('${g.task_id + '_' + i}')"
+          style="cursor:pointer;margin-top:12px;border-top:1px solid #1e3a5f;padding:6px 0 4px;color:#4facfe;font-weight:600;display:flex;align-items:center;gap:6px;font-size:10px;">
+          <span style="color:#64748b;">${arrow}</span>
+          <span style="color:${statusColor};">${statusIcon}</span>
+          <span style="flex:1;">${this._escR(g.title.slice(0, 60))}</span>
+          ${g.agent ? `<span style="color:#94a3b8;font-size:9px;font-weight:normal;">${this._escR(g.agent)}</span>` : ''}
+          <span style="color:#64748b;font-size:8px;font-weight:normal;">${g.events.length}</span>
+        </div>`;
+        if (collapsed) return header;
+        const events = g.events.map(e => renderEvent.call(this, e)).join('');
+        return header + `<div style="padding-left:6px;">${events}</div>`;
       }).join('');
-      panel.innerHTML = `<div style="min-height:100%;">${html}<div id="ti-reason-end"></div></div>`;
+
+      // Empty state
+      const empty = groups.length === 0
+        ? `<div style="color:#475569;padding:16px;text-align:center;font-size:10px;">Waiting for activity…</div>`
+        : '';
+
+      panel.innerHTML = `<div style="min-height:100%;">${empty}${groupsHtml}<div id="ti-reason-end"></div></div>`;
       const end = panel.querySelector('#ti-reason-end');
-      if (end) end.scrollIntoView({ behavior: 'smooth' });
+      if (end) end.scrollIntoView({ behavior: 'smooth', block: 'end' });
     };
 
     // Show existing log immediately
@@ -1731,8 +1785,7 @@ const TempleInterior = {
     };
 
     es.onerror = () => {
-      log.push({ type: 'connected' });  // shows reconnect indicator
-      render();
+      // Silent reconnect — browser EventSource retries automatically
     };
   },
 

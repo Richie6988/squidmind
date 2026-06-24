@@ -155,7 +155,7 @@ const AgentForm = {
           <button class="btn-secondary agent-form-delete" onclick="AgentForm.deleteAgent()" style="display:none; background:rgba(230,57,70,0.15); border-color:var(--danger); color:var(--danger);">Delete</button>
           <button class="btn-secondary agent-form-duplicate" onclick="AgentForm.duplicateAgent()" style="display:none;">Duplicate</button>
           <span class="agent-form-status"></span>
-          <button class="btn-secondary" onclick="AgentForm.close()">Cancel</button>
+          <button class="btn-secondary" onclick="AgentForm.close()" title="Discard changes and close (Esc)">Cancel</button>
           <button class="btn-primary agent-form-save" onclick="AgentForm.save()" disabled>Save (0)</button>
         </div>
       </div>
