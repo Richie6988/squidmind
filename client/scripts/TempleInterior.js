@@ -872,21 +872,21 @@ const TempleInterior = {
     const brokerTaskMatch = brokerOwner.match(/bg_task_(task_\w+)/);
     const brokerRunningId = brokerTaskMatch ? brokerTaskMatch[1] : null;
 
+    const bySortOrder = (a, b) => (a.sort_order ?? 1000) - (b.sort_order ?? 1000);
     const cols = {
       todo: tasks.filter(t => {
         const s = t.lifecycle?.status || t.status || 'open';
-        // If broker is actively running this task, move it visually to PROGRESS even if status hasn't flushed yet
         if (brokerRunningId === t.task_id) return false;
         return ['open','planned','queued'].includes(s);
-      }),
+      }).sort(bySortOrder),
       prog: tasks.filter(t => {
         const s = t.lifecycle?.status || t.status || 'open';
         return s === 'in_progress' || brokerRunningId === t.task_id;
-      }),
+      }).sort(bySortOrder),
       done: tasks.filter(t => {
         const s = t.lifecycle?.status || t.status;
         return ['completed','failed','cancelled'].includes(s) && brokerRunningId !== t.task_id;
-      })
+      }).sort(bySortOrder)
     };
 
     const makeCard = (task) => {
@@ -991,16 +991,85 @@ const TempleInterior = {
   async _kDrop(event, newStatus) {
     event.preventDefault();
     document.querySelectorAll('.ti-kcol').forEach(c => c.classList.remove('drag-over'));
+    document.querySelectorAll('.ti-kcard.drag-insert-before').forEach(c => c.classList.remove('drag-insert-before'));
     const taskId = event.dataTransfer.getData('text/plain') || this._dragTaskId;
     this._dragTaskId = null;
     if (!taskId) return;
+
+    // Detect drop position within column for reorder
+    const col = event.currentTarget;
+    const cards = [...col.querySelectorAll('.ti-kcards .ti-kcard')];
+    const dropY = event.clientY;
+    let insertBeforeId = null;
+    for (const c of cards) {
+      if (c.dataset.taskId === taskId) continue;
+      const rect = c.getBoundingClientRect();
+      if (dropY < rect.top + rect.height / 2) {
+        insertBeforeId = c.dataset.taskId;
+        break;
+      }
+    }
+
     try {
+      // Update status (column change) + sort_order in one PATCH
       await window.ApiV2._fetch(`/tasks/${taskId}/status`, {
         method: 'PATCH',
         body: JSON.stringify({ status: newStatus })
       });
-    } catch (e) { console.warn('[Kanban] drop status update failed:', e.message); }
+      // Reorder within column
+      if (insertBeforeId !== null || cards.length > 0) {
+        await this._reorderTask(taskId, insertBeforeId, newStatus);
+      }
+    } catch (e) { console.warn('[Kanban] drop failed:', e.message); }
     this._renderKanban();
+  },
+
+  /**
+   * Reorder a task by setting its sort_order to be just before the target.
+   * If insertBeforeId is null, the task goes to the end of the column.
+   * Uses fractional sort_order to avoid renumbering everything.
+   */
+  async _reorderTask(taskId, insertBeforeId, status) {
+    try {
+      const r = await window.ApiV2._fetch('/tasks');
+      const tasks = Object.values(r.registry?.tasks || {});
+      // Tasks in the same status, sorted by current sort_order
+      const sameCol = this._filterProjectTasks(tasks)
+        .filter(t => (t.lifecycle?.status || t.status) === status && t.task_id !== taskId)
+        .sort((a, b) => (a.sort_order ?? 1000) - (b.sort_order ?? 1000));
+
+      let newOrder;
+      if (insertBeforeId === null) {
+        // End of column
+        const last = sameCol[sameCol.length - 1];
+        newOrder = last ? (last.sort_order ?? 0) + 100 : 100;
+      } else {
+        const idx = sameCol.findIndex(t => t.task_id === insertBeforeId);
+        const target = sameCol[idx];
+        const prev   = idx > 0 ? sameCol[idx - 1] : null;
+        const targetOrd = target?.sort_order ?? 100;
+        const prevOrd   = prev?.sort_order   ?? 0;
+        newOrder = (prevOrd + targetOrd) / 2;
+      }
+
+      await window.ApiV2._fetch(`/tasks/${taskId}/sort`, {
+        method: 'PATCH',
+        body: JSON.stringify({ sort_order: newOrder })
+      }).catch(() => {
+        // If /sort route doesn't exist, fall back to setting via generic field update
+        return window.ApiV2._fetch('/field', {
+          method: 'PATCH',
+          body: JSON.stringify({
+            filePath: 'tasks/tasks_registry.json',
+            fieldPath: `tasks.${taskId}.sort_order`,
+            newValue: newOrder,
+            reason: 'kanban reorder'
+          })
+        }).catch(() => {});
+      });
+    } catch (e) {
+      console.warn('[Kanban] reorder failed:', e.message);
+    }
   },
 
   // ═══ OUTPUT FILES TAB ════════════════════════════════════════════════════
