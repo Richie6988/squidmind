@@ -78,7 +78,8 @@ const TempleInterior = {
   <span class="ti-header-stat" id="ti-hdr-stat">...</span>
   <span class="ti-header-sep"></span>
   <button class="ti-hbtn" onclick="TempleInterior._newTaskModal()">+ TASK</button>
-  <button class="ti-hbtn" onclick="TempleInterior._refreshAll()">REFRESH</button>
+  <button class="ti-hbtn" onclick="TempleInterior._refreshAll()" title="Reload tasks, agents, files">REFRESH</button>
+  <button class="ti-hbtn" onclick="TempleInterior._toggleFocus()" title="Focus mode — hide side panels (F11 toggles)" id="ti-focus-btn">⛶ FOCUS</button>
   <button class="ti-hbtn ti-hbtn-danger" onclick="TempleInterior.close()" title="Close temple (Esc)">CLOSE X</button>
 </div>
 <div class="ti-body">
@@ -1747,6 +1748,23 @@ const TempleInterior = {
   },
 
   // Toggle SSE stream on/off — reasoning panel stays visible either way
+  /**
+   * Focus mode: hide left + right panels, expand center IDE.
+   * Useful for reading long outputs or editing files without distraction.
+   * Toggled via button or F11 key.
+   */
+  _toggleFocus() {
+    const root = document.getElementById('temple-interior');
+    if (!root) return;
+    const isFocus = root.classList.toggle('ti-focus-mode');
+    const btn = document.getElementById('ti-focus-btn');
+    if (btn) btn.textContent = isFocus ? '⤢ EXIT FOCUS' : '⛶ FOCUS';
+    // Trigger reasoning + editor resize after layout settles
+    setTimeout(() => {
+      window.dispatchEvent(new Event('resize'));
+    }, 50);
+  },
+
   _closeAllFiles() {
     // Save current file first
     const ed = document.getElementById('ti-editor');

@@ -66,7 +66,7 @@
     window.ToastManager.show({
       type: 'info',
       title: 'Keyboard shortcuts',
-      body: 'Ctrl+K → command palette · Esc → close modal · Ctrl+Enter → send chat · ? → this help',
+      body: 'Ctrl+K → search · Esc → close modal · F11 → temple focus · Ctrl+Enter → send · ? → help',
       duration: 7000,
     });
   }
@@ -87,6 +87,17 @@
     if (ev.key === '?' || (ev.ctrlKey && ev.key === '/')) {
       showShortcutsHelp();
       ev.preventDefault();
+      return;
+    }
+
+    // F11 → toggle Temple focus mode (only when temple is open)
+    if (ev.key === 'F11') {
+      const temple = document.getElementById('temple-interior');
+      if (temple && temple.style.display !== 'none' && temple.offsetParent !== null) {
+        window.TempleInterior?._toggleFocus();
+        ev.preventDefault();
+      }
+      return;
     }
   });
 
