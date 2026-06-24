@@ -65,7 +65,7 @@ const ProjectsPanel = {
     const items = this.filteredProjects;
     
     if (this.projects.length === 0) {
-      list.innerHTML = '<p class="hint" style="font-size:9px; padding:8px; color:var(--text-secondary); text-align:center;">No projects yet. Click + New Project.</p>';
+      list.innerHTML = '<div style="padding:16px 10px;text-align:center;font-family:system-ui,sans-serif;"><p style="color:#94a3b8;font-size:11px;margin-bottom:10px;line-height:1.5;">No projects yet.<br>Start one to organise tasks and agents.</p><button onclick="window.ui.openNewProjectModal()" title="Create your first project" style="background:rgba(79,172,254,0.18);border:1px solid rgba(79,172,254,0.4);color:#4facfe;padding:6px 14px;font-size:11px;border-radius:5px;cursor:pointer;font-family:system-ui;font-weight:600;letter-spacing:0.04em;">+ NEW PROJECT</button></div>';
       return;
     }
     if (items.length === 0) {

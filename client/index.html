@@ -18,9 +18,9 @@
     <div class="header-content">
       <h1>IAQUA</h1>
       <div class="header-nav">
-        <button class="btn-nav" onclick="AgentForm.openNew()">+ New Agent</button>
-<button class="btn-nav" onclick="ModelLoader.open()">[MODELS] Models</button>
-        <button class="btn-nav" onclick="ui.openLogsModal()">[LOGS] Logs</button>
+        <button class="btn-nav" onclick="AgentForm.openNew()" title="Create a new agent (squid) with custom personality, skills, and appearance">+ New Agent</button>
+<button class="btn-nav" onclick="ModelLoader.open()" title="Browse local GGUF models, import from HuggingFace, assign Poseidon">[MODELS] Models</button>
+        <button class="btn-nav" onclick="ui.openLogsModal()" title="System event log (Esc to close)">[LOGS] Logs</button>
         <button class="btn-nav skills-nav-btn" onclick="SkillsPanel.open()" title="Poseidon skills library">&#9670; Skills</button>
         <button class="btn-nav comms-nav-btn" onclick="CommsPanel.open()" title="Remote comms (Telegram/Discord)">Comms</button>
       </div>
@@ -295,6 +295,7 @@
     });
   </script>
   <script src="scripts/CommsPanel.js"></script>
+  <script src="scripts/KeyboardShortcuts.js"></script>
   <script src="scripts/NotificationPoller.js"></script>
 </body>
 </html>

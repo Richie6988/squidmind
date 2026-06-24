@@ -102,7 +102,7 @@ const TaskQueueUI = {
       if (qc) qc.textContent = this._tasks.length;
       queueEl.innerHTML = '';
       if (this._tasks.length === 0) {
-        queueEl.innerHTML = '<p class="hint" style="font-size:9px;color:var(--text-secondary);padding:8px;">No tasks queued.</p>';
+        queueEl.innerHTML = '<div style="padding:14px 10px;text-align:center;font-family:system-ui,sans-serif;"><p style="color:#94a3b8;font-size:11px;margin-bottom:8px;line-height:1.5;">Queue is empty.<br>Ask Poseidon to create a task.</p><button onclick="window.PoseidonChat?.open()" title="Open Poseidon chat to dispatch a task" style="background:rgba(79,172,254,0.15);border:1px solid rgba(79,172,254,0.3);color:#4facfe;padding:5px 11px;font-size:10px;border-radius:5px;cursor:pointer;font-family:system-ui;font-weight:600;">Open Poseidon</button></div>';
       } else {
         this._tasks.forEach((t, idx) => queueEl.appendChild(this._makeItem(t, idx)));
       }
