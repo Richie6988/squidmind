@@ -1268,10 +1268,39 @@ const TempleInterior = {
   },
 
   async _deleteTask(taskId) {
-    const ok = await SquidModal.confirm(`Delete task ${taskId}? This cannot be undone.`);
-    if (!ok) return;
-    await window.ApiV2._fetch(`/tasks/${taskId}`, { method: 'DELETE' });
+    if (!window.UndoManager) {
+      const ok = await SquidModal.confirm(`Delete task ${taskId}?`);
+      if (!ok) return;
+      await window.ApiV2._fetch(`/tasks/${taskId}`, { method: 'DELETE' });
+      this._renderKanban(); this._renderTasks(); this._renderHeader();
+      return;
+    }
+    // Optimistic remove from local cache (Kanban re-renders without it)
+    const reg = await window.ApiV2._fetch('/tasks').catch(() => null);
+    const task = reg?.registry?.tasks?.[taskId];
+    const label = task?.title ? '"' + task.title + '"' : taskId;
+    // Hide visually by re-rendering with a temporary filter
+    this._deletedTaskIds = this._deletedTaskIds || new Set();
+    this._deletedTaskIds.add(taskId);
     this._renderKanban(); this._renderTasks(); this._renderHeader();
+
+    window.UndoManager.scheduleDelete({
+      label: 'Task ' + label,
+      delay: 6000,
+      onCommit: async () => {
+        try {
+          await window.ApiV2._fetch(`/tasks/${taskId}`, { method: 'DELETE' });
+        } catch (e) {
+          this._deletedTaskIds.delete(taskId);
+          this._renderKanban(); this._renderTasks(); this._renderHeader();
+          throw e;
+        }
+      },
+      onCancel: () => {
+        this._deletedTaskIds.delete(taskId);
+        this._renderKanban(); this._renderTasks(); this._renderHeader();
+      },
+    });
   },
 
   // ═══ IDE ═════════════════════════════════════════════════════════════════
@@ -1996,9 +2025,12 @@ const TempleInterior = {
   _filterProjectTasks(tasks) {
     const pid   = this.currentTemple?.project_id;
     const pname = this.currentTemple?.name;
+    const deleted = this._deletedTaskIds || new Set();
+    // Always filter out tasks marked for optimistic deletion (undo pending)
+    const live = tasks.filter(t => !deleted.has(t.task_id));
     // If no project context, show all tasks (global view from aquarium)
-    if (!pid && !pname) return tasks;
-    return tasks.filter(t =>
+    if (!pid && !pname) return live;
+    return live.filter(t =>
       t.context?.project_id === pid ||
       t.project_id          === pid ||
       t.context?.project_name === pname ||

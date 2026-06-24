@@ -704,16 +704,45 @@ ${task.description}`
   // ── Delete (hard) ──────────────────────────────────────────────────────────
 
   async deleteTask(taskId) {
-    // Active queued tasks only — actually deletes from server
+    // Active queued tasks only — soft delete with undo (UndoManager)
     const task = (this._tasks || []).find(t => t.task_id === taskId);
     const label = task?.title ? '"' + task.title + '"' : taskId;
-    if (!await SquidModal.confirm('Cancel and delete task ' + label + '?\nThis cannot be undone.')) return;
-    try {
-      const res = await fetch('/api/v2/tasks/' + taskId, { method: 'DELETE', headers: { 'Content-Type': 'application/json' } });
-      if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || 'Delete failed'); }
-      this._tasks = (this._tasks || []).filter(t => t.task_id !== taskId);
-      await this._render();
-    } catch (err) { await SquidModal.alert('Delete failed: ' + err.message); }
+
+    if (!window.UndoManager) {
+      // Fallback to hard delete with confirm
+      if (!await SquidModal.confirm('Cancel and delete task ' + label + '?')) return;
+      try {
+        const res = await fetch('/api/v2/tasks/' + taskId, { method: 'DELETE', headers: { 'Content-Type': 'application/json' } });
+        if (!res.ok) throw new Error('Delete failed');
+        this._tasks = (this._tasks || []).filter(t => t.task_id !== taskId);
+        await this._render();
+      } catch (err) { await SquidModal.alert('Delete failed: ' + err.message); }
+      return;
+    }
+
+    // Optimistic UI: hide immediately, commit after delay
+    const removed = (this._tasks || []).find(t => t.task_id === taskId);
+    this._tasks = (this._tasks || []).filter(t => t.task_id !== taskId);
+    this._render();
+
+    window.UndoManager.scheduleDelete({
+      label: 'Task ' + label,
+      delay: 6000,
+      onCommit: async () => {
+        const res = await fetch('/api/v2/tasks/' + taskId, { method: 'DELETE', headers: { 'Content-Type': 'application/json' } });
+        if (!res.ok) {
+          const d = await res.json().catch(() => ({}));
+          // Restore on failure
+          if (removed) this._tasks.push(removed);
+          this._render();
+          throw new Error(d.error || 'Delete failed');
+        }
+      },
+      onCancel: () => {
+        if (removed) this._tasks.push(removed);
+        this._render();
+      },
+    });
   },
 
   dismissResult(taskId) {
