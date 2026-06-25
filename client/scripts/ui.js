@@ -49,10 +49,9 @@ const ui = {
 
   async showSquidDetail(squid) {
     this.currentSquid = squid;
-    
     // Fetch full agent data
     try {
-      const response = await api.getAgent(squid.id);
+      const response = await api.agents.get(squid.id);
       
       if (response.success) {
         const agent = response.agent;
@@ -112,12 +111,6 @@ const ui = {
         }
       }
       
-      // Get task count (top-right header element was removed; ControlTowerLive handles it now)
-      const taskCountEl = document.getElementById('task-count');
-      if (taskCountEl) {
-        const tasks = await api.getTaskStatus();
-        taskCountEl.textContent = `${tasks.total_jobs} Tasks`;
-      }
     } catch (error) {
       // silent - non-critical
     }

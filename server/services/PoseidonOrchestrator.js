@@ -1887,10 +1887,7 @@ Never describe a bash command you could call instead.`;
         task.status = new_value;
       } else if (field === 'priority')     task.priority  = { ...(task.priority||{}), label: new_value };
       else if (field === 'assigned_agent_id') {
-        // Update both nested (legacy schema) and flat (new schema) for backward compat,
-        // plus denormalize assigned_name so UI doesn't need a second agent_registry fetch.
         const newName = await this.rm._resolveAgentName(new_value);
-        task.assignment    = { ...(task.assignment||{}), assigned_to: new_value, assigned_name: newName };
         task.assigned_to   = new_value;
         task.assigned_name = newName;
       }

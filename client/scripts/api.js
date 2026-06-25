@@ -1,8 +1,7 @@
 /**
  * SquidMind API Client
  *
- * Single point of access to all registries (V2 neuronal architecture).
- * URL paths stay /api/v2/... — only the client namespace was renamed from ApiV2 → api.
+ * Single point of access to all registry endpoints under /api/v2/*.
  * See docs/WHY_THIS_ARCHITECTURE.md for design rationale.
  */
 
@@ -29,7 +28,12 @@ const api = {
   agents: {
     list: () => api._fetch('/agents'),
     get: (id) => api._fetch('/agents/' + id),
-    create: (data) => api._fetch('/agents', { method: 'POST', body: JSON.stringify(data) })
+    create: (data) => api._fetch('/agents', { method: 'POST', body: JSON.stringify(data) }),
+    // Returns agents as a flat array (transforms the registry-keyed map for canvas/iter usage)
+    async flat() {
+      const r = await api._fetch('/agents');
+      return Object.values(r.registry?.agents || {});
+    }
   },
 
   // PROJECTS
@@ -62,28 +66,6 @@ const api = {
   // MODELS
   models: {
     list: () => api._fetch('/models')
-  },
-
-  // ── Legacy compat methods (4 callsites in aquarium.js + ui.js depend on these) ──
-  // Kept as flat methods so old code `api.getAgents()` keeps working without refactor.
-  async getAgents() {
-    try {
-      const r = await fetch('/api/agents');
-      const data = await r.json();
-      return data.success ? data : { success: true, agents: data.agents || [] };
-    } catch (e) { return { success: false, error: e.message, agents: [] }; }
-  },
-  async getAgent(id) {
-    try {
-      const r = await fetch('/api/v2/agents/' + id);
-      return await r.json();
-    } catch (e) { return { success: false, error: e.message }; }
-  },
-  async getTaskStatus() {
-    try {
-      const r = await fetch('/api/v2/tasks');
-      return await r.json();
-    } catch (e) { return { tasks: [] }; }
   },
 };
 

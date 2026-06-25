@@ -897,7 +897,7 @@ const TempleInterior = {
       const isDone = status === 'completed';
       const cls    = isRun ? 'prog' : isDone ? 'done' : isFail ? 'fail' : '';
       // Flat field fallback (IC-02 fix)
-      const agent  = task.assigned_name || task.assignment?.assigned_name || task.assigned_to || task.assignment?.assigned_to || '';
+      const agent  = task.assigned_name || task.assigned_to || '';
       // Status icon
       const statusIcon = isRun ? '●' : isDone ? '✓' : isFail ? '✗' : '○';
       const statusColor = isRun ? '#06ffa5' : isDone ? '#4facfe' : isFail ? '#ef4444' : '#64748b';
@@ -1209,7 +1209,7 @@ const TempleInterior = {
     : tasks.map(task => {
         const status = task.lifecycle?.status || task.status || 'open';
         const isRun  = status === 'in_progress';
-        const agent  = task.assigned_name || task.assignment?.assigned_name || task.assigned_to || task.assignment?.assigned_to || '';
+        const agent  = task.assigned_name || task.assigned_to || '';
         const prog   = task.progress ? `<div class="ti-taskrow-sub">&gt; ${this._esc(String(task.progress).slice(0,90))}</div>` : '';
         const bar    = isRun ? `<div class="ti-task-bar"><div class="ti-task-bar-fill"></div></div>` : '';
         const aline  = agent ? `<div class="ti-taskrow-sub" style="color:var(--ui-accent);">&gt; ${this._esc(agent)}</div>` : '';

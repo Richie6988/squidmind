@@ -219,7 +219,7 @@ class TaskRunner {
         const s = t.lifecycle?.status || t.status || 'open';
         const tooManyFails = (this._failCounts.get(t.task_id) || 0) >= this.MAX_RETRIES;
         const retryDelay = this._retryAfter.get(t.task_id) || 0;
-        const agentId = t.assigned_to || t.assignment?.assigned_to;
+        const agentId = t.assigned_to;
         // Block if this agent already has a running task
         const agentBusy = agentId && agentId !== 'poseidon_main' && agentsRunning.has(agentId);
         return !TERMINAL.has(s)
@@ -272,7 +272,7 @@ class TaskRunner {
 
   async _runTask(task) {
     const taskId  = task.task_id;
-    const agentId = task.assigned_to || task.assignment?.assigned_to || null;
+    const agentId = task.assigned_to || null;
     this._running.add(taskId);
 
     log.info(`▶ ${taskId}: "${task.title}"${agentId ? ' → ' + agentId : ' → poseidon'}`);
@@ -710,7 +710,7 @@ class TaskRunner {
             result_file:    task.result_file    || extra.result_file    || null,
             output_preview: task.output_preview  || extra.output_preview || null,
             completed_at:   task.completed_at   || extra.completed_at   || new Date().toISOString(),
-            assigned_name:  task.assigned_to    || task.assignment?.assigned_to || null,
+            assigned_name:  task.assigned_to    || task.assigned_to || null,
             project_name:   task.project_name   || task.context?.project_name   || null,
             project_id:     task.project_id     || task.context?.project_id     || null,
           };
@@ -723,7 +723,7 @@ class TaskRunner {
       // ── IC-03: Update agent performance + project metrics (cascade) ──────
       if (TERMINAL_FOR_LOG.has(status)) {
         try {
-          await this.rm.cascadeTaskClosureFlat(taskId, task, status);
+          await this.rm.cascadeTaskClosure(taskId, task, status);
         } catch (ce) { log.warn(`cascade failed for ${taskId}:`, ce.message); }
 
         // Broadcast lifecycle event for instant client notification (no 5s poll lag)
@@ -814,7 +814,7 @@ class TaskRunner {
       if (!proj) return; // task has no project — nothing to update
 
       const pid = proj.id;
-      const by  = task.assignment?.assigned_name || task.assigned_to || 'poseidon';
+      const by  = task.assigned_name || task.assigned_to || 'poseidon';
 
       if (status === 'completed') {
         // Add to recent achievements
@@ -822,7 +822,7 @@ class TaskRunner {
           `[${task.task_id}] ${task.title}`, by);
 
         // Agent sync message
-        if ((task.assigned_to || task.assignment?.assigned_to) && (task.assigned_to || task.assignment?.assigned_to) !== 'poseidon_main') {
+        if ((task.assigned_to) && (task.assigned_to) !== 'poseidon_main') {
           await this.rm.updateProjectMemory(pid, 'agent_sync',
             `${by} completed: "${task.title}" — ${output.slice(0, 200)}`, by);
         }

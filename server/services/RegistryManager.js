@@ -1221,7 +1221,7 @@ class RegistryManager {
         result_file:   task.result_file || null,
         output_preview: task.output_preview || null,
         completed_at:  now,
-        assigned_name: task.assignment?.assigned_name || task.assignment?.assigned_to || null,
+        assigned_name: task.assigned_name || task.assigned_to || null,
         project_name:  task.project_name || null,
         lifecycle:     task.lifecycle
       };
@@ -1230,8 +1230,8 @@ class RegistryManager {
 
     await this._writeTaskDetails(taskId, task);
 
-    // Cascade updates
-    await this.cascadeTaskClosure(task);
+    // Cascade updates (flat schema — the only schema we use now)
+    await this.cascadeTaskClosure(taskId, task, outcome);
 
     await this.log({
       event_type: `task_${outcome}`,
@@ -1248,50 +1248,15 @@ class RegistryManager {
   }
 
   /**
-   * Cascade updates when task closes
-   */
-  async cascadeTaskClosure(task) {
-    // Update agent performance
-    if (task.assignment.assigned_to) {
-      const agentRegistry = await this.getAgentRegistry();
-      const agent = agentRegistry.agents[task.assignment.assigned_to];
-      if (agent) {
-        const perf = agent.performance_summary;
-        if (task.lifecycle.status === 'completed') perf.tasks_completed++;
-        else if (task.lifecycle.status === 'failed') perf.tasks_failed++;
-        else if (task.lifecycle.status === 'cancelled') perf.tasks_cancelled++;
-        
-        const total = perf.tasks_completed + perf.tasks_failed + perf.tasks_cancelled;
-        perf.success_rate = total > 0 ? perf.tasks_completed / total : 0;
-        
-        await this.write('agents/agent_registry.json', agentRegistry);
-      }
-    }
-
-    // Update project metrics
-    if (task.context.project_id) {
-      const projectRegistry = await this.getProjectRegistry();
-      const project = projectRegistry.projects[task.context.project_id];
-      if (project) {
-        if (task.lifecycle.status === 'completed') project.metrics.tasks_completed++;
-        project.metrics.tasks_pending = Math.max(0, (project.metrics.tasks_pending || 0) - 1);
-        await this.write('projects/project_registry.json', projectRegistry);
-      }
-    }
-  }
-
-  /**
-   * cascadeTaskClosureFlat — reads the FLAT task structure used by TaskRunner.
-   * Tasks created by _createTask / createTask have:
-   *   task.assigned_to  (not task.assignment.assigned_to)
-   *   task.project_id   (not task.context.project_id)
+   * cascadeTaskClosure — flat task schema cascade.
+   * Tasks have flat fields: task.assigned_to, task.project_id (no more nested .assignment / .context).
    *
    * Updates agent performance_summary (tasks_completed/failed/cancelled + success_rate)
    * and project metrics. Called by TaskRunner._setStatus on terminal statuses.
    */
-  async cascadeTaskClosureFlat(taskId, task, status) {
+  async cascadeTaskClosure(taskId, task, status) {
     // ── Agent performance ──────────────────────────────────────────────────
-    const agentId = task.assigned_to || task.assignment?.assigned_to || null;
+    const agentId = task.assigned_to || null;
     if (agentId && agentId !== 'poseidon_main') {
       try {
         const agentReg = await this.getAgentRegistry();
@@ -1357,7 +1322,7 @@ class RegistryManager {
       description: chunkData.description || '',
       status: 'in_progress',
       started_at: now,
-      started_by: chunkData.agent_id || task.assignment.assigned_to,
+      started_by: chunkData.agent_id || task.assigned_to,
       reported_at: null,
       report: null,
       approval_status: 'pending',
@@ -1375,7 +1340,7 @@ class RegistryManager {
       task.lifecycle.status_history.push({
         status: 'in_progress',
         at: now,
-        by: chunkData.agent_id || task.assignment.assigned_to
+        by: chunkData.agent_id || task.assigned_to
       });
 
       registry.metadata.total_queued = Math.max(0, registry.metadata.total_queued - 1);
@@ -1386,7 +1351,7 @@ class RegistryManager {
 
     await this.log({
       event_type: 'task_started',
-      actor: { type: 'agent', id: chunkData.agent_id || task.assignment.assigned_to },
+      actor: { type: 'agent', id: chunkData.agent_id || task.assigned_to },
       subject: { type: 'chunk', id: chunkId },
       action: `Started chunk: ${chunkData.title}`,
       context: { task_id: taskId, chunk_id: chunkId }

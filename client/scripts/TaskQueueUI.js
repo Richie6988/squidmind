@@ -376,7 +376,7 @@ const TaskQueueUI = {
         method: 'PATCH',
         body: JSON.stringify({
           filePath: 'tasks/tasks_registry.json',
-          fieldPath: `tasks.${taskId}.assignment.assigned_to`,
+          fieldPath: `tasks.${taskId}.assigned_to`,
           newValue: agentId,
           reason: 'assigned via task queue UI'
         })
@@ -392,7 +392,7 @@ const TaskQueueUI = {
   async runTask(taskId) {
     const task = this._tasks.find(t => t.task_id === taskId);
     if (!task) return;
-    const agentId = task.assignment?.assigned_to;
+    const agentId = task.assigned_to;
     if (!agentId) return await SquidModal.alert('Assign an agent first.');
 
     // Build task message from title + description
@@ -467,7 +467,7 @@ ${task.description}`
     const completedAt = task.lifecycle?.completed_at || task.completed_at;
     const when   = completedAt ? (window.Format?.relativeTime?.(completedAt) || new Date(completedAt).toLocaleString()) : '';
     const whenAbs = completedAt ? new Date(completedAt).toLocaleString() : '';
-    const agent  = task.assigned_name || task.assignment?.assigned_name || task.assigned_to || task.assignment?.assigned_to || '—';
+    const agent  = task.assigned_name || task.assigned_to || '—';
 
     const pillType = isOk ? 'success' : (status === 'failed' ? 'error' : status === 'in_progress' ? 'info' : 'muted');
 
@@ -546,7 +546,7 @@ ${task.description}`
     const priorityOptions = ['critical','high','medium','low']
       .map(p => `<option value="${p}" ${currentPriority===p?'selected':''}>${p}</option>`).join('');
     const agentOptions = '<option value="">— unassigned —</option>' +
-      this.agents.map(a => `<option value="${a.agent_id}" ${task.assignment?.assigned_to===a.agent_id?'selected':''}>${this._esc(a.display_name)} (${a.agent_id})</option>`).join('');
+      this.agents.map(a => `<option value="${a.agent_id}" ${task.assigned_to===a.agent_id?'selected':''}>${this._esc(a.display_name)} (${a.agent_id})</option>`).join('');
 
     modal.innerHTML = `
       <div class="modal-content tq-detail-content">
@@ -629,8 +629,8 @@ ${task.description}`
         { fieldPath: `tasks.${taskId}.lifecycle.status`,          newValue: status },
         { fieldPath: `tasks.${taskId}.priority.label`,             newValue: priority },
         { fieldPath: `tasks.${taskId}.sort_order`,    newValue: priority === 'critical' ? 20 : priority === 'high' ? 15 : priority === 'low' ? 5 : 10 },
-        { fieldPath: `tasks.${taskId}.assignment.assigned_to`,    newValue: agentId },
-        { fieldPath: `tasks.${taskId}.assignment.assigned_name`,  newValue: agentEntry?.display_name || null },
+        { fieldPath: `tasks.${taskId}.assigned_to`,    newValue: agentId },
+        { fieldPath: `tasks.${taskId}.assigned_name`,  newValue: agentEntry?.display_name || null },
         { fieldPath: `tasks.${taskId}.cron_schedule`,              newValue: modal.querySelector('#tqd-cron').value.trim() || null },
       ];
 

@@ -48,18 +48,15 @@ const aquarium = {
 
   async updateSquidsStatus() {
     try {
-      const response = await api.getAgents();
-      
-      if (response.success) {
-        // Update existing squids with fresh data
-        response.agents.forEach(agentData => {
-          const squid = this.squids.find(s => s.id === agentData.id);
-          if (squid) {
-            squid.status = agentData.status;
-            squid.current_thought = agentData.current_thought;
-          }
-        });
-      }
+      const agents = await api.agents.flat();
+      // Update existing squids with fresh data
+      agents.forEach(agentData => {
+        const squid = this.squids.find(s => s.id === (agentData.agent_id || agentData.id));
+        if (squid) {
+          squid.status = agentData.status;
+          squid.current_thought = agentData.current_thought;
+        }
+      });
     } catch (error) {
       console.error('Failed to update squid status:', error);
     }
@@ -82,41 +79,38 @@ const aquarium = {
 
   async loadSquids() {
     try {
-      const response = await api.getAgents();
-      
-      if (response.success) {
-        this.squids = response.agents.map(agent => {
-          const squid = new Squid(agent, this.canvas);
-          // Enhance with interactions
-          if (typeof SquidInteractions !== 'undefined') {
-            SquidInteractions.enhance(squid);
-          }
-          return squid;
-        });
-        console.log(`Loaded ${this.squids.length} squids`);
+      const agents = await api.agents.flat();
+      this.squids = agents.map(agent => {
+        const squid = new Squid(agent, this.canvas);
+        // Enhance with interactions
+        if (typeof SquidInteractions !== 'undefined') {
+          SquidInteractions.enhance(squid);
+        }
+        return squid;
+      });
+      console.log(`Loaded ${this.squids.length} squids`);
 
-        // Update header count
-        {const _e = document.getElementById("agent-count"); if(_e) _e.textContent = `${this.squids.length} Squids`;}
+      // Update header count
+      {const _e = document.getElementById("agent-count"); if(_e) _e.textContent = `${this.squids.length} Squids`;}
 
-        // First-time onboarding: show welcome overlay if no agents
-        if (window.Onboarding) window.Onboarding.maybeShow(this.squids.length);
-        
-        // Restore project assignments from project registry
-        try {
-          const pr = await fetch('/api/v2/projects').then(r => r.json());
-          const projects = Object.values(pr.registry?.projects || {});
-          for (const proj of projects) {
-            for (const agentId of (proj.assigned_agents || [])) {
-              const squid = this.squids.find(s => (s.agent_id || s.id) === agentId);
-              if (squid) {
-                squid.currentProject = proj.name;
-                squid.insideTemple   = proj.name;
-                squid.alpha          = 0; // hide from aquarium - they're inside temple
-              }
+      // First-time onboarding: show welcome overlay if no agents
+      if (window.Onboarding) window.Onboarding.maybeShow(this.squids.length);
+
+      // Restore project assignments from project registry
+      try {
+        const pr = await fetch('/api/v2/projects').then(r => r.json());
+        const projects = Object.values(pr.registry?.projects || {});
+        for (const proj of projects) {
+          for (const agentId of (proj.assigned_agents || [])) {
+            const squid = this.squids.find(s => (s.agent_id || s.id) === agentId);
+            if (squid) {
+              squid.currentProject = proj.name;
+              squid.insideTemple   = proj.name;
+              squid.alpha          = 0; // hide from aquarium - they're inside temple
             }
           }
-        } catch {}
-      }
+        }
+      } catch {}
     } catch (error) {
       console.error('Failed to load squids:', error);
     }
