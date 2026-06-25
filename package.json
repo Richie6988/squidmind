@@ -9,7 +9,8 @@
     "test": "npm run test:smoke && npm run test:integration",
     "rebuild-llama": "bash scripts/rebuild-llama.sh",
     "test:smoke": "node tests/smoke.test.js",
-    "test:integration": "node tests/integration.test.js"
+    "test:integration": "node tests/integration.test.js",
+    "fresh": "bash scripts/fresh-start.sh"
   },
   "keywords": [
     "ai",
