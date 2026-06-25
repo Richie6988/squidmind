@@ -83,7 +83,7 @@ Express 5 — server/index.js  (Node 22, port 3000)
 
 ## 2. Data Layer — aquarium/
 
-All persistent state lives in `aquarium/`. The layout uses UPPER_CASE sub-directories (post-migration from legacy `data/` or `workspace/`).
+All persistent state lives in `aquarium/`. The layout uses UPPER_CASE sub-directories.
 
 ```
 aquarium/
@@ -165,12 +165,7 @@ aquarium/
 
 **Single source of truth for all data paths.** All server code imports from here.
 
-**Auto-detection order** at startup:
-1. `aquarium/` — preferred (post-migration)
-2. `data/` — legacy
-3. `workspace/` — intermediate
-
-Detection requires a `BRAIN/poseidon_brain.json` + at least one of `MODELS/model_registry.json` or `PROJECTS/project_registry.json` to be present (not just seeds).
+The root is `<repo>/aquarium/` and is created automatically on first boot. Skill seeds and bootstrap data come from `server/skills/` and `server/seed/`.
 
 **Exported constants:**
 
@@ -769,8 +764,7 @@ Internal helpers: `_r(ctx, x, y, w, h, fill, c)` — fills a rectangle at grid-c
 | File | Lines | Purpose |
 |---|---|---|
 | `ui.js` | 569 | Event log rendering, live monitor panel wiring, log event → pixel icon mapping (29 event types) |
-| `api_v2.js` | 68 | `window.ApiV2` — `_fetch()` wrapper (Content-Type: application/json, throws on `!data.success`), agents/projects/tasks/models namespaced methods |
-| `api.js` | — | Legacy v1 API client (deprecated, kept for compatibility) |
+| `api.js` | ~110 | `window.api` — `_fetch()` wrapper (Content-Type: application/json, throws on `!data.success`), namespaced methods for poseidon/agents/projects/tasks/skills/logs/tools/models |
 | `SquidModal.js` | 86 | `await SquidModal.alert(msg)`, `confirm(msg)`, `prompt(title, placeholder, default)` — styled overlays with `stopPropagation` on all mouse events to prevent parent modal close |
 | `Poseidon.js` | 296 | Poseidon avatar in the aquarium canvas — animated trident wielder, larger than agent squids |
 | `CommsPanel.js` | 404 | Telegram + voice settings UI; tests connection; shows last N messages |
@@ -1204,22 +1198,12 @@ npm run rebuild-llama
 # or: bash scripts/rebuild-llama.sh
 ```
 
-### Migrate from legacy data/ layout
-
-```bash
-node migrate_aquarium.js
-```
-
----
-
 ## Repository Map
 
 ```
 squidmind/
 ├── README.md                         This file
 ├── package.json                      Dependencies + scripts
-├── migrate_aquarium.js               One-time migration: data/ → aquarium/
-│
 ├── server/
 │   ├── index.js                      Express app, bootstrap, API routes
 │   ├── aquarium.js                   All data paths (single source of truth)
@@ -1310,8 +1294,7 @@ squidmind/
 │       ├── PanelResizer.js           Right panel drag-to-resize
 │       ├── Poseidon.js               Poseidon avatar canvas animation
 │       ├── ui.js                     Event log, live monitor wiring, icon mappings
-│       ├── api_v2.js                 ApiV2 HTTP client wrapper
-│       └── api.js                    Legacy v1 client (kept for compatibility)
+│       └── api.js                    HTTP client wrapper (window.api)
 │
 ├── docs/
 │   ├── DATA_ARCHITECTURE.md
