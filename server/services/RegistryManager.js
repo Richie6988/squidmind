@@ -1122,9 +1122,28 @@ class RegistryManager {
     } catch {}
     return reg;
   }
+  /**
+   * Resolve an agent_id to its display_name. Returns null if not found.
+   * Used to denormalize assigned_name onto tasks so the UI doesn't need
+   * a second agent_registry fetch just to display "Bob" instead of "agent_abc123".
+   * Cheap — agent_registry is already cached in this.cache.
+   */
+  async _resolveAgentName(agentId) {
+    if (!agentId) return null;
+    try {
+      const reg = await this.getAgentRegistry();
+      return reg.agents?.[agentId]?.display_name || null;
+    } catch { return null; }
+  }
+
   async createTask(taskData) {
     const taskId = await this.generateNextId('tasks/tasks_registry.json');
     const now = new Date().toISOString();
+
+    // Denormalize agent display_name at assignment time so the UI doesn't
+    // need to fetch agent_registry separately to display a friendly name.
+    const assignedName = taskData.assigned_name
+      || (taskData.assigned_to ? await this._resolveAgentName(taskData.assigned_to) : null);
 
     const task = {
       task_id:        taskId,
@@ -1135,6 +1154,7 @@ class RegistryManager {
       project_id:     taskData.project_id   || null,
       project_name:   taskData.project_name || null,
       assigned_to:    taskData.assigned_to  || null,
+      assigned_name:  assignedName,
       image_params:   taskData.image_params || null,
       status:         'planned',
       lifecycle: {

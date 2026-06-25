@@ -159,6 +159,20 @@ router.patch('/tasks/:id/status', async (req, res) => {
   } catch (err) { res.status(500).json({ success: false, error: err.message }); }
 });
 
+// PATCH /tasks/:id/sort — Kanban drag-to-reorder within column
+router.patch('/tasks/:id/sort', async (req, res) => {
+  try {
+    const { sort_order } = req.body;
+    if (typeof sort_order !== 'number') return res.status(400).json({ success: false, error: 'sort_order (number) required' });
+    const task = await rm._readTaskDetails(req.params.id);
+    if (!task) return res.status(404).json({ success: false, error: 'Task not found' });
+    task.sort_order = sort_order;
+    await rm._writeTaskDetails(req.params.id, task);
+    rm.invalidateCache();
+    res.json({ success: true, task_id: req.params.id, sort_order });
+  } catch (err) { res.status(500).json({ success: false, error: err.message }); }
+});
+
 // TASKS
 router.get('/tasks', async (req, res) => {
   try {

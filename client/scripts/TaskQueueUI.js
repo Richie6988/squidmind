@@ -467,7 +467,7 @@ ${task.description}`
     const completedAt = task.lifecycle?.completed_at || task.completed_at;
     const when   = completedAt ? (window.Format?.relativeTime?.(completedAt) || new Date(completedAt).toLocaleString()) : '';
     const whenAbs = completedAt ? new Date(completedAt).toLocaleString() : '';
-    const agent  = task.assignment?.assigned_name || task.assigned_to || task.assignment?.assigned_to || '—';
+    const agent  = task.assigned_name || task.assignment?.assigned_name || task.assigned_to || task.assignment?.assigned_to || '—';
 
     const pillType = isOk ? 'success' : (status === 'failed' ? 'error' : status === 'in_progress' ? 'info' : 'muted');
 

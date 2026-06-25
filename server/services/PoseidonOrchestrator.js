@@ -1827,6 +1827,7 @@ Never describe a bash command you could call instead.`;
         project_name: project || null,
         project_id:   projectId || null,
         assigned_to:  assigned_agent_id || null,
+        assigned_name: assigned_agent_id ? (agentName || await this.rm._resolveAgentName(assigned_agent_id)) : null,
         status:       'planned',
         lifecycle:    { status: 'planned', status_history: [{ status: 'planned', at: new Date().toISOString(), by: 'poseidon' }], started_at: null, completed_at: null },
         result_file:  null,
@@ -1885,7 +1886,14 @@ Never describe a bash command you could call instead.`;
         task.lifecycle = { ...(task.lifecycle||{}), status: new_value };
         task.status = new_value;
       } else if (field === 'priority')     task.priority  = { ...(task.priority||{}), label: new_value };
-      else if (field === 'assigned_agent_id') task.assignment = { ...(task.assignment||{}), assigned_to: new_value };
+      else if (field === 'assigned_agent_id') {
+        // Update both nested (legacy schema) and flat (new schema) for backward compat,
+        // plus denormalize assigned_name so UI doesn't need a second agent_registry fetch.
+        const newName = await this.rm._resolveAgentName(new_value);
+        task.assignment    = { ...(task.assignment||{}), assigned_to: new_value, assigned_name: newName };
+        task.assigned_to   = new_value;
+        task.assigned_name = newName;
+      }
       else if (field === 'notes')         task.notes = new_value;
       else if (field === 'progress')      task.progress = new_value;  // free-form progress log
       else                                task[field] = new_value;
