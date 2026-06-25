@@ -747,7 +747,7 @@ const TempleInterior = {
     const folder = this._folder();
     const pid    = this.currentTemple?.project_id;
 
-    c.innerHTML = '<div style="padding:8px;font-family:\'Press Start 2P\',monospace;font-size:7px;color:#475569;">LOADING...</div>';
+    c.innerHTML = '<div style="padding:14px;">' + ['<div class="iaqua-skel iaqua-skel-line" style="width:60%;"></div>', '<div class="iaqua-skel iaqua-skel-line" style="width:85%;"></div>', '<div class="iaqua-skel iaqua-skel-line" style="width:50%;"></div>'].join('') + '</div>';
 
     let mem = null;
     try {
@@ -1078,7 +1078,7 @@ const TempleInterior = {
     const c = container || (this._rightTab === 'output' ? document.getElementById('ti-right-body') : null);
     if (!c) return;
 
-    c.innerHTML = '<div style="padding:12px;font-family:\'Press Start 2P\',monospace;font-size:8px;color:#475569;">LOADING...</div>';
+    c.innerHTML = '<div style="padding:14px;">' + ['<div class="iaqua-skel iaqua-skel-line" style="width:60%;"></div>', '<div class="iaqua-skel iaqua-skel-line" style="width:85%;"></div>', '<div class="iaqua-skel iaqua-skel-line" style="width:50%;"></div>'].join('') + '</div>';
 
     try {
       const r = await window.ApiV2._fetch('/tasks');
@@ -2134,6 +2134,7 @@ const TempleInterior = {
 
   _relTime(iso) {
     if (!iso) return '';
+    if (window.Format?.relativeTime) return window.Format.relativeTime(iso);
     const s = Math.floor((Date.now() - new Date(iso)) / 1000);
     if (s < 60)    return `${s}s ago`;
     if (s < 3600)  return `${Math.floor(s/60)}m ago`;
@@ -2143,6 +2144,7 @@ const TempleInterior = {
 
   _fmtSize(b) {
     if (!b) return '';
+    if (window.Format?.bytes) return window.Format.bytes(b);
     if (b < 1024) return `${b}B`;
     if (b < 1048576) return `${(b/1024).toFixed(0)}K`;
     return `${(b/1048576).toFixed(1)}M`;

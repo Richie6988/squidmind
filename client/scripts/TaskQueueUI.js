@@ -679,6 +679,7 @@ ${task.description}`
 
   _elapsed(isoStr) {
     if (!isoStr) return '';
+    if (window.Format?.relativeTime) return window.Format.relativeTime(isoStr);
     const secs = Math.floor((Date.now() - new Date(isoStr).getTime()) / 1000);
     if (secs < 60) return `${secs}s ago`;
     if (secs < 3600) return `${Math.floor(secs/60)}m ago`;

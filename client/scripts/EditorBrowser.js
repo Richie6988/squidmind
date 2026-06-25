@@ -133,7 +133,7 @@ const EditorBrowser = {
     buttonEl.classList.add('selected');
     
     const content = this.modal.querySelector('.editor-browser-content');
-    content.innerHTML = '<div style="padding: 20px; color: var(--text-secondary);">Loading...</div>';
+    content.innerHTML = '<div style="padding:18px;">' + ['<div class="iaqua-skel iaqua-skel-line" style="width:70%;"></div>', '<div class="iaqua-skel iaqua-skel-line" style="width:90%;"></div>', '<div class="iaqua-skel iaqua-skel-line" style="width:60%;"></div>'].join('') + '</div>';
     
     try {
       const editorDiv = document.createElement('div');

@@ -208,7 +208,7 @@ ui.openLogsModal = async function() {
   const modal = document.getElementById('logs-modal');
   if (!modal) return;
   modal.classList.remove('hidden');
-  document.getElementById('lm-list').innerHTML = '<div class="lm-empty">Loading...</div>';
+  document.getElementById('lm-list').innerHTML = '<div style="padding:12px;">' + ['<div class="iaqua-skel iaqua-skel-line" style="width:80%;"></div>', '<div class="iaqua-skel iaqua-skel-line" style="width:60%;"></div>', '<div class="iaqua-skel iaqua-skel-line" style="width:75%;"></div>', '<div class="iaqua-skel iaqua-skel-line" style="width:50%;"></div>'].join('') + '</div>';
   await ui.reloadLogs();
 };
 

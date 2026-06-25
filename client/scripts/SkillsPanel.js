@@ -52,7 +52,7 @@ const SkillsPanel = {
   async _load() {
     const body = document.getElementById('skills-body');
     if (!body) return;
-    body.innerHTML = '<div class="skills-loading">Loading...</div>';
+    body.innerHTML = '<div style="padding:18px;">' + ['<div class="iaqua-skel iaqua-skel-card" style="height:60px;"></div>', '<div class="iaqua-skel iaqua-skel-card" style="height:60px;"></div>', '<div class="iaqua-skel iaqua-skel-card" style="height:60px;"></div>'].join('') + '</div>';
     try {
       const r = await window.ApiV2._fetch('/skills');
       this._skills = r.skills || [];
@@ -64,7 +64,12 @@ const SkillsPanel = {
 
   _render(body) {
     if (!this._skills.length) {
-      body.innerHTML = '<div class="skills-empty">No skills yet. Poseidon will create skills as it learns.</div>';
+      body.innerHTML = '<div class="iaqua-empty">' +
+        '<div class="iaqua-empty-icon">◇</div>' +
+        '<div class="iaqua-empty-title">No skills yet</div>' +
+        '<div class="iaqua-empty-body">Skills are auto-created by Poseidon as it learns from successful tasks. Or build one manually.</div>' +
+        '<button class="iaqua-empty-cta" onclick="SkillsPanel.openEditor(null)" title="Create a new skill from scratch">+ NEW SKILL</button>' +
+      '</div>';
       return;
     }
 

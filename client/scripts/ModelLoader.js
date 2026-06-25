@@ -310,7 +310,7 @@ const ModelLoader = {
   
   async _refresh() {
     const container = this.modal.querySelector('#ml-library');
-    container.innerHTML = '<p style="color:var(--text-secondary); font-size:10px;">Loading...</p>';
+    container.innerHTML = '<div style="padding:16px;">' + ['<div class="iaqua-skel iaqua-skel-card"></div>', '<div class="iaqua-skel iaqua-skel-card"></div>', '<div class="iaqua-skel iaqua-skel-card"></div>'].join('') + '</div>';
     try {
       const lib = await window.ApiV2._fetch('/models/library');
       this.library = lib;
