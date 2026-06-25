@@ -28,9 +28,9 @@ const AgentForm = {
     this.dirty = new Map();
     try {
       const [agentRes, toolsRes, modelsRes] = await Promise.all([
-        window.ApiV2.agents.get(agentId),
-        window.ApiV2.tools.list(),
-        window.ApiV2.models.list()
+        window.api.agents.get(agentId),
+        window.api.tools.list(),
+        window.api.models.list()
       ]);
       this.brain = agentRes.agent.brain || {};
       this.registry = agentRes.agent.registry_entry || {};
@@ -70,8 +70,8 @@ const AgentForm = {
     
     try {
       const [toolsRes, modelsRes] = await Promise.all([
-        window.ApiV2.tools.list(),
-        window.ApiV2.models.list()
+        window.api.tools.list(),
+        window.api.models.list()
       ]);
       this.toolRegistry = toolsRes.registry || {};
       this.modelRegistry = modelsRes.registry || {};
@@ -793,7 +793,7 @@ const AgentForm = {
     
     try {
       // POST to V2 agents endpoint - registers in agent_registry + writes squid_brain_NNN.json
-      const result = await window.ApiV2._fetch('/agents', {
+      const result = await window.api._fetch('/agents', {
         method: 'POST',
         body: JSON.stringify({
           display_name: this.registry.display_name || 'New Agent',
@@ -829,7 +829,7 @@ const AgentForm = {
     let failed = 0;
     for (const { filePath, fieldPath, newValue } of this.dirty.values()) {
       try {
-        await window.ApiV2._fetch('/field', {
+        await window.api._fetch('/field', {
           method: 'PATCH',
           body: JSON.stringify({ filePath, fieldPath, newValue, reason: 'AgentForm edit' })
         });
@@ -861,7 +861,7 @@ const AgentForm = {
     if (!window.UndoManager) {
       if (!confirm(`Delete ${name}?\nThis removes the registry entry AND the brain file.`)) return;
       try {
-        await window.ApiV2._fetch(`/agents/${aid}`, { method: 'DELETE' });
+        await window.api._fetch(`/agents/${aid}`, { method: 'DELETE' });
         if (window.aquarium?.loadSquids) await window.aquarium.loadSquids();
         this.close();
       } catch (err) {
@@ -882,7 +882,7 @@ const AgentForm = {
       delay: 8000,  // longer than tasks — agents are more destructive
       onCommit: async () => {
         try {
-          await window.ApiV2._fetch(`/agents/${aid}`, { method: 'DELETE' });
+          await window.api._fetch(`/agents/${aid}`, { method: 'DELETE' });
           if (window.aquarium?.loadSquids) await window.aquarium.loadSquids();
         } catch (e) {
           if (window.aquarium?.loadSquids) await window.aquarium.loadSquids();
@@ -911,7 +911,7 @@ const AgentForm = {
       if (clone.history) clone.history = { completed_tasks_log: [], wake_sleep_events: [] };
       if (clone.performance) clone.performance = { lifetime: {}, last_30_days: {}, by_skill: {} };
       
-      const result = await window.ApiV2._fetch('/agents', {
+      const result = await window.api._fetch('/agents', {
         method: 'POST',
         body: JSON.stringify({
           display_name: (this.registry.display_name || 'Squid') + ' (copy)',

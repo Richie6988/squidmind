@@ -66,8 +66,8 @@ const PanelResizer = {
   _persistWidth(px) {
     localStorage.setItem(this.STORAGE_KEY, String(px));
     // Also persist to backend brain.settings (async, no await needed)
-    if (window.ApiV2) {
-      window.ApiV2._fetch('/field', {
+    if (window.api) {
+      window.api._fetch('/field', {
         method: 'PATCH',
         body: JSON.stringify({
           filePath: 'BRAIN/poseidon_brain.json',

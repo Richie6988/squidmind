@@ -54,7 +54,7 @@ const SkillsPanel = {
     if (!body) return;
     body.innerHTML = '<div style="padding:18px;">' + ['<div class="iaqua-skel iaqua-skel-card" style="height:60px;"></div>', '<div class="iaqua-skel iaqua-skel-card" style="height:60px;"></div>', '<div class="iaqua-skel iaqua-skel-card" style="height:60px;"></div>'].join('') + '</div>';
     try {
-      const r = await window.ApiV2._fetch('/skills');
+      const r = await window.api._fetch('/skills');
       this._skills = r.skills || [];
       this._render(body);
     } catch (e) {
@@ -179,7 +179,7 @@ ${this._skills.map(s => {
     if (!id || !name || !summary) return show('ID, name and summary are required');
     if (!/^[a-z0-9_]+$/.test(id)) return show('Skill ID must be snake_case (a-z, 0-9, _)');
     try {
-      await window.ApiV2._fetch('/skills/' + id, {
+      await window.api._fetch('/skills/' + id, {
         method: 'PUT',
         body: JSON.stringify({ name, summary, triggers, steps, notes })
       });
@@ -191,7 +191,7 @@ ${this._skills.map(s => {
   async _delete(skillId, skillName) {
     if (!await SquidModal.confirm(`Delete skill "${skillName}"?\nThis cannot be undone.`)) return;
     try {
-      await window.ApiV2._fetch('/skills/' + skillId, { method: 'DELETE' });
+      await window.api._fetch('/skills/' + skillId, { method: 'DELETE' });
       await this._load();
     } catch (e) { await SquidModal.alert('Delete failed: ' + e.message); }
   },

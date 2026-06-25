@@ -16,7 +16,7 @@ const PoseidonChat = {
     this._buildModal();
     await this._refreshStatus();
     // Signal server: chat open -- pause BG tasks
-    window.ApiV2._fetch('/poseidon/chat-active', { method: 'POST', body: JSON.stringify({ active: true }) }).catch(() => {});
+    window.api._fetch('/poseidon/chat-active', { method: 'POST', body: JSON.stringify({ active: true }) }).catch(() => {});
     // Poll broker state every 3s so busy indicator stays current
     clearInterval(this._statusInterval);
     this._statusInterval = setInterval(() => this._refreshStatus(), 3000);
@@ -27,12 +27,12 @@ const PoseidonChat = {
 
   async _tryAutoContinue() {
     try {
-      const ss = await window.ApiV2._fetch('/poseidon/session-state');
+      const ss = await window.api._fetch('/poseidon/session-state');
       if (!ss?.last_user_message || ss.emergency) return;
       // Only resume if the last message wasn't already a resume injection
       if (ss.last_user_message.startsWith('[RESUME')) return;
       // Only resume if session is fresh (we just opened the modal = new session likely)
-      const status = await window.ApiV2._fetch('/models/status');
+      const status = await window.api._fetch('/models/status');
       const pm = status?.loaded_models?.find(m => m.model_id === status.poseidon_model_id);
       if (!pm) return;  // no model loaded
       if (pm.session_turns > 0) return;  // already mid-session, don't hijack
@@ -201,7 +201,7 @@ const PoseidonChat = {
   async _refreshStatus() {
     const tag = this.modal?.querySelector('#pc-model-tag');
     try {
-      const s = await window.ApiV2._fetch('/models/status');
+      const s = await window.api._fetch('/models/status');
       if (!tag) return;
       const broker = s.broker;
       const state  = broker?.state || 'IDLE';
@@ -212,7 +212,7 @@ const PoseidonChat = {
         // Prefer display_name from library — fall back to model_id
         let modelName = s.poseidon_model_id;
         try {
-          const lib = await window.ApiV2._fetch('/models/library');
+          const lib = await window.api._fetch('/models/library');
           const entry = (lib.models || []).find(m => m.model_id === s.poseidon_model_id);
           if (entry?.display_name) modelName = entry.display_name;
         } catch {}
@@ -646,7 +646,7 @@ const PoseidonChat = {
     // If Poseidon is generating, just hide the modal — don't abort or signal inactive.
     // The stream continues in the background and history is preserved.
     if (!this._generating) {
-      window.ApiV2._fetch('/poseidon/chat-active', { method: 'POST', body: JSON.stringify({ active: false }) }).catch(() => {});
+      window.api._fetch('/poseidon/chat-active', { method: 'POST', body: JSON.stringify({ active: false }) }).catch(() => {});
     }
     this.modal?.classList.add('hidden');
   },
@@ -917,7 +917,7 @@ const PoseidonChat = {
     // Check if Speaches is configured
     let voiceCfg = null;
     try {
-      const r = await window.ApiV2._fetch('/voice/config');
+      const r = await window.api._fetch('/voice/config');
       if (r.ok && r.config.enabled) voiceCfg = r.config;
     } catch {}
 
@@ -1036,7 +1036,7 @@ const PoseidonChat = {
 
     try {
       let voiceCfg = {};
-      try { const r = await window.ApiV2._fetch('/voice/config'); if (r.ok) voiceCfg = r.config; } catch {}
+      try { const r = await window.api._fetch('/voice/config'); if (r.ok) voiceCfg = r.config; } catch {}
 
       const resp = await fetch('/api/v2/voice/tts', {
         method: 'POST',
@@ -1087,7 +1087,7 @@ const PoseidonChat = {
 
     // Load current config
     let cfg = { enabled: false, speaches_url: 'http://localhost:8000', tts_voice: 'af_heart', tts_speed: 1.0, language: 'fr', stt_model: 'Systran/faster-whisper-small' };
-    try { const r = await window.ApiV2._fetch('/voice/config'); if (r.ok) cfg = r.config; } catch {}
+    try { const r = await window.api._fetch('/voice/config'); if (r.ok) cfg = r.config; } catch {}
 
     panel = document.createElement('div');
     panel.id = 'pc-voice-panel';
@@ -1138,7 +1138,7 @@ const PoseidonChat = {
       const status = panel.querySelector('#pv-status');
       status.textContent = 'Saving...';
       try {
-        await window.ApiV2._fetch('/voice/config', { method: 'PATCH', body: JSON.stringify({
+        await window.api._fetch('/voice/config', { method: 'PATCH', body: JSON.stringify({
           enabled:    panel.querySelector('#pv-enabled').checked,
           speaches_url: panel.querySelector('#pv-url').value.trim(),
           tts_voice:  panel.querySelector('#pv-voice').value,

@@ -21,14 +21,14 @@ const TaskQueueUI = {
 
   async _loadAgents() {
     try {
-      const r = await window.ApiV2.agents.list();
+      const r = await window.api.agents.list();
       this.agents = Object.values(r.registry.agents || {});
     } catch {}
   },
 
   async _loadProjects() {
     try {
-      const r = await window.ApiV2.projects.list();
+      const r = await window.api.projects.list();
       this.projects = Object.values(r.registry.projects || {});
     } catch {}
   },
@@ -70,16 +70,16 @@ const TaskQueueUI = {
     this._initDivider();
     try {
       try {
-        const ws = await window.ApiV2._fetch('/agents/pool/status');
+        const ws = await window.api._fetch('/agents/pool/status');
         this._workerStatuses = ws.workers || {};
       } catch {}
       try {
-        const ms = await window.ApiV2._fetch('/models/status');
+        const ms = await window.api._fetch('/models/status');
         this._brokerState = ms?.broker?.state || 'IDLE';
         this._brokerOwner = ms?.broker?.owner || '';
       } catch { this._brokerState = null; }
 
-      const r = await window.ApiV2.tasks.list();
+      const r = await window.api.tasks.list();
       const tasks = r.registry.tasks || {};
       const allTasks = Object.values(tasks);
 
@@ -90,7 +90,7 @@ const TaskQueueUI = {
       // Results come from dedicated results_log (tasks are purged from registry on completion)
       let doneTasks = [];
       try {
-        const rr = await window.ApiV2._fetch('/tasks/results');
+        const rr = await window.api._fetch('/tasks/results');
         doneTasks = Object.values(rr.results || {})
           .filter(t => !this._dismissed.has(t.task_id))
           .sort((a, b) => new Date(b.completed_at || 0) - new Date(a.completed_at || 0));
@@ -316,7 +316,7 @@ const TaskQueueUI = {
     }));
 
     await Promise.all(updates.map(({ taskId, score }) =>
-      window.ApiV2._fetch('/field', {
+      window.api._fetch('/field', {
         method: 'PATCH',
         body: JSON.stringify({
           filePath: 'tasks/tasks_registry.json',
@@ -372,7 +372,7 @@ const TaskQueueUI = {
 
   async _assignTask(taskId, agentId) {
     try {
-      await window.ApiV2._fetch('/field', {
+      await window.api._fetch('/field', {
         method: 'PATCH',
         body: JSON.stringify({
           filePath: 'tasks/tasks_registry.json',
@@ -404,7 +404,7 @@ ${task.description}`
 
     try {
       // Mark in_progress immediately (optimistic)
-      await window.ApiV2._fetch('/field', {
+      await window.api._fetch('/field', {
         method: 'PATCH',
         body: JSON.stringify({
           filePath: 'tasks/tasks_registry.json',
@@ -413,7 +413,7 @@ ${task.description}`
           reason: 'manually started from task queue'
         })
       });
-      await window.ApiV2._fetch('/field', {
+      await window.api._fetch('/field', {
         method: 'PATCH',
         body: JSON.stringify({
           filePath: 'tasks/tasks_registry.json',
@@ -448,11 +448,11 @@ ${task.description}`
   async openTaskResult(taskId) {
     let task;
     try {
-      const r = await window.ApiV2.tasks.list();
+      const r = await window.api.tasks.list();
       task = r.registry.tasks?.[taskId];
       // Completed tasks are purged from registry — check results_log
       if (!task) {
-        const rr = await window.ApiV2._fetch('/tasks/results');
+        const rr = await window.api._fetch('/tasks/results');
         task = rr.results?.[taskId];
       }
     } catch(e) { return SquidModal.alert('Could not load task: ' + e.message); }
@@ -481,7 +481,7 @@ ${task.description}`
       // Try to load full result
       if (task.result_file) {
         try {
-          const fd = await window.ApiV2._fetch('/tasks/' + taskId + '/result');
+          const fd = await window.api._fetch('/tasks/' + taskId + '/result');
           if (fd.content) resultHtml = `<pre class="tq-result-pre">${this._esc(fd.content)}</pre>`;
         } catch {}
       }
@@ -530,7 +530,7 @@ ${task.description}`
     // Fetch fresh task data
     let task;
     try {
-      const r = await window.ApiV2.tasks.list();
+      const r = await window.api.tasks.list();
       task = r.registry.tasks?.[taskId];
     } catch (err) {
       return SquidModal.alert('Could not load task: ' + err.message);
@@ -637,7 +637,7 @@ ${task.description}`
       let failed = 0;
       for (const p of patches) {
         try {
-          await window.ApiV2._fetch('/field', {
+          await window.api._fetch('/field', {
             method: 'PATCH',
             body: JSON.stringify({ filePath: 'tasks/tasks_registry.json', ...p, reason: 'manual edit' })
           });
@@ -663,7 +663,7 @@ ${task.description}`
       btn.textContent = 'Loading...';
       btn.disabled = true;
       try {
-        const data = await window.ApiV2._fetch(`/tasks/${taskId}/result`);
+        const data = await window.api._fetch(`/tasks/${taskId}/result`);
         if (data.content) {
           box.style.whiteSpace = 'pre-wrap';
           box.style.maxHeight  = '300px';
@@ -756,7 +756,7 @@ ${task.description}`
     this._dismissed.add(taskId);
     this._doneTasks = (this._doneTasks || []).filter(t => t.task_id !== taskId);
     // Remove from server results_log
-    window.ApiV2._fetch('/tasks/results/' + taskId, { method: 'DELETE' }).catch(() => {});
+    window.api._fetch('/tasks/results/' + taskId, { method: 'DELETE' }).catch(() => {});
     this._render();
   },
 
@@ -764,7 +764,7 @@ ${task.description}`
     const ids = (this._doneTasks || []).map(t => t.task_id);
     ids.forEach(id => {
       this._dismissed.add(id);
-      window.ApiV2._fetch('/tasks/results/' + id, { method: 'DELETE' }).catch(() => {});
+      window.api._fetch('/tasks/results/' + id, { method: 'DELETE' }).catch(() => {});
     });
     this._doneTasks = [];
     this._render();
@@ -789,17 +789,17 @@ ${task.description}`
   async cancelTask(taskId) {
     if (!await SquidModal.confirm(`Cancel task ${taskId}?`)) return;
     try {
-      const tasks = (await window.ApiV2.tasks.list()).registry.tasks;
+      const tasks = (await window.api.tasks.list()).registry.tasks;
       const task = tasks[taskId];
       if (!task) return;
       const inProgress = (task.chunks || []).find(c => ['in_progress','awaiting_approval'].includes(c.status));
       if (inProgress) {
-        await window.ApiV2._fetch(`/tasks/${taskId}/chunks/${inProgress.chunk_id}/decide`, {
+        await window.api._fetch(`/tasks/${taskId}/chunks/${inProgress.chunk_id}/decide`, {
           method: 'POST',
           body: JSON.stringify({ decision: 'stop_task', reason: 'cancelled by user' })
         });
       } else {
-        await window.ApiV2._fetch('/field', {
+        await window.api._fetch('/field', {
           method: 'PATCH',
           body: JSON.stringify({
             filePath: 'tasks/tasks_registry.json',
@@ -849,7 +849,7 @@ ${task.description}`
       const title = dialog.querySelector('#tq-title').value.trim();
       if (!title) { await SquidModal.alert('Title is required'); return; }
       try {
-        await window.ApiV2.tasks.create({
+        await window.api.tasks.create({
           title, description: dialog.querySelector('#tq-desc').value,
           project_id: dialog.querySelector('#tq-project').value || null,
           assigned_to: dialog.querySelector('#tq-agent').value || null,

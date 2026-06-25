@@ -192,7 +192,7 @@ const TempleInterior = {
     if (!el) return;
     // Fetch task counts for this project
     const pid = this.currentTemple?.project_id;
-    window.ApiV2?._fetch('/tasks').then(r => {
+    window.api?._fetch('/tasks').then(r => {
       const tasks = Object.values(r?.registry?.tasks || {});
       const mine  = pid ? tasks.filter(t => t.project_id === pid || t.context?.project_id === pid) : tasks;
       const done  = mine.filter(t => ['completed','cancelled','archived'].includes(t.lifecycle?.status || t.status)).length;
@@ -297,7 +297,7 @@ const TempleInterior = {
     // No inline colors — fetch from project registry
     const pid = temple?.project_id || this.currentTemple?.project_id;
     if (!pid) return;
-    window.ApiV2?._fetch('/projects').then(r => {
+    window.api?._fetch('/projects').then(r => {
       const proj = r?.registry?.projects?.[pid] ||
         Object.values(r?.registry?.projects || {}).find(p => p.project_id === pid || p.name === temple?.name);
       if (proj?.colors) applyColors(proj.colors.inside, proj.colors.outside);
@@ -310,14 +310,14 @@ const TempleInterior = {
 
     let assignedIds = [], regAgents = {}, workers = {};
     try {
-      const pr = await window.ApiV2._fetch('/projects');
+      const pr = await window.api._fetch('/projects');
       const proj = Object.values(pr.registry.projects || {}).find(p =>
         p.project_id === this.currentTemple?.project_id || p.name === this.currentTemple?.name
       );
       assignedIds = proj?.assigned_agents || [];
     } catch {}
-    try { regAgents = (await window.ApiV2._fetch('/agents')).registry.agents || {}; } catch {}
-    try { workers   = (await window.ApiV2._fetch('/agents/pool/status')).workers || {}; } catch {}
+    try { regAgents = (await window.api._fetch('/agents')).registry.agents || {}; } catch {}
+    try { workers   = (await window.api._fetch('/agents/pool/status')).workers || {}; } catch {}
 
     const agents = assignedIds.filter(id => id && id !== 'poseidon_main').map(id => regAgents[id]).filter(Boolean);
 
@@ -598,14 +598,14 @@ const TempleInterior = {
 
     let assignedIds = [], regAgents = {}, workers = {};
     try {
-      const pr = await window.ApiV2._fetch('/projects');
+      const pr = await window.api._fetch('/projects');
       const proj = Object.values(pr.registry.projects || {}).find(p =>
         p.project_id === this.currentTemple?.project_id || p.name === this.currentTemple?.name
       );
       assignedIds = proj?.assigned_agents || [];
     } catch {}
-    try { regAgents = (await window.ApiV2._fetch('/agents')).registry.agents || {}; } catch {}
-    try { workers   = (await window.ApiV2._fetch('/agents/pool/status')).workers || {}; } catch {}
+    try { regAgents = (await window.api._fetch('/agents')).registry.agents || {}; } catch {}
+    try { workers   = (await window.api._fetch('/agents/pool/status')).workers || {}; } catch {}
 
     const agents = assignedIds.filter(id => id && id !== 'poseidon_main').map(id => regAgents[id]).filter(Boolean);
 
@@ -685,7 +685,7 @@ const TempleInterior = {
     const pid = this.currentTemple?.project_id;
     const pname = this.currentTemple?.name;
     try {
-      const res = await window.ApiV2._fetch('/tasks', {
+      const res = await window.api._fetch('/tasks', {
         method: 'POST',
         body: JSON.stringify({
           title: msg.slice(0, 80),
@@ -704,9 +704,9 @@ const TempleInterior = {
 
   async _showAssigner() {
     let regAgents = {}, assignedIds = [];
-    try { regAgents = (await window.ApiV2._fetch('/agents')).registry.agents || {}; } catch {}
+    try { regAgents = (await window.api._fetch('/agents')).registry.agents || {}; } catch {}
     try {
-      const pr = await window.ApiV2._fetch('/projects');
+      const pr = await window.api._fetch('/projects');
       const proj = Object.values(pr.registry.projects || {}).find(p =>
         p.project_id === this.currentTemple?.project_id || p.name === this.currentTemple?.name
       );
@@ -752,7 +752,7 @@ const TempleInterior = {
     let mem = null;
     try {
       if (pid) {
-        const r = await window.ApiV2._fetch(`/projects/${pid}/memory`);
+        const r = await window.api._fetch(`/projects/${pid}/memory`);
         mem = r.memory;
       }
     } catch {}
@@ -835,7 +835,7 @@ const TempleInterior = {
     const content = document.getElementById('ti-mem-note')?.value.trim();
     if (!pid || !section || !content) return;
     try {
-      await window.ApiV2._fetch(`/projects/${pid}/memory`, {
+      await window.api._fetch(`/projects/${pid}/memory`, {
         method: 'PATCH',
         body: JSON.stringify({ section, content, by: 'human_user' })
       });
@@ -857,14 +857,14 @@ const TempleInterior = {
     let brokerOwner = '';  // e.g. "bg_task_task_0008"
     try {
       const [r, ms] = await Promise.all([
-        window.ApiV2._fetch('/tasks'),
-        window.ApiV2._fetch('/models/status').catch(() => ({}))
+        window.api._fetch('/tasks'),
+        window.api._fetch('/models/status').catch(() => ({}))
       ]);
       tasks = this._filterProjectTasks(Object.values(r.registry?.tasks || {}));
       brokerOwner = ms?.broker?.owner || ms?.status?.broker?.owner || '';
     } catch {
       try {
-        const r = await window.ApiV2._fetch('/tasks');
+        const r = await window.api._fetch('/tasks');
         tasks = this._filterProjectTasks(Object.values(r.registry?.tasks || {}));
       } catch {}
     }
@@ -1013,7 +1013,7 @@ const TempleInterior = {
 
     try {
       // Update status (column change) + sort_order in one PATCH
-      await window.ApiV2._fetch(`/tasks/${taskId}/status`, {
+      await window.api._fetch(`/tasks/${taskId}/status`, {
         method: 'PATCH',
         body: JSON.stringify({ status: newStatus })
       });
@@ -1032,7 +1032,7 @@ const TempleInterior = {
    */
   async _reorderTask(taskId, insertBeforeId, status) {
     try {
-      const r = await window.ApiV2._fetch('/tasks');
+      const r = await window.api._fetch('/tasks');
       const tasks = Object.values(r.registry?.tasks || {});
       // Tasks in the same status, sorted by current sort_order
       const sameCol = this._filterProjectTasks(tasks)
@@ -1053,12 +1053,12 @@ const TempleInterior = {
         newOrder = (prevOrd + targetOrd) / 2;
       }
 
-      await window.ApiV2._fetch(`/tasks/${taskId}/sort`, {
+      await window.api._fetch(`/tasks/${taskId}/sort`, {
         method: 'PATCH',
         body: JSON.stringify({ sort_order: newOrder })
       }).catch(() => {
         // If /sort route doesn't exist, fall back to setting via generic field update
-        return window.ApiV2._fetch('/field', {
+        return window.api._fetch('/field', {
           method: 'PATCH',
           body: JSON.stringify({
             filePath: 'tasks/tasks_registry.json',
@@ -1081,7 +1081,7 @@ const TempleInterior = {
     c.innerHTML = '<div style="padding:14px;">' + ['<div class="iaqua-skel iaqua-skel-line" style="width:60%;"></div>', '<div class="iaqua-skel iaqua-skel-line" style="width:85%;"></div>', '<div class="iaqua-skel iaqua-skel-line" style="width:50%;"></div>'].join('') + '</div>';
 
     try {
-      const r = await window.ApiV2._fetch('/tasks');
+      const r = await window.api._fetch('/tasks');
       const allTasks = this._filterProjectTasks(Object.values(r.registry?.tasks || {}));
 
       const doneTasks = allTasks.filter(t => {
@@ -1175,7 +1175,7 @@ const TempleInterior = {
       sse.onerror = () => { sse.close(); this._outSse = null; };
     } else {
       try {
-        const res = await window.ApiV2._fetch('/tasks/' + taskId + '/result');
+        const res = await window.api._fetch('/tasks/' + taskId + '/result');
         title.textContent = taskId;
         body.textContent = res.content || res.result || '(empty)';
       } catch (err) {
@@ -1191,7 +1191,7 @@ const TempleInterior = {
 
     let tasks = [];
     try {
-      const r = await window.ApiV2._fetch('/tasks');
+      const r = await window.api._fetch('/tasks');
       tasks = this._filterProjectTasks(Object.values(r.registry?.tasks || {}))
         .sort((a, b) => {
           const rank = s => ({'in_progress':0,'planned':1,'open':2,'queued':2})[s] ?? 3;
@@ -1232,7 +1232,7 @@ const TempleInterior = {
   async _quickAdd(title) {
     if (!title?.trim()) return;
     document.getElementById('ti-qadd').value = '';
-    await window.ApiV2._fetch('/tasks', {
+    await window.api._fetch('/tasks', {
       method: 'POST',
       body: JSON.stringify({ title: title.trim(), project_id: this.currentTemple?.project_id, project_name: this.currentTemple?.name })
     });
@@ -1244,7 +1244,7 @@ const TempleInterior = {
     const pid   = this.currentTemple?.project_id;
     const pname = this.currentTemple?.name;
     let agents = [];
-    try { agents = Object.values((await window.ApiV2._fetch('/agents')).registry.agents || {}); } catch {}
+    try { agents = Object.values((await window.api._fetch('/agents')).registry.agents || {}); } catch {}
 
     const modal = document.createElement('div');
     modal.className = 'modal';
@@ -1318,7 +1318,7 @@ const TempleInterior = {
     const cron  = modal.querySelector('#ntm-cron')?.value.trim() || null;
     if (!title) { await SquidModal.alert('Title is required'); return; }
     try {
-      await window.ApiV2._fetch('/tasks', {
+      await window.api._fetch('/tasks', {
         method: 'POST',
         body: JSON.stringify({
           title, description: desc,
@@ -1341,12 +1341,12 @@ const TempleInterior = {
     if (!window.UndoManager) {
       const ok = await SquidModal.confirm(`Delete task ${taskId}?`);
       if (!ok) return;
-      await window.ApiV2._fetch(`/tasks/${taskId}`, { method: 'DELETE' });
+      await window.api._fetch(`/tasks/${taskId}`, { method: 'DELETE' });
       this._renderKanban(); this._renderTasks(); this._renderHeader();
       return;
     }
     // Optimistic remove from local cache (Kanban re-renders without it)
-    const reg = await window.ApiV2._fetch('/tasks').catch(() => null);
+    const reg = await window.api._fetch('/tasks').catch(() => null);
     const task = reg?.registry?.tasks?.[taskId];
     const label = task?.title ? '"' + task.title + '"' : taskId;
     // Hide visually by re-rendering with a temporary filter
@@ -1359,7 +1359,7 @@ const TempleInterior = {
       delay: 6000,
       onCommit: async () => {
         try {
-          await window.ApiV2._fetch(`/tasks/${taskId}`, { method: 'DELETE' });
+          await window.api._fetch(`/tasks/${taskId}`, { method: 'DELETE' });
         } catch (e) {
           this._deletedTaskIds.delete(taskId);
           this._renderKanban(); this._renderTasks(); this._renderHeader();
@@ -2179,7 +2179,7 @@ const TempleInterior = {
     const projectId = this.currentTemple?.project_id;
     if (!projectId) { await SquidModal.alert('No project_id on this temple.'); return; }
     try {
-      const pr = await window.ApiV2._fetch('/projects');
+      const pr = await window.api._fetch('/projects');
       const allProjects = pr.registry.projects;
 
       // Check if agent is already assigned to another project
@@ -2191,7 +2191,7 @@ const TempleInterior = {
           );
           if (!confirmed) return;
           // Remove from previous project
-          await window.ApiV2._fetch('/field', { method: 'PATCH', body: JSON.stringify({
+          await window.api._fetch('/field', { method: 'PATCH', body: JSON.stringify({
             filePath: 'projects/project_registry.json',
             fieldPath: `projects.${pid}.assigned_agents`,
             newValue: p.assigned_agents.filter(a => a !== squidId),
@@ -2206,7 +2206,7 @@ const TempleInterior = {
       const assigned = [...(proj.assigned_agents || [])];
       if (!assigned.includes(squidId)) {
         assigned.push(squidId);
-        await window.ApiV2._fetch('/field', { method: 'PATCH', body: JSON.stringify({
+        await window.api._fetch('/field', { method: 'PATCH', body: JSON.stringify({
           filePath: 'projects/project_registry.json',
           fieldPath: `projects.${projectId}.assigned_agents`,
           newValue: assigned, reason: 'assigned via temple'
@@ -2224,10 +2224,10 @@ const TempleInterior = {
     const squid = window.aquarium?.squids?.find(s => (s.agent_id||s.id) === squidId);
     if (squid) { squid.currentProject = null; squid.insideTemple = null; }
     try {
-      const pr = await window.ApiV2._fetch('/projects');
+      const pr = await window.api._fetch('/projects');
       for (const [pid, p] of Object.entries(pr.registry.projects)) {
         if ((p.project_id===this.currentTemple?.project_id||p.name===this.currentTemple?.name) && Array.isArray(p.assigned_agents) && p.assigned_agents.includes(squidId)) {
-          await window.ApiV2._fetch('/field', { method:'PATCH', body: JSON.stringify({
+          await window.api._fetch('/field', { method:'PATCH', body: JSON.stringify({
             filePath: 'projects/project_registry.json',
             fieldPath: `projects.${pid}.assigned_agents`,
             newValue: p.assigned_agents.filter(a=>a!==squidId), reason: 'unassigned'

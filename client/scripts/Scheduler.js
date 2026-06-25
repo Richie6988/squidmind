@@ -87,8 +87,8 @@ const Scheduler = {
   async _loadOptions() {
     try {
       const [agRes, prRes] = await Promise.all([
-        window.ApiV2._fetch('/agents'),
-        window.ApiV2._fetch('/projects')
+        window.api._fetch('/agents'),
+        window.api._fetch('/projects')
       ]);
       this.agents = Object.values(agRes.registry.agents || {});
       this.projects = Object.values(prRes.registry.projects || {});
@@ -105,7 +105,7 @@ const Scheduler = {
   
   async _refresh() {
     try {
-      const r = await window.ApiV2._fetch('/tasks');
+      const r = await window.api._fetch('/tasks');
       this.schedules = Object.values(r.registry.tasks || {}).filter(t => t.schedule);
       this._renderList();
     } catch (err) {
@@ -158,7 +158,7 @@ const Scheduler = {
     
     try {
       // Create task with schedule embedded
-      const res = await window.ApiV2._fetch('/tasks', {
+      const res = await window.api._fetch('/tasks', {
         method: 'POST',
         body: JSON.stringify({
           title,
@@ -173,7 +173,7 @@ const Scheduler = {
       
       // Patch schedule onto the task
       if (res.task?.task_id) {
-        await window.ApiV2._fetch('/field', {
+        await window.api._fetch('/field', {
           method: 'PATCH',
           body: JSON.stringify({
             filePath: 'tasks/tasks_registry.json',
@@ -197,7 +197,7 @@ const Scheduler = {
   async cancel(taskId) {
     if (!await SquidModal.confirm('Remove this scheduled task?')) return;
     try {
-      await window.ApiV2._fetch('/field', {
+      await window.api._fetch('/field', {
         method: 'PATCH',
         body: JSON.stringify({
           filePath: 'tasks/tasks_registry.json',
@@ -220,7 +220,7 @@ async function updateSchedulerCount() {
   const el = document.getElementById('scheduler-count');
   if (!el) return;
   try {
-    const r = await window.ApiV2._fetch('/tasks');
+    const r = await window.api._fetch('/tasks');
     const count = Object.values(r.registry.tasks || {}).filter(t => t.schedule && t.lifecycle?.status !== 'cancelled' && t.lifecycle?.status !== 'completed').length;
     el.textContent = count;
   } catch {}

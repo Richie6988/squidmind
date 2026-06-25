@@ -197,7 +197,7 @@ ui.toggleLiveLog = function(cb) {
 ui.reloadLogs = async function() {
   const limit = document.getElementById('lm-limit')?.value || 200;
   try {
-    const data = await window.ApiV2._fetch('/logs?limit=' + limit);
+    const data = await window.api._fetch('/logs?limit=' + limit);
     ui._allLogs = (data.entries || []).slice().reverse();
     ui.filterLogs();
   } catch (e) {

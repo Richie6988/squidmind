@@ -21,10 +21,10 @@ const ControlTowerLive = {
     try {
       // Parallel fetches
       const [brainRes, agentsRes, libRes, statusRes, brokerRes] = await Promise.allSettled([
-        window.ApiV2._fetch('/poseidon'),
-        window.ApiV2._fetch('/agents'),
-        window.ApiV2._fetch('/models/library'),
-        window.ApiV2._fetch('/models/status'),
+        window.api._fetch('/poseidon'),
+        window.api._fetch('/agents'),
+        window.api._fetch('/models/library'),
+        window.api._fetch('/models/status'),
         fetch('/api/v2/broker').then(r => r.ok ? r.json() : null)
       ]);
 

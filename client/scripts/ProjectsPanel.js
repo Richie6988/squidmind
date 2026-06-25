@@ -23,7 +23,7 @@ const ProjectsPanel = {
   
   async refresh() {
     try {
-      const res = await window.ApiV2._fetch('/projects');
+      const res = await window.api._fetch('/projects');
       const projects = Object.values(res.registry.projects || {});
       // Sort by display_order if set, else by project_id
       this.projects = projects.sort((a, b) => 
@@ -272,7 +272,7 @@ const ProjectsPanel = {
     for (let i = 0; i < this.projects.length; i++) {
       const p = this.projects[i];
       try {
-        await window.ApiV2._fetch('/field', {
+        await window.api._fetch('/field', {
           method: 'PATCH',
           body: JSON.stringify({
             filePath: 'projects/project_registry.json',

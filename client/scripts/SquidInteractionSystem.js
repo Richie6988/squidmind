@@ -293,10 +293,10 @@ class SquidInteractionSystem {
    * Updates project_registry.metadata.assigned_agents.
    */
   async _persistSquidAssignment(squid, projectId, projectName) {
-    if (!projectId || !window.ApiV2) return;
+    if (!projectId || !window.api) return;
     try {
       // Get current assigned_agents
-      const r = await window.ApiV2._fetch('/projects');
+      const r = await window.api._fetch('/projects');
       const project = r.registry.projects[projectId];
       if (!project) return;
       const assigned = project.assigned_agents || [];
@@ -304,7 +304,7 @@ class SquidInteractionSystem {
       if (assigned.includes(agentRef)) return; // already there
       assigned.push(agentRef);
       
-      await window.ApiV2._fetch('/field', {
+      await window.api._fetch('/field', {
         method: 'PATCH',
         body: JSON.stringify({
           filePath: 'projects/project_registry.json',
@@ -673,7 +673,7 @@ class SquidInteractionSystem {
     let temple = null;
     
     try {
-      const r = await window.ApiV2._fetch('/projects');
+      const r = await window.api._fetch('/projects');
       const project = Object.values(r.registry.projects).find(p => p.name === templeName);
       if (project) {
         if (project.colors) {
@@ -759,13 +759,13 @@ class SquidInteractionSystem {
         }).catch(() => {/* memory file might not exist for new projects */});
         
         // 2. Find project_id in registry from name
-        const regRes = await window.ApiV2._fetch('/projects');
+        const regRes = await window.api._fetch('/projects');
         const project = Object.values(regRes.registry.projects).find(p => p.name === templeName);
         if (!project) throw new Error(`Project not found in registry: ${templeName}`);
         
         // 3. Save BOTH colors and temple_shape to PROJECT_REGISTRY entry
         //    (this is where ProjectsPanel reads from)
-        await window.ApiV2._fetch('/field', {
+        await window.api._fetch('/field', {
           method: 'PATCH',
           body: JSON.stringify({
             filePath: 'projects/project_registry.json',
@@ -774,7 +774,7 @@ class SquidInteractionSystem {
             reason: 'temple appearance edit'
           })
         });
-        await window.ApiV2._fetch('/field', {
+        await window.api._fetch('/field', {
           method: 'PATCH',
           body: JSON.stringify({
             filePath: 'projects/project_registry.json',
@@ -808,7 +808,7 @@ class SquidInteractionSystem {
       const status = modal.querySelector('#t-status');
       try {
         // Get project_id from registry
-        const regRes = await window.ApiV2._fetch('/projects');
+        const regRes = await window.api._fetch('/projects');
         const project = Object.values(regRes.registry.projects).find(p => p.name === templeName);
         if (!project) throw new Error('Project not found');
 
@@ -821,7 +821,7 @@ class SquidInteractionSystem {
           );
           if (!ok) return;
           status.textContent = 'Deleting...';
-          await window.ApiV2._fetch(`/projects/${project.project_id}`, { method: 'DELETE' });
+          await window.api._fetch(`/projects/${project.project_id}`, { method: 'DELETE' });
           status.textContent = `Deleted. ${agentCount} agent${agentCount !== 1 ? 's' : ''} freed.`;
           status.className = 'agent-form-status success';
           if (typeof ProjectsPanel !== 'undefined') await ProjectsPanel.refresh();
@@ -837,7 +837,7 @@ class SquidInteractionSystem {
           label: `Project "${templeName}"` + (agentCount > 0 ? ` (${agentCount} agent${agentCount > 1 ? 's' : ''} freed)` : ''),
           delay: 10000,
           onCommit: async () => {
-            await window.ApiV2._fetch(`/projects/${project.project_id}`, { method: 'DELETE' });
+            await window.api._fetch(`/projects/${project.project_id}`, { method: 'DELETE' });
             if (typeof ProjectsPanel !== 'undefined') await ProjectsPanel.refresh();
             if (window.aquarium?.loadSquids) await window.aquarium.loadSquids();
           },

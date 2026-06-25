@@ -23,8 +23,8 @@ class JsonEditor {
 
   async load() {
     const [fileRes, schemaRes] = await Promise.all([
-      window.ApiV2._fetch('/file/' + this.filePath),
-      window.ApiV2._fetch('/schema/' + this.filePath)
+      window.api._fetch('/file/' + this.filePath),
+      window.api._fetch('/schema/' + this.filePath)
     ]);
     this.data = fileRes.data;
     this.schema = schemaRes.schema;
@@ -273,7 +273,7 @@ class JsonEditor {
     let errors = [];
     for (const [fieldPath, newValue] of changes) {
       try {
-        await window.ApiV2._fetch('/field', {
+        await window.api._fetch('/field', {
           method: 'PATCH',
           body: JSON.stringify({
             filePath: this.filePath,

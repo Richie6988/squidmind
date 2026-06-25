@@ -312,7 +312,7 @@ const ModelLoader = {
     const container = this.modal.querySelector('#ml-library');
     container.innerHTML = '<div style="padding:16px;">' + ['<div class="iaqua-skel iaqua-skel-card"></div>', '<div class="iaqua-skel iaqua-skel-card"></div>', '<div class="iaqua-skel iaqua-skel-card"></div>'].join('') + '</div>';
     try {
-      const lib = await window.ApiV2._fetch('/models/library');
+      const lib = await window.api._fetch('/models/library');
       this.library = lib;
       this._render();
     } catch (err) {
@@ -391,7 +391,7 @@ const ModelLoader = {
     const modelId = event.dataTransfer.getData('text/plain');
     if (!modelId) return;
     try {
-      await window.ApiV2._fetch(`/models/${modelId}/category`, {
+      await window.api._fetch(`/models/${modelId}/category`, {
         method: 'PATCH',
         body: JSON.stringify({ model_category: newCategory })
       });
@@ -730,12 +730,12 @@ const ModelLoader = {
       status.textContent = isEdit ? 'Saving...' : 'Importing...';
       try {
         if (isEdit) {
-          await window.ApiV2._fetch(`/models/${existingModelId}/params`, {
+          await window.api._fetch(`/models/${existingModelId}/params`, {
             method: 'PATCH',
             body: JSON.stringify(params)
           });
         } else {
-          await window.ApiV2._fetch('/models/import', {
+          await window.api._fetch('/models/import', {
             method: 'POST',
             body: JSON.stringify({ fileName, ...params })
           });
@@ -752,7 +752,7 @@ const ModelLoader = {
   
   async setModelType(modelId, model_type) {
     try {
-      await window.ApiV2._fetch(`/models/${modelId}/type`, {
+      await window.api._fetch(`/models/${modelId}/type`, {
         method: 'PATCH',
         body: JSON.stringify({ model_type })
       });
@@ -765,7 +765,7 @@ const ModelLoader = {
   async assignPoseidon(modelId, btnEl) {
     try {
       const fn = async () => {
-        await window.ApiV2._fetch(`/models/${modelId}/assign-poseidon`, { method: 'POST' });
+        await window.api._fetch(`/models/${modelId}/assign-poseidon`, { method: 'POST' });
         await this._refresh();
         window.ToastManager?.show({ type: 'success', title: 'Poseidon model assigned', body: modelId, duration: 4000 });
       };
@@ -783,7 +783,7 @@ const ModelLoader = {
     if (!await SquidModal.confirm(`Unload ${modelId} from memory? (will auto-reload on next request)`)) return;
     try {
       const fn = async () => {
-        await window.ApiV2._fetch(`/models/${modelId}/unload`, { method: 'POST' });
+        await window.api._fetch(`/models/${modelId}/unload`, { method: 'POST' });
         await this._refresh();
       };
       if (btnEl && window.LoadingButton) await window.LoadingButton.run(btnEl, fn, 'Unloading…');
@@ -797,7 +797,7 @@ const ModelLoader = {
     if (!await SquidModal.confirm(`Remove ${modelId} from library? (file on disk is kept)`)) return;
     try {
       const fn = async () => {
-        await window.ApiV2._fetch(`/models/${modelId}`, { method: 'DELETE' });
+        await window.api._fetch(`/models/${modelId}`, { method: 'DELETE' });
         await this._refresh();
       };
       if (btnEl && window.LoadingButton) await window.LoadingButton.run(btnEl, fn, 'Removing…');
@@ -822,7 +822,7 @@ const ModelLoader = {
     if (!newName || newName.trim() === current) return;
 
     try {
-      const res = await window.ApiV2._fetch(`/models/${modelId}/rename`, {
+      const res = await window.api._fetch(`/models/${modelId}/rename`, {
         method: 'PATCH',
         body: JSON.stringify({ display_name: newName.trim() })
       });
@@ -837,7 +837,7 @@ const ModelLoader = {
   async removeFile(fileName) {
     if (!await SquidModal.confirm(`DELETE the file ${fileName} from disk? This cannot be undone.`)) return;
     try {
-      await window.ApiV2._fetch('/models/delete-file', {
+      await window.api._fetch('/models/delete-file', {
         method: 'POST',
         body: JSON.stringify({ fileName })
       });
@@ -865,7 +865,7 @@ const ModelLoader = {
       const url = targetPath
         ? `/models/browse?path=${encodeURIComponent(targetPath)}`
         : '/models/browse';
-      const data = await window.ApiV2._fetch(url);
+      const data = await window.api._fetch(url);
 
       this._browseCurrent = data.current_path;
       this._browseParent  = data.parent_path;
@@ -940,7 +940,7 @@ const ModelLoader = {
   
   async _importFromPath(sourcePath) {
     try {
-      await window.ApiV2._fetch('/models/import-from-path', {
+      await window.api._fetch('/models/import-from-path', {
         method: 'POST',
         body: JSON.stringify({
           sourcePath,
@@ -1036,7 +1036,7 @@ const ModelLoader = {
       if (this._hfMinSize) url += '&minSize=' + this._hfMinSize;
       if (this._hfMaxSize) url += '&maxSize=' + this._hfMaxSize;
       if (this._hfQuant)   url += '&quant=' + encodeURIComponent(this._hfQuant);
-      const data = await window.ApiV2._fetch(url);
+      const data = await window.api._fetch(url);
       if (!data.models?.length) { el.innerHTML = '<div class="ml-hf-empty">No results \u2014 try different filters.</div>'; return; }
       el.innerHTML = data.models.map(m => {
         const dl = m.downloads > 1000000 ? (m.downloads/1000000).toFixed(1)+'M'
@@ -1107,7 +1107,7 @@ const ModelLoader = {
     panel.style.display = 'flex';
     panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     try {
-      const data = await window.ApiV2._fetch('/models/hf-files?repo=' + encodeURIComponent(repoId));
+      const data = await window.api._fetch('/models/hf-files?repo=' + encodeURIComponent(repoId));
       // Show repo capabilities
       if (data.caps?.length || data.pipeline) {
         const capsDiv = document.createElement('div');
@@ -1170,7 +1170,7 @@ const ModelLoader = {
 
   async _hfStartDownload(url, fileName) {
     try {
-      await window.ApiV2._fetch('/models/download', { method: 'POST', body: JSON.stringify({ url, fileName }) });
+      await window.api._fetch('/models/download', { method: 'POST', body: JSON.stringify({ url, fileName }) });
       this._hfCloseFiles();
       this._refreshDownloads();
       if (!this._downloadPollInterval) this._downloadPollInterval = setInterval(() => this._refreshDownloads(), 1500);
@@ -1187,7 +1187,7 @@ const ModelLoader = {
     if (!url) { await SquidModal.alert('URL required'); return; }
     
     try {
-      const res = await window.ApiV2._fetch('/models/download', {
+      const res = await window.api._fetch('/models/download', {
         method: 'POST',
         body: JSON.stringify({ url, fileName })
       });
@@ -1208,7 +1208,7 @@ const ModelLoader = {
     const list = this.modal.querySelector('#ml-downloads-list');
     if (!list) return;
     try {
-      const res = await window.ApiV2._fetch('/models/downloads');
+      const res = await window.api._fetch('/models/downloads');
       if (res.downloads.length === 0) {
         list.innerHTML = '';
         if (this._downloadPollInterval) {
@@ -1267,7 +1267,7 @@ const ModelLoader = {
   
   async _cancelDownload(downloadId) {
     try {
-      await window.ApiV2._fetch(`/models/downloads/${downloadId}/cancel`, { method: 'POST' });
+      await window.api._fetch(`/models/downloads/${downloadId}/cancel`, { method: 'POST' });
       await this._refreshDownloads();
     } catch {}
   },
@@ -1391,7 +1391,7 @@ const ModelLoader = {
       '</div>';
     document.body.appendChild(dlg);
     // Populate agent selector
-    window.ApiV2?._fetch('/agents').then(r => {
+    window.api?._fetch('/agents').then(r => {
       const sel = dlg.querySelector('#imggen-agent');
       if (!sel) return;
       Object.values(r.registry?.agents || {}).forEach(a => {
@@ -1456,7 +1456,7 @@ const ModelLoader = {
     // If an agent is selected, create a task and let the agent handle generation
     if (agentId) {
       try {
-        const taskRes = await window.ApiV2._fetch('/tasks', {
+        const taskRes = await window.api._fetch('/tasks', {
           method: 'POST',
           body: JSON.stringify({
             title: `Generate image: ${prompt.slice(0, 60)}`,
@@ -1482,7 +1482,7 @@ const ModelLoader = {
     }
 
     try {
-      const data = await window.ApiV2._fetch('/models/generate-image', {
+      const data = await window.api._fetch('/models/generate-image', {
         method: 'POST',
         body: JSON.stringify({ modelId, model_id: modelId, prompt, negativePrompt: neg, width, height, steps, cfg, seed })
       });
@@ -1533,7 +1533,7 @@ async function updateModelStatusIndicator() {
   const el = document.getElementById('monitor-model-status');
   if (!el) return;
   try {
-    const lib = await window.ApiV2._fetch('/models/library');
+    const lib = await window.api._fetch('/models/library');
     if (lib.poseidon_model_id) {
       const loadedNote = lib.currently_loaded.includes(lib.poseidon_model_id) ? ' (in memory)' : ' (auto-loads on chat)';
       el.innerHTML = `Poseidon: <strong style="color:var(--success)">${lib.poseidon_model_id}</strong>${loadedNote}`;

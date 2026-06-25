@@ -188,7 +188,7 @@ const CommsPanel = {
 
   async _loadStatus() {
     try {
-      const data = await window.ApiV2._fetch('/comms/status');
+      const data = await window.api._fetch('/comms/status');
       this._status = data;
       this._applyStatus(data);
       this._renderHistory(data.history || []);
@@ -258,7 +258,7 @@ const CommsPanel = {
     this.modal.querySelector('#tg-connect-btn').textContent = 'Connecting...';
 
     try {
-      await window.ApiV2._fetch('/comms/telegram/config', {
+      await window.api._fetch('/comms/telegram/config', {
         method: 'POST',
         body: JSON.stringify({ token: token || undefined, allowed_chat_ids: ids, enabled: true })
       });
@@ -283,7 +283,7 @@ const CommsPanel = {
     this.modal.querySelector('#ds-connect-btn').textContent = 'Connecting...';
 
     try {
-      await window.ApiV2._fetch('/comms/discord/config', {
+      await window.api._fetch('/comms/discord/config', {
         method: 'POST',
         body: JSON.stringify({ token: token || undefined, allowed_channel_ids: chIds, allowed_user_ids: usIds, enabled: true })
       });
@@ -298,7 +298,7 @@ const CommsPanel = {
 
   async _stopPlatform(platform) {
     try {
-      await window.ApiV2._fetch(`/comms/${platform}/config`, {
+      await window.api._fetch(`/comms/${platform}/config`, {
         method: 'POST',
         body: JSON.stringify({ enabled: false })
       });
@@ -314,7 +314,7 @@ const CommsPanel = {
     const chatId = this.modal.querySelector('#tg-test-id').value.trim();
     if (!chatId) return SquidModal.alert('Enter a Chat ID first.');
     try {
-      await window.ApiV2._fetch('/comms/telegram/test', {
+      await window.api._fetch('/comms/telegram/test', {
         method: 'POST',
         body: JSON.stringify({ chat_id: chatId })
       });
@@ -328,7 +328,7 @@ const CommsPanel = {
     const channelId = this.modal.querySelector('#ds-test-id').value.trim();
     if (!channelId) return SquidModal.alert('Enter a Channel ID first.');
     try {
-      await window.ApiV2._fetch('/comms/discord/test', {
+      await window.api._fetch('/comms/discord/test', {
         method: 'POST',
         body: JSON.stringify({ channel_id: channelId })
       });
@@ -364,7 +364,7 @@ const CommsPanel = {
 
   async _clearHistory() {
     try {
-      await window.ApiV2._fetch('/comms/history', { method: 'DELETE' });
+      await window.api._fetch('/comms/history', { method: 'DELETE' });
       await this._loadStatus();
     } catch {}
   },
