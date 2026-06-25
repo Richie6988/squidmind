@@ -124,11 +124,13 @@ const ui = {
   },
 
   showNotification(message, type = 'info') {
-    // Simple console notification for now
-    const icon = type === 'success' ? '[OK]' : type === 'error' ? '[ERROR]' : '[INFO]';
-    console.log(`${icon} ${message}`);
-    
-    // TODO: Implement toast notification UI
+    // Bridge to ToastManager when available; fall back to console.
+    if (window.ToastManager) {
+      window.ToastManager.show({ type, title: String(message).slice(0, 80), duration: 4000 });
+    } else {
+      const icon = type === 'success' ? '[OK]' : type === 'error' ? '[ERROR]' : '[INFO]';
+      console.log(`${icon} ${message}`);
+    }
   }
 };
 

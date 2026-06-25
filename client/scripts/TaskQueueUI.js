@@ -552,7 +552,7 @@ ${task.description}`
       <div class="modal-content tq-detail-content">
         <div class="modal-header">
           <div class="tq-detail-title-row">
-            <span class="tq-detail-status-badge status-${task.lifecycle?.status||'open'}">${task.lifecycle?.status||'open'}</span>
+            <span class="iaqua-pill ${(task.lifecycle?.status||'open') === 'completed' ? 'success' : (task.lifecycle?.status === 'failed' ? 'error' : (task.lifecycle?.status === 'in_progress' ? 'info' : 'muted'))}">${(task.lifecycle?.status||'open').replace('_',' ')}</span>
             <span class="tq-detail-tid">${this._esc(task.task_id)}</span>
           </div>
           <button class="btn-close" onclick="this.closest('.modal').remove()">x</button>

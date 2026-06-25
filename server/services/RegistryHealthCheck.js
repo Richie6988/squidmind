@@ -98,7 +98,7 @@ const _RAW_DEFAULTS = {
     schema_version: '2.0.0',
     schema_type: 'tasks_registry',
     metadata: {
-      last_id_used: 0, next_id: 1, id_format: 'task_NNN',
+      last_id_used: 0, next_id: 1, id_format: 'task_NNNN',
       total_active: 0, total_queued: 0, total_completed: 0,
       total_failed: 0, total_cancelled: 0,
       last_updated_at: new Date().toISOString()

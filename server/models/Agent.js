@@ -2,6 +2,7 @@ const fs = require('fs').promises;
 const path = require('path');
 
 const AQUARIUM = require('../aquarium');
+const log = require('../utils/logger').createLogger('Agent');
 const AGENTS_DIR = AQUARIUM.AGENTS;
 
 class Agent {
@@ -192,13 +193,13 @@ class Agent {
           
           return new Agent(brain);
         } catch (err) {
-          console.warn(`[Agent.findAll] Could not load ${entry.agent_id} (${entry.brain_file}):`, err.message);
+          log.warn(`Could not load ${entry.agent_id} (${entry.brain_file}):`, err.message);
           return null;
         }
       }));
       return agents.filter(Boolean);
     } catch (error) {
-      console.warn('[Agent.findAll]', error.message);
+      log.warn('', error.message);
       return [];
     }
   }

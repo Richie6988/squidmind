@@ -15,6 +15,7 @@
 const path = require('path');
 const fs   = require('fs');
 
+const log = require('./utils/logger').createLogger('Aquarium');
 const SERVER_DIR = __dirname;
 const REPO_ROOT  = path.join(SERVER_DIR, '..');
 
@@ -39,7 +40,7 @@ function detectRoot() {
     const dir = path.join(REPO_ROOT, name);
     if (hasRealData(dir)) {
       if (name !== 'aquarium') {
-        console.warn(`[Aquarium] ⚠️  Using ${name}/ (has real data) — run: node migrate_aquarium.js --fresh to upgrade to aquarium/`);
+        log.warn(`⚠️  Using ${name}/ (has real data) — run: node migrate_aquarium.js --fresh to upgrade to aquarium/`);
       }
       return dir;
     }
@@ -204,14 +205,14 @@ const AQUARIUM = {
           fs.copyFileSync(srcPath, dst);
           seeded++;
         } catch (e) {
-          console.warn(`[Aquarium] Could not seed ${seed}:`, e.message);
+          log.warn(`Could not seed ${seed}:`, e.message);
         }
       } else {
-        console.warn(`[Aquarium] Missing seed file: ${srcPath}`);
+        log.warn(`Missing seed file: ${srcPath}`);
       }
     }
   }
-  if (seeded > 0) console.log(`[Aquarium] Bootstrapped ${seeded} missing files from server/seed/`);
+  if (seeded > 0) log.info(`Bootstrapped ${seeded} missing files from server/seed/`);
 
   // Seed skills — copy ONLY if file absent (first install). Never re-seed deleted skills.
   try {
@@ -236,7 +237,7 @@ const AQUARIUM = {
         const dst = path.join(AQUARIUM.SKILLS, f);
         if (!fs.existsSync(dst)) { fs.copyFileSync(path.join(SKILLS_SEED, f), dst); n++; }
       }
-      if (n > 0) console.log(`[Aquarium] Seeded ${n} new skills from server/skills/`);
+      if (n > 0) log.info(`Seeded ${n} new skills from server/skills/`);
     }
 
     // Rebuild skills_registry.json = positive list of skills present on disk
@@ -257,12 +258,12 @@ const AQUARIUM = {
         } catch {}
       }
       fs.writeFileSync(regPath, JSON.stringify({ skills: entries, updated_at: new Date().toISOString() }, null, 2), 'utf8');
-      console.log(`[Aquarium] skills_registry.json rebuilt (${Object.keys(entries).length} skills)`);
-    } catch (e) { console.warn('[Aquarium] Could not build skills_registry.json:', e.message); }
+      log.info(`skills_registry.json rebuilt (${Object.keys(entries).length} skills)`);
+    } catch (e) { log.warn('Could not build skills_registry.json:', e.message); }
     } catch {}
 })();
 
-console.log(`[Aquarium] Root: ${AQ_ROOT} (${isAquarium ? 'aquarium layout' : 'legacy layout — run node migrate_aquarium.js'})`);
-console.log(`[Aquarium] Models: ${AQUARIUM.MODELS_DIR}`);
+log.info(`Root: ${AQ_ROOT} (${isAquarium ? 'aquarium layout' : 'legacy layout — run node migrate_aquarium.js'})`);
+log.info(`Models: ${AQUARIUM.MODELS_DIR}`);
 
 module.exports = AQUARIUM;

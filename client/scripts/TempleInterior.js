@@ -992,7 +992,7 @@ const TempleInterior = {
   async _kDrop(event, newStatus) {
     event.preventDefault();
     document.querySelectorAll('.ti-kcol').forEach(c => c.classList.remove('drag-over'));
-    document.querySelectorAll('.ti-kcard.drag-insert-before').forEach(c => c.classList.remove('drag-insert-before'));
+    document.querySelectorAll('.ti-kcard.dragging').forEach(c => c.classList.remove('dragging'));
     const taskId = event.dataTransfer.getData('text/plain') || this._dragTaskId;
     this._dragTaskId = null;
     if (!taskId) return;

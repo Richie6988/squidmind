@@ -8,6 +8,7 @@ const express = require('express');
 const path = require('path');
 const RegistryManager = require('../services/RegistryManager');
 
+const log = require('../utils/logger').createLogger('registryRoutes');
 function buildRouter(sharedRm, servicesRef = {}) {
   const router = express.Router();
   const AQUARIUM = require('../aquarium');
@@ -53,7 +54,7 @@ router.post('/agents', async (req, res) => {
     // Return { success, agent: { agent_id, ... } } for AgentForm
     res.json({ success: true, agent: result });
   } catch (err) {
-    console.error('[POST /agents] error:', err);
+    log.error('[POST /agents] error:', err);
     res.status(500).json({ success: false, error: err.message });
   }
 });
@@ -64,7 +65,7 @@ router.delete('/projects/:id', async (req, res) => {
     const result = await rm.deleteProject(req.params.id);
     res.json({ success: true, ...result });
   } catch (err) {
-    console.error('[DELETE /projects] error:', err);
+    log.error('[DELETE /projects] error:', err);
     res.status(err.message?.includes('not found') ? 404 : 500).json({ success: false, error: err.message });
   }
 });
@@ -75,7 +76,7 @@ router.delete('/agents/:id', async (req, res) => {
     const result = await rm.deleteAgent(req.params.id);
     res.json({ success: true, ...result });
   } catch (err) {
-    console.error('[DELETE /agents] error:', err);
+    log.error('[DELETE /agents] error:', err);
     res.status(err.message?.includes('not found') ? 404 : 500).json({ success: false, error: err.message });
   }
 });

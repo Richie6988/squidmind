@@ -6,6 +6,7 @@ const path = require('path');
 const FilesystemBrowser = require('../services/FilesystemBrowser');
 const ModelDownloader = require('../services/ModelDownloader');
 
+const log = require('../utils/logger').createLogger('modelRoutes');
 function buildRouter(v2ModelService) {
   const router = express.Router();
   const fsBrowser = new FilesystemBrowser();
@@ -70,7 +71,7 @@ function buildRouter(v2ModelService) {
       const imported = await v2ModelService.importModel(symlinkPath, config);
       res.json({ success: true, fileName: result.fileName, action: result.action, ...imported });
     } catch (err) {
-      console.error('[import-from-path] error:', err.message);
+      log.error('[import-from-path] error:', err.message);
       res.status(400).json({ success: false, error: err.message });
     }
   });
@@ -557,7 +558,7 @@ function buildPoseidonChatRoute(v2ModelService) {
         turn: v2ModelService.loaded.get(v2ModelService.poseidonModelId)?.sessionTurns ?? 0,
       })}\n\n`);
     } catch (err) {
-      console.error('[Chat SSE] chatWithPoseidon error:', err.message, err.stack?.split('\n').slice(1,3).join(' '));
+      log.error('[Chat SSE] chatWithPoseidon error:', err.message, err.stack?.split('\n').slice(1,3).join(' '));
       if (bus) bus.push({ type: 'task_end', task_id: 'poseidon_chat' });
       res.write(`event: error\ndata: ${JSON.stringify({ error: err.message })}\n\n`);
     } finally {
