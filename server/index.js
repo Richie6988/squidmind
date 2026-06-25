@@ -155,6 +155,26 @@ app.get('/api/v2/readyz', async (req, res) => {
   }
 });
 
+// Broker state inspection
+app.get('/api/v2/broker', (req, res) => {
+  try {
+    const state = v2ModelService.broker?.getState?.();
+    res.json({ success: true, state });
+  } catch (e) { res.status(500).json({ success: false, error: e.message }); }
+});
+
+// Emergency recovery — force release stuck broker token
+app.post('/api/v2/broker/force-release', (req, res) => {
+  try {
+    if (!v2ModelService.broker?.forceRelease) {
+      return res.status(404).json({ success: false, error: 'forceRelease not available' });
+    }
+    const reason = req.body?.reason || 'manual recovery via API';
+    const result = v2ModelService.broker.forceRelease(reason);
+    res.json({ success: true, ...result });
+  } catch (e) { res.status(500).json({ success: false, error: e.message }); }
+});
+
 // === SERVER LIFECYCLE (auto-shutdown when webapp closes) ===
 // Client sends POST /api/v2/heartbeat every 10s while the page is open.
 // If no heartbeat for `SHUTDOWN_AFTER_MS`, server exits.

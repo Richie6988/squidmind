@@ -823,13 +823,71 @@ button:active, .btn:active {
     z-index: 100;
     transition: right 0.3s;
   }
-  
+
   .panels-container.open {
     right: 0;
   }
-  
+
   .aquarium-wrapper {
     width: 100%;
+  }
+
+  /* Temple: stack columns vertically; right panel hidden by default, toggle via tab bar */
+  #temple-interior .ti-flex {
+    flex-direction: column !important;
+  }
+  #temple-interior .ti-left,
+  #temple-interior .ti-right,
+  #temple-interior .ti-center {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    flex: 0 0 auto !important;
+  }
+  #temple-interior .ti-left  { max-height: 30vh; }
+  #temple-interior .ti-center{ max-height: 45vh; }
+  #temple-interior .ti-right { max-height: 25vh; }
+
+  /* Header: wrap nav buttons, hide [MODELS]/[LOGS] labels */
+  header .header-content { flex-wrap: wrap; }
+  header .btn-nav { padding: 6px 10px; font-size: 10px; }
+
+  /* Modals: full-width on tiny screens */
+  .modal-content,
+  .agent-form-content,
+  .model-modal-content,
+  .skills-panel-content {
+    width: 95vw !important;
+    max-width: 95vw !important;
+    max-height: 90vh !important;
+  }
+
+  /* Toast stack — smaller, less padding */
+  #iaqua-toast-stack {
+    left: 8px !important;
+    right: 8px !important;
+    bottom: 8px !important;
+    max-width: none !important;
+  }
+
+  /* Command Palette — full width with margin */
+  #iaqua-cmd-palette > div {
+    width: 94vw !important;
+    max-width: 94vw !important;
+  }
+
+  /* Onboarding overlay — narrower */
+  #iaqua-onboarding {
+    width: 94% !important;
+    padding: 18px 16px !important;
+  }
+}
+
+/* Very small screens — hide non-essential header buttons */
+@media (max-width: 480px) {
+  header .skills-nav-btn,
+  header .comms-nav-btn {
+    display: none;
   }
 }
 

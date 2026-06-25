@@ -20,17 +20,19 @@ const ControlTowerLive = {
   async update() {
     try {
       // Parallel fetches
-      const [brainRes, agentsRes, libRes, statusRes] = await Promise.allSettled([
+      const [brainRes, agentsRes, libRes, statusRes, brokerRes] = await Promise.allSettled([
         window.ApiV2._fetch('/poseidon'),
         window.ApiV2._fetch('/agents'),
         window.ApiV2._fetch('/models/library'),
-        window.ApiV2._fetch('/models/status')
+        window.ApiV2._fetch('/models/status'),
+        fetch('/api/v2/broker').then(r => r.ok ? r.json() : null)
       ]);
-      
+
       if (brainRes.status === 'fulfilled') this._renderResources(brainRes.value.brain);
       if (agentsRes.status === 'fulfilled') this._renderSquad(agentsRes.value.registry);
       if (libRes.status === 'fulfilled') this._renderModel(libRes.value);
       if (statusRes.status === 'fulfilled') this._renderContextBar(statusRes.value);
+      if (brokerRes.status === 'fulfilled' && brokerRes.value) this._renderBroker(brokerRes.value.state);
     } catch (err) {
       // silent - endpoints might be temporarily unavailable
     }
@@ -89,6 +91,51 @@ const ControlTowerLive = {
     }
   },
   
+  /**
+   * _renderBroker — flag stuck broker (held > 5 min by same owner) with a toast.
+   * Only fires once per stuck session to avoid spam.
+   */
+  _renderBroker(state) {
+    if (!state) return;
+    const HELD_THRESHOLD_SEC = 300; // 5 min
+    if (state.state === 'BUSY' && state.held_sec > HELD_THRESHOLD_SEC) {
+      const sig = state.owner + '@' + Math.floor(state.held_sec / 60);
+      if (this._lastStuckSig !== sig) {
+        this._lastStuckSig = sig;
+        window.ToastManager?.show({
+          type: 'warn',
+          icon: '⚠',
+          title: 'Broker held for ' + Math.floor(state.held_sec / 60) + ' min',
+          body: 'Owner: ' + (state.owner || '?') + ' · queue: ' + (state.queue?.length || 0),
+          duration: 12000,
+          action: {
+            label: 'FORCE RELEASE',
+            onClick: async () => {
+              try {
+                const r = await fetch('/api/v2/broker/force-release', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ reason: 'user click in Control Tower' })
+                });
+                const j = await r.json();
+                window.ToastManager?.show({
+                  type: j.success ? 'success' : 'error',
+                  title: j.success ? 'Broker released' : 'Release failed',
+                  body: j.success ? ('Held ' + (j.was_held_sec || 0) + 's by ' + (j.was_owner || '?')) : (j.error || ''),
+                  duration: 5000
+                });
+              } catch (e) {
+                window.ToastManager?.show({ type: 'error', title: 'Release failed', body: e.message, duration: 5000 });
+              }
+            }
+          }
+        });
+      }
+    } else if (state.state === 'IDLE') {
+      this._lastStuckSig = null;
+    }
+  },
+
   _renderModel(library) {
     const pill = document.getElementById('monitor-model-pill');
     if (!pill) return;

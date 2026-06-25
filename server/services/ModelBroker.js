@@ -207,6 +207,27 @@ class ModelBroker extends EventEmitter {
     };
   }
 
+  /**
+   * forceRelease — emergency recovery. Drops the current token, clears the queue,
+   * and grants the next pending waiter (if any). Only call this when getState
+   * shows BUSY for a clearly stuck owner (e.g. dead generator, abandoned SSE).
+   */
+  forceRelease(reason = 'manual recovery') {
+    const wasOwner = this._token?.ownerId || null;
+    const heldSec  = this._token ? Math.round((Date.now() - this._token.acquiredAt) / 1000) : 0;
+    log.warn?.(`forceRelease called (was BUSY=${!!this._token}, owner=${wasOwner}, held=${heldSec}s) — ${reason}`);
+    if (this._token?.timeoutHandle) clearTimeout(this._token.timeoutHandle);
+    this._token = null;
+    this._lastReleasedAt = Date.now();
+    // Drain queue — grant next-highest priority waiter
+    if (this._queue.length > 0) {
+      this._queue.sort((a, b) => a.priority - b.priority || a.queuedAt - b.queuedAt);
+      const next = this._queue.shift();
+      this._grant(next.priority, next.ownerId, next.id, next.queuedAt, next.resolve);
+    }
+    return { released: !!wasOwner, was_owner: wasOwner, was_held_sec: heldSec };
+  }
+
   // ═══════════════════════════════════════════════════════════════════════
   // INTERNAL
   // ═══════════════════════════════════════════════════════════════════════
