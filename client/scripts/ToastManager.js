@@ -52,7 +52,7 @@
       'border-left:3px solid ' + (COLORS[type] || COLORS.info) + ';border-radius:6px;' +
       'padding:10px 12px;font-family:system-ui,sans-serif;color:#dce8f5;' +
       'box-shadow:0 4px 16px rgba(0,0,0,0.5);' +
-      'opacity:0;transform:translateY(8px);transition:opacity 0.2s, transform 0.2s;';
+      'opacity:0;transform:translateX(20px);transition:opacity 0.22s ease, transform 0.22s ease;';
     const icon  = opts.icon || ICONS[type] || ICONS.info;
     const color = COLORS[type] || COLORS.info;
     el.innerHTML =
@@ -79,7 +79,7 @@
     live.set(id, el);
     requestAnimationFrame(() => {
       el.style.opacity = '1';
-      el.style.transform = 'translateY(0)';
+      el.style.transform = 'translateX(0)';
     });
 
     // Cap visible toasts
@@ -96,7 +96,7 @@
     const el = live.get(id);
     if (!el) return;
     el.style.opacity = '0';
-    el.style.transform = 'translateY(8px)';
+    el.style.transform = 'translateX(20px)';
     setTimeout(() => { el.remove(); live.delete(id); }, 200);
   }
 

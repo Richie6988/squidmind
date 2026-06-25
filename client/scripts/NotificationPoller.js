@@ -135,6 +135,16 @@
               } : null,
               duration: 8000,
             });
+          } else if (data.type === 'bg_task_complete' && data.kind === 'project_audit') {
+            // Project audit finished — let the user know
+            const projId = (data.task_id || '').replace(/^audit_/, '');
+            window.ToastManager?.show({
+              type: 'info',
+              icon: '🔍',
+              title: 'Project audit complete',
+              body: 'Poseidon updated next_steps for ' + (projId || 'a project'),
+              duration: 5000,
+            });
           }
         } catch {}
       };

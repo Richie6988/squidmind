@@ -802,20 +802,31 @@ class Squid {
   drawNameTag(ctx, size) {
     ctx.save();
     ctx.translate(0, size + 35);
-    
+
+    const hover = this.isHovered;
+    const bgW = hover ? 160 : 120;
+    const bgH = hover ? 30 : 24;
+    const nameFont = hover ? 'bold 14px "Press Start 2P"' : 'bold 12px "Press Start 2P"';
+    const levelFont = hover ? '11px "Press Start 2P"' : '10px "Press Start 2P"';
+
     // Background
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-    ctx.fillRect(-60, -12, 120, 24);
-    
+    ctx.fillStyle = hover ? 'rgba(0, 0, 0, 0.85)' : 'rgba(0, 0, 0, 0.7)';
+    ctx.fillRect(-bgW / 2, -bgH / 2, bgW, bgH);
+    if (hover) {
+      ctx.strokeStyle = '#4facfe';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(-bgW / 2, -bgH / 2, bgW, bgH);
+    }
+
     // Name with level
     ctx.fillStyle = '#FFFFFF';
-    ctx.font = 'bold 12px "Press Start 2P"';
+    ctx.font = nameFont;
     ctx.textAlign = 'center';
     ctx.fillText(this.nickname, 0, -2);
-    
+
     // Level indicator (computed from tasks_completed)
     ctx.fillStyle = '#FFD700';
-    ctx.font = '10px "Press Start 2P"';
+    ctx.font = levelFont;
     ctx.fillText(`Lv.${this.stats.level} (${this.stats.tasks_completed || 0} tasks)`, 0, 8);
     
     // Thinking text if available

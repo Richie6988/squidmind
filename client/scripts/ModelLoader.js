@@ -410,7 +410,7 @@ const ModelLoader = {
 
 
   _renderModelCard(m) {
-    const sizeStr = m.file_size_gb > 0 ? `${m.file_size_gb} GB` : `${m.size_bytes || 0} bytes`;
+    const sizeStr = m.file_size_gb > 0 ? `${m.file_size_gb} GB` : (window.Format?.bytes ? window.Format.bytes(m.size_bytes || 0) : `${m.size_bytes || 0} bytes`);
     const isMissing = m.status === 'missing';
     const isInvalid = m.is_valid_gguf === false && !isMissing;
     

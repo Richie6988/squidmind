@@ -932,6 +932,15 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
             global.ReasoningBus.push({ type: 'text', task_id: key, chunk: ev.chunk });
           }
         }
+        // Emit a lifecycle event for the toast layer when an audit finishes
+        if (key.startsWith('audit_') && global.ReasoningBus) {
+          global.ReasoningBus.push({
+            type: 'bg_task_complete',
+            task_id: key,
+            kind: 'project_audit',
+            timestamp: Date.now(),
+          });
+        }
       } catch (e) {
         log.warn(` queueBgMessage(${key}) error:`, e.message);
       } finally {

@@ -164,7 +164,7 @@ const ControlTowerLive = {
 
     // Bottom row: turns + tokens generated (only show when non-zero)
     if (turnsEl) turnsEl.textContent = turns > 0 ? `turn ${turns}` : '';
-    if (tokEl)   tokEl.textContent   = tokens > 0 ? `${(tokens/1000).toFixed(1)}k tok` : '';
+    if (tokEl)   tokEl.textContent   = tokens > 0 ? (tokens >= 10000 ? `${(tokens/1000).toFixed(1)}k tok` : `${window.Format?.num(tokens) || tokens} tok`) : '';
   },
 
   stop() {
