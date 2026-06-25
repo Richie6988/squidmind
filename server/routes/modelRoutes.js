@@ -303,16 +303,6 @@ function buildRouter(v2ModelService) {
     }
   });
 
-  // GET /api/v2/models/available - list local .gguf files in models dir (legacy compat)
-  router.get('/available', async (req, res) => {
-    try {
-      const models = await v2ModelService.scanLocalModels();
-      res.json({ success: true, models });
-    } catch (err) {
-      res.status(500).json({ success: false, error: err.message });
-    }
-  });
-
   // GET /api/v2/models/dir - returns the absolute path of the models directory
   // Used by the client to auto-fill the path input after native file picker
   router.get('/dir', (req, res) => {

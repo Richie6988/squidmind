@@ -439,11 +439,6 @@ ui.createNewProject = async function() {
       await SquidModal.alert(`[OK] Project "${name}" created successfully!`);
       this.closeNewProjectModal();
       
-      // Refresh canvas temples (legacy)
-      if (typeof aquarium !== 'undefined' && aquarium.loadTemples) {
-        await aquarium.loadTemples();
-      }
-      
       // Refresh HTML temple cards (the new projects-container)
       if (typeof ProjectsPanel !== 'undefined') {
         await ProjectsPanel.refresh();

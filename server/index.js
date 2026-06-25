@@ -662,40 +662,8 @@ app.get('/api/projects/:name/memory', async (req, res) => {
   }
 });
 
-// Update project colors
-app.put('/api/projects/:name/colors', async (req, res) => {
-  try {
-    const { outside, inside } = req.body;
-    const folder = await resolveProjectFolder(req.params.name);
-    const memoryPath = path.join(AQUARIUM.PROJECTS, folder, 'project_memory.json');
-    
-    const memoryData = await fs.readFile(memoryPath, 'utf8');
-    const memory = JSON.parse(memoryData);
-    
-    memory.colors = { outside, inside };
-    
-    await fs.writeFile(memoryPath, JSON.stringify(memory, null, 2), 'utf8');
-    
-    res.json({ success: true, memory });
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
 // ==================== LOG ROUTES ====================
-
-// /api/logs - thin alias to V2 logs registry (kept for legacy UI)
-app.get('/api/logs', async (req, res) => {
-  try {
-    sharedRm.invalidateCache();
-    const data = await sharedRm.read('logs/logs.json').catch(() => ({ logs: [] }));
-    const logs = Array.isArray(data?.logs) ? data.logs : [];
-    const limit = parseInt(req.query.limit) || 100;
-    res.json({ success: true, logs: logs.slice(-limit).reverse() });
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
+// All log access goes through /api/v2/logs (registryRoutes). No legacy alias.
 
 // ==================== SYSTEM ROUTES (V2 only) ====================
 

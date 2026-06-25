@@ -159,7 +159,7 @@ class HeartbeatService {
       const reg = await this.rm.getTasksRegistry();
       const unassigned = Object.values(reg.tasks || {}).filter(t => {
         const s = t.lifecycle?.status || t.status || 'open';
-        return (s === 'open' || s === 'planned') && !t.assignment?.assigned_to;
+        return (s === 'open' || s === 'planned') && !t.assigned_to;
       });
 
       if (unassigned.length === 0) return;

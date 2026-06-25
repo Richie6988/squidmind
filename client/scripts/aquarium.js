@@ -152,8 +152,7 @@ const aquarium = {
     // Draw ocean gradient background
     this.drawBackground();
     
-    // Temples are HTML cards in .projects-container - no canvas updates or drawing.
-    // (Temple manager is kept around only for legacy interaction code paths.)
+    // Temples are HTML cards in .projects-container — no canvas updates or drawing.
     
     // Update and draw squids. Each in its own try/catch so a single bad
     // squid (e.g. malformed appearance data) can't kill the animation

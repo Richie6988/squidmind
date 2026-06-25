@@ -508,15 +508,13 @@ class SquidInteractionSystem {
     if (agentId && typeof AgentForm !== 'undefined' && agentId.startsWith?.('agent_')) {
       AgentForm.open(agentId).catch(err => {
         console.warn('[SQUID] AgentForm failed:', err.message);
-        // Don't fall back to legacy - that's the old broken UI
         alert('Could not open agent: ' + err.message);
       });
       return;
     }
-    
-    // Squid has a legacy ID (squid_TIMESTAMP) - it's an old V1 agent
-    console.warn('[SQUID] Legacy agent id, cannot edit:', agentId);
-    alert('This squid uses the old format and cannot be edited. Delete it and create a new one via "+ New Agent".');
+
+    console.warn('[SQUID] Invalid agent id format:', agentId);
+    alert('This squid has an invalid id. Delete it and create a new one via "+ New Agent".');
   }
 
   /**
@@ -683,15 +681,7 @@ class SquidInteractionSystem {
         if (project.temple_shape) currentShape = project.temple_shape;
       }
     } catch {}
-    
-    // Also check canvas temple for legacy fallback
-    temple = (window.aquarium?.temples || []).find(t => t.name === templeName);
-    if (temple && !currentOutside) {
-      currentOutside = temple.colors?.outside || currentOutside;
-      currentInside = temple.colors?.inside || currentInside;
-      currentShape = temple.shape || currentShape;
-    }
-    
+
     const modal = document.createElement('div');
     modal.className = 'modal temple-appearance-modal';
     modal.innerHTML = `
@@ -750,21 +740,13 @@ class SquidInteractionSystem {
       const shape = modal.querySelector('#t-shape').value;
       try {
         status.textContent = 'Saving...';
-        
-        // 1. Save to project_memory.json (legacy compat)
-        await fetch(`/api/projects/${templeName}/colors`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ outside, inside })
-        }).catch(() => {/* memory file might not exist for new projects */});
-        
-        // 2. Find project_id in registry from name
+
+        // Find project_id in registry from name
         const regRes = await window.api._fetch('/projects');
         const project = Object.values(regRes.registry.projects).find(p => p.name === templeName);
         if (!project) throw new Error(`Project not found in registry: ${templeName}`);
-        
-        // 3. Save BOTH colors and temple_shape to PROJECT_REGISTRY entry
-        //    (this is where ProjectsPanel reads from)
+
+        // Save colors and temple_shape to PROJECT_REGISTRY (single source of truth)
         await window.api._fetch('/field', {
           method: 'PATCH',
           body: JSON.stringify({

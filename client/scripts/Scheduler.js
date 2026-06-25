@@ -128,7 +128,7 @@ const Scheduler = {
         </div>
         <div class="task-queue-row2" style="margin:4px 0;">
           <span style="font-size:8px; color:var(--accent);">${this._describeSchedule(t.schedule)}</span>
-          <span style="font-size:8px; color:var(--text-secondary);">→ ${t.assignment?.assigned_to || 'unassigned'}</span>
+          <span style="font-size:8px; color:var(--text-secondary);">→ ${t.assigned_to || 'unassigned'}</span>
         </div>
         <button class="task-queue-btn task-queue-cancel" onclick="Scheduler.cancel('${t.task_id}')">x Cancel</button>
       </div>

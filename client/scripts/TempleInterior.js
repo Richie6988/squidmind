@@ -896,7 +896,6 @@ const TempleInterior = {
       const isFail = status === 'failed' || status === 'cancelled';
       const isDone = status === 'completed';
       const cls    = isRun ? 'prog' : isDone ? 'done' : isFail ? 'fail' : '';
-      // Flat field fallback (IC-02 fix)
       const agent  = task.assigned_name || task.assigned_to || '';
       // Status icon
       const statusIcon = isRun ? '●' : isDone ? '✓' : isFail ? '✗' : '○';
@@ -1056,17 +1055,6 @@ const TempleInterior = {
       await window.api._fetch(`/tasks/${taskId}/sort`, {
         method: 'PATCH',
         body: JSON.stringify({ sort_order: newOrder })
-      }).catch(() => {
-        // If /sort route doesn't exist, fall back to setting via generic field update
-        return window.api._fetch('/field', {
-          method: 'PATCH',
-          body: JSON.stringify({
-            filePath: 'tasks/tasks_registry.json',
-            fieldPath: `tasks.${taskId}.sort_order`,
-            newValue: newOrder,
-            reason: 'kanban reorder'
-          })
-        }).catch(() => {});
       });
     } catch (e) {
       console.warn('[Kanban] reorder failed:', e.message);

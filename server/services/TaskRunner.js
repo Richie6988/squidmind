@@ -693,7 +693,7 @@ class TaskRunner {
       if (extra.completed_at   !== undefined) { task.completed_at = extra.completed_at; task.lifecycle.completed_at = extra.completed_at; }
       if (extra.started_at     !== undefined) task.lifecycle.started_at = extra.started_at;
 
-      // ── IC-01: Write to results_log BEFORE _writeTaskDetails purges terminal tasks ──
+      // Write to results_log BEFORE _writeTaskDetails purges terminal tasks
       const TERMINAL_FOR_LOG = new Set(['completed', 'failed', 'cancelled']);
       if (TERMINAL_FOR_LOG.has(status)) {
         try {
@@ -720,7 +720,7 @@ class TaskRunner {
 
       await this.rm._writeTaskDetails(taskId, task);
 
-      // ── IC-03: Update agent performance + project metrics (cascade) ──────
+      // Update agent performance + project metrics (cascade)
       if (TERMINAL_FOR_LOG.has(status)) {
         try {
           await this.rm.cascadeTaskClosure(taskId, task, status);

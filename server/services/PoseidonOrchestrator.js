@@ -371,162 +371,14 @@ My response: "${ss.last_response_preview}"${tools}
     }
     return lines.join('\n');
   }
-  
-  // OLD section methods preserved below for backward compat if something still
-  // references them, but buildSystemPrompt() no longer uses them.
-  
-  _sectionFineTuning(brain) {
-    const lines = [
-      '# FINE_TUNING (your identity + learned style)',
-      '',
-      `System ID: ${brain.identity?.system_id || 'poseidon_main'}`,
-      `Awakening #${(brain.identity?.total_awakening_count || 0) + 1}`,
-      '',
-      '## Core truths (your unchanging soul)'
-    ];
-    (brain.soul?.core_truths || ['Be genuinely helpful, not performatively helpful.']).forEach(t => lines.push(`- ${t}`));
-    lines.push('');
-    lines.push('## Boundaries');
-    (brain.soul?.boundaries || ['Private things stay private.']).forEach(b => lines.push(`- ${b}`));
-    lines.push('');
-    lines.push(`Vibe: ${brain.soul?.vibe || 'direct, concise, action-oriented'}`);
-    // Self-improvement rules
-    const si = brain.self_improvement;
-    if (si?.rules?.length) {
-      lines.push('');
-      lines.push('## Self-improvement protocol');
-      si.rules.forEach(r => lines.push(`- ${r}`));
-    }
-    lines.push('');
-    lines.push('## What you have learned about your user');
-    
-    const ctx = brain.user?.context || {};
-    const prefs = brain.user?.preferences || {};
-    const patterns = brain.user?.learned_patterns || [];
-    
-    if (Object.keys(ctx).length === 0 && Object.keys(prefs).length === 0 && patterns.length === 0) {
-      lines.push('(You don\'t know your user yet. Learn over time. When they reveal a stable preference, call update_user_context to record it.)');
-    } else {
-      if (Object.keys(ctx).length > 0) {
-        lines.push('');
-        lines.push('Context:');
-        for (const [k, v] of Object.entries(ctx)) lines.push(`- ${k}: ${v}`);
-      }
-      if (Object.keys(prefs).length > 0) {
-        lines.push('');
-        lines.push('Preferences:');
-        for (const [k, v] of Object.entries(prefs)) lines.push(`- ${k}: ${typeof v === 'object' ? JSON.stringify(v) : v}`);
-      }
-      if (patterns.length > 0) {
-        lines.push('');
-        lines.push('Observed patterns:');
-        patterns.slice(0, 5).forEach(p => lines.push(`- ${p.pattern || p}`));
-      }
-    }
-    return lines.join('\n');
-  }
-  
   /**
    * Section 3: PROCESSES - step-by-step recipes for common tasks.
    * The model needs concrete walkthroughs, not abstract advice.
    */
-  _sectionProcesses() {
-    return `# PROCESSES (step-by-step recipes)
-
-## Creating an agent
-1. Pick a display_name (short, descriptive).
-2. Pick specialization from: frontend_specialist, backend_specialist,
-   fullstack_dev, data_analyst, devops, qa_tester, designer, researcher,
-   ml_engineer, security, documentation, general.
-3. Call create_agent(...).
-4. Call log_decision summarizing why this agent was created.
-5. Report the new agent_id to the user.
-
-## Archiving a project
-1. Confirm with user: "Archive PROJECT_NAME? Hidden but recoverable."
-2. On yes: call archive_project(project_name).
-3. Call log_decision.
-4. Suggest next steps (reassign agents that were on it, etc.).
-
-## Research flow
-1. web_search(focused_query) - get top 5 hits.
-2. Pick 1-3 best URLs from titles + snippets.
-3. web_fetch(url) on the most promising one for full content.
-4. Synthesize a tight answer. Cite source URLs.
-5. Don't pad with irrelevant quotes.
-
-## Code editing
-1. read_file to see current state.
-2. Small change → edit_file with a unique search_text + replacement.
-3. Brand new file → write_file.
-4. Overwriting existing file fully → CONFIRM with user first.
-5. github_diff to verify changes look right.
-6. github_commit("clear message: what changed and why").
-
-## Git workflow
-1. github_status - see what's changed.
-2. github_diff - inspect specifics.
-3. github_commit("type: subject").
-4. github_push when user is ready.
-
-## Responding to requests (the deciding question)
-First ask yourself: is this a QUESTION (answer in text) or a REQUEST (call tool)?
-- Question: answer directly.
-- Request: call the tool FIRST, then summarize what you did.
-Never describe a bash command you could call instead.`;
-  }
   
   /**
    * Section 4: TOOLS - the full catalog the model can call.
    */
-  _sectionTools() {
-    return `# TOOLS (real functions you can call right now)
-
-## Agent management
-- create_agent(display_name, specialization, role, primary_color)
-- delete_agent(agent_id)
-- list_agents()
-- update_agent_field(agent_id, field_path, new_value, reason)
-
-## Project management
-- create_project(name, vision)
-- archive_project(project_name)  → reversible, hides from active view
-- delete_project(project_name)   → PERMANENT, removes folder + registry entry. Use when user says "delete"
-- update_project(project_name, field, new_value) → rename, change vision or status
-- assign_agent(agent_id, project_name) / unassign_agent(agent_id, project_name)
-- update_task(task_id, field, new_value) → change status/priority/title/assignment
-- delete_task(task_id)           → remove task permanently
-- list_skills()                  → all skills with version + triggers
-- delete_skill(skill_id)         → remove an obsolete or broken skill
-- get_logs(limit?, event_type?, actor?) → recent activity log
-- list_projects()
-
-## Task management
-- create_task(title, description, project, assigned_agent_id?, priority?)
-- list_tasks(status?, project?)
-
-## Web / research
-- web_search(query, num_results?)  Top results: title, url, snippet
-- web_fetch(url)  Download and return text content of a URL
-
-## Code editor (workspace-scoped)
-- read_file(path)
-- write_file(path, content)  For new files (confirm before overwriting)
-- edit_file(path, search_text, replace_text)  search_text MUST appear exactly once
-- list_files(path)
-
-## Git
-- github_status()  Branch, modified files, ahead/behind
-- github_diff(path?)  Working tree + staged
-- github_commit(message, files?)  Stages all (or specific) + commits
-- github_push(remote?, branch?)
-- github_pull(remote?, branch?)
-
-## System / memory
-- get_system_state()  Live CPU, RAM, agent counts
-- log_decision(summary, reasoning, affected_entities?)
-- update_user_context(key, value)  Record a stable fact about the user`;
-  }
   
   /**
    * Section 5: CURRENT_STATE - live snapshot of the system.
@@ -1866,7 +1718,7 @@ Never describe a bash command you could call instead.`;
           task_id: t.task_id, title: t.title,
           status: t.lifecycle?.status || t.status || 'open',
           project: t.project_name,
-          assigned_to: t.assignment?.assigned_to || t.assigned_to,
+          assigned_to: t.assigned_to,
           priority: t.priority?.label || t.priority
         }))
       };
@@ -2353,7 +2205,7 @@ Never describe a bash command you could call instead.`;
           .filter(t => !['completed','failed','cancelled','archived'].includes(t.lifecycle?.status || t.status || ''))
           .slice(0, 20);
         return { ok: true, section_path, content: open.map(t =>
-          `${t.task_id}: ${t.title} | ${t.lifecycle?.status||'?'} | agent: ${t.assignment?.assigned_to||'unassigned'}`
+          `${t.task_id}: ${t.title} | ${t.lifecycle?.status||'?'} | agent: ${t.assigned_to||'unassigned'}`
         ).join('\n') || '(no open tasks)' };
       }
 

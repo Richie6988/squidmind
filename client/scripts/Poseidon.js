@@ -274,15 +274,7 @@ class Poseidon {
    * Handle click
    */
   handleClick() {
-    // V2: Open the streaming chat with poseidon_brain context
-    if (typeof PoseidonChat !== 'undefined') {
-      PoseidonChat.open();
-      return;
-    }
-    // Fallback to legacy panel if V2 chat not loaded
-    if (typeof ui !== 'undefined') {
-      ui.showPanel('poseidon');
-    }
+    if (typeof PoseidonChat !== 'undefined') PoseidonChat.open();
   }}
 
 // Export singleton

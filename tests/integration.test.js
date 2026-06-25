@@ -92,7 +92,7 @@ function log(name, ok, detail = '') {
   await rm.write('agents/agent_registry.json', agentReg);
 
   const taskWithAgent = { ...completedTask, assigned_to: testAgentId };
-  await rm.cascadeTaskClosureFlat(tid, taskWithAgent, 'completed');
+  await rm.cascadeTaskClosure(tid, taskWithAgent, 'completed');
 
   const agentReg2 = await rm.getAgentRegistry();
   const updated = agentReg2.agents?.[testAgentId];

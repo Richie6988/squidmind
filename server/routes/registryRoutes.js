@@ -483,7 +483,7 @@ router.delete('/skills/:id', async (req, res) => {
     await fsp.unlink(path.join(AQUARIUM.SKILLS, skillId + '.json')).catch(() => {});
     await fsp.unlink(path.join(__dirname, '../skills', skillId + '.json')).catch(() => {});
 
-    // Persist to blocklist so skill is never re-seeded on restart (IC-15)
+    // Persist to blocklist so skill is never re-seeded on restart
     const blocklistPath = AQUARIUM.skillsDeletedPath || path.join(AQUARIUM.SKILLS, '.skills_deleted');
     try {
       let deleted = [];
@@ -565,9 +565,6 @@ router.get('/tasks/:id/stream', async (req, res) => {
       const p = path.join(AQUARIUM.OUTPUT, `${taskId}.${ext}`);
       if (fs.existsSync(p)) return p;
     }
-    // Legacy per-folder fallback
-    const legacyFlat = path.join(AQUARIUM.TASKS, taskId, 'output.txt');
-    if (fs.existsSync(legacyFlat)) return legacyFlat;
     return null;
   };
 

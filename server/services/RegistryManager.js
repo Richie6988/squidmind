@@ -157,7 +157,7 @@ class RegistryManager {
       registry.metadata.id_format    = format;
       await this.write(registryPath, registry);
 
-      return format.replace('NNN', String(nextNum).padStart(4, '0'));
+      return format.replace(/N+/, String(nextNum).padStart(4, '0'));
 
     } finally {
       resolveMutex(); // always release — unblocks the next waiting call
@@ -1062,17 +1062,13 @@ class RegistryManager {
   }
 
   async _readTaskDetails(taskId) {
-    // Flat registry is the single source of truth
     try {
       const AQUARIUM = require('../aquarium');
       const path = require('path');
       const flatPath = path.join(AQUARIUM.TASKS, 'tasks_registry.json');
       const reg = JSON.parse(require('fs').readFileSync(flatPath, 'utf8'));
-      if (reg.tasks?.[taskId]) return reg.tasks[taskId];
-    } catch {}
-    // Fallback: legacy per-folder details.json (migration only)
-    const p = require('path').join(require('../aquarium').TASKS, taskId, 'details.json');
-    try { return JSON.parse(require('fs').readFileSync(p, 'utf8')); } catch { return null; }
+      return reg.tasks?.[taskId] || null;
+    } catch { return null; }
   }
 
   async _writeTaskDetails(taskId, task) {
@@ -1101,26 +1097,11 @@ class RegistryManager {
     const path = require('path');
     const AQUARIUM = require('../aquarium');
     const flatPath = path.join(AQUARIUM.TASKS, 'tasks_registry.json');
-    let reg = { metadata: { next_id: 1, id_format: 'task_NNNN' }, tasks: {} };
-    if (fs.existsSync(flatPath)) {
-      try { reg = JSON.parse(fs.readFileSync(flatPath, 'utf8')); } catch {}
+    if (!fs.existsSync(flatPath)) {
+      return { metadata: { next_id: 1, id_format: 'task_NNNN' }, tasks: {} };
     }
-    // One-time migration: absorb any legacy per-folder tasks not yet in registry
-    try {
-      let migrated = 0;
-      for (const ent of fs.readdirSync(AQUARIUM.TASKS, { withFileTypes: true })) {
-        if (!ent.isDirectory() || !ent.name.startsWith('task_')) continue;
-        if (reg.tasks[ent.name]) continue;
-        const dp = path.join(AQUARIUM.TASKS, ent.name, 'details.json');
-        if (!fs.existsSync(dp)) continue;
-        try { reg.tasks[ent.name] = JSON.parse(fs.readFileSync(dp, 'utf8')); migrated++; } catch {}
-      }
-      if (migrated > 0) {
-        fs.writeFileSync(flatPath, JSON.stringify(reg, null, 2));
-        log.info(' Migrated', migrated, 'legacy task folders → flat registry');
-      }
-    } catch {}
-    return reg;
+    try { return JSON.parse(fs.readFileSync(flatPath, 'utf8')); }
+    catch { return { metadata: { next_id: 1, id_format: 'task_NNNN' }, tasks: {} }; }
   }
   /**
    * Resolve an agent_id to its display_name. Returns null if not found.

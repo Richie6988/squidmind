@@ -131,7 +131,7 @@ const TaskQueueUI = {
     // results_log entries have flat structure: status, completed_at, assigned_name at top level
     const ok    = (t.lifecycle?.status || t.status) === 'completed';
     const icon  = ok ? '✓' : '✗';
-    const agent = t.assignment?.assigned_name || t.assignment?.assigned_to || t.assigned_name || '—';
+    const agent = t.assigned_name || t.assigned_to || '—';
     const completedAt = t.lifecycle?.completed_at || t.completed_at;
     const when  = completedAt ? this._elapsed(completedAt) : '';
     const isImageTask = t.task_type === 'image_gen' || /^generate[: ]/i.test(t.title || '');
@@ -184,9 +184,9 @@ const TaskQueueUI = {
     el.draggable = true;
 
     const status = t.lifecycle?.status || t.status || 'open';
-    const assignee = t.assignment?.assigned_to || null;
+    const assignee = t.assigned_to || null;
     const agentName = assignee
-      ? (this.agents.find(a => a.agent_id === assignee)?.display_name || t.assignment?.assigned_name || assignee)
+      ? (t.assigned_name || this.agents.find(a => a.agent_id === assignee)?.display_name || assignee)
       : '+ assign';
 
     const workerStatus = assignee ? (this._workerStatuses[assignee]?.status || 'idle') : null;

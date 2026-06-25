@@ -295,7 +295,9 @@ class AgentWorker extends EventEmitter {
       sequence      = entry.context.getSequence();
       contextLength = entry.context.contextSize || entry.config?.contextLength || 4096;
     }
-    this._agentContext = null;  // we do NOT own the context — Poseidon does
+    this.session       = null;
+    this.sequence      = null;
+    this._functions    = null;
     this.sequence      = sequence;
     const ctxTokens   = contextLength;
     // 20% budget for system prompt — leaves 80% for tools schema + task + reply
@@ -477,14 +479,9 @@ class AgentWorker extends EventEmitter {
       this._brokerToken = null;
     }
     try { await this.session?.dispose?.(); } catch {}
-    // IMPORTANT: do NOT dispose this._agentContext — it belongs to Poseidon
-    // Only dispose if we actually own a dedicated context (legacy path)
-    if (this._agentContext) {
-      try { await this._agentContext.dispose(); } catch {}
-    }
+    // Context belongs to Poseidon — single-context architecture, we never dispose it
     this.session       = null;
     this.sequence      = null;
-    this._agentContext = null;
     this._functions    = null;
   }
 }

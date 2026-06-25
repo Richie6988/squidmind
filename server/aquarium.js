@@ -3,13 +3,15 @@
 /**
  * aquarium.js — Single source of truth for all data paths.
  *
- * The Aquarium is the root data directory.
- * All server code imports paths from here — never hardcodes 'data/', 'workspace/', etc.
+ * Root: <repo>/aquarium/
+ * Layout: uppercase subdirectories (BRAIN, AGENTS, MODELS, PROJECTS, TASKS,
+ * LOGS, TOOLS, SKILLS, CHANNELS).
  *
- * Auto-detects the correct root in order:
- *   1. aquarium/  (post-migration, preferred)
- *   2. workspace/ (intermediate)
- *   3. data/      (legacy)
+ * resolve(logical) translates older lowercase paths (main/, agents/, models/,
+ * projects/, tasks/, logs/, tools/) and a few historical filenames
+ * (main/context_checkpoint.json → BRAIN/dream_memory.json) onto the canonical
+ * uppercase layout so services that still pass legacy paths to rm.read/.write
+ * keep working without churn.
  */
 
 const path = require('path');
@@ -18,66 +20,25 @@ const fs   = require('fs');
 const log = require('./utils/logger').createLogger('Aquarium');
 const SERVER_DIR = __dirname;
 const REPO_ROOT  = path.join(SERVER_DIR, '..');
+const AQ_ROOT    = path.join(REPO_ROOT, 'aquarium');
 
-function detectRoot() {
-  // A root is "real" if it has a non-empty poseidon_brain that isn't just the seed default.
-  // We check this by looking for at least one real registry file beyond the bare seed.
-  const hasRealData = (dir) => {
-    // Check for poseidon_brain in either layout
-    const hasBrain = fs.existsSync(path.join(dir, 'BRAIN', 'poseidon_brain.json'))
-                  || fs.existsSync(path.join(dir, 'main', 'poseidon_brain.json'));
-    if (!hasBrain) return false;
-    // Also require at least one other sign of real data (models or projects populated)
-    const hasModels   = fs.existsSync(path.join(dir, 'MODELS', 'model_registry.json'))
-                     || fs.existsSync(path.join(dir, 'models', 'model_registry.json'));
-    const hasProjects = fs.existsSync(path.join(dir, 'PROJECTS', 'project_registry.json'))
-                     || fs.existsSync(path.join(dir, 'projects', 'project_registry.json'));
-    return hasModels || hasProjects;
-  };
+fs.mkdirSync(AQ_ROOT, { recursive: true });
 
-  // Prefer whichever root has real data — aquarium > data > workspace
-  for (const name of ['aquarium', 'data', 'workspace']) {
-    const dir = path.join(REPO_ROOT, name);
-    if (hasRealData(dir)) {
-      if (name !== 'aquarium') {
-        log.warn(`⚠️  Using ${name}/ (has real data) — run: node migrate_aquarium.js --fresh to upgrade to aquarium/`);
-      }
-      return dir;
-    }
-  }
-
-  // Nothing has real data — use aquarium/ (will be seeded)
-  const aqRoot = path.join(REPO_ROOT, 'aquarium');
-  fs.mkdirSync(aqRoot, { recursive: true });
-  return aqRoot;
-}
-
-function detectModelsDir(root) {
-  // Use whichever models dir has actual .gguf files
-  const candidates = [
-    path.join(REPO_ROOT, 'aquarium', 'MODELS'),
-    path.join(REPO_ROOT, 'data', 'models'),
-    path.join(REPO_ROOT, 'workspace', 'models'),
-    path.join(root, 'MODELS'),
-    path.join(root, 'models'),
-  ];
+function detectModelsDir() {
+  const aquariumModels = path.join(AQ_ROOT, 'MODELS');
+  const repoModels     = path.join(REPO_ROOT, 'models');  // some setups keep big GGUFs outside aquarium/
   const hasGguf = (dir) => {
     try { return fs.readdirSync(dir).some(f => f.endsWith('.gguf')); } catch { return false; }
   };
-  return candidates.find(hasGguf) || path.join(REPO_ROOT, 'aquarium', 'MODELS');
+  if (hasGguf(aquariumModels)) return aquariumModels;
+  if (hasGguf(repoModels))     return repoModels;
+  return aquariumModels;  // default — will be created on first import
 }
 
-const AQ_ROOT = detectRoot();
-const isAquarium = AQ_ROOT.endsWith('aquarium');
-
-// ── Path resolver ─────────────────────────────────────────────────────────────
-// Maps logical names to physical paths under AQ_ROOT
-// Works for all three layouts: aquarium/, workspace/, data/
-
-// Maps legacy relative paths → Aquarium paths, and vice versa.
-// Works transparently regardless of which layout is active.
+// ── Logical-path translator ───────────────────────────────────────────────────
+// Maps older lowercase paths → canonical uppercase layout. Allows services to
+// keep passing 'main/poseidon_brain.json' etc. while we resolve to BRAIN/.
 const LEGACY_TO_AQ = [
-  // must be ordered: most specific first
   ['main/context_checkpoint.json', 'BRAIN/dream_memory.json'],
   ['main/poseidon_brain.json',     'BRAIN/poseidon_brain.json'],
   ['main/comms_config.json',       'CHANNELS/comms_config.json'],
@@ -92,89 +53,61 @@ const LEGACY_TO_AQ = [
   ['tools/',                       'TOOLS/'],
 ];
 
-const AQ_TO_LEGACY = [
-  ['BRAIN/dream_memory.json',   'main/context_checkpoint.json'],
-  ['BRAIN/poseidon_brain.json', 'main/poseidon_brain.json'],
-  ['CHANNELS/',                 'main/'],
-  ['SKILLS/',                   'main/skills/'],
-  ['AGENTS/',                   'agents/'],
-  ['MODELS/',                   'models/'],
-  ['PROJECTS/',                 'projects/'],
-  ['TASKS/',                    'tasks/'],
-  ['LOGS/',                     'logs/'],
-  ['TOOLS/',                    'tools/'],
-  ['BRAIN/',                    'main/'],
-];
-
 function resolvePath(logical) {
-  if (isAquarium) {
-    // Already an aquarium path? pass through
-    if (/^(MODELS|AGENTS|PROJECTS|TASKS|LOGS|TOOLS|SKILLS|BRAIN|CHANNELS)[\/]/.test(logical)) {
-      return logical;
-    }
-    // Translate legacy → aquarium
-    for (const [from, to] of LEGACY_TO_AQ) {
-      if (logical.startsWith(from)) return logical.replace(from, to);
-    }
-    return logical;
-  } else {
-    // Legacy layout: translate aquarium → legacy if needed
-    if (/^(MODELS|AGENTS|PROJECTS|TASKS|LOGS|TOOLS|SKILLS|BRAIN|CHANNELS)[\/]/.test(logical)) {
-      for (const [from, to] of AQ_TO_LEGACY) {
-        if (logical.startsWith(from)) return logical.replace(from, to);
-      }
-    }
-    return logical;
+  if (/^(MODELS|AGENTS|PROJECTS|TASKS|LOGS|TOOLS|SKILLS|BRAIN|CHANNELS)[\/]/.test(logical)) {
+    return logical;  // already canonical
   }
+  for (const [from, to] of LEGACY_TO_AQ) {
+    if (logical.startsWith(from)) return logical.replace(from, to);
+  }
+  return logical;
 }
 
 // ── Exported constants ────────────────────────────────────────────────────────
 
 const AQUARIUM = {
   ROOT:     AQ_ROOT,
-  MODELS:   path.join(AQ_ROOT, isAquarium ? 'MODELS'   : 'models'),
-  AGENTS:   path.join(AQ_ROOT, isAquarium ? 'AGENTS'   : 'agents'),
-  PROJECTS: path.join(AQ_ROOT, isAquarium ? 'PROJECTS' : 'projects'),
-  TASKS:    path.join(AQ_ROOT, isAquarium ? 'TASKS'    : 'tasks'),
-  IMAGES:   path.join(AQ_ROOT, isAquarium ? 'TASKS/IMAGES' : 'tasks/images'),
-  OUTPUT:   path.join(AQ_ROOT, isAquarium ? 'TASKS/OUTPUT' : 'tasks/output'),
-  LOGS:     path.join(AQ_ROOT, isAquarium ? 'LOGS'     : 'logs'),
-  TOOLS:    path.join(AQ_ROOT, isAquarium ? 'TOOLS'    : 'tools'),
-  // Skills: use aquarium/SKILLS/ at runtime; server/skills/ is the seeded source in the repo
-  SKILLS:   path.join(AQ_ROOT, isAquarium ? 'SKILLS'   : 'main/skills'),
+  MODELS:   path.join(AQ_ROOT, 'MODELS'),
+  AGENTS:   path.join(AQ_ROOT, 'AGENTS'),
+  PROJECTS: path.join(AQ_ROOT, 'PROJECTS'),
+  TASKS:    path.join(AQ_ROOT, 'TASKS'),
+  IMAGES:   path.join(AQ_ROOT, 'TASKS/IMAGES'),
+  OUTPUT:   path.join(AQ_ROOT, 'TASKS/OUTPUT'),
+  LOGS:     path.join(AQ_ROOT, 'LOGS'),
+  TOOLS:    path.join(AQ_ROOT, 'TOOLS'),
+  SKILLS:   path.join(AQ_ROOT, 'SKILLS'),
   SKILLS_SEED: path.join(SERVER_DIR, 'skills'),
-  BRAIN:    path.join(AQ_ROOT, isAquarium ? 'BRAIN'    : 'main'),
-  CHANNELS: path.join(AQ_ROOT, isAquarium ? 'CHANNELS' : 'main'),
-  MODELS_DIR: detectModelsDir(AQ_ROOT),
+  BRAIN:    path.join(AQ_ROOT, 'BRAIN'),
+  CHANNELS: path.join(AQ_ROOT, 'CHANNELS'),
+  MODELS_DIR: detectModelsDir(),
 
   // Path helpers
-  brain:    (...p) => path.join(AQ_ROOT, isAquarium ? 'BRAIN'    : 'main',   ...p),
-  agents:   (...p) => path.join(AQ_ROOT, isAquarium ? 'AGENTS'   : 'agents', ...p),
-  projects: (...p) => path.join(AQ_ROOT, isAquarium ? 'PROJECTS' : 'projects', ...p),
-  tasks:    (...p) => path.join(AQ_ROOT, isAquarium ? 'TASKS'    : 'tasks',  ...p),
-  skills:   (...p) => path.join(AQ_ROOT, isAquarium ? 'SKILLS'   : 'main/skills', ...p),
-  channels: (...p) => path.join(AQ_ROOT, isAquarium ? 'CHANNELS' : 'main',   ...p),
-  logs:     (...p) => path.join(AQ_ROOT, isAquarium ? 'LOGS'     : 'logs',   ...p),
-  models:   (...p) => path.join(AQ_ROOT, isAquarium ? 'MODELS'   : 'models', ...p),
+  brain:    (...p) => path.join(AQ_ROOT, 'BRAIN',    ...p),
+  agents:   (...p) => path.join(AQ_ROOT, 'AGENTS',   ...p),
+  projects: (...p) => path.join(AQ_ROOT, 'PROJECTS', ...p),
+  tasks:    (...p) => path.join(AQ_ROOT, 'TASKS',    ...p),
+  skills:   (...p) => path.join(AQ_ROOT, 'SKILLS',   ...p),
+  channels: (...p) => path.join(AQ_ROOT, 'CHANNELS', ...p),
+  logs:     (...p) => path.join(AQ_ROOT, 'LOGS',     ...p),
+  models:   (...p) => path.join(AQ_ROOT, 'MODELS',   ...p),
 
-  // Relative path resolver for RegistryManager.read/write
-  // Translates old relative paths to new ones
   resolve: resolvePath,
 
   // Well-known file paths
-  POSEIDON_BRAIN:       path.join(AQ_ROOT, isAquarium ? 'BRAIN/poseidon_brain.json'    : 'main/poseidon_brain.json'),
-  DREAM_MEMORY:         path.join(AQ_ROOT, isAquarium ? 'BRAIN/dream_memory.json'      : 'main/context_checkpoint.json'),
-  SOUL:                 path.join(AQ_ROOT, isAquarium ? 'BRAIN/soul.json'               : 'main/soul.json'),
-  TEMP_LOG:             path.join(AQ_ROOT, isAquarium ? 'BRAIN/temp.md'                 : 'main/temp.md'),
-  COMMS_CONFIG:         path.join(AQ_ROOT, isAquarium ? 'CHANNELS/comms_config.json'   : 'main/comms_config.json'),
-  AGENT_REGISTRY:       path.join(AQ_ROOT, isAquarium ? 'AGENTS/agent_registry.json'   : 'agents/agent_registry.json'),
-  PROJECT_REGISTRY:     path.join(AQ_ROOT, isAquarium ? 'PROJECTS/project_registry.json' : 'projects/project_registry.json'),
-  TASKS_REGISTRY:       path.join(AQ_ROOT, isAquarium ? 'TASKS/tasks_registry.json'    : 'tasks/tasks_registry.json'),
-  RESULTS_LOG:          path.join(AQ_ROOT, isAquarium ? 'TASKS/results_log.json'       : 'tasks/results_log.json'),
-  MODEL_REGISTRY:       path.join(AQ_ROOT, isAquarium ? 'MODELS/model_registry.json'   : 'models/model_registry.json'),
-  TOOL_REGISTRY:        path.join(AQ_ROOT, isAquarium ? 'TOOLS/tool_registry.json'     : 'tools/tool_registry.json'),
-  LOGS_FILE:            path.join(AQ_ROOT, isAquarium ? 'LOGS/logs.json'               : 'logs/logs.json'),
+  POSEIDON_BRAIN:   path.join(AQ_ROOT, 'BRAIN/poseidon_brain.json'),
+  DREAM_MEMORY:     path.join(AQ_ROOT, 'BRAIN/dream_memory.json'),
+  SOUL:             path.join(AQ_ROOT, 'BRAIN/soul.json'),
+  TEMP_LOG:         path.join(AQ_ROOT, 'BRAIN/temp.md'),
+  COMMS_CONFIG:     path.join(AQ_ROOT, 'CHANNELS/comms_config.json'),
+  AGENT_REGISTRY:   path.join(AQ_ROOT, 'AGENTS/agent_registry.json'),
+  PROJECT_REGISTRY: path.join(AQ_ROOT, 'PROJECTS/project_registry.json'),
+  TASKS_REGISTRY:   path.join(AQ_ROOT, 'TASKS/tasks_registry.json'),
+  RESULTS_LOG:      path.join(AQ_ROOT, 'TASKS/results_log.json'),
+  MODEL_REGISTRY:   path.join(AQ_ROOT, 'MODELS/model_registry.json'),
+  TOOL_REGISTRY:    path.join(AQ_ROOT, 'TOOLS/tool_registry.json'),
+  LOGS_FILE:        path.join(AQ_ROOT, 'LOGS/logs.json'),
 };
+
 
 // Seed aquarium/SKILLS/ from server/skills/ if empty
 ;(function bootstrap() {
@@ -263,7 +196,7 @@ const AQUARIUM = {
     } catch {}
 })();
 
-log.info(`Root: ${AQ_ROOT} (${isAquarium ? 'aquarium layout' : 'legacy layout — run node migrate_aquarium.js'})`);
+log.info(`Root: ${AQ_ROOT}`);
 log.info(`Models: ${AQUARIUM.MODELS_DIR}`);
 
 module.exports = AQUARIUM;

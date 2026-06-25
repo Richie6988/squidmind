@@ -1017,10 +1017,6 @@ const ModelLoader = {
     this._hfSearch();
   },
 
-  // legacy kept for compat — no longer wired in HTML but may be called by old callbacks
-  _hfSortFilter(btn) { this._hfSort = btn.dataset.sort || 'downloads'; this._hfSearch(); },
-  _hfQuantFilter(btn) { this._hfQuant = btn.dataset.quant || ''; this._hfSearch(); },
-
   async _hfSearch() {
     const q = this.modal.querySelector('#ml-hf-query')?.value.trim() || '';
     this._hfCurrentQuery = q;
