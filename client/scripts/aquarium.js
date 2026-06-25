@@ -94,9 +94,12 @@ const aquarium = {
           return squid;
         });
         console.log(`Loaded ${this.squids.length} squids`);
-        
+
         // Update header count
         {const _e = document.getElementById("agent-count"); if(_e) _e.textContent = `${this.squids.length} Squids`;}
+
+        // First-time onboarding: show welcome overlay if no agents
+        if (window.Onboarding) window.Onboarding.maybeShow(this.squids.length);
         
         // Restore project assignments from project registry
         try {

@@ -462,10 +462,14 @@ ${task.description}`
     modal.className = 'modal tq-detail-modal';
     modal.style.zIndex = '20001';
 
-    const status = task.lifecycle?.status || 'unknown';
+    const status = task.lifecycle?.status || task.status || 'unknown';
     const isOk   = status === 'completed';
-    const when    = task.lifecycle?.completed_at ? new Date(task.lifecycle.completed_at).toLocaleString() : '';
-    const agent   = task.assignment?.assigned_name || task.assignment?.assigned_to || '—';
+    const completedAt = task.lifecycle?.completed_at || task.completed_at;
+    const when   = completedAt ? (window.Format?.relativeTime?.(completedAt) || new Date(completedAt).toLocaleString()) : '';
+    const whenAbs = completedAt ? new Date(completedAt).toLocaleString() : '';
+    const agent  = task.assignment?.assigned_name || task.assigned_to || task.assignment?.assigned_to || '—';
+
+    const pillType = isOk ? 'success' : (status === 'failed' ? 'error' : status === 'in_progress' ? 'info' : 'muted');
 
     // Full result: load from file if available
     let resultHtml = '';
@@ -489,15 +493,17 @@ ${task.description}`
       <div class="modal-content tq-detail-content">
         <div class="modal-header">
           <div class="tq-detail-title-row">
-            <span class="tq-detail-status-badge status-${status}">${status}</span>
-            <span class="tq-detail-tid">${this._esc(taskId)}</span>
+            <span class="iaqua-pill ${pillType}">${status.replace('_',' ')}</span>
+            <span class="tq-detail-tid" style="font-family:var(--panel-font-mono,monospace);font-size:10px;color:#94a3b8;">${this._esc(taskId)}</span>
           </div>
-          <button class="btn-close" onclick="this.closest('.modal').remove()">x</button>
+          <button class="btn-close" onclick="this.closest('.modal').remove()" title="Close (Esc)">×</button>
         </div>
         <div class="tq-detail-body">
-          <div style="font-family:system-ui,sans-serif;font-size:13px;font-weight:600;color:var(--text-primary);margin-bottom:8px;">${this._esc(task.title)}</div>
-          <div style="font-family:'Courier New',monospace;font-size:9px;color:var(--ui-muted);margin-bottom:12px;">
-            Agent: ${this._esc(agent)} · ${when}
+          <div style="font-family:system-ui,sans-serif;font-size:14px;font-weight:600;color:var(--text-primary);margin-bottom:8px;line-height:1.3;">${this._esc(task.title)}</div>
+          <div style="font-family:system-ui,sans-serif;font-size:11px;color:#94a3b8;margin-bottom:14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+            <span title="Assigned agent">◉ ${this._esc(agent)}</span>
+            ${when ? `<span title="${this._esc(whenAbs)}">⏱ ${this._esc(when)}</span>` : ''}
+            ${task.task_type ? `<span style="opacity:0.6;">· ${this._esc(task.task_type)}</span>` : ''}
           </div>
           <div class="tq-detail-field">
             <label>Result</label>
