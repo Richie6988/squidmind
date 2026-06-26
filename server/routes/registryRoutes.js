@@ -528,86 +528,110 @@ router.get('/file/{*filePath}', async (req, res) => {
 
 /**
  * GET /tasks/:id/stream — SSE endpoint for live task output.
- * Polls the output file and pushes new bytes every 1s until task is terminal.
+ *
+ * Real-time path: subscribes to ReasoningBus events filtered by task_id.
+ * Each 'text' event from the LLM streams immediately as an SSE 'chunk'.
+ * Terminates on task_lifecycle status terminal OR client disconnect.
+ *
+ * Catch-up path: if task is already in a terminal state when the client
+ * connects, send the saved output as one chunk and close cleanly. This
+ * makes the endpoint useful for reconnects after task completion.
+ *
+ * Hard timeout: 30 min (the longest BG task we expect).
  */
 router.get('/tasks/:id/stream', async (req, res) => {
   const taskId = req.params.id;
-  const path = require('path');
   const fs   = require('fs');
-  const AQUARIUM = require('../aquarium');
+  const fsp  = require('fs').promises;
+  const ReasoningBus = require('../utils/ReasoningBus');
 
   res.writeHead(200, {
-    'Content-Type':  'text/event-stream',
-    'Cache-Control': 'no-cache',
-    'Connection':    'keep-alive',
-    'X-Accel-Buffering': 'no'
+    'Content-Type':      'text/event-stream',
+    'Cache-Control':     'no-cache',
+    'Connection':        'keep-alive',
+    'X-Accel-Buffering': 'no',
   });
   res.flushHeaders?.();
 
-  const TERMINAL = new Set(['completed','failed','cancelled','archived']);
-  let offset = 0;
-  let ticks  = 0;
-  const MAX_TICKS = 600; // 10 min max
-
   const send = (evt, data) => {
-    try {
-      res.write(`event: ${evt}\ndata: ${JSON.stringify(data)}\n\n`);
-    } catch {}
+    try { res.write(`event: ${evt}\ndata: ${JSON.stringify(data)}\n\n`); } catch {}
   };
 
-  const getOutputPath = async () => {
-    try {
-      const task = await rm._readTaskDetails(taskId);
-      if (task?.result_file && fs.existsSync(task.result_file)) return task.result_file;
-    } catch {}
-    // Check TASKS/OUTPUT/<taskId>.*
-    for (const ext of ['txt', 'json', 'md', 'csv']) {
-      const p = path.join(AQUARIUM.OUTPUT, `${taskId}.${ext}`);
-      if (fs.existsSync(p)) return p;
-    }
-    return null;
-  };
+  send('open', { task_id: taskId });
 
-  const poll = async () => {
-    ticks++;
-    if (ticks > MAX_TICKS) { send('done', { reason: 'timeout' }); return res.end(); }
+  const TERMINAL = new Set(['completed', 'failed', 'cancelled', 'archived']);
 
-    // Check task status
-    let task = null;
-    try { task = await rm._readTaskDetails(taskId); } catch {}
-    const status = task?.lifecycle?.status || task?.status || 'open';
+  // ── Catch-up path: task already done? Send saved output + close ────────────
+  let task = null;
+  try { task = await rm._readTaskDetails(taskId); } catch {}
+  const currentStatus = task?.lifecycle?.status || task?.status || 'open';
 
-    // Stream new output bytes
-    const outPath = await getOutputPath();
+  if (TERMINAL.has(currentStatus)) {
+    // Send result file content as a single chunk if it exists.
+    const outPath = task?.result_file && fs.existsSync(task.result_file)
+      ? task.result_file
+      : (() => {
+          for (const ext of ['txt', 'md', 'json', 'csv']) {
+            const p = path.join(AQUARIUM.OUTPUT, `${taskId}.${ext}`);
+            if (fs.existsSync(p)) return p;
+          }
+          return null;
+        })();
     if (outPath) {
       try {
-        const stat = fs.statSync(outPath);
-        if (stat.size > offset) {
-          const fd = fs.openSync(outPath, 'r');
-          const buf = Buffer.alloc(stat.size - offset);
-          fs.readSync(fd, buf, 0, buf.length, offset);
-          fs.closeSync(fd);
-          offset = stat.size;
-          send('chunk', { text: buf.toString('utf8') });
-        }
+        const text = await fsp.readFile(outPath, 'utf8');
+        send('chunk', { text });
       } catch {}
     }
+    send('done', { status: currentStatus, task_id: taskId });
+    return res.end();
+  }
 
-    if (TERMINAL.has(status)) {
-      send('done', { status, task_id: taskId });
-      return res.end();
-    }
+  // ── Live path: subscribe to the bus, filter by task_id ─────────────────────
+  let timedOut = false;
+  const HARD_TIMEOUT_MS = 30 * 60 * 1000;  // 30 min ceiling
+  const timer = setTimeout(() => {
+    timedOut = true;
+    send('done', { reason: 'timeout', task_id: taskId });
+    cleanup();
+  }, HARD_TIMEOUT_MS);
 
-    // Schedule next poll
-    setTimeout(poll, 1000);
-  };
+  // We can't use subscribeForTask alone because we also need task_lifecycle
+  // events (which are tagged with task_id), so the per-task filter works.
+  const unsubscribe = ReasoningBus.subscribeForTask(taskId, {
+    // Adapter: forward bus events to the client as SSE events.
+    write: (data) => {
+      // data is the bus's `data: ${JSON}\n\n` line. Parse it back so we can
+      // re-emit with a typed SSE event name the client already understands.
+      try {
+        const m = data.match(/^data:\s*(.+?)\n\n$/);
+        if (!m) return;
+        const ev = JSON.parse(m[1]);
+        if (ev.type === 'text' && ev.chunk !== undefined) {
+          send('chunk', { text: ev.chunk });
+        } else if (ev.type === 'thinking' && ev.chunk !== undefined) {
+          send('thinking', { text: ev.chunk });
+        } else if (ev.type === 'tool_call') {
+          send('tool_call', { name: ev.name, args: ev.args });
+        } else if (ev.type === 'tool_result') {
+          send('tool_result', { name: ev.name, ok: ev.ok, summary: ev.summary });
+        } else if (ev.type === 'task_lifecycle') {
+          if (TERMINAL.has(ev.status)) {
+            send('done', { status: ev.status, task_id: taskId });
+            cleanup();
+          }
+        }
+      } catch {}
+    },
+  });
 
-  // Start polling
-  send('open', { task_id: taskId });
-  setTimeout(poll, 500);
+  function cleanup() {
+    clearTimeout(timer);
+    try { unsubscribe(); } catch {}
+    if (!timedOut) { try { res.end(); } catch {} }
+  }
 
-  // Clean up on client disconnect
-  req.on('close', () => { ticks = MAX_TICKS + 1; });
+  req.on('close', cleanup);
 });
 
 // ── PROJECT MEMORY API ────────────────────────────────────────────────────────
