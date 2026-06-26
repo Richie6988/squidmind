@@ -69,111 +69,17 @@ if (healthReport.errors.length > 0) {
 
 const sharedRm = new RegistryManager(dataRoot);
 
-const buildRegistryRoutes = require('./routes/registryRoutes');
+const buildRegistryRoutes      = require('./routes/registryRoutes');
+const { buildVoiceRoutes }     = require('./routes/voiceRoutes');
+const { buildHealthRoutes }    = require('./routes/healthRoutes');
+const { buildBackupRoutes }    = require('./routes/backupRoutes');
 // Services ref — populated after initialization, used by routes that need late-bound services
-const servicesRef = { taskRunner: null };
+const servicesRef = { taskRunner: null, v2ModelService: null };
 app.use('/api/v2', buildRegistryRoutes(sharedRm, servicesRef));
 
-// === V2 EMERGENCY REPAIR ENDPOINT ===
-app.post('/api/v2/repair', (req, res) => {
-  try {
-    sharedRm.invalidateCache();
-    const report = repairAllRegistries(dataRoot);
-    res.json({ success: true, ...report });
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
-
-// === V2 HEALTH ENDPOINT ===
-app.get('/api/v2/health', async (req, res) => {
-  // Lightweight check — for load balancers / monitors. Returns:
-  //   200 + status:'up'         all systems nominal
-  //   200 + status:'degraded'   running but some subsystems unhealthy
-  //   503 + status:'down'       core registry unreadable, server unusable
-  const startMs = Date.now();
-  const checks = {};
-
-  // Core registries (must all read for 'up')
-  const coreRegistries = [
-    'BRAIN/poseidon_brain.json',
-    'AGENTS/agent_registry.json',
-    'TASKS/tasks_registry.json',
-    'PROJECTS/project_registry.json',
-    'MODELS/model_registry.json',
-  ];
-  let coreFailures = 0;
-  try { sharedRm.invalidateCache(); } catch {}
-  for (const reg of coreRegistries) {
-    try { await sharedRm.read(reg); checks[reg] = 'ok'; }
-    catch (err) { checks[reg] = 'error'; coreFailures++; }
-  }
-
-  // Optional subsystems (degrade-only)
-  const optional = {};
-  try {
-    optional.poseidon_model = v2ModelService.poseidonModelId ? 'configured' : 'not_assigned';
-    optional.model_loaded   = v2ModelService.loaded?.size > 0 ? 'yes' : 'no';
-    optional.broker_state   = v2ModelService.broker?.getState?.() || 'unknown';
-  } catch (e) { optional.broker_state = 'error'; }
-
-  let status, code;
-  if (coreFailures === 0) {
-    status = 'up';
-    code = 200;
-  } else if (coreFailures < coreRegistries.length) {
-    status = 'degraded';
-    code = 200;
-  } else {
-    status = 'down';
-    code = 503;
-  }
-
-  res.status(code).json({
-    status,
-    success: status !== 'down',
-    uptime_seconds: Math.floor(process.uptime()),
-    response_time_ms: Date.now() - startMs,
-    checks,
-    optional,
-    timestamp: new Date().toISOString(),
-  });
-});
-
-// Liveness — process is alive (cheap, no IO)
-app.get('/api/v2/livez', (req, res) => {
-  res.json({ status: 'alive', uptime_seconds: Math.floor(process.uptime()) });
-});
-
-// Readiness — server can accept traffic (registries readable)
-app.get('/api/v2/readyz', async (req, res) => {
-  try {
-    await sharedRm.read('BRAIN/poseidon_brain.json');
-    res.json({ status: 'ready' });
-  } catch (e) {
-    res.status(503).json({ status: 'not_ready', error: e.message });
-  }
-});
-
-// Broker state inspection
-app.get('/api/v2/broker', (req, res) => {
-  try {
-    const state = v2ModelService.broker?.getState?.();
-    res.json({ success: true, state });
-  } catch (e) { res.status(500).json({ success: false, error: e.message }); }
-});
-
-// Emergency recovery — force release stuck broker token
-app.post('/api/v2/broker/force-release', (req, res) => {
-  try {
-    if (!v2ModelService.broker?.forceRelease) {
-      return res.status(404).json({ success: false, error: 'forceRelease not available' });
-    }
-    const reason = req.body?.reason || 'manual recovery via API';
-    const result = v2ModelService.broker.forceRelease(reason);
-    res.json({ success: true, ...result });
-  } catch (e) { res.status(500).json({ success: false, error: e.message }); }
-});
+// Voice + health/recovery routes — stateless, depend only on rm + late-bound v2ModelService via refs.
+app.use('/api/v2/voice', buildVoiceRoutes({ rm: sharedRm, fetchWithRetry }));
+app.use('/api/v2',       buildHealthRoutes({ rm: sharedRm, repairAllRegistries, dataRoot, refs: servicesRef }));
 
 // === SERVER LIFECYCLE (auto-shutdown when webapp closes) ===
 // Client sends POST /api/v2/heartbeat every 10s while the page is open.
@@ -223,21 +129,14 @@ const BackupService = require('./services/BackupService');
 const backupService = new BackupService(AQUARIUM.ROOT);
 backupService.start();
 
-// Backup snapshot list endpoint
-app.get('/api/v2/backups', async (req, res) => {
-  try { res.json({ success: true, ...(await backupService.listSnapshots()) }); }
-  catch (e) { res.status(500).json({ success: false, error: e.message }); }
-});
-app.post('/api/v2/backups/snapshot', async (req, res) => {
-  try { const r = await backupService.snapshot(req.body?.bucket || 'hourly'); res.json({ success: true, ...r }); }
-  catch (e) { res.status(500).json({ success: false, error: e.message }); }
-});
+app.use('/api/v2/backups', buildBackupRoutes({ backupService }));
 
 // === V2 MODEL SERVICE (GGUF loading + Poseidon chat) ===
 const V2ModelService = require('./services/V2ModelService');
 const PoseidonOrchestrator = require('./services/PoseidonOrchestrator');
 const { buildRouter: buildModelRouter, buildPoseidonChatRoute, buildAbortRoute } = require('./routes/modelRoutes');
 const v2ModelService = new V2ModelService(sharedRm, AQUARIUM.MODELS_DIR);
+servicesRef.v2ModelService = v2ModelService;  // late-bound: healthRoutes reads via refs.v2ModelService
 
 // Orchestrator: gives Poseidon its identity prompt + function-calling tools.
 // Set BEFORE first chat so the model sees its full toolset.
@@ -309,134 +208,8 @@ heartbeat.tick = async function() {
   await taskRunner.tick().catch(e => console.warn('[TaskRunner] tick error:', e.message));
 };
 
-// ==================== VOICE ROUTES (STT + TTS via Speaches) ====================
-
-/**
- * GET /api/v2/voice/config — return voice service config (without secrets)
- */
-app.get('/api/v2/voice/config', async (req, res) => {
-  try {
-    sharedRm.invalidateCache();
-    const cfg = await sharedRm.read('CHANNELS/comms_config.json').catch(() => ({}));
-    const v = cfg.voice || {};
-    res.json({ ok: true, config: {
-      enabled:       v.enabled || false,
-      speaches_url:  v.speaches_url || 'http://localhost:8000',
-      tts_voice:     v.tts_voice || 'af_heart',
-      tts_speed:     v.tts_speed ?? 1.0,
-      language:      v.language || 'fr',
-      stt_model:     v.stt_model || 'Systran/faster-whisper-small',
-      tts_model:     v.tts_model || 'kokoro',
-    }});
-  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
-});
-
-/**
- * PATCH /api/v2/voice/config — update voice service config
- */
-app.patch('/api/v2/voice/config', express.json(), async (req, res) => {
-  try {
-    sharedRm.invalidateCache();
-    const cfg = await sharedRm.read('CHANNELS/comms_config.json').catch(() => ({}));
-    cfg.voice = { ...(cfg.voice || {}), ...req.body };
-    await sharedRm.write('CHANNELS/comms_config.json', cfg);
-    res.json({ ok: true });
-  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
-});
-
-/**
- * POST /api/v2/voice/stt — speech-to-text via Speaches
- * Expects multipart/form-data with field 'audio' (webm/wav blob)
- */
-app.post('/api/v2/voice/stt', async (req, res) => {
-  try {
-    sharedRm.invalidateCache();
-    const cfg = (await sharedRm.read('CHANNELS/comms_config.json').catch(() => ({}))).voice || {};
-    if (!cfg.enabled) return res.status(503).json({ ok: false, error: 'Voice service not enabled. Configure Speaches URL in settings.' });
-
-    const baseUrl = (cfg.speaches_url || 'http://localhost:8000').replace(/\/$/, '');
-
-    // Stream the raw request body to Speaches /v1/audio/transcriptions
-    const { default: fetch } = await import('node-fetch');
-    const chunks = [];
-    req.on('data', c => chunks.push(c));
-    await new Promise(r => req.on('end', r));
-    const body = Buffer.concat(chunks);
-
-    const response = await fetchWithRetry(`${baseUrl}/v1/audio/transcriptions`, {
-      retries: 2, baseDelayMs: 500, timeoutMs: 60_000,
-      method: 'POST',
-      headers: {
-        'Content-Type': req.headers['content-type'],
-        'Content-Length': body.length,
-      },
-      body,
-      signal: AbortSignal.timeout(30_000),
-    });
-
-    if (!response.ok) {
-      const errText = await response.text();
-      return res.status(502).json({ ok: false, error: `Speaches STT error: ${response.status} — ${errText.slice(0, 200)}` });
-    }
-    const result = await response.json();
-    res.json({ ok: true, text: result.text || '' });
-  } catch (e) {
-    const isConn = /ECONNREFUSED|fetch failed|network/i.test(e.message);
-    res.status(isConn ? 503 : 500).json({
-      ok: false,
-      error: isConn
-        ? 'Cannot reach Speaches — is it running? Start with: docker run -p 8000:8000 ghcr.io/speaches-ai/speaches:latest-cu124'
-        : e.message
-    });
-  }
-});
-
-/**
- * POST /api/v2/voice/tts — text-to-speech via Speaches
- * Body: { text: string, voice?: string, speed?: number }
- * Returns audio/wav stream
- */
-app.post('/api/v2/voice/tts', express.json({ limit: '50kb' }), async (req, res) => {
-  try {
-    sharedRm.invalidateCache();
-    const cfg = (await sharedRm.read('CHANNELS/comms_config.json').catch(() => ({}))).voice || {};
-    if (!cfg.enabled) return res.status(503).json({ ok: false, error: 'Voice not enabled — click 🎙 Voice in chat header to enable Speaches and save.' });
-
-    const { text, voice, speed } = req.body;
-    if (!text) return res.status(400).json({ ok: false, error: 'text required' });
-
-    const baseUrl = (cfg.speaches_url || 'http://localhost:8000').replace(/\/$/, '');
-    const { default: fetch } = await import('node-fetch');
-
-    const response = await fetchWithRetry(`${baseUrl}/v1/audio/speech`, {
-      retries: 2, baseDelayMs: 500, timeoutMs: 60_000,
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model:  cfg.tts_model  || 'kokoro',
-        input:  text.slice(0, 4000),  // Speaches limit
-        voice:  voice || cfg.tts_voice || 'af_heart',
-        speed:  speed || cfg.tts_speed || 1.0,
-        response_format: 'wav',
-      }),
-      signal: AbortSignal.timeout(60_000),
-    });
-
-    if (!response.ok) {
-      const errText = await response.text();
-      return res.status(502).json({ ok: false, error: `Speaches TTS error: ${response.status} — ${errText.slice(0, 200)}` });
-    }
-
-    res.setHeader('Content-Type', 'audio/wav');
-    res.setHeader('Transfer-Encoding', 'chunked');
-    response.body.pipe(res);
-  } catch (e) {
-    const isConn = /ECONNREFUSED|fetch failed/i.test(e.message);
-    if (!res.headersSent) {
-      res.status(isConn ? 503 : 500).json({ ok: false, error: isConn ? 'Speaches unreachable' : e.message });
-    }
-  }
-});
+// ==================== VOICE ROUTES ====================
+// Mounted via buildVoiceRoutes near top of file.
 
 // ==================== REASONING BUS — live agent/poseidon thought stream ====================
 // Lightweight pub/sub: any server code calls ReasoningBus.push(event) to broadcast to temple UIs.
