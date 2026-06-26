@@ -230,7 +230,8 @@ My response: "${ss.last_response_preview}"${tools}
     lines.push('  4. Ask yourself: Did I improvise? Was a step wrong or missing? Did I retry anything?');
     lines.push('  5. If YES to any: call write_skill immediately to record the fix (version auto-increments).');
     lines.push('  6. If you failed and recovered: write_skill with an AVOID: note so next-you does not repeat it.');
-    lines.push('  7. Every ~5 interactions: call list_skills and scan for thin or outdated skills. Upgrade them.');
+    lines.push('  7. If you USED a skill (read_my_brain("skills.<id>")): call record_skill_outcome(skill_id, "success"|"partial"|"fail", note?) — without this, list_skills cannot rank by reliability.');
+    lines.push('  8. Every ~5 interactions: call list_skills and scan for thin or outdated skills. Upgrade them.');
     lines.push('');
     lines.push('SELF-OBSERVATION after every task:');
     lines.push('  → What did the user ask? What skill did I use? Did it work perfectly?');
@@ -829,6 +830,20 @@ My response: "${ss.last_response_preview}"${tools}
         handler: async (p) => self._deleteSkill(p)
       }),
 
+      record_skill_outcome: defineChatSessionFunction({
+        description: 'Record the outcome of using a skill ("success", "partial", or "fail"). Call this AFTER attempting any skill you read via read_my_brain("skills.<id>"). This is how future-you learns which skills actually work — without it list_skills cannot rank by reliability.',
+        params: {
+          type: 'object',
+          properties: {
+            skill_id: { type: 'string', description: 'Skill ID you just used' },
+            outcome:  { type: 'string', enum: ['success', 'partial', 'fail'], description: 'success = clean execution, partial = worked but needed improvisation, fail = skill misled you or steps were wrong' },
+            note:     { type: 'string', description: 'Optional brief note (240 chars max): what worked or what was wrong' }
+          },
+          required: ['skill_id', 'outcome']
+        },
+        handler: async (p) => self._recordSkillOutcome(p)
+      }),
+
       get_logs: defineChatSessionFunction({
         description: 'Read recent log entries. Optionally filter by event_type or actor. Returns last N entries.',
         params: {
@@ -1371,6 +1386,7 @@ My response: "${ss.last_response_preview}"${tools}
         'create_task', 'update_task', 'list_tasks',
         'update_project_memory', 'read_project_memory', 'audit_project',
         'list_models', 'generate_image',
+        'list_skills', 'read_my_brain', 'record_skill_outcome',
       ]);
       const slim = {};
       for (const [k, v] of Object.entries(allFunctions)) {
@@ -1861,13 +1877,28 @@ My response: "${ss.last_response_preview}"${tools}
       const fs = require('fs');
       const path = require('path');
       if (!fs.existsSync(AQUARIUM.SKILLS)) return { ok: true, count: 0, skills: [] };
-      const files = fs.readdirSync(AQUARIUM.SKILLS).filter(f => f.endsWith('.json'));
+      const files = fs.readdirSync(AQUARIUM.SKILLS).filter(f => f.endsWith('.json') && f !== 'skills_registry.json');
       const skills = files.map(f => {
         try {
           const s = JSON.parse(fs.readFileSync(path.join(AQUARIUM.SKILLS, f), 'utf8'));
-          return { skill_id: s.skill_id, name: s.name, version: s.version||1, summary: s.summary,
-                   triggers: s.triggers||[], steps_count: (s.steps||[]).length, created_by: s.created_by||'unknown' };
+          const c = s.outcome_counts || { success: 0, partial: 0, fail: 0 };
+          const total = c.success + c.partial + c.fail;
+          return {
+            skill_id: s.skill_id, name: s.name, version: s.version||1, summary: s.summary,
+            triggers: s.triggers||[], steps_count: (s.steps||[]).length, created_by: s.created_by||'unknown',
+            usage_count: s.usage_count || 0,
+            last_used_at: s.last_used_at || null,
+            last_outcome: s.last_outcome || null,
+            success_rate: total ? Math.round(100 * c.success / total) : null
+          };
         } catch { return { skill_id: f.replace('.json',''), error: 'unreadable' }; }
+      });
+      // Sort: most-recently-used first, untouched skills last (stable for unused).
+      skills.sort((a, b) => {
+        if (a.last_used_at && b.last_used_at) return b.last_used_at.localeCompare(a.last_used_at);
+        if (a.last_used_at) return -1;
+        if (b.last_used_at) return 1;
+        return 0;
       });
       return { ok: true, count: skills.length, skills };
     } catch (e) { return { ok: false, error: e.message }; }
@@ -1901,6 +1932,59 @@ My response: "${ss.last_response_preview}"${tools}
         subject: { type: 'skill', id: skill_id },
         action: `Deleted skill "${skill_id}"` });
       return { ok: true, message: `Skill "${skill_id}" deleted.` };
+    } catch (e) { return { ok: false, error: e.message }; }
+  }
+
+  /**
+   * Bump usage counter + last_used_at on a skill file.
+   * Called from _readMyBrain when a skill is consulted. Never throws —
+   * telemetry must not break reads.
+   */
+  async _bumpSkillUsage(skill_id) {
+    try {
+      const AQUARIUM = require('../aquarium');
+      const path = require('path');
+      const fs = require('fs');
+      const filePath = path.join(AQUARIUM.SKILLS, `${skill_id}.json`);
+      if (!fs.existsSync(filePath)) return;
+      const skill = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+      skill.usage_count = (skill.usage_count || 0) + 1;
+      skill.last_used_at = new Date().toISOString();
+      fs.writeFileSync(filePath, JSON.stringify(skill, null, 2), 'utf8');
+    } catch { /* swallow — telemetry never blocks reads */ }
+  }
+
+  /**
+   * Record the outcome of using a skill. Updates last_outcome + outcome_counts.
+   * Called by the LLM via the record_skill_outcome tool after attempting a skill.
+   */
+  async _recordSkillOutcome({ skill_id, outcome, note } = {}) {
+    try {
+      if (!skill_id || !outcome) return { ok: false, error: 'skill_id and outcome required' };
+      if (!['success', 'partial', 'fail'].includes(outcome)) {
+        return { ok: false, error: 'outcome must be one of: success, partial, fail' };
+      }
+      const AQUARIUM = require('../aquarium');
+      const path = require('path');
+      const fs = require('fs');
+      const filePath = path.join(AQUARIUM.SKILLS, `${skill_id}.json`);
+      if (!fs.existsSync(filePath)) return { ok: false, error: `Skill "${skill_id}" not found.` };
+      const skill = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+      skill.last_outcome = outcome;
+      skill.last_outcome_at = new Date().toISOString();
+      if (note) skill.last_outcome_note = String(note).slice(0, 240);
+      skill.outcome_counts = skill.outcome_counts || { success: 0, partial: 0, fail: 0 };
+      skill.outcome_counts[outcome] = (skill.outcome_counts[outcome] || 0) + 1;
+      fs.writeFileSync(filePath, JSON.stringify(skill, null, 2), 'utf8');
+      const counts = skill.outcome_counts;
+      const total = counts.success + counts.partial + counts.fail;
+      const successRate = total ? Math.round(100 * counts.success / total) : 0;
+      return {
+        ok: true, skill_id, outcome,
+        total_uses: skill.usage_count || 0,
+        success_rate: `${successRate}%`,
+        message: `Recorded ${outcome} for "${skill_id}" (${counts.success}/${total} successes overall)`
+      };
     } catch (e) { return { ok: false, error: e.message }; }
   }
 
@@ -2131,18 +2215,26 @@ My response: "${ss.last_response_preview}"${tools}
         if (!fs.existsSync(skillsDir)) fs.mkdirSync(skillsDir, { recursive: true });
 
         if (section_path === 'skills') {
-          // List skills — return summaries only (context-efficient)
-          const files = fs.readdirSync(skillsDir).filter(f => f.endsWith('.json'));
+          // List skills — return summaries only (context-efficient).
+          // Sort by recency: skills used recently surface first, untouched go last.
+          const files = fs.readdirSync(skillsDir).filter(f => f.endsWith('.json') && f !== 'skills_registry.json');
           if (!files.length) return { ok: true, section_path, content: 'No skills yet. Add .json files to aquarium/SKILLS/.' };
-          const summaries = files.map(f => {
+          const rows = files.map(f => {
             try {
               const s = JSON.parse(fs.readFileSync(path.join(skillsDir, f), 'utf8'));
-              return `- ${s.skill_id}: ${s.summary} [triggers: ${(s.triggers||[]).slice(0,3).join(', ')}]`;
-            } catch { return `- ${f.replace('.json','')}: (unreadable)`; }
+              const tag = s.usage_count
+                ? `[used ${s.usage_count}x${s.last_outcome ? ' last:' + s.last_outcome : ''}]`
+                : '[new]';
+              return {
+                line: `- ${s.skill_id}: ${s.summary} ${tag} [triggers: ${(s.triggers||[]).slice(0,3).join(', ')}]`,
+                last_used: s.last_used_at || ''
+              };
+            } catch { return { line: `- ${f.replace('.json','')}: (unreadable)`, last_used: '' }; }
           });
+          rows.sort((a, b) => (b.last_used || '').localeCompare(a.last_used || ''));
           return {
             ok: true, section_path,
-            content: `${files.length} skills available:\n${summaries.join('\n')}\n\nCall read_my_brain("skills.<skill_id>") to get steps.`
+            content: `${files.length} skills available (most-recently-used first):\n${rows.map(r => r.line).join('\n')}\n\nCall read_my_brain("skills.<skill_id>") to get steps. After using a skill, call record_skill_outcome(skill_id, outcome) so future-you knows what worked.`
           };
         }
 
@@ -2156,21 +2248,32 @@ My response: "${ss.last_response_preview}"${tools}
           };
         }
         const skill = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+        // Bump telemetry: this read signals the model intends to consult this skill.
+        // Fire-and-forget — never blocks the read return path.
+        this._bumpSkillUsage(skillName).catch(() => {});
         // Return structured content — steps + notes only (summary already known from list)
         const stepsText = (skill.steps || [])
           .map(s => `  ${s.order}. ${s.action}${s.note ? ' — ' + s.note : ''}${s.params ? ' (params: ' + JSON.stringify(s.params) + ')' : ''}`)
           .join('\n');
         const notesText = (skill.notes || []).map(n => `  • ${n}`).join('\n');
+        const c = skill.outcome_counts || { success: 0, partial: 0, fail: 0 };
+        const total = c.success + c.partial + c.fail;
+        const statsLine = total
+          ? `Stats: ${skill.usage_count||0} uses, ${Math.round(100*c.success/total)}% success (${c.success}✓ / ${c.partial}~ / ${c.fail}✗), last:${skill.last_outcome||'?'}`
+          : `Stats: ${skill.usage_count||0} uses, no outcomes recorded yet`;
         const content   = [
           `Skill: ${skill.name} (v${skill.version||1})`,
           `Summary: ${skill.summary}`,
           `Triggers: ${(skill.triggers||[]).join(', ')}`,
+          statsLine,
           '',
           'Steps:',
           stepsText,
           '',
           'Notes:',
-          notesText
+          notesText,
+          '',
+          '→ After executing this skill, call record_skill_outcome(skill_id, "success"|"partial"|"fail", note?) so future-you sees what works.'
         ].join('\n');
         return {
           ok: true, section_path,
