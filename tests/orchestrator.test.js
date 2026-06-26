@@ -38,38 +38,72 @@ for (const sub of ['BRAIN', 'AGENTS', 'PROJECTS', 'TASKS', 'TASKS/OUTPUT', 'MODE
 }
 // Minimal seed to avoid bootstrap noise
 fs.writeFileSync(path.join(AQ, 'BRAIN', 'poseidon_brain.json'), JSON.stringify({ identity: { name: 'Poseidon' } }, null, 2));
-fs.writeFileSync(path.join(AQ, 'AGENTS', 'agent_registry.json'), JSON.stringify({ agents: {} }, null, 2));
-fs.writeFileSync(path.join(AQ, 'PROJECTS', 'project_registry.json'), JSON.stringify({ projects: {} }, null, 2));
-fs.writeFileSync(path.join(AQ, 'TASKS', 'tasks_registry.json'), JSON.stringify({ tasks: {} }, null, 2));
-fs.writeFileSync(path.join(AQ, 'MODELS', 'model_registry.json'), JSON.stringify({ models: {} }, null, 2));
+fs.writeFileSync(path.join(AQ, 'AGENTS', 'agent_registry.json'), JSON.stringify({
+  agents: {},
+  metadata: { next_id: 1, last_id_used: 0, total_active: 0 }
+}, null, 2));
+fs.writeFileSync(path.join(AQ, 'PROJECTS', 'project_registry.json'), JSON.stringify({
+  projects: {},
+  metadata: { next_id: 1, last_id_used: 0, total_active: 0 }
+}, null, 2));
+fs.writeFileSync(path.join(AQ, 'TASKS', 'tasks_registry.json'), JSON.stringify({
+  tasks: {},
+  metadata: { next_id: 1, last_id_used: 0, total_active: 0 }
+}, null, 2));
+fs.writeFileSync(path.join(AQ, 'MODELS', 'model_registry.json'), JSON.stringify({
+  models: {},
+  metadata: { next_id: 1, last_id_used: 0 }
+}, null, 2));
 fs.writeFileSync(path.join(AQ, 'LOGS', 'logs.json'), JSON.stringify({
   entries: [],
   metadata: { total_entries: 0, last_entry_id: 0 }
 }, null, 2));
 fs.writeFileSync(path.join(AQ, 'TOOLS', 'tool_registry.json'), JSON.stringify({ tools: {} }, null, 2));
 
-// PoseidonOrchestrator reads aquarium paths via require('../aquarium'), which
-// detects the path at module-load time from __dirname. Our test temp dir won't
-// be picked up unless we monkey-patch. Simplest approach: write skills under
-// the REAL aquarium dir and clean up at the end. To stay isolated and not
-// touch the user's repo, we instead point AQUARIUM.SKILLS into our temp dir
-// by intercepting the require.
+// PoseidonOrchestrator + handlers read both field constants (AQUARIUM.SKILLS) AND
+// functional helpers (AQUARIUM.projects(...)) which are captured at module load
+// time against the REAL aquarium root. Override every path we touch so all
+// handler writes land under TMP/aquarium/.
 const ROOT = path.join(__dirname, '..');
 const realAquarium = require(path.join(ROOT, 'server', 'aquarium'));
-// Override the path constants we touch in the skill handlers
-const origSkills = realAquarium.SKILLS;
-const origOutput = realAquarium.OUTPUT;
-realAquarium.SKILLS = path.join(AQ, 'SKILLS');
-realAquarium.OUTPUT = path.join(AQ, 'TASKS', 'OUTPUT');
-realAquarium.ROOT   = AQ;
+const origAquarium = { ...realAquarium };
+
+// Re-anchor everything to AQ (the temp aquarium root)
+realAquarium.ROOT             = AQ;
+realAquarium.MODELS           = path.join(AQ, 'MODELS');
+realAquarium.AGENTS           = path.join(AQ, 'AGENTS');
+realAquarium.PROJECTS         = path.join(AQ, 'PROJECTS');
+realAquarium.TASKS            = path.join(AQ, 'TASKS');
+realAquarium.IMAGES           = path.join(AQ, 'TASKS/IMAGES');
+realAquarium.OUTPUT           = path.join(AQ, 'TASKS/OUTPUT');
+realAquarium.LOGS             = path.join(AQ, 'LOGS');
+realAquarium.TOOLS            = path.join(AQ, 'TOOLS');
+realAquarium.SKILLS           = path.join(AQ, 'SKILLS');
+realAquarium.BRAIN            = path.join(AQ, 'BRAIN');
+realAquarium.CHANNELS         = path.join(AQ, 'CHANNELS');
+realAquarium.POSEIDON_BRAIN   = path.join(AQ, 'BRAIN/poseidon_brain.json');
+realAquarium.DREAM_MEMORY     = path.join(AQ, 'BRAIN/dream_memory.json');
+realAquarium.SOUL             = path.join(AQ, 'BRAIN/soul.json');
+realAquarium.TEMP_LOG         = path.join(AQ, 'BRAIN/temp.md');
+realAquarium.COMMS_CONFIG     = path.join(AQ, 'CHANNELS/comms_config.json');
+realAquarium.AGENT_REGISTRY   = path.join(AQ, 'AGENTS/agent_registry.json');
+realAquarium.PROJECT_REGISTRY = path.join(AQ, 'PROJECTS/project_registry.json');
+// Functional helpers
+realAquarium.brain    = (...p) => path.join(AQ, 'BRAIN',    ...p);
+realAquarium.agents   = (...p) => path.join(AQ, 'AGENTS',   ...p);
+realAquarium.projects = (...p) => path.join(AQ, 'PROJECTS', ...p);
+realAquarium.tasks    = (...p) => path.join(AQ, 'TASKS',    ...p);
+realAquarium.skills   = (...p) => path.join(AQ, 'SKILLS',   ...p);
+realAquarium.channels = (...p) => path.join(AQ, 'CHANNELS', ...p);
+realAquarium.logs     = (...p) => path.join(AQ, 'LOGS',     ...p);
+realAquarium.models   = (...p) => path.join(AQ, 'MODELS',   ...p);
 
 const RegistryManager     = require(path.join(ROOT, 'server', 'services', 'RegistryManager'));
 const PoseidonOrchestrator = require(path.join(ROOT, 'server', 'services', 'PoseidonOrchestrator'));
 
 async function cleanup() {
   // Restore aquarium constants so subsequent test runs see real paths
-  realAquarium.SKILLS = origSkills;
-  realAquarium.OUTPUT = origOutput;
+  Object.assign(realAquarium, origAquarium);
   try { fs.rmSync(TMP, { recursive: true, force: true }); } catch {}
 }
 
@@ -305,6 +339,221 @@ async function main() {
   const emptyMatch = Object.keys(expectedEmpty).every(k => emptyDream.summary[k] === expectedEmpty[k]);
   log('formatSkillsForDream handles empty catalog',
       emptyDream.lines.length === 0 && emptyMatch);
+
+  // ============================================================================
+  // ── AGENT HANDLERS ─────────────────────────────────────────────────────────
+  // ============================================================================
+
+  let r;
+
+  // _listAgents on empty registry
+  r = await orch._listAgents();
+  log('listAgents empty registry returns ok',  r.ok === true && r.count === 0);
+  log('listAgents.agents is an array',         Array.isArray(r.agents));
+
+  // _createAgent
+  r = await orch._createAgent({
+    display_name: 'Backend Bob',
+    specialization: 'backend_specialist',
+    role: 'API and database work',
+    primary_color: '#FF6B9D',
+  });
+  log('createAgent returns ok',                r.ok === true);
+  log('createAgent returns agent_id',          /^agent_\d{3,4}$/.test(r.agent_id || ''),
+      `agent_id=${r.agent_id}`);
+
+  const bobId = r.agent_id;
+  // Verify it's in the registry
+  const agentReg = JSON.parse(fs.readFileSync(path.join(AQ, 'AGENTS', 'agent_registry.json'), 'utf8'));
+  log('createAgent persists registry entry',
+      !!agentReg.agents[bobId] && agentReg.agents[bobId].display_name === 'Backend Bob');
+  log('createAgent writes brain file',
+      fs.existsSync(path.join(AQ, 'AGENTS', agentReg.agents[bobId].brain_file)));
+
+  // _listAgents now sees Bob
+  r = await orch._listAgents();
+  log('listAgents sees created agent',         r.count === 1 && r.agents[0].agent_id === bobId);
+  log('listAgents includes specialization',    r.agents[0].specialization === 'backend_specialist');
+
+  // _updateAgentField — change communication style
+  r = await orch._updateAgentField({
+    agent_id: bobId,
+    field_path: 'personality.communication_style',
+    new_value: 'casual',
+    reason: 'test update',
+  });
+  log('updateAgentField ok',                   r.ok === true);
+  log('updateAgentField error on unknown agent',
+      (await orch._updateAgentField({
+        agent_id: 'ghost_99', field_path: 'x', new_value: 'y', reason: 't',
+      })).ok === false);
+
+  // _deleteAgent
+  r = await orch._deleteAgent({ agent_id: bobId });
+  log('deleteAgent ok',                        r.ok === true);
+  const regAfterDelete = JSON.parse(fs.readFileSync(path.join(AQ, 'AGENTS', 'agent_registry.json'), 'utf8'));
+  log('deleteAgent removes registry entry',    !regAfterDelete.agents[bobId]);
+
+  r = await orch._deleteAgent({ agent_id: 'never_existed' });
+  log('deleteAgent fails on missing',          r.ok === false);
+
+  // ============================================================================
+  // ── PROJECT HANDLERS ───────────────────────────────────────────────────────
+  // ============================================================================
+
+  // _listProjects on empty
+  r = await orch._listProjects();
+  log('listProjects empty registry returns ok', r.ok === true && r.count === 0);
+
+  // _createProject
+  r = await orch._createProject({
+    name: 'aquarium',  // will be UPPERCASED by handler
+    vision: 'A swimming pool for AI agents',
+  });
+  log('createProject returns ok',              r.ok === true,
+      `err=${r.error}`);
+  log('createProject normalizes name to UPPER',
+      r.project_id && (r.name === 'AQUARIUM' || r.project_id.startsWith('project_')),
+      `result=${JSON.stringify({ id: r.project_id, name: r.name })}`);
+
+  const projId = r.project_id;
+  // Verify folder created
+  const projReg = JSON.parse(fs.readFileSync(path.join(AQ, 'PROJECTS', 'project_registry.json'), 'utf8'));
+  log('createProject persists registry',       !!projReg.projects[projId]);
+  log('createProject writes project_memory.json',
+      fs.existsSync(path.join(AQ, 'PROJECTS', projReg.projects[projId].folder, 'project_memory.json')));
+
+  // Duplicate creation fails
+  r = await orch._createProject({ name: 'aquarium', vision: 'duplicate' });
+  log('createProject rejects duplicate name',  r.ok === false && /exists|already/.test(r.error || ''));
+
+  // _listProjects sees it
+  r = await orch._listProjects();
+  log('listProjects sees created project',     r.count === 1 && r.projects[0].project_id === projId);
+
+  // _archiveProject
+  r = await orch._archiveProject({ project_name: 'aquarium' });
+  log('archiveProject ok',                     r.ok === true,
+      `err=${r.error}`);
+  const projRegAfterArchive = JSON.parse(fs.readFileSync(path.join(AQ, 'PROJECTS', 'project_registry.json'), 'utf8'));
+  log('archiveProject sets status to archived',
+      projRegAfterArchive.projects[projId].status === 'archived');
+  log('archiveProject sets archived_at timestamp',
+      typeof projRegAfterArchive.projects[projId].archived_at === 'string');
+
+  r = await orch._archiveProject({ project_name: 'does_not_exist' });
+  log('archiveProject fails on missing',       r.ok === false);
+
+  // ============================================================================
+  // ── TASK HANDLERS ──────────────────────────────────────────────────────────
+  // ============================================================================
+
+  // _listTasks on empty
+  r = await orch._listTasks();
+  log('listTasks empty registry returns ok',   r.ok === true && r.count === 0);
+
+  // _createTask without agent
+  r = await orch._createTask({
+    title: 'Test task one',
+    description: 'A simple task',
+    priority: 'medium',
+  });
+  log('createTask returns ok',                 r.ok === true);
+  log('createTask returns task_id task_NNNN',  /^task_\d{4}$/.test(r.task_id || ''),
+      `task_id=${r.task_id}`);
+
+  const t1 = r.task_id;
+
+  // _createTask with project + assignment requires agent + project to exist.
+  // Re-create the project (we archived 'aquarium' above — create a new active one).
+  await orch._createProject({ name: 'side_project', vision: 'Test' });
+  const newAgent = await orch._createAgent({ display_name: 'Worker', specialization: 'general' });
+  r = await orch._createTask({
+    title: 'Task with everything',
+    description: 'Has project + agent',
+    project: 'SIDE_PROJECT',
+    assigned_agent_id: newAgent.agent_id,
+    priority: 'high',
+  });
+  log('createTask with agent+project ok',      r.ok === true);
+  const t2 = r.task_id;
+
+  // _listTasks
+  r = await orch._listTasks();
+  log('listTasks sees created tasks',          r.count === 2);
+
+  // _listTasks filter by project
+  r = await orch._listTasks({ project: 'SIDE_PROJECT' });
+  log('listTasks filters by project',          r.count === 1 && r.tasks[0].task_id === t2,
+      `filtered=${r.count}`);
+
+  // _listTasks filter by status
+  r = await orch._listTasks({ status: 'planned' });
+  log('listTasks filters by status',           r.count === 2);
+  r = await orch._listTasks({ status: 'completed' });
+  log('listTasks status=completed returns 0',  r.count === 0);
+
+  // _updateTask — change status
+  r = await orch._updateTask({ task_id: t1, field: 'status', new_value: 'in_progress' });
+  log('updateTask status ok',                  r.ok === true);
+  // Verify on disk
+  const t1Reg = await rm._readTaskDetails(t1);
+  log('updateTask persists status on lifecycle + flat',
+      t1Reg.lifecycle?.status === 'in_progress' && t1Reg.status === 'in_progress');
+
+  r = await orch._updateTask({ task_id: 'ghost_task', field: 'status', new_value: 'x' });
+  log('updateTask fails on missing task',      r.ok === false);
+
+  // _deleteTask
+  r = await orch._deleteTask({ task_id: t1 });
+  log('deleteTask ok',                         r.ok === true);
+  r = await orch._listTasks();
+  log('deleteTask removes from list',          r.count === 1 && r.tasks[0].task_id === t2);
+
+  r = await orch._deleteTask({ task_id: 'ghost' });
+  log('deleteTask fails on missing',           r.ok === false);
+
+  // ============================================================================
+  // ── LOG HANDLERS ───────────────────────────────────────────────────────────
+  // ============================================================================
+
+  // _logDecision
+  r = await orch._logDecision({
+    summary: 'Decided to refactor X',
+    reasoning: 'It was getting too long',
+    affected_entities: [{ type: 'file', id: 'something.js' }],
+  });
+  log('logDecision ok',                        r.ok === true);
+
+  // _getLogs — should see the decision we just logged
+  r = await orch._getLogs({ limit: 10 });
+  log('getLogs returns ok',                    r.ok === true);
+  log('getLogs newest first',                  r.entries.length >= 1
+      && r.entries[0].event === 'poseidon_decision'
+      && /refactor X/.test(r.entries[0].action || ''));
+
+  // Filter by event_type
+  r = await orch._getLogs({ event_type: 'poseidon_decision' });
+  log('getLogs filters by event_type',
+      r.count >= 1 && r.entries.every(e => e.event === 'poseidon_decision'));
+
+  r = await orch._getLogs({ event_type: 'definitely_not_an_event' });
+  log('getLogs unknown event_type returns 0',  r.count === 0);
+
+  // Limit cap (handler hard-caps at 50)
+  r = await orch._getLogs({ limit: 9999 });
+  log('getLogs caps limit at 50',              r.count <= 50);
+
+  // ============================================================================
+  // ── SYSTEM STATE ───────────────────────────────────────────────────────────
+  // ============================================================================
+
+  r = await orch._getSystemState();
+  log('getSystemState returns ok',             r.ok === true);
+  log('getSystemState reports total_agents',   typeof r.total_agents === 'number' && r.total_agents >= 1,
+      `total=${r.total_agents}`);
+  log('getSystemState reports task counts',
+      typeof r.open_tasks === 'number' && typeof r.completed_tasks === 'number');
 
   // ── Summary ───────────────────────────────────────────────────────────────
   await cleanup();
