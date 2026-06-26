@@ -523,7 +523,7 @@ class ToolRegistry {
     if (!sharedRm) return;
     try {
       sharedRm.invalidateCache();
-      const registry = await sharedRm.read('tools/tool_registry.json').catch(() => ({
+      const registry = await sharedRm.read('TOOLS/tool_registry.json').catch(() => ({
         schema_version: '2.0.0',
         schema_type: 'tool_registry',
         metadata: { last_id_used: 0, next_id: 1, id_format: 'tool_NNN', total_available: 0, last_updated_at: new Date().toISOString() },
@@ -558,7 +558,7 @@ class ToolRegistry {
         registry.metadata.next_id = nextId;
         registry.metadata.last_id_used = nextId - 1;
         registry.metadata.total_available = Object.keys(registry.tools).length;
-        await sharedRm.write('tools/tool_registry.json', registry);
+        await sharedRm.write('TOOLS/tool_registry.json', registry);
         log.info(`Synced ${added} built-in tools to V2 registry (total: ${registry.metadata.total_available})`);
       }
     } catch (err) {

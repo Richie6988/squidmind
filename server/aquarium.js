@@ -7,11 +7,9 @@
  * Layout: uppercase subdirectories (BRAIN, AGENTS, MODELS, PROJECTS, TASKS,
  * LOGS, TOOLS, SKILLS, CHANNELS).
  *
- * resolve(logical) translates older lowercase paths (main/, agents/, models/,
- * projects/, tasks/, logs/, tools/) and a few historical filenames
- * (main/context_checkpoint.json → BRAIN/dream_memory.json) onto the canonical
- * uppercase layout so services that still pass legacy paths to rm.read/.write
- * keep working without churn.
+ * Logical paths used in code are always the canonical uppercase form
+ * (e.g. 'AGENTS/agent_registry.json', `BRAIN/poseidon_brain.json`). The
+ * legacy lowercase translator was removed in session 9 cleanup.
  */
 
 const path = require('path');
@@ -35,30 +33,24 @@ function detectModelsDir() {
   return aquariumModels;  // default — will be created on first import
 }
 
-// ── Logical-path translator ───────────────────────────────────────────────────
-// Maps older lowercase paths → canonical uppercase layout. Allows services to
-// keep passing 'main/poseidon_brain.json' etc. while we resolve to BRAIN/.
-const LEGACY_TO_AQ = [
-  ['main/context_checkpoint.json', 'BRAIN/dream_memory.json'],
-  ['main/poseidon_brain.json',     'BRAIN/poseidon_brain.json'],
-  ['main/comms_config.json',       'CHANNELS/comms_config.json'],
-  ['main/skills/',                 'SKILLS/'],
-  ['main/processes/',              'SKILLS/'],
-  ['main/',                        'BRAIN/'],
-  ['agents/',                      'AGENTS/'],
-  ['models/',                      'MODELS/'],
-  ['projects/',                    'PROJECTS/'],
-  ['tasks/',                       'TASKS/'],
-  ['logs/',                        'LOGS/'],
-  ['tools/',                       'TOOLS/'],
-];
+// ── Logical path resolver ─────────────────────────────────────────────────────
+// Identity function — all callers now pass canonical uppercase paths.
+// Kept for API stability (RegistryManager + FilesystemTools call it on every
+// read/write). If a legacy lowercase prefix slips through (e.g. from a stored
+// JSON record), warn loudly so we can fix the producer.
+const CANONICAL_PREFIXES = /^(MODELS|AGENTS|PROJECTS|TASKS|LOGS|TOOLS|SKILLS|BRAIN|CHANNELS)[\/]/;
+const LEGACY_PREFIXES    = /^(main|agents|projects|tasks|logs|tools|models)[\/]/;
 
 function resolvePath(logical) {
-  if (/^(MODELS|AGENTS|PROJECTS|TASKS|LOGS|TOOLS|SKILLS|BRAIN|CHANNELS)[\/]/.test(logical)) {
-    return logical;  // already canonical
-  }
-  for (const [from, to] of LEGACY_TO_AQ) {
-    if (logical.startsWith(from)) return logical.replace(from, to);
+  if (!logical || typeof logical !== 'string') return logical;
+  if (CANONICAL_PREFIXES.test(logical)) return logical;
+  if (LEGACY_PREFIXES.test(logical)) {
+    log.warn(`Legacy lowercase path detected: ${JSON.stringify(logical)} — caller should use canonical uppercase`);
+    // Best-effort upcase of the first segment to keep the request working.
+    return logical.replace(/^([a-z]+)\//, (_, p) => {
+      if (p === 'main') return 'BRAIN/';
+      return p.toUpperCase() + '/';
+    });
   }
   return logical;
 }

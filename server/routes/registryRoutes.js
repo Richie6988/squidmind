@@ -329,7 +329,7 @@ router.post('/tasks/:id/close', async (req, res) => {
 router.get('/logs', async (req, res) => {
   try {
     rm.invalidateCache();
-    const logs = await rm.read('logs/logs.json');
+    const logs = await rm.read('LOGS/logs.json');
     const limit = parseInt(req.query.limit) || 50;
     res.json({ success: true, metadata: logs.metadata, entries: logs.entries.slice(-limit) });
   } catch (err) { res.status(500).json({ success: false, error: err.message }); }
@@ -339,7 +339,7 @@ router.get('/logs', async (req, res) => {
 router.get('/tools', async (req, res) => {
   try {
     rm.invalidateCache();
-    const registry = await rm.read('tools/tool_registry.json');
+    const registry = await rm.read('TOOLS/tool_registry.json');
     res.json({ success: true, registry });
   } catch (err) { res.status(500).json({ success: false, error: err.message }); }
 });
@@ -347,7 +347,7 @@ router.get('/tools', async (req, res) => {
 router.get('/tools/:name', async (req, res) => {
   try {
     rm.invalidateCache();
-    const spec = await rm.read(`tools/${req.params.name}.json`);
+    const spec = await rm.read(`TOOLS/${req.params.name}.json`);
     res.json({ success: true, spec });
   } catch (err) { res.status(404).json({ success: false, error: err.message }); }
 });
@@ -356,7 +356,7 @@ router.get('/tools/:name', async (req, res) => {
 router.get('/models', async (req, res) => {
   try {
     rm.invalidateCache();
-    const registry = await rm.read('models/model_registry.json');
+    const registry = await rm.read('MODELS/model_registry.json');
     res.json({ success: true, registry });
   } catch (err) { res.status(500).json({ success: false, error: err.message }); }
 });

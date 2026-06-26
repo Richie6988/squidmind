@@ -108,7 +108,7 @@ async function testRaceSafeTaskIds() {
   const rm = new RegistryManager(aquarium.ROOT);
 
   // Generate 10 IDs in parallel — verify all unique
-  const ids = await Promise.all(Array(10).fill(0).map(() => rm.generateNextId('tasks/tasks_registry.json')));
+  const ids = await Promise.all(Array(10).fill(0).map(() => rm.generateNextId('TASKS/tasks_registry.json')));
   const unique = new Set(ids);
   log('generateNextId race-safe: 10 parallel calls produce 10 unique IDs', unique.size === 10, `got ${unique.size}/10 unique`);
   log('Task IDs follow task_NNNN format', ids.every(id => /^task_\d{4}$/.test(id)), `sample=${ids[0]}`);

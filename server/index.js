@@ -96,11 +96,11 @@ app.get('/api/v2/health', async (req, res) => {
 
   // Core registries (must all read for 'up')
   const coreRegistries = [
-    'main/poseidon_brain.json',
-    'agents/agent_registry.json',
-    'tasks/tasks_registry.json',
-    'projects/project_registry.json',
-    'models/model_registry.json',
+    'BRAIN/poseidon_brain.json',
+    'AGENTS/agent_registry.json',
+    'TASKS/tasks_registry.json',
+    'PROJECTS/project_registry.json',
+    'MODELS/model_registry.json',
   ];
   let coreFailures = 0;
   try { sharedRm.invalidateCache(); } catch {}
@@ -148,7 +148,7 @@ app.get('/api/v2/livez', (req, res) => {
 // Readiness — server can accept traffic (registries readable)
 app.get('/api/v2/readyz', async (req, res) => {
   try {
-    await sharedRm.read('main/poseidon_brain.json');
+    await sharedRm.read('BRAIN/poseidon_brain.json');
     res.json({ status: 'ready' });
   } catch (e) {
     res.status(503).json({ status: 'not_ready', error: e.message });
@@ -558,7 +558,7 @@ app.post('/api/projects', async (req, res) => {
     
     // 1. Read current registry to figure out next ID
     sharedRm.invalidateCache();
-    const registry = await sharedRm.read('projects/project_registry.json');
+    const registry = await sharedRm.read('PROJECTS/project_registry.json');
     
     // Check for duplicate name
     for (const existing of Object.values(registry.projects)) {
@@ -584,7 +584,7 @@ app.post('/api/projects', async (req, res) => {
       schema_type: 'project_memory',
       project_id: projectId,
       name: upperName,
-      registered_in: 'projects/project_registry.json',
+      registered_in: 'PROJECTS/project_registry.json',
       vision: vision || `${upperName} project workspace`,
       goals: [],
       tasks: [],
@@ -632,7 +632,7 @@ app.post('/api/projects', async (req, res) => {
     registry.metadata.last_id_used = nextId;
     registry.metadata.total_active = (registry.metadata.total_active || 0) + 1;
     
-    await sharedRm.write('projects/project_registry.json', registry);
+    await sharedRm.write('PROJECTS/project_registry.json', registry);
     await sharedRm.log({
       event_type: 'project_created',
       actor: { type: 'human', id: 'human_user' },

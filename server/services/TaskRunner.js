@@ -147,7 +147,7 @@ class TaskRunner {
         // Spawn a FRESH task so each cron run is independently tracked.
         // The original task stays in registry as the cron template.
         try {
-          const reg = await this.rm.read('tasks/tasks_registry.json');
+          const reg = await this.rm.read('TASKS/tasks_registry.json');
           const nextId = reg.metadata?.next_id || 1;
           const cronTaskId = `task_${String(nextId).padStart(4, '0')}_cron_${Date.now()}`;
           reg.tasks = reg.tasks || {};
@@ -164,7 +164,7 @@ class TaskRunner {
           };
           reg.metadata = reg.metadata || {};
           reg.metadata.next_id = nextId + 1;
-          await this.rm.write('tasks/tasks_registry.json', reg);
+          await this.rm.write('TASKS/tasks_registry.json', reg);
           // Run the fresh task
           const freshTask = reg.tasks[cronTaskId];
           this._runTask(freshTask).catch(e =>
@@ -453,7 +453,7 @@ class TaskRunner {
           const agentReg = await this.rm.getAgentRegistry();
           const agentEntry = agentReg.agents?.[agentId];
           if (agentEntry) {
-            const brain = await this.rm.read(`agents/${agentEntry.brain_file}`).catch(() => null);
+            const brain = await this.rm.read(`AGENTS/${agentEntry.brain_file}`).catch(() => null);
             const preferredModel = brain?.brain_config?.model_binding?.preferred_model_id || null;
             const poseidonModel  = this.modelService.poseidonModelId;
             // Only route to AgentWorkerPool if agent explicitly has a DIFFERENT model configured
@@ -520,7 +520,7 @@ class TaskRunner {
               const registry = await this.rm.getAgentRegistry();
               const agentEntry = registry.agents?.[agentId];
               if (agentEntry) {
-                const brain = await this.rm.read(`agents/${agentEntry.brain_file}`);
+                const brain = await this.rm.read(`AGENTS/${agentEntry.brain_file}`);
                 const name  = brain?.identity?.display_name || brain?.identity?.nickname
                            || agentEntry.display_name || agentId;
                 const role  = brain?.identity?.role || agentEntry.specialization || '';
@@ -805,7 +805,7 @@ class TaskRunner {
 
       let proj = null;
       if (projectId) {
-        const reg = await this.rm.read('projects/project_registry.json').catch(() => ({ projects: {} }));
+        const reg = await this.rm.read('PROJECTS/project_registry.json').catch(() => ({ projects: {} }));
         if (reg.projects[projectId]) proj = { id: projectId, entry: reg.projects[projectId] };
       }
       if (!proj && projectName) {

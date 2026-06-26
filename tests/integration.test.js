@@ -24,7 +24,7 @@ function log(name, ok, detail = '') {
   const rm = new RegistryManager(aquarium.ROOT);
 
   // ── Test 1: create + read task ──
-  const tid = await rm.generateNextId('tasks/tasks_registry.json');
+  const tid = await rm.generateNextId('TASKS/tasks_registry.json');
   log('generateNextId returns task_NNNN', /^task_\d{4}$/.test(tid), tid);
 
   const taskObj = {
@@ -38,7 +38,7 @@ function log(name, ok, detail = '') {
   };
   await rm._writeTaskDetails(tid, taskObj);
 
-  const reg = await rm.read('tasks/tasks_registry.json');
+  const reg = await rm.read('TASKS/tasks_registry.json');
   log('task persisted to registry', !!reg.tasks?.[tid]);
 
   // ── Test 2: terminal status → purge + results_log ──
@@ -68,7 +68,7 @@ function log(name, ok, detail = '') {
   await rm._writeTaskDetails(tid, completedTask); // triggers purge
 
   // Verify purge
-  const regAfter = await rm.read('tasks/tasks_registry.json');
+  const regAfter = await rm.read('TASKS/tasks_registry.json');
   log('completed task purged from registry', !regAfter.tasks?.[tid]);
 
   // Verify results_log
@@ -89,7 +89,7 @@ function log(name, ok, detail = '') {
     status: 'sleeping',
     performance_summary: { tasks_completed: 0, tasks_failed: 0, tasks_cancelled: 0, success_rate: 0 }
   };
-  await rm.write('agents/agent_registry.json', agentReg);
+  await rm.write('AGENTS/agent_registry.json', agentReg);
 
   const taskWithAgent = { ...completedTask, assigned_to: testAgentId };
   await rm.cascadeTaskClosure(tid, taskWithAgent, 'completed');
@@ -101,14 +101,14 @@ function log(name, ok, detail = '') {
 
   // ── Cleanup ──
   delete agentReg2.agents[testAgentId];
-  await rm.write('agents/agent_registry.json', agentReg2);
+  await rm.write('AGENTS/agent_registry.json', agentReg2);
 
   const rlog3 = JSON.parse(await fsp.readFile(aquarium.RESULTS_LOG, 'utf8'));
   delete rlog3.results[tid];
   await fsp.writeFile(aquarium.RESULTS_LOG, JSON.stringify(rlog3, null, 2), 'utf8');
 
   // ── Test 4: race-safe IDs in sequence ──
-  const batch = await Promise.all(Array(20).fill(0).map(() => rm.generateNextId('tasks/tasks_registry.json')));
+  const batch = await Promise.all(Array(20).fill(0).map(() => rm.generateNextId('TASKS/tasks_registry.json')));
   const unique = new Set(batch);
   log('20 parallel generateNextId calls all unique', unique.size === 20, `${unique.size}/20`);
 

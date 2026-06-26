@@ -117,7 +117,7 @@ class RegistryManager {
 
   /**
    * Generate next incremental ID for a registry
-   * @param {string} registryPath - e.g. 'agents/agent_registry.json'
+   * @param {string} registryPath - e.g. 'AGENTS/agent_registry.json'
    * @returns {string} - e.g. 'agent_005'
    */
   async generateNextId(registryPath) {
@@ -264,7 +264,7 @@ class RegistryManager {
    * Update any field in any registry file
    * Logs the change with old -> new values
    * 
-   * @param {string} filePath - e.g. 'agents/agent_registry.json'
+   * @param {string} filePath - e.g. 'AGENTS/agent_registry.json'
    * @param {string} fieldPath - e.g. 'agents.agent_001.display_name'
    * @param {any} newValue - the new value
    * @param {object} options - { actor, reason }
@@ -277,7 +277,7 @@ class RegistryManager {
 
     // Route task fields to per-folder structure
     // fieldPath like "tasks.task_0009.lifecycle.status" → update task_0009/details.json
-    if (filePath === 'tasks/tasks_registry.json') {
+    if (filePath === 'TASKS/tasks_registry.json') {
       const parts = fieldPath.split('.');
       if (parts[0] === 'tasks' && parts[1]?.startsWith('task_')) {
         const taskId = parts[1];
@@ -410,28 +410,28 @@ class RegistryManager {
   // ==================== POSEIDON BRAIN ====================
 
   async getPoseidonBrain() {
-    return await this.read('main/poseidon_brain.json');
+    return await this.read('BRAIN/poseidon_brain.json');
   }
 
   async updatePoseidonState(updates) {
     const brain = await this.getPoseidonBrain();
     Object.assign(brain.current_state, updates);
     brain.current_state.last_state_update_at = new Date().toISOString();
-    await this.write('main/poseidon_brain.json', brain);
+    await this.write('BRAIN/poseidon_brain.json', brain);
     return brain;
   }
 
   // ==================== AGENTS ====================
 
   async getAgentRegistry() {
-    return await this.read('agents/agent_registry.json');
+    return await this.read('AGENTS/agent_registry.json');
   }
 
   async getAgent(agentId) {
     const registry = await this.getAgentRegistry();
     const entry = registry.agents[agentId];
     if (!entry) return null;
-    const brain = await this.read(`agents/${entry.brain_file}`);
+    const brain = await this.read(`AGENTS/${entry.brain_file}`);
     return { registry_entry: entry, brain };
   }
 
@@ -451,7 +451,7 @@ class RegistryManager {
     } else if (entry.status === 'sleeping') {
       registry.metadata.total_sleeping = Math.max(0, (registry.metadata.total_sleeping || 1) - 1);
     }
-    await this.write('agents/agent_registry.json', registry);
+    await this.write('AGENTS/agent_registry.json', registry);
     
     // Remove brain file from disk
     try {
@@ -463,7 +463,7 @@ class RegistryManager {
     
     // Remove from any project's assigned_agents list
     try {
-      const pr = await this.read('projects/project_registry.json');
+      const pr = await this.read('PROJECTS/project_registry.json');
       let modified = false;
       for (const p of Object.values(pr.projects || {})) {
         if (Array.isArray(p.assigned_agents) && p.assigned_agents.includes(agentId)) {
@@ -471,7 +471,7 @@ class RegistryManager {
           modified = true;
         }
       }
-      if (modified) await this.write('projects/project_registry.json', pr);
+      if (modified) await this.write('PROJECTS/project_registry.json', pr);
     } catch {}
     
     await this.log({
@@ -481,8 +481,8 @@ class RegistryManager {
       subject: { type: 'agent', id: agentId },
       action: `Deleted agent ${displayName} (${agentId})`,
       changes: [
-        { file: 'agents/agent_registry.json', operation: 'removed_entry', key: agentId },
-        { file: `agents/${brainFile}`, operation: 'deleted' }
+        { file: 'AGENTS/agent_registry.json', operation: 'removed_entry', key: agentId },
+        { file: `AGENTS/${brainFile}`, operation: 'deleted' }
       ]
     });
     
@@ -492,7 +492,7 @@ class RegistryManager {
   async createAgent(agentData) {
     // Generate ID FIRST — this increments next_id on disk.
     // Then read registry fresh so we have the post-increment metadata.
-    const agentId  = await this.generateNextId('agents/agent_registry.json');
+    const agentId  = await this.generateNextId('AGENTS/agent_registry.json');
     this.invalidateCache();
     const registry = await this.getAgentRegistry();
     const idNum    = agentId.split('_').pop();
@@ -611,8 +611,8 @@ class RegistryManager {
       };
     }
 
-    await this.write(`agents/${brainFile}`, brain);
-    await this.write('agents/agent_registry.json', registry);
+    await this.write(`AGENTS/${brainFile}`, brain);
+    await this.write('AGENTS/agent_registry.json', registry);
 
     await this.log({
       event_type: 'agent_created',
@@ -620,8 +620,8 @@ class RegistryManager {
       subject: { type: 'agent', id: agentId },
       action: `Created agent: ${displayName}`,
       changes: [
-        { file: 'agents/agent_registry.json', operation: 'added_entry', key: agentId },
-        { file: `agents/${brainFile}`, operation: 'created' }
+        { file: 'AGENTS/agent_registry.json', operation: 'added_entry', key: agentId },
+        { file: `AGENTS/${brainFile}`, operation: 'created' }
       ]
     });
 
@@ -656,10 +656,10 @@ class RegistryManager {
     if (previousStatus === 'sleeping') registry.metadata.total_sleeping--;
     registry.metadata.total_active++;
 
-    await this.write('agents/agent_registry.json', registry);
+    await this.write('AGENTS/agent_registry.json', registry);
 
     // Update brain file: status + log wake event
-    const brain = await this.read(`agents/${entry.brain_file}`);
+    const brain = await this.read(`AGENTS/${entry.brain_file}`);
     if (!brain.current_state) brain.current_state = {};
     brain.current_state.status = 'active';
     brain.current_state.last_action_at = now;
@@ -672,13 +672,13 @@ class RegistryManager {
       reason: options.reason || 'manual_wake',
       from_status: previousStatus
     });
-    await this.write(`agents/${entry.brain_file}`, brain);
+    await this.write(`AGENTS/${entry.brain_file}`, brain);
 
     // Update poseidon's count
     const pb = await this.getPoseidonBrain();
     pb.current_state.active_agents_count = registry.metadata.total_active;
     pb.current_state.sleeping_agents_count = registry.metadata.total_sleeping;
-    await this.write('main/poseidon_brain.json', pb);
+    await this.write('BRAIN/poseidon_brain.json', pb);
 
     await this.log({
       event_type: 'agent_woken',
@@ -686,7 +686,7 @@ class RegistryManager {
       subject: { type: 'agent', id: agentId },
       action: `Woke agent ${entry.display_name} (${previousStatus} -> active)`,
       changes: [
-        { file: 'agents/agent_registry.json', field: `agents.${agentId}.status`, from: previousStatus, to: 'active' }
+        { file: 'AGENTS/agent_registry.json', field: `agents.${agentId}.status`, from: previousStatus, to: 'active' }
       ],
       context: { agent_id: agentId, reason: options.reason }
     });
@@ -719,10 +719,10 @@ class RegistryManager {
       registry.metadata.total_active--;
       registry.metadata.total_sleeping++;
     }
-    await this.write('agents/agent_registry.json', registry);
+    await this.write('AGENTS/agent_registry.json', registry);
 
     // Update brain
-    const brain = await this.read(`agents/${entry.brain_file}`);
+    const brain = await this.read(`AGENTS/${entry.brain_file}`);
     if (!brain.current_state) brain.current_state = {};
     if (!brain.history) brain.history = {};
     brain.current_state.status = 'sleeping';
@@ -734,13 +734,13 @@ class RegistryManager {
       reason: options.reason || 'idle',
       from_status: previousStatus
     });
-    await this.write(`agents/${entry.brain_file}`, brain);
+    await this.write(`AGENTS/${entry.brain_file}`, brain);
 
     // Update poseidon counts
     const pb = await this.getPoseidonBrain();
     pb.current_state.active_agents_count = registry.metadata.total_active;
     pb.current_state.sleeping_agents_count = registry.metadata.total_sleeping;
-    await this.write('main/poseidon_brain.json', pb);
+    await this.write('BRAIN/poseidon_brain.json', pb);
 
     await this.log({
       event_type: 'agent_slept',
@@ -748,7 +748,7 @@ class RegistryManager {
       subject: { type: 'agent', id: agentId },
       action: `Agent ${entry.display_name} went to sleep`,
       changes: [
-        { file: 'agents/agent_registry.json', field: `agents.${agentId}.status`, from: previousStatus, to: 'sleeping' }
+        { file: 'AGENTS/agent_registry.json', field: `agents.${agentId}.status`, from: previousStatus, to: 'sleeping' }
       ]
     });
 
@@ -798,7 +798,7 @@ class RegistryManager {
           const reg = await this.getAgentRegistry();
           if (reg.agents[agentId]) {
             reg.agents[agentId].current_task_id = options.task_id;
-            await this.write('agents/agent_registry.json', reg);
+            await this.write('AGENTS/agent_registry.json', reg);
           }
         }
       } else if (status === 'sleeping') {
@@ -808,7 +808,7 @@ class RegistryManager {
           const reg = await this.getAgentRegistry();
           if (reg.agents[agentId]) {
             reg.agents[agentId].current_task_id = null;
-            await this.write('agents/agent_registry.json', reg);
+            await this.write('AGENTS/agent_registry.json', reg);
           }
         } catch {}
       }
@@ -821,7 +821,7 @@ class RegistryManager {
 
 
   async getProjectRegistry() {
-    return await this.read('projects/project_registry.json');
+    return await this.read('PROJECTS/project_registry.json');
   }
 
   async getProject(projectId) {
@@ -829,7 +829,7 @@ class RegistryManager {
     const entry = registry.projects[projectId];
     if (!entry) return null;
     const folder = RegistryManager.projectFolder(entry);
-    const memory = await this.read(`projects/${folder}/project_memory.json`).catch(() => null);
+    const memory = await this.read(`PROJECTS/${folder}/project_memory.json`).catch(() => null);
     return { registry_entry: entry, memory };
   }
 
@@ -863,7 +863,7 @@ class RegistryManager {
       found.entry.folder = canonical;
       found.entry.memory_file = `${canonical}/project_memory.json`;
       reg.projects[found.id] = found.entry;
-      await this.write('projects/project_registry.json', reg).catch(() => {});
+      await this.write('PROJECTS/project_registry.json', reg).catch(() => {});
     }
     return found;
   }
@@ -875,7 +875,7 @@ class RegistryManager {
     if (!entry) return null;
     const folder = RegistryManager.projectFolder(entry);
     try {
-      return await this.read(`projects/${folder}/project_memory.json`);
+      return await this.read(`PROJECTS/${folder}/project_memory.json`);
     } catch { return null; }
   }
 
@@ -978,7 +978,7 @@ class RegistryManager {
         completion_percent: parseInt(memory.progress.completion) || 0,
         last_updated: now
       };
-      await this.write('projects/project_registry.json', reg);
+      await this.write('PROJECTS/project_registry.json', reg);
     }
 
     return true;
@@ -1009,12 +1009,12 @@ class RegistryManager {
 
     // Remove project from registry
     delete reg.projects[projectId];
-    await this.write('projects/project_registry.json', reg);
+    await this.write('PROJECTS/project_registry.json', reg);
 
     // Free all assigned agents: clear their assigned_projects list
     if (assignedAgents.length > 0) {
       try {
-        const agentReg = await this.read('agents/agent_registry.json');
+        const agentReg = await this.read('AGENTS/agent_registry.json');
         let modified = false;
         for (const agentId of assignedAgents) {
           const agent = agentReg.agents?.[agentId];
@@ -1026,7 +1026,7 @@ class RegistryManager {
           }
           modified = true;
         }
-        if (modified) await this.write('agents/agent_registry.json', agentReg);
+        if (modified) await this.write('AGENTS/agent_registry.json', agentReg);
       } catch (err) {
         log.warn('[deleteProject] could not free agents:', err.message);
       }
@@ -1118,7 +1118,7 @@ class RegistryManager {
   }
 
   async createTask(taskData) {
-    const taskId = await this.generateNextId('tasks/tasks_registry.json');
+    const taskId = await this.generateNextId('TASKS/tasks_registry.json');
     const now = new Date().toISOString();
 
     // Denormalize agent display_name at assignment time so the UI doesn't
@@ -1220,8 +1220,8 @@ class RegistryManager {
       subject: { type: 'task', id: taskId },
       action: `Task ${outcome}: ${task.title}`,
       changes: [
-        { file: `tasks/${taskId}/details.json`, field: 'status', to: outcome },
-        { file: `tasks/${taskId}/details.json`, operation: 'chunks_replaced_with_closure_comments' }
+        { file: `TASKS/${taskId}/details.json`, field: 'status', to: outcome },
+        { file: `TASKS/${taskId}/details.json`, operation: 'chunks_replaced_with_closure_comments' }
       ]
     });
 
@@ -1252,7 +1252,7 @@ class RegistryManager {
           else if (status === 'cancelled') perf.tasks_cancelled = (perf.tasks_cancelled || 0) + 1;
           const total = (perf.tasks_completed || 0) + (perf.tasks_failed || 0) + (perf.tasks_cancelled || 0);
           perf.success_rate = total > 0 ? perf.tasks_completed / total : 0;
-          await this.write('agents/agent_registry.json', agentReg);
+          await this.write('AGENTS/agent_registry.json', agentReg);
           log.info(` cascade: agent ${agentId} tasks_completed=${perf.tasks_completed}`);
         }
       } catch (e) { log.warn(` cascadeFlat agent update failed:`, e.message); }
@@ -1269,7 +1269,7 @@ class RegistryManager {
           if (status === 'completed') project.metrics.tasks_completed = (project.metrics.tasks_completed || 0) + 1;
           if (status === 'failed')    project.metrics.tasks_failed    = (project.metrics.tasks_failed    || 0) + 1;
           project.metrics.tasks_pending = Math.max(0, (project.metrics.tasks_pending || 0) - 1);
-          await this.write('projects/project_registry.json', projReg);
+          await this.write('PROJECTS/project_registry.json', projReg);
         }
       } catch (e) { log.warn(` cascadeFlat project update failed:`, e.message); }
     }
@@ -1328,7 +1328,7 @@ class RegistryManager {
       registry.metadata.total_active++;
     }
 
-    await this.write('tasks/tasks_registry.json', registry);
+    await this.write('TASKS/tasks_registry.json', registry);
 
     await this.log({
       event_type: 'task_started',
@@ -1377,7 +1377,7 @@ class RegistryManager {
     }
     task.execution.output_tokens_used = (task.execution.output_tokens_used || 0) + (report.output_tokens || 0);
 
-    await this.write('tasks/tasks_registry.json', registry);
+    await this.write('TASKS/tasks_registry.json', registry);
 
     await this.log({
       event_type: 'task_chunk_completed',
@@ -1425,7 +1425,7 @@ class RegistryManager {
         chunk.status = 'approved';
         chunk.approval_status = 'approved_complete';
         // Auto-close the whole task
-        await this.write('tasks/tasks_registry.json', registry);
+        await this.write('TASKS/tasks_registry.json', registry);
         await this.closeTask(taskId, 'completed', {
           summary: reason || 'Task completed successfully after final chunk approval',
           what_went_well: 'Chunks executed and approved sequentially',
@@ -1459,7 +1459,7 @@ class RegistryManager {
         chunk.status = 'approved';
         chunk.approval_status = 'task_stopped';
         logEventType = 'approval_denied';
-        await this.write('tasks/tasks_registry.json', registry);
+        await this.write('TASKS/tasks_registry.json', registry);
         await this.closeTask(taskId, 'cancelled', {
           summary: reason || 'Task stopped by Poseidon',
           what_went_well: '',
@@ -1474,7 +1474,7 @@ class RegistryManager {
         throw new Error(`Unknown decision: ${decision}`);
     }
 
-    await this.write('tasks/tasks_registry.json', registry);
+    await this.write('TASKS/tasks_registry.json', registry);
 
     await this.log({
       event_type: logEventType,
@@ -1490,7 +1490,7 @@ class RegistryManager {
   // ==================== LOGS ====================
 
   async log(event) {
-    const logs = await this.read('logs/logs.json');
+    const logs = await this.read('LOGS/logs.json');
     const nextId = logs.metadata.last_entry_id + 1;
     const entry = {
       log_id: nextId,
@@ -1501,7 +1501,7 @@ class RegistryManager {
     logs.entries.push(entry);
     logs.metadata.total_entries++;
     logs.metadata.last_entry_id = nextId;
-    await this.write('logs/logs.json', logs);
+    await this.write('LOGS/logs.json', logs);
     return entry;
   }
 
@@ -1515,7 +1515,7 @@ class RegistryManager {
     const agents = await this.getAgentRegistry();
     const projects = await this.getProjectRegistry();
     const tasks = await this.getTasksRegistry();
-    const models = await this.read('models/model_registry.json');
+    const models = await this.read('MODELS/model_registry.json');
 
     const now = new Date().toISOString();
 
@@ -1532,7 +1532,7 @@ class RegistryManager {
     brain.identity.last_awakening_at = now;
     brain.identity.total_awakening_count++;
 
-    await this.write('main/poseidon_brain.json', brain);
+    await this.write('BRAIN/poseidon_brain.json', brain);
 
     await this.log({
       event_type: 'system_startup',

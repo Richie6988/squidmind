@@ -69,10 +69,10 @@ class HeartbeatService {
     );
     brain.current_state.is_overloaded = isOverloaded;
     
-    await this.rm.write('main/poseidon_brain.json', brain);
+    await this.rm.write('BRAIN/poseidon_brain.json', brain);
     
     // Update model registry system_resources (bootstrap if missing)
-    const modelReg = await this.rm.read('models/model_registry.json');
+    const modelReg = await this.rm.read('MODELS/model_registry.json');
     if (!modelReg.system_resources) modelReg.system_resources = {};
     modelReg.system_resources.total_ram_gb         = load.total_ram_gb;
     modelReg.system_resources.total_vram_gb        = load.total_vram_gb;
@@ -81,7 +81,7 @@ class HeartbeatService {
     modelReg.system_resources.current_vram_used_gb = load.vram_used_gb;
     modelReg.system_resources.current_cpu_percent  = load.cpu_percent;
     modelReg.system_resources.last_measured_at     = load.last_measured_at;
-    await this.rm.write('models/model_registry.json', modelReg);
+    await this.rm.write('MODELS/model_registry.json', modelReg);
     
     // Log overload state changes
     if (isOverloaded && !this.wasOverloaded) {

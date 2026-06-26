@@ -673,7 +673,7 @@ class BotService extends EventEmitter {
 
     // List active projects with actual folder paths
     try {
-      const reg = await this.rm.read('projects/project_registry.json');
+      const reg = await this.rm.read('PROJECTS/project_registry.json');
       const active = Object.values(reg.projects || {}).filter(p => p.status !== 'archived');
       if (active.length) {
         lines.push('Active projects (use these exact paths for file operations):');
@@ -690,7 +690,7 @@ class BotService extends EventEmitter {
 
     // List agents
     try {
-      const agReg = await this.rm.read('agents/agent_registry.json');
+      const agReg = await this.rm.read('AGENTS/agent_registry.json');
       const agents = Object.values(agReg.agents || {});
       if (agents.length) {
         lines.push(`Agents: ${agents.map(a => `${a.display_name} (${a.agent_id})`).join(', ')}`);
@@ -909,7 +909,7 @@ class BotService extends EventEmitter {
       case '/models': {
         try {
           this.rm.invalidateCache();
-          const reg = await this.rm.read('models/model_registry.json');
+          const reg = await this.rm.read('MODELS/model_registry.json');
           const models = Object.values(reg.models || {});
           if (!models.length) return '📦 No models in library. Import a GGUF model first.';
           const loaded = this.modelService.loaded;
@@ -934,7 +934,7 @@ class BotService extends EventEmitter {
         if (!arg) return '❌ Usage: `/load <model_name_or_id>`\nExample: `/load qwen3` or `/load flux`';
         try {
           this.rm.invalidateCache();
-          const reg = await this.rm.read('models/model_registry.json');
+          const reg = await this.rm.read('MODELS/model_registry.json');
           const models = Object.values(reg.models || {});
           const query  = arg.toLowerCase();
           // Fuzzy match: exact id → startsWith → includes in id → includes in filename
@@ -1111,7 +1111,7 @@ class BotService extends EventEmitter {
 
       case '/projects': {
         try {
-          const pReg = await this.rm.read('projects/project_registry.json');
+          const pReg = await this.rm.read('PROJECTS/project_registry.json');
           const tReg = await this.rm.getTasksRegistry();
           const projects = Object.values(pReg.projects || {});
           if (!projects.length) return 'ℹ️ No projects yet.';

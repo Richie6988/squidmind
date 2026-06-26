@@ -86,9 +86,9 @@ class PoseidonOrchestrator {
     const brain = await this.rm.getPoseidonBrain();
     
     const [agentReg, projectReg, taskReg] = await Promise.all([
-      this.rm.read('agents/agent_registry.json').catch(() => ({ agents: {} })),
-      this.rm.read('projects/project_registry.json').catch(() => ({ projects: {} })),
-      this.rm.read('tasks/tasks_registry.json').catch(() => ({ tasks: {} }))
+      this.rm.read('AGENTS/agent_registry.json').catch(() => ({ agents: {} })),
+      this.rm.read('PROJECTS/project_registry.json').catch(() => ({ projects: {} })),
+      this.rm.read('TASKS/tasks_registry.json').catch(() => ({ tasks: {} }))
     ]);
     
     // Inject dream_memory: either a metacognition dream or an emergency reset note
@@ -728,7 +728,7 @@ My response: "${ss.last_response_preview}"${tools}
             const mem = await self.rm.getProjectMemory(projectId).catch(() => ({}));
 
             // 3. Active + planned tasks (from registry)
-            const taskReg = await self.rm.read('tasks/tasks_registry.json');
+            const taskReg = await self.rm.read('TASKS/tasks_registry.json');
             const allTasks = Object.values(taskReg.tasks || {});
             const projectTasks = allTasks.filter(t =>
               t.project_id === projectId || t.project_name === entry.name
@@ -748,7 +748,7 @@ My response: "${ss.last_response_preview}"${tools}
             } catch {}
 
             // 5. Assigned agents status
-            const agentReg = await self.rm.read('agents/agent_registry.json');
+            const agentReg = await self.rm.read('AGENTS/agent_registry.json');
             const assignedAgents = (entry.assigned_agents || []).map(agId => {
               const ag = agentReg.agents?.[agId];
               return ag ? {
@@ -1186,7 +1186,7 @@ My response: "${ss.last_response_preview}"${tools}
               node = node[parts[i]];
             }
             node[parts[parts.length - 1]] = parsed;
-            await self.rm.write('main/poseidon_brain.json', brain);
+            await self.rm.write('BRAIN/poseidon_brain.json', brain);
             await self.rm.log({
               event_type: 'poseidon_decision', severity: 'info',
               actor: { type: 'system', id: 'poseidon_main' },
@@ -1225,7 +1225,7 @@ My response: "${ss.last_response_preview}"${tools}
         handler: async ({ filter_type = 'all' } = {}) => {
           try {
             self.rm.invalidateCache();
-            const reg = await self.rm.read('models/model_registry.json');
+            const reg = await self.rm.read('MODELS/model_registry.json');
             const models = Object.values(reg.models || {}).filter(m => {
               if (filter_type === 'all') return true;
               return (m.model_type || m.config?.model_type || 'text') === filter_type;
@@ -1270,7 +1270,7 @@ My response: "${ss.last_response_preview}"${tools}
         handler: async (params) => {
           try {
             self.rm.invalidateCache();
-            const reg = await self.rm.read('models/model_registry.json').catch(() => ({ models: {} }));
+            const reg = await self.rm.read('MODELS/model_registry.json').catch(() => ({ models: {} }));
             const imgModels = Object.values(reg.models || {}).filter(m =>
               (m.model_type || m.config?.model_type) === 'image' ||
               (m.config?.model_category || m.model_category) === 'image'
@@ -1457,7 +1457,7 @@ My response: "${ss.last_response_preview}"${tools}
   async _listAgents() {
     try {
       this.rm.invalidateCache();
-      const reg = await this.rm.read('agents/agent_registry.json');
+      const reg = await this.rm.read('AGENTS/agent_registry.json');
       const agents = Object.values(reg.agents || {}).map(a => ({
         agent_id: a.agent_id,
         display_name: a.display_name,
@@ -1482,11 +1482,11 @@ My response: "${ss.last_response_preview}"${tools}
       }
       
       // First find the brain file
-      const reg = await this.rm.read('agents/agent_registry.json');
+      const reg = await this.rm.read('AGENTS/agent_registry.json');
       const entry = reg.agents?.[agent_id];
       if (!entry) return { ok: false, error: `Agent ${agent_id} not found` };
       
-      const filePath = `agents/${entry.brain_file}`;
+      const filePath = `AGENTS/${entry.brain_file}`;
       await this.rm.updateField(filePath, field_path, parsed, {
         actor: 'poseidon_main', actor_type: 'system', reason: reason || 'Poseidon edit'
       });
@@ -1501,7 +1501,7 @@ My response: "${ss.last_response_preview}"${tools}
       const AQUARIUM = require('../aquarium');
       const upperName = name.toUpperCase();
       this.rm.invalidateCache();
-      const reg = await this.rm.read('projects/project_registry.json');
+      const reg = await this.rm.read('PROJECTS/project_registry.json');
 
       for (const p of Object.values(reg.projects || {})) {
         if (p.name === upperName) return { ok: false, error: `Project ${upperName} already exists` };
@@ -1545,7 +1545,7 @@ My response: "${ss.last_response_preview}"${tools}
       reg.metadata.last_id_used = nextId;
       reg.metadata.total_active = (reg.metadata.total_active || 0) + 1;
 
-      await this.rm.write('projects/project_registry.json', reg);
+      await this.rm.write('PROJECTS/project_registry.json', reg);
 
       await this.rm.log({
         event_type: 'project_created',
@@ -1566,7 +1566,7 @@ My response: "${ss.last_response_preview}"${tools}
     try {
       const upperName = project_name.toUpperCase();
       this.rm.invalidateCache();
-      const reg = await this.rm.read('projects/project_registry.json');
+      const reg = await this.rm.read('PROJECTS/project_registry.json');
       
       let targetId = null;
       for (const [pid, p] of Object.entries(reg.projects || {})) {
@@ -1579,17 +1579,17 @@ My response: "${ss.last_response_preview}"${tools}
       reg.projects[targetId].archived_at = new Date().toISOString();
       reg.projects[targetId].assigned_agents = []; // free all agents
       if (reg.metadata.total_active) reg.metadata.total_active--;
-      await this.rm.write('projects/project_registry.json', reg);
+      await this.rm.write('PROJECTS/project_registry.json', reg);
 
       // Free assigned agents
       if (assignedAgents.length > 0) {
         try {
-          const agentReg = await this.rm.read('agents/agent_registry.json');
+          const agentReg = await this.rm.read('AGENTS/agent_registry.json');
           for (const agentId of assignedAgents) {
             const agent = agentReg.agents?.[agentId];
             if (agent) agent.assigned_projects = (agent.assigned_projects || []).filter(id => id !== targetId);
           }
-          await this.rm.write('agents/agent_registry.json', agentReg);
+          await this.rm.write('AGENTS/agent_registry.json', agentReg);
         } catch {}
       }
 
@@ -1614,7 +1614,7 @@ My response: "${ss.last_response_preview}"${tools}
       this.rm.invalidateCache();
       const AQUARIUM = require('../aquarium');
       const fsp = require('fs').promises;
-      const reg = await this.rm.read('projects/project_registry.json');
+      const reg = await this.rm.read('PROJECTS/project_registry.json');
 
       let targetId = null;
       for (const [pid, p] of Object.entries(reg.projects || {})) {
@@ -1628,12 +1628,12 @@ My response: "${ss.last_response_preview}"${tools}
       // Free assigned agents
       if (assignedAgents.length > 0) {
         try {
-          const agentReg = await this.rm.read('agents/agent_registry.json');
+          const agentReg = await this.rm.read('AGENTS/agent_registry.json');
           for (const agentId of assignedAgents) {
             const agent = agentReg.agents?.[agentId];
             if (agent) agent.assigned_projects = (agent.assigned_projects || []).filter(id => id !== targetId);
           }
-          await this.rm.write('agents/agent_registry.json', agentReg);
+          await this.rm.write('AGENTS/agent_registry.json', agentReg);
         } catch {}
       }
 
@@ -1648,7 +1648,7 @@ My response: "${ss.last_response_preview}"${tools}
       // Remove from registry
       delete reg.projects[targetId];
       if (reg.metadata?.total_active) reg.metadata.total_active = Math.max(0, reg.metadata.total_active - 1);
-      await this.rm.write('projects/project_registry.json', reg);
+      await this.rm.write('PROJECTS/project_registry.json', reg);
 
       await this.rm.log({
         event_type: 'project_deleted', severity: 'info',
@@ -1668,7 +1668,7 @@ My response: "${ss.last_response_preview}"${tools}
   async _listProjects() {
     try {
       this.rm.invalidateCache();
-      const reg = await this.rm.read('projects/project_registry.json');
+      const reg = await this.rm.read('PROJECTS/project_registry.json');
       const projects = Object.values(reg.projects || {}).map(p => ({
         project_id: p.project_id, name: p.name, status: p.status,
         completion_percent: p.metrics?.completion_percent || 0,
@@ -1684,13 +1684,13 @@ My response: "${ss.last_response_preview}"${tools}
   async _createTask({ title, description, project, assigned_agent_id, priority }) {
     try {
       // Use the serialized generateNextId — prevents duplicate IDs on concurrent calls
-      const taskId = await this.rm.generateNextId('tasks/tasks_registry.json');
+      const taskId = await this.rm.generateNextId('TASKS/tasks_registry.json');
 
       // Resolve agent name
       let agentName = null;
       if (assigned_agent_id) {
         try {
-          const agentReg = await this.rm.read('agents/agent_registry.json');
+          const agentReg = await this.rm.read('AGENTS/agent_registry.json');
           agentName = agentReg.agents?.[assigned_agent_id]?.display_name || assigned_agent_id;
         } catch {}
       }
@@ -1699,7 +1699,7 @@ My response: "${ss.last_response_preview}"${tools}
       let projectId = null;
       if (project) {
         try {
-          const pReg = await this.rm.read('projects/project_registry.json');
+          const pReg = await this.rm.read('PROJECTS/project_registry.json');
           const pEntry = Object.values(pReg.projects || {}).find(p => p.name === project || p.project_id === project);
           projectId = pEntry?.project_id || null;
         } catch {}
@@ -1742,7 +1742,7 @@ My response: "${ss.last_response_preview}"${tools}
     try {
       this.rm.invalidateCache();
       // Use getTasksRegistry() which scans both flat file AND per-folder tasks
-      const reg = await this.rm.getTasksRegistry().catch(() => this.rm.read('tasks/tasks_registry.json').catch(() => ({ tasks: {} })));
+      const reg = await this.rm.getTasksRegistry().catch(() => this.rm.read('TASKS/tasks_registry.json').catch(() => ({ tasks: {} })));
       let tasks = Object.values(reg.tasks || {});
       if (status && status !== 'all') tasks = tasks.filter(t => (t.lifecycle?.status || t.status || 'open') === status);
       if (project) tasks = tasks.filter(t => (t.project_name || '').toUpperCase() === project.toUpperCase());
@@ -1795,11 +1795,11 @@ My response: "${ss.last_response_preview}"${tools}
   async _deleteTask({ task_id }) {
     try {
       this.rm.invalidateCache();
-      const reg = await this.rm.read('tasks/tasks_registry.json');
+      const reg = await this.rm.read('TASKS/tasks_registry.json');
       if (!reg.tasks?.[task_id]) return { ok: false, error: `Task ${task_id} not found.` };
       const title = reg.tasks[task_id].title;
       delete reg.tasks[task_id];
-      await this.rm.write('tasks/tasks_registry.json', reg);
+      await this.rm.write('TASKS/tasks_registry.json', reg);
       await this.rm.log({ event_type: 'task_deleted', severity: 'info',
         actor: { type: 'system', id: 'poseidon_main' },
         subject: { type: 'task', id: task_id },
@@ -1813,8 +1813,8 @@ My response: "${ss.last_response_preview}"${tools}
       this.rm.invalidateCache();
       const upperName = project_name.toUpperCase();
       const [projReg, agentReg] = await Promise.all([
-        this.rm.read('projects/project_registry.json'),
-        this.rm.read('agents/agent_registry.json')
+        this.rm.read('PROJECTS/project_registry.json'),
+        this.rm.read('AGENTS/agent_registry.json')
       ]);
       const proj  = Object.values(projReg.projects||{}).find(p => p.name === upperName);
       const agent = agentReg.agents?.[agent_id];
@@ -1823,8 +1823,8 @@ My response: "${ss.last_response_preview}"${tools}
       if (!proj.assigned_agents.includes(agent_id)) proj.assigned_agents.push(agent_id);
       agent.assigned_projects = [...new Set([...(agent.assigned_projects||[]), proj.project_id])];
       await Promise.all([
-        this.rm.write('projects/project_registry.json', projReg),
-        this.rm.write('agents/agent_registry.json', agentReg)
+        this.rm.write('PROJECTS/project_registry.json', projReg),
+        this.rm.write('AGENTS/agent_registry.json', agentReg)
       ]);
       return { ok: true, message: `Agent ${agent.display_name||agent_id} assigned to project ${upperName}.` };
     } catch (e) { return { ok: false, error: e.message }; }
@@ -1835,8 +1835,8 @@ My response: "${ss.last_response_preview}"${tools}
       this.rm.invalidateCache();
       const upperName = project_name.toUpperCase();
       const [projReg, agentReg] = await Promise.all([
-        this.rm.read('projects/project_registry.json'),
-        this.rm.read('agents/agent_registry.json')
+        this.rm.read('PROJECTS/project_registry.json'),
+        this.rm.read('AGENTS/agent_registry.json')
       ]);
       const proj  = Object.values(projReg.projects||{}).find(p => p.name === upperName);
       const agent = agentReg.agents?.[agent_id];
@@ -1845,8 +1845,8 @@ My response: "${ss.last_response_preview}"${tools}
       proj.assigned_agents = (proj.assigned_agents||[]).filter(id => id !== agent_id);
       agent.assigned_projects = (agent.assigned_projects||[]).filter(id => id !== proj.project_id);
       await Promise.all([
-        this.rm.write('projects/project_registry.json', projReg),
-        this.rm.write('agents/agent_registry.json', agentReg)
+        this.rm.write('PROJECTS/project_registry.json', projReg),
+        this.rm.write('AGENTS/agent_registry.json', agentReg)
       ]);
       return { ok: true, message: `Agent ${agent.display_name||agent_id} unassigned from project ${upperName}.` };
     } catch (e) { return { ok: false, error: e.message }; }
@@ -1856,13 +1856,13 @@ My response: "${ss.last_response_preview}"${tools}
     try {
       this.rm.invalidateCache();
       const upperName = project_name.toUpperCase();
-      const reg = await this.rm.read('projects/project_registry.json');
+      const reg = await this.rm.read('PROJECTS/project_registry.json');
       const [pid, proj] = Object.entries(reg.projects||{}).find(([,p]) => p.name === upperName) || [];
       if (!proj) return { ok: false, error: `Project "${upperName}" not found.` };
       if (field === 'name') proj.name = new_value.toUpperCase();
       else                  proj[field] = new_value;
       proj.updated_at = new Date().toISOString();
-      await this.rm.write('projects/project_registry.json', reg);
+      await this.rm.write('PROJECTS/project_registry.json', reg);
       await this.rm.log({ event_type: 'project_updated', severity: 'info',
         actor: { type: 'system', id: 'poseidon_main' },
         subject: { type: 'project', id: pid },
@@ -2026,8 +2026,8 @@ My response: "${ss.last_response_preview}"${tools}
     try {
       this.rm.invalidateCache();
       const brain = await this.rm.getPoseidonBrain();
-      const agentReg = await this.rm.read('agents/agent_registry.json').catch(() => ({ agents: {} }));
-      const taskReg = await this.rm.read('tasks/tasks_registry.json').catch(() => ({ tasks: {} }));
+      const agentReg = await this.rm.read('AGENTS/agent_registry.json').catch(() => ({ agents: {} }));
+      const taskReg = await this.rm.read('TASKS/tasks_registry.json').catch(() => ({ tasks: {} }));
       const taskValues = Object.values(taskReg.tasks || {});
       return {
         ok: true,
@@ -2165,7 +2165,7 @@ My response: "${ss.last_response_preview}"${tools}
       brain.user.context[safeKey] = value;
       brain.user.last_learned_at = new Date().toISOString();
       
-      await this.rm.write('main/poseidon_brain.json', brain);
+      await this.rm.write('BRAIN/poseidon_brain.json', brain);
       
       await this.rm.log({
         event_type: 'user_context_learned',
@@ -2288,7 +2288,7 @@ My response: "${ss.last_response_preview}"${tools}
       // "agents"   → scan workspace/agents/ registry
       // "tasks"    → scan workspace/tasks/ (active only)
       if (section_path === 'projects') {
-        const reg = await this.rm.read('projects/project_registry.json').catch(() => ({ projects: {} }));
+        const reg = await this.rm.read('PROJECTS/project_registry.json').catch(() => ({ projects: {} }));
         const active = Object.values(reg.projects || {}).filter(p => p.status !== 'archived');
         // Load all memories in parallel (not serial) to avoid blocking prompt generation
         const memories = await Promise.all(
@@ -2308,13 +2308,13 @@ My response: "${ss.last_response_preview}"${tools}
         return { ok: true, section_path, content: lines.join('\n') || '(no active projects)' };
       }
       if (section_path === 'agents') {
-        const reg = await this.rm.read('agents/agent_registry.json').catch(() => ({ agents: {} }));
+        const reg = await this.rm.read('AGENTS/agent_registry.json').catch(() => ({ agents: {} }));
         return { ok: true, section_path, content: Object.values(reg.agents || {}).map(a =>
           `${a.agent_id}: ${a.display_name} | ${a.specialization} | ${a.status} | brain: aquarium/AGENTS/${a.brain_file}`
         ).join('\n') || '(no agents)' };
       }
       if (section_path === 'models') {
-        const reg = await this.rm.read('models/model_registry.json').catch(() => ({ models: {} }));
+        const reg = await this.rm.read('MODELS/model_registry.json').catch(() => ({ models: {} }));
         const models = Object.values(reg.models || {});
         return { ok: true, section_path, content: models.length
           ? models.map(m => `${m.model_id}: ${m.file_name} | ${m.model_type||'text'} | loaded: ${m.is_loaded||false} | ctx: ${m.config?.context_length||'?'}`).join('\n')

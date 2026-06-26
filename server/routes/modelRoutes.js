@@ -339,11 +339,11 @@ function buildRouter(v2ModelService) {
       if (!display_name?.trim()) return res.status(400).json({ success: false, error: 'display_name required' });
       const rm = v2ModelService.rm;
       rm.invalidateCache();
-      const reg = await rm.read('models/model_registry.json');
+      const reg = await rm.read('MODELS/model_registry.json');
       const entry = reg.models?.[req.params.modelId];
       if (!entry) return res.status(404).json({ success: false, error: 'Model not found' });
       entry.display_name = display_name.trim();
-      await rm.write('models/model_registry.json', reg);
+      await rm.write('MODELS/model_registry.json', reg);
       res.json({ success: true, model_id: req.params.modelId, display_name: entry.display_name });
     } catch (err) { res.status(500).json({ success: false, error: err.message }); }
   });
@@ -460,7 +460,7 @@ function buildRouter(v2ModelService) {
       // This allows categorizing models without going through the full import flow
       const rm = v2ModelService.rm;
       rm.invalidateCache();
-      const reg = await rm.read('models/model_registry.json').catch(() => ({ models: {} }));
+      const reg = await rm.read('MODELS/model_registry.json').catch(() => ({ models: {} }));
       if (!reg.models[modelId]) {
         // Find the file on disk to bootstrap the entry
         const lib = await v2ModelService.getLibrary();

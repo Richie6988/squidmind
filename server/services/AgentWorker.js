@@ -506,7 +506,7 @@ class AgentWorkerPool {
     const entry    = registry.agents?.[agentId];
     if (!entry) throw new Error(`Agent ${agentId} not found in registry`);
 
-    const brain = await this.rm.read(`agents/${entry.brain_file}`);
+    const brain = await this.rm.read(`AGENTS/${entry.brain_file}`);
 
     const existing = this._workers.get(agentId);
 

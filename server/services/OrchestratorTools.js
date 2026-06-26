@@ -508,7 +508,7 @@ class OrchestratorTools {
       let outputDir, serveBase;
       if (project_id) {
         try {
-          const reg = await this.rm.read('projects/project_registry.json').catch(() => ({ projects: {} }));
+          const reg = await this.rm.read('PROJECTS/project_registry.json').catch(() => ({ projects: {} }));
           const proj = reg.projects?.[project_id];
           const folder = proj?.folder || project_id;
           outputDir = require('path').join(AQUARIUM.PROJECTS, folder, 'output');
@@ -582,7 +582,7 @@ class OrchestratorTools {
         savePath = output_path;
       } else if (project_id) {
         try {
-          const reg  = await this.rm.read('projects/project_registry.json').catch(() => ({ projects: {} }));
+          const reg  = await this.rm.read('PROJECTS/project_registry.json').catch(() => ({ projects: {} }));
           const proj = reg.projects?.[project_id];
           const folder = proj?.folder || project_id;
           const outDir = path.join(AQUARIUM.PROJECTS, folder, 'output');

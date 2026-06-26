@@ -59,7 +59,7 @@ class V2ModelService {
       const savedId = brain?.current_state?.loaded_model_id;
       if (!savedId) return;
 
-      const reg = await this.rm.read('models/model_registry.json').catch(() => ({ models: {} }));
+      const reg = await this.rm.read('MODELS/model_registry.json').catch(() => ({ models: {} }));
       if (!reg.models?.[savedId]) {
         log.info(` Saved Poseidon model ${savedId} not in registry — skipping restore`);
         return;
@@ -81,7 +81,7 @@ class V2ModelService {
       const brain = await this.rm.getPoseidonBrain();
       const savedId = brain?.current_state?.loaded_model_id;
       if (!savedId) return null;
-      const reg = await this.rm.read('models/model_registry.json').catch(() => ({ models: {} }));
+      const reg = await this.rm.read('MODELS/model_registry.json').catch(() => ({ models: {} }));
       return reg.models?.[savedId] ? savedId : null;
     } catch { return null; }
   }
@@ -226,7 +226,7 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
   async getLibrary() {
     const scanned = await this.scanLocalModels();
     this.rm.invalidateCache();
-    const reg = await this.rm.read('models/model_registry.json');
+    const reg = await this.rm.read('MODELS/model_registry.json');
     const registered = reg.models || {};
     
     const items = [];
@@ -350,13 +350,13 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
    */
   async updateModelParams(modelId, params) {
     this.rm.invalidateCache();
-    const reg = await this.rm.read('models/model_registry.json');
+    const reg = await this.rm.read('MODELS/model_registry.json');
     const entry = reg.models[modelId];
     if (!entry) throw new Error(`Model ${modelId} not in library`);
     
     const newConfig = { ...entry.config, ...params };
     entry.config = newConfig;
-    await this.rm.write('models/model_registry.json', reg);
+    await this.rm.write('MODELS/model_registry.json', reg);
     
     await this.rm.log({
       event_type: 'json_update',
@@ -377,9 +377,9 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
       await this.unloadModel(modelId);
     }
     this.rm.invalidateCache();
-    const reg = await this.rm.read('models/model_registry.json');
+    const reg = await this.rm.read('MODELS/model_registry.json');
     delete reg.models[modelId];
-    await this.rm.write('models/model_registry.json', reg);
+    await this.rm.write('MODELS/model_registry.json', reg);
     
     if (this.poseidonModelId === modelId) this.poseidonModelId = null;
     
@@ -409,7 +409,7 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
     }
 
     this.rm.invalidateCache();
-    const reg = await this.rm.read('models/model_registry.json');
+    const reg = await this.rm.read('MODELS/model_registry.json');
     const entry = reg.models[modelId];
     if (!entry) throw new Error(`Model ${modelId} not in library. Import it first.`);
     if (entry.status === 'missing') throw new Error(`Model file is missing: ${entry.file_path}`);
@@ -774,7 +774,7 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
 
   async setPoseidonModel(modelId) {
     this.rm.invalidateCache();
-    const reg = await this.rm.read('models/model_registry.json');
+    const reg = await this.rm.read('MODELS/model_registry.json');
     const entry = reg.models[modelId];
     if (!entry) {
       throw new Error(`Model ${modelId} is not in library. Import it first.`);
@@ -804,7 +804,7 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
 
     const brain = await this.rm.getPoseidonBrain();
     brain.current_state.loaded_model_id = modelId;
-    await this.rm.write('main/poseidon_brain.json', brain);
+    await this.rm.write('BRAIN/poseidon_brain.json', brain);
 
     await this.rm.log({
       event_type: 'poseidon_decision',
@@ -1780,7 +1780,7 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
     modelId = modelId || model_id;
 
     this.rm.invalidateCache();
-    const reg = await this.rm.read('models/model_registry.json');
+    const reg = await this.rm.read('MODELS/model_registry.json');
 
     // Auto-detect image model if not specified
     if (!modelId) {
@@ -1904,7 +1904,7 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
     // Bootstrap registry if it doesn't exist yet (e.g. first import after workspace rename)
     let reg;
     try {
-      reg = await this.rm.read('models/model_registry.json');
+      reg = await this.rm.read('MODELS/model_registry.json');
     } catch {
       reg = {
         schema_version: '2.0', schema_type: 'model_registry',
@@ -1920,7 +1920,7 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
     reg.models[modelId] = this._deepMerge(existing, partial);
     reg.metadata.total_available = Object.keys(reg.models).length;
     reg.last_updated_at = new Date().toISOString();
-    await this.rm.write('models/model_registry.json', reg);
+    await this.rm.write('MODELS/model_registry.json', reg);
   }
 
   _deepMerge(target, source) {

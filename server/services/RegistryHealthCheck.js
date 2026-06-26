@@ -13,7 +13,7 @@ const path = require('path');
 const AQUARIUM = require('../aquarium');
 
 const _RAW_DEFAULTS = {
-  'main/poseidon_brain.json': () => ({
+  'BRAIN/poseidon_brain.json': () => ({
     schema_version: '2.0.0',
     schema_type: 'poseidon_brain',
     identity: {
@@ -42,13 +42,13 @@ const _RAW_DEFAULTS = {
     environment: {
       data_root: 'data/',
       registries: {
-        agents: 'agents/agent_registry.json',
-        projects: 'projects/project_registry.json',
-        tasks: 'tasks/tasks_registry.json',
-        tools: 'tools/tool_registry.json',
-        models: 'models/model_registry.json'
+        agents: 'AGENTS/agent_registry.json',
+        projects: 'PROJECTS/project_registry.json',
+        tasks: 'TASKS/tasks_registry.json',
+        tools: 'TOOLS/tool_registry.json',
+        models: 'MODELS/model_registry.json'
       },
-      logs_path: 'logs/logs.json',
+      logs_path: 'LOGS/logs.json',
       secrets_path: 'secrets/'
     },
     resource_limits: {
@@ -76,7 +76,7 @@ const _RAW_DEFAULTS = {
     settings: { theme: 'ocean', right_panel_width: 280 }
   }),
   
-  'agents/agent_registry.json': () => ({
+  'AGENTS/agent_registry.json': () => ({
     schema_version: '2.0.0',
     schema_type: 'agent_registry',
     metadata: {
@@ -94,7 +94,7 @@ const _RAW_DEFAULTS = {
     }
   }),
   
-  'tasks/tasks_registry.json': () => ({
+  'TASKS/tasks_registry.json': () => ({
     schema_version: '2.0.0',
     schema_type: 'tasks_registry',
     metadata: {
@@ -118,7 +118,7 @@ const _RAW_DEFAULTS = {
     }
   }),
   
-  'projects/project_registry.json': () => ({
+  'PROJECTS/project_registry.json': () => ({
     schema_version: '2.0.0',
     schema_type: 'project_registry',
     metadata: {
@@ -133,7 +133,7 @@ const _RAW_DEFAULTS = {
     }
   }),
   
-  'models/model_registry.json': () => ({
+  'MODELS/model_registry.json': () => ({
     schema_version: '2.0.0',
     schema_type: 'model_registry',
     metadata: { last_updated_at: new Date().toISOString() },
@@ -157,7 +157,7 @@ const _RAW_DEFAULTS = {
     last_updated_at: new Date().toISOString()
   }),
   
-  'tools/tool_registry.json': () => ({
+  'TOOLS/tool_registry.json': () => ({
     schema_version: '2.0.0',
     schema_type: 'tool_registry',
     metadata: { last_id_used: 0, next_id: 1, id_format: 'tool_NNN',
@@ -170,13 +170,13 @@ const _RAW_DEFAULTS = {
     }
   }),
   
-  'logs/logs.json': () => ({
+  'LOGS/logs.json': () => ({
     schema_version: '2.0.0',
     schema_type: 'logs',
     metadata: {
       total_entries: 1, last_entry_id: 1,
       rotation_policy: 'Archive at 10000 entries',
-      archive_path: 'logs/archive/',
+      archive_path: 'LOGS/archive/',
       last_updated_at: new Date().toISOString()
     },
     event_types: [
@@ -203,7 +203,7 @@ const _RAW_DEFAULTS = {
     }]
   }),
   
-  'logs/checkpoints.json': () => ({
+  'LOGS/checkpoints.json': () => ({
     schema_version: '2.0.0',
     schema_type: 'checkpoints',
     metadata: { total_checkpoints: 0, last_checkpoint_id: 0, last_updated_at: new Date().toISOString() },
