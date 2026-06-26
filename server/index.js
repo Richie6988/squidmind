@@ -69,10 +69,14 @@ if (healthReport.errors.length > 0) {
 
 const sharedRm = new RegistryManager(dataRoot);
 
-const buildRegistryRoutes      = require('./routes/registryRoutes');
-const { buildVoiceRoutes }     = require('./routes/voiceRoutes');
-const { buildHealthRoutes }    = require('./routes/healthRoutes');
-const { buildBackupRoutes }    = require('./routes/backupRoutes');
+const buildRegistryRoutes        = require('./routes/registryRoutes');
+const { buildVoiceRoutes }       = require('./routes/voiceRoutes');
+const { buildHealthRoutes }      = require('./routes/healthRoutes');
+const { buildBackupRoutes }      = require('./routes/backupRoutes');
+const { buildPoseidonRoutes }    = require('./routes/poseidonRoutes');
+const { buildProjectFileRoutes } = require('./routes/projectFileRoutes');
+const { buildLegacyV1Routes }    = require('./routes/legacyV1Routes');
+const { buildFilesRoutes }       = require('./routes/filesRoutes');
 // Services ref — populated after initialization, used by routes that need late-bound services
 const servicesRef = { taskRunner: null, v2ModelService: null };
 app.use('/api/v2', buildRegistryRoutes(sharedRm, servicesRef));
@@ -165,24 +169,6 @@ app.use('/api/v2/models', buildModelRouter(v2ModelService));
 app.post('/api/v2/poseidon/chat', buildPoseidonChatRoute(v2ModelService));
 app.post('/api/v2/poseidon/abort', buildAbortRoute(v2ModelService));
 
-// Reset Poseidon chat session (clears history, keeps model loaded)
-// GET /api/v2/poseidon/session-state — read last session snapshot for auto-continue
-app.get('/api/v2/poseidon/session-state', async (req, res) => {
-  try {
-    const ss = await sharedRm.read('BRAIN/session_state.json');
-    res.json(ss || {});
-  } catch { res.json({}); }
-});
-
-app.post('/api/v2/poseidon/reset-session', async (req, res) => {
-  try {
-    const result = await v2ModelService.resetPoseidonSession();
-    res.json(result);
-  } catch (err) {
-    res.status(400).json({ success: false, error: err.message });
-  }
-});
-
 
 // Hook V2ModelService TTL check + dream into heartbeat
 heartbeat.setModelService(v2ModelService);
@@ -194,12 +180,11 @@ servicesRef.taskRunner = taskRunner;
 heartbeat.setTaskRunner(taskRunner);
 taskRunner.loadDone().catch(e => console.warn('[TaskRunner] loadDone error:', e.message));
 
-// Signal from chat modal open/close — pauses BG tasks while user is chatting
-app.post('/api/v2/poseidon/chat-active', (req, res) => {
-  const { active } = req.body;
-  taskRunner.setChatActive(!!active);
-  res.json({ ok: true, active: !!active });
-});
+// Mount routes that depend on late-bound taskRunner + v2ModelService (via refs).
+app.use('/api/v2',           buildPoseidonRoutes({ rm: sharedRm, refs: servicesRef }));
+app.use('/api/v2/projects',  buildProjectFileRoutes({ rm: sharedRm }));
+app.use('/api',              buildLegacyV1Routes({ rm: sharedRm }));
+app.use('/api/files',        buildFilesRoutes());
 
 const _originalTick = heartbeat.tick.bind(heartbeat);
 heartbeat.tick = async function() {
@@ -217,21 +202,10 @@ const ReasoningBus = require('./utils/ReasoningBus');
 global.ReasoningBus = ReasoningBus;  // available to TaskRunner, AgentWorker, etc.
 
 // BotService listens for task lifecycle events → targeted Telegram follow-up
-// (only if the task was dispatched via the bot itself)
 ReasoningBus.addListener(ev => {
   if (ev?.type === 'task_lifecycle') botService.onTaskLifecycle(ev).catch(() => {});
 });
-
-// GET /api/v2/reasoning/stream — global SSE stream of all agent activity
-app.get('/api/v2/reasoning/stream', (req, res) => {
-  res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
-  res.setHeader('Connection', 'keep-alive');
-  res.setHeader('X-Accel-Buffering', 'no');
-  res.write('data: {"type":"connected"}\n\n');
-  ReasoningBus.subscribe(res);
-  req.on('close', () => ReasoningBus.unsubscribe(res));
-});
+// GET /api/v2/reasoning/stream is mounted via buildPoseidonRoutes.
 
 // Initialize services
 // ==================== AGENT ROUTES (V1 reads, kept for canvas) ====================
@@ -245,192 +219,13 @@ app.get('/api/v2/reasoning/stream', (req, res) => {
 // ==================== AGENT ROUTES (V1 reads only - canvas reads from registry) ====================
 
 // List all agents (used by aquarium canvas + ui.getAgents)
-app.get('/api/agents', async (req, res) => {
-  try {
-    const agents = await Agent.findAll();
-    res.json({ success: true, agents });
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
 // Get a single agent (used by AgentForm.open when editing)
-app.get('/api/agents/:id', async (req, res) => {
-  try {
-    const agent = await Agent.findById(req.params.id);
-    if (!agent) {
-      return res.status(404).json({ success: false, error: 'Agent not found' });
-    }
-    res.json({ success: true, agent });
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
 // ==================== PROJECT ROUTES ====================
 
 
 // List all projects
-app.get('/api/projects', async (req, res) => {
-  try {
-    const projectsDir = AQUARIUM.PROJECTS;
-    const folders = await fs.readdir(projectsDir);
-    
-    const projects = [];
-    for (const folder of folders) {
-      const memoryPath = path.join(projectsDir, folder, 'project_memory.json');
-      try {
-        const memoryData = await fs.readFile(memoryPath, 'utf8');
-        const memory = JSON.parse(memoryData);
-        projects.push({
-          name: folder,
-          ...memory
-        });
-      } catch (err) {
-        // Project folder exists but no memory file
-        projects.push({
-          name: folder,
-          vision: 'No description',
-          colors: { outside: '#667eea', inside: '#764ba2' }
-        });
-      }
-    }
-    
-    res.json({ success: true, projects });
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
 // Create new project
-app.post('/api/projects', async (req, res) => {
-  try {
-    const { name, vision, colors } = req.body;
-    
-    if (!name) {
-      return res.status(400).json({ success: false, error: 'Project name required' });
-    }
-    
-    const upperName = name.toUpperCase();
-    
-    // 1. Read current registry to figure out next ID
-    sharedRm.invalidateCache();
-    const registry = await sharedRm.read('PROJECTS/project_registry.json');
-    
-    // Check for duplicate name
-    for (const existing of Object.values(registry.projects)) {
-      if (existing.name === upperName) {
-        return res.status(400).json({ success: false, error: `Project "${upperName}" already exists` });
-      }
-    }
-    
-    const nextId = registry.metadata.next_id || 1;
-    const projectId = `project_${String(nextId).padStart(3, '0')}`;
-    // Use slug of project name for folder — more intuitive than PROJECT_001
-    const folderName = RegistryManager.toSlug(upperName);
-    const projectDir = path.join(AQUARIUM.PROJECTS, folderName);
-    
-    // 2. Create folder + subfolders
-    await fs.mkdir(projectDir, { recursive: true });
-    await fs.mkdir(path.join(projectDir, 'input'), { recursive: true });
-    await fs.mkdir(path.join(projectDir, 'output'), { recursive: true });
-    
-    // 3. Write project_memory.json
-    const projectMemory = {
-      schema_version: '2.0.0',
-      schema_type: 'project_memory',
-      project_id: projectId,
-      name: upperName,
-      registered_in: 'PROJECTS/project_registry.json',
-      vision: vision || `${upperName} project workspace`,
-      goals: [],
-      tasks: [],
-      progress: {
-        completion: "0%",
-        blockers: [],
-        recent_achievements: [],
-        next_steps: []
-      },
-      architecture: { frontend: {}, backend: {} },
-      files: { input: [], output: [] },
-      agents_communication: [],
-      decisions: [],
-      colors: colors || { outside: '#667eea', inside: '#764ba2' },
-      created: new Date().toISOString()
-    };
-    
-    await fs.writeFile(
-      path.join(projectDir, 'project_memory.json'),
-      JSON.stringify(projectMemory, null, 2),
-      'utf8'
-    );
-    
-    // 4. Register in project_registry.json (CRITICAL - this is what UI reads)
-    registry.projects[projectId] = {
-      project_id: projectId,
-      name: upperName,
-      folder: folderName,
-      memory_file: `${folderName}/project_memory.json`,
-      status: 'active',
-      colors: colors || { outside: '#667eea', inside: '#764ba2' },
-      temple_shape: 'classic',
-      assigned_agents: [],
-      vision: vision || '',
-      display_order: Object.keys(registry.projects).length,
-      created_at: new Date().toISOString(),
-      metrics: {
-        tasks_total: 0,
-        tasks_completed: 0,
-        tasks_pending: 0,
-        completion_percent: 0
-      }
-    };
-    registry.metadata.next_id = nextId + 1;
-    registry.metadata.last_id_used = nextId;
-    registry.metadata.total_active = (registry.metadata.total_active || 0) + 1;
-    
-    await sharedRm.write('PROJECTS/project_registry.json', registry);
-    await sharedRm.log({
-      event_type: 'project_created',
-      actor: { type: 'human', id: 'human_user' },
-      subject: { type: 'project', id: projectId },
-      action: `Created project ${upperName} (${projectId})`,
-      context: { folder: folderName, vision: vision || '' }
-    });
-    
-    res.json({ success: true, project: { ...projectMemory, project_id: projectId, folder: folderName } });
-  } catch (error) {
-    console.error('[POST /api/projects] error:', error);
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
-// Helper: map project name (e.g. "AQUARIUM") to folder (e.g. "PROJECT_001")
-async function resolveProjectFolder(name) {
-  const registryPath = AQUARIUM.PROJECT_REGISTRY;
-  const data = JSON.parse(await fs.readFile(registryPath, 'utf8'));
-  for (const [id, entry] of Object.entries(data.projects)) {
-    if (entry.name === name.toUpperCase() || entry.folder === name.toUpperCase()) {
-      return entry.folder;
-    }
-  }
-  // Fallback: assume name IS folder
-  return name.toUpperCase();
-}
-
 // Get project memory
-app.get('/api/projects/:name/memory', async (req, res) => {
-  try {
-    const folder = await resolveProjectFolder(req.params.name);
-    const memoryPath = path.join(AQUARIUM.PROJECTS, folder, 'project_memory.json');
-    const memoryData = await fs.readFile(memoryPath, 'utf8');
-    const memory = JSON.parse(memoryData);
-    res.json({ success: true, memory });
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
 // ==================== LOG ROUTES ====================
 // All log access goes through /api/v2/logs (registryRoutes). No legacy alias.
 
@@ -442,132 +237,13 @@ app.get('/api/projects/:name/memory', async (req, res) => {
 const dataProjectsPath = AQUARIUM.PROJECTS;
 
 // GET /api/v2/projects/:projectId/outputs — list output files
-app.get('/api/v2/projects/:projectId/outputs', async (req, res) => {
-  const fsp2 = require('fs').promises;
-  try {
-    const proj = await sharedRm.resolveProjectByNameOrId(req.params.projectId);
-    const folder = proj?.entry?.folder || req.params.projectId.toUpperCase().replace(/[^A-Z0-9_]/g, '_');
-    const outputDir = path.join(AQUARIUM.PROJECTS, folder, 'output');
-    try {
-      const entries = await fsp2.readdir(outputDir, { withFileTypes: true });
-      const files = entries.filter(e => e.isFile()).map(e => {
-        const fp = path.join(outputDir, e.name);
-        let size = 0, mtime = null;
-        try { const s = require('fs').statSync(fp); size = s.size; mtime = s.mtime.toISOString(); } catch {}
-        return { name: e.name, path: fp, size, mtime };
-      });
-      res.json({ success: true, files, dir: outputDir });
-    } catch {
-      res.json({ success: true, files: [], dir: outputDir });
-    }
-  } catch (err) { res.status(500).json({ success: false, error: err.message }); }
-});
-
 // GET /api/v2/projects/:projectId/inputs — list input files
-app.get('/api/v2/projects/:projectId/inputs', async (req, res) => {
-  const fsp2 = require('fs').promises;
-  try {
-    const proj = await sharedRm.resolveProjectByNameOrId(req.params.projectId);
-    const folder = proj?.entry?.folder || req.params.projectId.toUpperCase().replace(/[^A-Z0-9_]/g, '_');
-    const inputDir = path.join(AQUARIUM.PROJECTS, folder, 'input');
-    await fsp2.mkdir(inputDir, { recursive: true });
-    const entries = await fsp2.readdir(inputDir, { withFileTypes: true });
-    const files = entries.filter(e => e.isFile()).map(e => ({
-      name: e.name,
-      path: path.join(inputDir, e.name),
-      size: (() => { try { return require('fs').statSync(path.join(inputDir, e.name)).size; } catch { return 0; } })()
-    }));
-    res.json({ success: true, files });
-  } catch (e) { res.json({ success: true, files: [], error: e.message }); }
-});
-
 // POST /api/v2/projects/:projectId/inputs — upload a file to project input/
 // Body: { fileName: string, content: string (base64 or text), encoding: 'base64'|'utf8' }
-app.post('/api/v2/projects/:projectId/inputs', express.json({ limit: '50mb' }), async (req, res) => {
-  const { fileName, content, encoding = 'utf8' } = req.body;
-  if (!fileName || content === undefined) return res.status(400).json({ success: false, error: 'fileName and content required' });
-  const safeName = fileName.replace(/[^a-zA-Z0-9._\-\ ()]/g, '_');
-  const fsp2 = require('fs').promises;
-  try {
-    const proj = await sharedRm.resolveProjectByNameOrId(req.params.projectId);
-    const folder = proj?.entry?.folder || req.params.projectId.toUpperCase().replace(/[^A-Z0-9_]/g, '_');
-    const inputDir = path.join(AQUARIUM.PROJECTS, folder, 'input');
-    await fsp2.mkdir(inputDir, { recursive: true });
-    const dest = path.join(inputDir, safeName);
-    if (!dest.startsWith(inputDir)) return res.status(403).json({ success: false, error: 'path traversal' });
-    const buf = encoding === 'base64' ? Buffer.from(content, 'base64') : Buffer.from(content, 'utf8');
-    await fsp2.writeFile(dest, buf);
-    res.json({ success: true, fileName: safeName, size: buf.length });
-  } catch (e) { res.status(500).json({ success: false, error: e.message }); }
-});
-
 // DELETE /api/v2/projects/:projectId/inputs/:filename — remove input file
-app.delete('/api/v2/projects/:projectId/inputs/:filename', async (req, res) => {
-  const safeName = req.params.filename.replace(/[^a-zA-Z0-9._\-\ ()]/g, '_');
-  const fsp2 = require('fs').promises;
-  try {
-    const proj = await sharedRm.resolveProjectByNameOrId(req.params.projectId);
-    const folder = proj?.entry?.folder || req.params.projectId.toUpperCase().replace(/[^A-Z0-9_]/g, '_');
-    const filePath = path.join(AQUARIUM.PROJECTS, folder, 'input', safeName);
-    if (!filePath.startsWith(AQUARIUM.PROJECTS)) return res.status(403).json({ success: false, error: 'forbidden' });
-    await fsp2.unlink(filePath); res.json({ success: true });
-  } catch (e) { res.status(404).json({ success: false, error: e.message }); }
-});
-
 // GET /api/v2/projects/:projectId/inputs/:filename — serve input file  
-app.get('/api/v2/projects/:projectId/inputs/:filename', async (req, res) => {
-  const safeName = req.params.filename.replace(/[^a-zA-Z0-9._\-\ ()]/g, '_');
-  try {
-    const proj = await sharedRm.resolveProjectByNameOrId(req.params.projectId);
-    const folder = proj?.entry?.folder || req.params.projectId.toUpperCase().replace(/[^A-Z0-9_]/g, '_');
-    const filePath = path.join(AQUARIUM.PROJECTS, folder, 'input', safeName);
-    if (!filePath.startsWith(AQUARIUM.PROJECTS)) return res.status(403).send('Forbidden');
-    res.sendFile(filePath, err => { if (err) res.status(404).json({ error: 'Input file not found' }); });
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-app.get('/api/v2/projects/:projectId/outputs/:filename', async (req, res) => {
-  const safeFile = req.params.filename.replace(/[^a-zA-Z0-9._\- ()]/g, '');
-  try {
-    const proj = await sharedRm.resolveProjectByNameOrId(req.params.projectId);
-    const folder = proj?.entry?.folder || req.params.projectId.toUpperCase().replace(/[^A-Z0-9_]/g, '_');
-    const filePath = path.join(AQUARIUM.PROJECTS, folder, 'output', safeFile);
-    if (!filePath.startsWith(AQUARIUM.PROJECTS)) return res.status(403).send('Forbidden');
-    res.sendFile(filePath, err => { if (err) res.status(404).json({ error: 'Output file not found' }); });
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});;
-
 // GET /api/files/read?path=... — read any file within aquarium or project dirs
 // Used by TempleInterior to load input/output file content for display
-app.get('/api/files/read', async (req, res) => {
-  const reqPath = req.query.path;
-  if (!reqPath) return res.status(400).json({ error: 'path required' });
-  const fsp2 = require('fs').promises;
-  // Resolve absolute path — allow aquarium root and project dirs
-  let absPath = reqPath;
-  if (!path.isAbsolute(absPath)) {
-    absPath = path.join(AQUARIUM.ROOT, reqPath);
-  }
-  // Security: must be inside aquarium root
-  const resolved = path.resolve(absPath);
-  if (!resolved.startsWith(path.resolve(AQUARIUM.ROOT))) {
-    return res.status(403).json({ error: 'Access denied: path outside aquarium' });
-  }
-  try {
-    const ext = path.extname(resolved).toLowerCase();
-    const isImage = ['.png','.jpg','.jpeg','.gif','.webp','.svg','.bmp'].includes(ext);
-    if (isImage) {
-      return res.sendFile(resolved, err => {
-        if (err) res.status(404).json({ error: 'File not found: ' + resolved });
-      });
-    }
-    const content = await fsp2.readFile(resolved, 'utf8');
-    res.json({ content });
-  } catch (e) {
-    res.status(404).json({ error: 'File not found: ' + e.message, path: resolved });
-  }
-});
-
 // Serve static files — disable caching for JS/CSS so changes reload immediately
 app.use(express.static(path.join(__dirname, '../client'), {
   setHeaders(res, filePath) {
@@ -702,102 +378,8 @@ async function start() {
 start();
 
 // File browser endpoint
-app.post('/api/files/browse', async (req, res) => {
-  try {
-    const { path: dirPath } = req.body;
-    
-    if (!dirPath) {
-      return res.status(400).json({ success: false, error: 'Path required' });
-    }
-    
-    // Security: prevent path traversal outside home
-    const resolvedPath = path.resolve(dirPath);
-    
-    try {
-      const entries = await fs.readdir(resolvedPath, { withFileTypes: true });
-      
-      const results = await Promise.all(
-        entries.map(async (entry) => {
-          const entryPath = path.join(resolvedPath, entry.name);
-          let size = null;
-          
-          if (entry.isFile()) {
-            try {
-              const stats = await fs.stat(entryPath);
-              size = stats.size;
-            } catch (err) {
-              // Ignore stat errors
-            }
-          }
-          
-          return {
-            name: entry.name,
-            path: entryPath,
-            type: entry.isDirectory() ? 'directory' : 'file',
-            size
-          };
-        })
-      );
-      
-      res.json({ success: true, entries: results });
-    } catch (error) {
-      res.status(500).json({ success: false, error: error.message });
-    }
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
-console.log('  POST   /api/files/browse   - File browser');
 
 const BRAIN_PATH = AQUARIUM.POSEIDON_BRAIN;
 
 // Repair missing project JSONs
-app.post('/api/projects/:name/repair', async (req, res) => {
-  try {
-    const projectDir = path.join(AQUARIUM.PROJECTS, req.params.name.toUpperCase());
-    const memoryPath = path.join(projectDir, 'project_memory.json');
-    
-    // Check if project_memory.json exists
-    try {
-      await fs.access(memoryPath);
-      return res.json({ success: true, message: 'Project memory already exists' });
-    } catch {
-      // Create missing project_memory.json
-      const projectMemory = {
-        project: req.params.name.toUpperCase(),
-        vision: `${req.params.name} project workspace`,
-        goals: [],
-        tasks: [],
-        progress: {
-          completion: "0%",
-          blockers: [],
-          recent_achievements: [],
-          next_steps: []
-        },
-        architecture: {
-          frontend: {},
-          backend: {}
-        },
-        files: {
-          input: [],
-          output: []
-        },
-        agents_communication: [],
-        decisions: [],
-        colors: {
-          outside: '#667eea',
-          inside: '#764ba2'
-        },
-        created: new Date().toISOString()
-      };
-      
-      await fs.writeFile(memoryPath, JSON.stringify(projectMemory, null, 2), 'utf8');
-      res.json({ success: true, message: 'Created missing project_memory.json' });
-    }
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
 console.log('✅ Project repair endpoint added');
