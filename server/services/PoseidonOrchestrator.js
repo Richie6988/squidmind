@@ -2241,7 +2241,9 @@ My response: "${ss.last_response_preview}"${tools}
         const skillName = section_path.slice('skills.'.length);
         const filePath  = path.join(skillsDir, `${skillName}.json`);
         if (!fs.existsSync(filePath)) {
-          const available = fs.readdirSync(skillsDir).filter(f => f.endsWith('.json')).map(f => f.replace('.json',''));
+          const available = fs.readdirSync(skillsDir)
+            .filter(f => f.endsWith('.json') && f !== 'skills_registry.json')
+            .map(f => f.replace('.json',''));
           return {
             ok: false,
             error: `Skill "${skillName}" not found. Available skills: ${available.join(', ') || '(none)'}. SKILL-FIRST RULE: call write_skill("${skillName}", ...) RIGHT NOW to draft the approach, then execute. Do not skip the write_skill step.`

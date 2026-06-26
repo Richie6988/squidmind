@@ -6,11 +6,12 @@
   "scripts": {
     "start": "node server/index.js",
     "dev": "node --watch server/index.js",
-    "test": "npm run test:smoke && npm run test:integration && npm run test:stream",
+    "test": "npm run test:smoke && npm run test:integration && npm run test:stream && npm run test:orchestrator",
     "rebuild-llama": "bash scripts/rebuild-llama.sh",
     "test:smoke": "node tests/smoke.test.js",
     "test:integration": "node tests/integration.test.js",
     "test:stream": "node tests/stream.test.js",
+    "test:orchestrator": "node tests/orchestrator.test.js",
     "fresh": "bash scripts/fresh-start.sh"
   },
   "keywords": [
