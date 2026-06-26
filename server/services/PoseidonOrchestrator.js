@@ -65,7 +65,7 @@ class PoseidonOrchestrator {
    *
    * Strategy (the user's call: short context wins):
    *   - aquarium/BRAIN/poseidon_brain.json is the SINGLE SOURCE OF TRUTH.
-   *     Identity, rules, soul, processes, tools_catalog all live there.
+   *     Identity, rules, soul, tools_catalog all live there.
    *     Code reads from brain.json - it never embeds prompt text inline.
    *   - The initial system prompt is intentionally TIGHT (~2k chars):
    *       ABSOLUTE_RULES (always - hard rules)
@@ -1071,7 +1071,30 @@ My response: "${ss.last_response_preview}"${tools}
         },
         handler: async (params) => self.tools.githubCommit(params)
       }),
-      
+
+      github_diff: defineChatSessionFunction({
+        description: 'Show unstaged + staged diff for the working tree, or for a specific file path. Truncated to ~8000 chars. Use before committing to verify changes.',
+        params: {
+          type: 'object',
+          properties: {
+            path: { type: 'string', description: 'Optional file path. Omit to diff whole repo.' }
+          }
+        },
+        handler: async (params) => self.tools.githubDiff(params || {})
+      }),
+
+      github_push: defineChatSessionFunction({
+        description: 'Push committed changes to remote. Defaults to origin + current branch. Returns hint if no upstream is set.',
+        params: {
+          type: 'object',
+          properties: {
+            remote: { type: 'string', description: 'Remote name (default: origin)' },
+            branch: { type: 'string', description: 'Branch name (default: current HEAD)' }
+          }
+        },
+        handler: async (params) => self.tools.githubPush(params || {})
+      }),
+
       // ============ USER LEARNING ============
       
       update_user_context: defineChatSessionFunction({
@@ -1115,9 +1138,6 @@ My response: "${ss.last_response_preview}"${tools}
             }
             const skill = { skill_id, name, version, summary, triggers: triggers||[], steps, notes: notes||[], created_by: 'poseidon', updated_at: new Date().toISOString() };
             await fs.writeFile(filePath, JSON.stringify(skill, null, 2), 'utf8');
-            // Also update server/skills/ seed if it exists
-            const seedPath = path.join(__dirname, '../skills', `${skill_id}.json`);
-            await fs.writeFile(seedPath, JSON.stringify(skill, null, 2), 'utf8').catch(() => {});
             await self.rm.log({ event_type: 'skill_created', actor: { type: 'system', id: 'poseidon_main' },
               subject: { type: 'skill', id: skill_id }, action: `${existed?'Updated':'Created'} skill: ${name}` });
             return { ok: true, skill_id, message: `Skill "${name}" ${existed?'updated':'created'} in aquarium/SKILLS/${skill_id}.json` };
@@ -1351,7 +1371,6 @@ My response: "${ss.last_response_preview}"${tools}
         'create_task', 'update_task', 'list_tasks',
         'update_project_memory', 'read_project_memory', 'audit_project',
         'list_models', 'generate_image',
-        'get_datetime',
       ]);
       const slim = {};
       for (const [k, v] of Object.entries(allFunctions)) {
@@ -1863,7 +1882,6 @@ My response: "${ss.last_response_preview}"${tools}
       const filePath = path.join(AQUARIUM.SKILLS, `${skill_id}.json`);
       if (!fs.existsSync(filePath)) return { ok: false, error: `Skill "${skill_id}" not found.` };
       await fsp.unlink(filePath);
-      await fsp.unlink(path.join(__dirname, '../skills', `${skill_id}.json`)).catch(() => {});
       // Rebuild positive registry
       const regPath = path.join(AQUARIUM.SKILLS, 'skills_registry.json');
       try {
