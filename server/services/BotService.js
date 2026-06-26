@@ -74,6 +74,19 @@ class BotService extends EventEmitter {
     this._history     = [];   // { at, platform, from, text, reply, ok }
     this._MAX_HISTORY = 50;
     this._processing  = new Set(); // prevent concurrent responses to same user
+
+    // Per-chat conversation memory (key: 'tg:<chatId>' or 'ds:<channelId>')
+    //   { lastTurns: [{role, content, at}], lastN: 6 }
+    this._conversations = new Map();
+    this._MAX_TURNS     = 6;
+
+    // Per-chat preferences (persisted into comms_config.telegram.chat_prefs[chatId])
+    //   { subscribed: bool, voice_replies: bool, language: 'fr'|'en' }
+    // Loaded lazily from config; getChatPrefs(chatId) returns defaults if missing.
+
+    // Tasks dispatched via this bot — receive targeted follow-up notifications
+    //   Map<task_id, { platform, chatId, fromUser, dispatchedAt }>
+    this._dispatchedTasks = new Map();
   }
 
   // ── Config I/O ─────────────────────────────────────────────────────────────
@@ -219,13 +232,20 @@ class BotService extends EventEmitter {
         const updates = await this._tgCall(token, 'getUpdates', {
           offset: this._tgOffset,
           timeout: 30,
-          allowed_updates: ['message']
+          allowed_updates: ['message', 'callback_query']
         }, { signal: controller.signal, fetchTimeout: 35000 });
 
         for (const upd of updates) {
           this._tgOffset = upd.update_id + 1;
+          if (upd.callback_query) {
+            this._handleTgCallback(token, upd.callback_query).catch(e =>
+              log.warn('callback handler error:', e.message));
+            continue;
+          }
           const msg = upd.message;
-          if (!msg?.text) continue;
+          // Accept text, voice, photo+caption, document+caption
+          if (!msg) continue;
+          if (!msg.text && !msg.voice && !msg.photo && !msg.document) continue;
           // Fire-and-forget per message
           this._handleTgMessage(token, msg).catch(e =>
             log.warn('handler error:', e.message)
@@ -246,20 +266,44 @@ class BotService extends EventEmitter {
     const chatId   = msg.chat.id;
     const userId   = msg.from?.id;
     const username = msg.from?.username || msg.from?.first_name || String(userId);
-    const text     = msg.text.trim();
 
-    // Security: whitelist check
+    // Security: whitelist check (BEFORE we do anything else)
     const allowed = this.config.telegram.allowed_chat_ids;
     if (allowed.length > 0 && !allowed.map(String).includes(String(chatId))) {
       log.warn(`Rejected message from chat ${chatId}`);
       await this._tgCall(token, 'sendMessage', {
         chat_id: chatId,
-        text: '⛔ Unauthorized. This Poseidon instance is private.'
+        text: '⛔ Unauthorized. This Poseidon instance is private.\nYour chat_id: `' + chatId + '`',
+        parse_mode: 'Markdown'
       });
       return;
     }
 
-    // Prevent concurrent from same user
+    // Expose chat context for slash commands
+    this._currentChatId = chatId;
+    this._currentUser   = username;
+
+    // Detect message type — text, voice, photo, document — and extract text accordingly
+    let text = '';
+    let messageType = 'text';
+    if (msg.text) {
+      text = msg.text.trim();
+    } else if (msg.voice) {
+      messageType = 'voice';
+      // Will be transcribed below — set placeholder for now
+    } else if (msg.photo || msg.document) {
+      messageType = 'media';
+      text = msg.caption?.trim() || '';
+    } else {
+      // Sticker, location, etc — ignore politely
+      await this._tgCall(token, 'sendMessage', {
+        chat_id: chatId,
+        text: 'ℹ️ I only understand text, voice messages, and captioned media.'
+      });
+      return;
+    }
+
+    // Prevent concurrent
     const key = `tg:${chatId}`;
     if (this._processing.has(key)) {
       await this._tgCall(token, 'sendMessage', {
@@ -270,13 +314,40 @@ class BotService extends EventEmitter {
     }
     this._processing.add(key);
 
-    // Send typing indicator
-    this._tgCall(token, 'sendChatAction', { chat_id: chatId, action: 'typing' }).catch(() => {});
+    // Typing indicator (recording for voice)
+    const action = messageType === 'voice' ? 'record_voice' : 'typing';
+    this._tgCall(token, 'sendChatAction', { chat_id: chatId, action }).catch(() => {});
 
     const entry = { at: new Date().toISOString(), platform: 'telegram', from: username, text, reply: null, ok: false };
 
     try {
-      // ── Slash commands — handled locally, never sent to Poseidon LLM ──────
+      // ── Voice message: download → STT → continue as if it were text ─────────
+      if (messageType === 'voice') {
+        try {
+          const audioBuf = await this._tgDownloadFile(token, msg.voice.file_id);
+          const prefs    = this.getChatPrefs('telegram', chatId);
+          text = await this._transcribeVoice(audioBuf, prefs.language);
+          if (!text) {
+            await this._tgCall(token, 'sendMessage', { chat_id: chatId, text: '🎙 Could not transcribe — empty result.' });
+            return;
+          }
+          // Echo what we heard so the user can correct if needed
+          await this._tgCall(token, 'sendMessage', {
+            chat_id: chatId,
+            text: `🎙 _Heard:_ ${text.slice(0, 300)}`,
+            parse_mode: 'Markdown',
+          }).catch(() => {});
+          entry.text = '[voice] ' + text.slice(0, 200);
+        } catch (e) {
+          await this._tgCall(token, 'sendMessage', {
+            chat_id: chatId,
+            text: `🎙 Voice transcription failed: ${e.message}\nMake sure Speaches is reachable.`
+          });
+          return;
+        }
+      }
+
+      // ── Slash command (handled locally, never sent to Poseidon LLM) ─────────
       if (text.startsWith('/')) {
         const reply = await this._handleSlashCommand(text, 'telegram');
         for (const chunk of this._splitMessage(reply, 4096)) {
@@ -286,17 +357,26 @@ class BotService extends EventEmitter {
         return;
       }
 
-      const reply = await this._runPoseidon(text, `telegram:${chatId}`);
-
-      // Telegram message limit = 4096 chars; chunk if needed
+      // ── Free-text → Poseidon ────────────────────────────────────────────────
+      const reply  = await this._runPoseidon(text, `telegram:${chatId}`);
+      const prefs  = this.getChatPrefs('telegram', chatId);
       const chunks = this._splitMessage(reply, 4096);
       for (const chunk of chunks) {
-        await this._tgCall(token, 'sendMessage', {
-          chat_id: chatId,
-          text: chunk
-          // No parse_mode: avoids Telegram entity-parsing errors on special chars
-        });
+        await this._tgCall(token, 'sendMessage', { chat_id: chatId, text: chunk });
       }
+
+      // ── Optional TTS reply ──────────────────────────────────────────────────
+      if (prefs.voice_replies && reply.length < 1500) {
+        try {
+          // Strip markdown / tool annotations for cleaner speech
+          const speech = reply.replace(/_Used:[^_]+_\n+/g, '').replace(/[*_`]/g, '').trim();
+          if (speech.length > 5) {
+            const audio = await this._synthesizeReply(speech, prefs.language);
+            await this._tgSendVoice(token, chatId, audio);
+          }
+        } catch (e) { log.warn('TTS reply failed:', e.message); }
+      }
+
       entry.reply = reply.slice(0, 300);
       entry.ok    = true;
     } catch (err) {
@@ -305,7 +385,38 @@ class BotService extends EventEmitter {
       entry.reply = errMsg;
     } finally {
       this._processing.delete(key);
+      this._currentChatId = null;
+      this._currentUser   = null;
       this._logHistory(entry);
+    }
+  }
+
+  /** Handle callback_query (inline button click). */
+  async _handleTgCallback(token, cb) {
+    const chatId = cb.message?.chat?.id;
+    const data   = cb.data || '';
+    // Acknowledge so the button stops spinning
+    await this._tgCall(token, 'answerCallbackQuery', { callback_query_id: cb.id }).catch(() => {});
+    if (!chatId) return;
+
+    // Whitelist
+    const allowed = this.config.telegram.allowed_chat_ids;
+    if (allowed.length > 0 && !allowed.map(String).includes(String(chatId))) return;
+
+    this._currentChatId = chatId;
+    this._currentUser   = cb.from?.username || String(cb.from?.id);
+
+    try {
+      if (data.startsWith('cmd:')) {
+        const cmdText = data.slice(4);
+        const reply = await this._handleSlashCommand(cmdText, 'telegram');
+        for (const chunk of this._splitMessage(reply, 4096)) {
+          await this._tgCall(token, 'sendMessage', { chat_id: chatId, text: chunk });
+        }
+      }
+    } finally {
+      this._currentChatId = null;
+      this._currentUser   = null;
     }
   }
 
@@ -605,6 +716,156 @@ class BotService extends EventEmitter {
    *   /tasks              — show last 5 tasks status
    *   /restart            — unload + reload current Poseidon model
    */
+  // ── Per-chat preferences ────────────────────────────────────────────────────
+
+  getChatPrefs(platform, chatId) {
+    const key = String(chatId);
+    const prefs = this.config?.[platform]?.chat_prefs?.[key] || {};
+    return {
+      subscribed:    prefs.subscribed    ?? true,    // receive notify() broadcasts
+      voice_replies: prefs.voice_replies ?? false,   // get TTS audio for replies
+      language:      prefs.language      || this.config?.voice?.language || 'en',
+    };
+  }
+
+  async setChatPrefs(platform, chatId, patch) {
+    const cfg = this.config || (await this.loadConfig());
+    if (!cfg[platform]) cfg[platform] = {};
+    if (!cfg[platform].chat_prefs) cfg[platform].chat_prefs = {};
+    const key = String(chatId);
+    cfg[platform].chat_prefs[key] = { ...(cfg[platform].chat_prefs[key] || {}), ...patch };
+    this.config = cfg;
+    await this._saveConfig();
+  }
+
+  // ── Dispatched-task tracking (targeted follow-up) ──────────────────────────
+
+  trackDispatchedTask(taskId, info) {
+    this._dispatchedTasks.set(taskId, { ...info, dispatchedAt: Date.now() });
+    // Prune entries older than 24h
+    const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+    for (const [id, e] of this._dispatchedTasks) {
+      if (e.dispatchedAt < cutoff) this._dispatchedTasks.delete(id);
+    }
+  }
+
+  /** Called by index.js when ReasoningBus emits task_lifecycle. */
+  async onTaskLifecycle(event) {
+    if (!event || event.type !== 'task_lifecycle') return;
+    const entry = this._dispatchedTasks.get(event.task_id);
+    if (!entry) return;  // not dispatched via bot — skip targeted notify
+    this._dispatchedTasks.delete(event.task_id);
+
+    const ok    = event.status === 'completed';
+    const icon  = ok ? '✅' : event.status === 'failed' ? '❌' : '⚠️';
+    const title = (event.title || event.task_id).slice(0, 80);
+    const lines = [
+      `${icon} *${title}* — ${event.status}`,
+      '   _by_ `' + (event.assigned_name || event.task_id) + '`',
+    ];
+    if (event.result_summary) lines.push('\n' + event.result_summary.slice(0, 300));
+
+    if (entry.platform === 'telegram') {
+      const token = this.config?.telegram?.token;
+      if (!token) return;
+      const reply_markup = {
+        inline_keyboard: [[
+          { text: '📋 Tasks', callback_data: 'cmd:/tasks' },
+          { text: '🔍 Status', callback_data: 'cmd:/status' },
+        ]],
+      };
+      try {
+        await this._tgCall(token, 'sendMessage', {
+          chat_id: entry.chatId,
+          text: lines.join('\n'),
+          // No parse_mode — plain text avoids Telegram entity-parsing errors
+          reply_markup,
+        });
+      } catch (e) { log.warn('targeted follow-up failed:', e.message); }
+    }
+  }
+
+  // ── Markdown escape (MarkdownV2 strict) ─────────────────────────────────────
+
+  _mdEscape(s) {
+    // Only escape outside of code-spans. Telegram MarkdownV2 needs these chars escaped:
+    //   _ * [ ] ( ) ~ ` > # + - = | { } . !
+    // We preserve our intentional formatting (bold via *, code via `).
+    if (!s) return '';
+    let out = '';
+    let inCode = false;  // backtick state
+    let inBold = false;  // single * state
+    for (let i = 0; i < s.length; i++) {
+      const c = s[i];
+      if (c === '`') { inCode = !inCode; out += c; continue; }
+      if (inCode)    { out += c; continue; }
+      if (c === '*') { inBold = !inBold; out += c; continue; }
+      if ('_[]()~>#+-=|{}.!\\'.includes(c)) out += '\\\\' + c;
+      else out += c;
+    }
+    return out;
+  }
+
+  // ── Voice (Telegram only) ──────────────────────────────────────────────────
+
+  /** Download a Telegram file (voice/photo/document) and return Buffer. */
+  async _tgDownloadFile(token, file_id) {
+    const info = await this._tgCall(token, 'getFile', { file_id });
+    if (!info?.ok || !info.result?.file_path) throw new Error('getFile failed');
+    const url  = `https://api.telegram.org/file/bot${token}/${info.result.file_path}`;
+    const res  = await fetch(url);
+    if (!res.ok) throw new Error(`download ${res.status}`);
+    return Buffer.from(await res.arrayBuffer());
+  }
+
+  /** Transcribe voice via internal /api/v2/voice/stt. */
+  async _transcribeVoice(audioBuf, language) {
+    const port    = process.env.PORT || 3000;
+    const baseUrl = `http://localhost:${port}`;
+    const form    = new FormData();
+    form.append('file', new Blob([audioBuf], { type: 'audio/ogg' }), 'voice.ogg');
+    if (language) form.append('language', language);
+    const res = await fetch(`${baseUrl}/api/v2/voice/stt`, { method: 'POST', body: form });
+    if (!res.ok) throw new Error(`STT ${res.status}`);
+    const j = await res.json();
+    return j.text || j.transcription || '';
+  }
+
+  /** Synthesize TTS audio for a reply, returns Buffer (ogg/opus). */
+  async _synthesizeReply(text, language) {
+    const port    = process.env.PORT || 3000;
+    const baseUrl = `http://localhost:${port}`;
+    const body = {
+      text:     text.slice(0, 2000),
+      language: language || this.config?.voice?.language || 'en',
+      voice:    this.config?.voice?.tts_voice || 'af_heart',
+      model:    this.config?.voice?.tts_model || 'kokoro',
+      speed:    this.config?.voice?.tts_speed || 1.0,
+    };
+    const res = await fetch(`${baseUrl}/api/v2/voice/tts`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) throw new Error(`TTS ${res.status}`);
+    return Buffer.from(await res.arrayBuffer());
+  }
+
+  /** Send voice (ogg/opus) via Telegram sendVoice. */
+  async _tgSendVoice(token, chatId, audioBuf, caption) {
+    const form = new FormData();
+    form.append('chat_id', String(chatId));
+    form.append('voice', new Blob([audioBuf], { type: 'audio/ogg' }), 'reply.ogg');
+    if (caption) form.append('caption', caption.slice(0, 1024));
+    const url = `${TG_API_BASE}${token}/sendVoice`;
+    const res = await fetch(url, { method: 'POST', body: form });
+    if (!res.ok) {
+      const t = await res.text().catch(() => '');
+      throw new Error(`sendVoice ${res.status} ${t.slice(0, 200)}`);
+    }
+    return res.json();
+  }
+
   async _handleSlashCommand(text, platform) {
     const [cmd, ...args] = text.split(/\s+/);
     const arg = args.join(' ').trim();
@@ -615,15 +876,34 @@ class BotService extends EventEmitter {
         return [
           '🔱 *IAQUA Bot Commands*',
           '',
-          '`/models`        — list all models in library',
-          '`/load <name>`   — load a model (fuzzy name match)',
-          '`/unload`        — unload current model (free VRAM)',
-          '`/restart`       — unload + reload current Poseidon model',
-          '`/status`        — system status (model, ctx, VRAM, tasks)',
-          '`/ctx`           — context window details',
-          '`/tasks`         — recent task status',
+          '*Models*',
+          '`/models`              — list all models',
+          '`/load <name>`         — load model (fuzzy match)',
+          '`/unload`              — unload all (free VRAM)',
+          '`/restart`             — unload + reload Poseidon',
           '',
-          'Any other message is sent to Poseidon for processing.',
+          '*Status*',
+          '`/status`              — system overview',
+          '`/ctx`                 — context window details',
+          '`/tasks`               — recent task status',
+          '`/agents`              — active agents',
+          '`/projects`            — projects + completion',
+          '`/skills`              — available skills',
+          '',
+          '*Actions*',
+          '`/dispatch <agent> <text>` — create + assign task',
+          '`/cancel <task_id>`        — cancel running task',
+          '`/audit <project>`         — Poseidon audits project',
+          '`/dream`                   — trigger dream cycle now',
+          '',
+          '*Preferences*',
+          '`/sub on|off`          — receive event notifications',
+          '`/voice on|off`        — receive TTS audio replies',
+          '`/lang fr|en`          — response language',
+          '`/clear`               — reset conversation context',
+          '`/whoami`              — show your chat_id',
+          '',
+          'Anything else → Poseidon. Voice notes are auto-transcribed.',
         ].join('\n');
 
       case '/models': {
@@ -811,6 +1091,170 @@ class BotService extends EventEmitter {
         } catch (e) { return `❌ Tasks error: ${e.message}`; }
       }
 
+      case '/agents': {
+        try {
+          const reg = await this.rm.getAgentRegistry();
+          const agents = Object.values(reg.agents || {});
+          if (!agents.length) return 'ℹ️ No agents yet. Create one via the UI.';
+          const lines = ['🦑 *Agents*', ''];
+          for (const a of agents.slice(0, 20)) {
+            const icon = a.status === 'active' ? '🟢' : a.status === 'sleeping' ? '💤' : '⚪';
+            const done = a.performance_summary?.tasks_completed || 0;
+            const sr   = a.performance_summary?.success_rate
+              ? Math.round(a.performance_summary.success_rate * 100) + '%' : '–';
+            lines.push(`${icon} \`${a.agent_id}\` ${a.display_name || ''}`);
+            lines.push(`   ${done} done · ${sr} success · ${a.specialization || 'general'}`);
+          }
+          return lines.join('\n');
+        } catch (e) { return `❌ Agents error: ${e.message}`; }
+      }
+
+      case '/projects': {
+        try {
+          const pReg = await this.rm.read('projects/project_registry.json');
+          const tReg = await this.rm.getTasksRegistry();
+          const projects = Object.values(pReg.projects || {});
+          if (!projects.length) return 'ℹ️ No projects yet.';
+          const allTasks = Object.values(tReg.tasks || {});
+          const lines = ['📂 *Projects*', ''];
+          for (const p of projects.slice(0, 15)) {
+            const active = allTasks.filter(t =>
+              (t.project_id === p.project_id || t.project_name === p.name) &&
+              ['planned', 'in_progress'].includes(t.lifecycle?.status || t.status)).length;
+            const done = p.metrics?.tasks_completed || 0;
+            lines.push(`📁 *${p.name}*`);
+            lines.push(`   ${done} done · ${active} active · ${(p.assigned_agents || []).length} agents`);
+          }
+          return lines.join('\n');
+        } catch (e) { return `❌ Projects error: ${e.message}`; }
+      }
+
+      case '/skills': {
+        try {
+          const reg = await this.rm.read('SKILLS/skills_registry.json');
+          const skills = Object.values(reg.skills || {});
+          if (!skills.length) return 'ℹ️ No skills.';
+          const lines = ['🎯 *Skills* (' + skills.length + ')', ''];
+          for (const s of skills.slice(0, 25)) {
+            lines.push(`• \`${s.skill_id || s.name}\` ${s.description ? '— ' + s.description.slice(0,60) : ''}`);
+          }
+          return lines.join('\n');
+        } catch (e) { return `❌ Skills error: ${e.message}`; }
+      }
+
+      case '/dispatch': {
+        if (!arg) return '❌ Usage: `/dispatch <agent> <task description>`';
+        const parts = arg.split(/\s+/);
+        if (parts.length < 2) return '❌ Need both agent and task description.';
+        const agentQuery = parts[0].toLowerCase();
+        const description = parts.slice(1).join(' ');
+        try {
+          const reg = await this.rm.getAgentRegistry();
+          const agents = Object.values(reg.agents || {});
+          const agent = agents.find(a => a.agent_id === agentQuery)
+            || agents.find(a => (a.display_name || '').toLowerCase() === agentQuery)
+            || agents.find(a => a.agent_id.includes(agentQuery))
+            || agents.find(a => (a.display_name || '').toLowerCase().includes(agentQuery));
+          if (!agent) return `❌ No agent matching \`${agentQuery}\`. Use /agents to list.`;
+          const title = description.slice(0, 60);
+          const task = await this.rm.createTask({
+            title, description, assigned_to: agent.agent_id,
+            task_type: 'text',
+          });
+          if (this._currentChatId) {
+            this.trackDispatchedTask(task.task_id, { platform, chatId: this._currentChatId, fromUser: this._currentUser });
+          }
+          return `✅ Dispatched \`${task.task_id}\` → ${agent.display_name || agent.agent_id}\n_${title}_\n\nYou'll get a notification when it completes.`;
+        } catch (e) { return `❌ Dispatch error: ${e.message}`; }
+      }
+
+      case '/cancel': {
+        if (!arg) return '❌ Usage: `/cancel <task_id>`';
+        try {
+          const taskId = arg.startsWith('task_') ? arg : `task_${arg.padStart(4, '0')}`;
+          const task = await this.rm._readTaskDetails(taskId);
+          if (!task) return `❌ Task \`${taskId}\` not found.`;
+          task.lifecycle = task.lifecycle || {};
+          task.lifecycle.status = 'cancelled';
+          task.status = 'cancelled';
+          task.lifecycle.completed_at = new Date().toISOString();
+          await this.rm._writeTaskDetails(taskId, task);
+          return `🛑 \`${taskId}\` cancelled.`;
+        } catch (e) { return `❌ Cancel error: ${e.message}`; }
+      }
+
+      case '/audit': {
+        if (!arg) return '❌ Usage: `/audit <project_name>`';
+        if (!this.modelService.queueBgMessage) return '❌ Background tasks not available.';
+        const msg = `PROJECT AUDIT (Telegram trigger): "${arg}"\n` +
+          `Call audit_project("${arg}") and report completion %, blockers, next 3 priorities. Be concise.`;
+        this.modelService.queueBgMessage(msg, `audit_${arg.replace(/\s+/g, '_')}`);
+        return `🔍 Audit of *${arg}* queued. Poseidon will report shortly.`;
+      }
+
+      case '/dream': {
+        if (this.modelService.queueBgMessage) {
+          this.modelService.queueBgMessage(
+            'DREAM TRIGGER (Telegram): consolidate recent activity into soul.json. Be concise.',
+            `dream_${Date.now()}`);
+          return '🌙 Dream cycle requested. Poseidon will consolidate memory shortly.';
+        }
+        return '❌ Dream trigger not available.';
+      }
+
+      case '/sub': {
+        if (!this._currentChatId) return '❌ Use this in your direct chat.';
+        const on = (arg || '').toLowerCase() === 'on';
+        const off = (arg || '').toLowerCase() === 'off';
+        if (!on && !off) {
+          const prefs = this.getChatPrefs(platform, this._currentChatId);
+          return `🔔 Notifications: *${prefs.subscribed ? 'on' : 'off'}*\nToggle with \`/sub on\` or \`/sub off\``;
+        }
+        await this.setChatPrefs(platform, this._currentChatId, { subscribed: on });
+        return on ? '🔔 You will receive task/system notifications.' : '🔕 Notifications muted for this chat.';
+      }
+
+      case '/voice': {
+        if (!this._currentChatId) return '❌ Use this in your direct chat.';
+        const on  = (arg || '').toLowerCase() === 'on';
+        const off = (arg || '').toLowerCase() === 'off';
+        if (!on && !off) {
+          const prefs = this.getChatPrefs(platform, this._currentChatId);
+          return `🎙 Voice replies: *${prefs.voice_replies ? 'on' : 'off'}*\nToggle with \`/voice on\` or \`/voice off\``;
+        }
+        await this.setChatPrefs(platform, this._currentChatId, { voice_replies: on });
+        return on ? '🎙 Replies will also come as voice audio (when Speaches is reachable).' : '🔇 Voice replies disabled.';
+      }
+
+      case '/lang': {
+        if (!this._currentChatId) return '❌ Use this in your direct chat.';
+        const lang = (arg || '').toLowerCase();
+        if (!['fr', 'en'].includes(lang)) {
+          const prefs = this.getChatPrefs(platform, this._currentChatId);
+          return `🌐 Language: *${prefs.language}*\nSet with \`/lang fr\` or \`/lang en\``;
+        }
+        await this.setChatPrefs(platform, this._currentChatId, { language: lang });
+        return `🌐 Replies in *${lang}* preferred.`;
+      }
+
+      case '/clear': {
+        const key = `${platform}:${this._currentChatId}`;
+        this._conversations.delete(key);
+        this._convHistory?.delete(key);
+        return '🧹 Conversation context cleared. Next message starts fresh.';
+      }
+
+      case '/whoami': {
+        return [
+          '👤 *Your identity*',
+          `Chat ID:  \`${this._currentChatId || '?'}\``,
+          `User:     ${this._currentUser || '?'}`,
+          `Platform: ${platform}`,
+          '',
+          'Add this chat ID to `allowed_chat_ids` in IAQUA → Comms to authorise.',
+        ].join('\n');
+      }
+
       default:
         return `❓ Unknown command: \`${cmd}\`\nType /help for available commands.`;
     }
@@ -838,7 +1282,14 @@ class BotService extends EventEmitter {
 
     // Build context prefix with aquarium paths + project locations
     const ctx = await this._buildBotContext();
-    const enrichedText = `${ctx}\n\n---\n${text}`;
+
+    // Append per-chat language preference so Poseidon replies in user's preferred language
+    const [platform, chatId] = conversationKey.split(':');
+    const prefs   = chatId ? this.getChatPrefs(platform, chatId) : { language: 'en' };
+    const langHint = prefs.language === 'fr'
+      ? '\n\n[Reply in French unless the user wrote in another language.]'
+      : '\n\n[Reply in English unless the user wrote in another language.]';
+    const enrichedText = `${ctx}${langHint}\n\n---\n${text}`;
 
     let fullText = '';
     let toolSummary = [];
@@ -919,6 +1370,9 @@ class BotService extends EventEmitter {
         const token   = this.config.telegram.token;
         const chatIds = this.config.telegram.allowed_chat_ids || [];
         for (const chatId of chatIds) {
+          // Respect per-chat subscription preference
+          const prefs = this.getChatPrefs('telegram', chatId);
+          if (!prefs.subscribed) continue;
           try {
             await this._tgCall(token, 'sendMessage', {
               chat_id: chatId,

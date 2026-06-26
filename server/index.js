@@ -442,16 +442,28 @@ app.post('/api/v2/voice/tts', express.json({ limit: '50kb' }), async (req, res) 
 // Lightweight pub/sub: any server code calls ReasoningBus.push(event) to broadcast to temple UIs.
 const ReasoningBus = {
   _clients: new Set(),
+  _listeners: new Set(),
   push(event) {
     const data = `data: ${JSON.stringify(event)}\n\n`;
     for (const res of this._clients) {
       try { res.write(data); } catch {}
     }
+    // Server-side listeners (e.g. BotService for Telegram follow-up)
+    for (const fn of this._listeners) {
+      try { fn(event); } catch (e) { console.warn('[ReasoningBus] listener error:', e.message); }
+    }
   },
   subscribe(res) { this._clients.add(res); },
   unsubscribe(res) { this._clients.delete(res); },
+  addListener(fn) { this._listeners.add(fn); return () => this._listeners.delete(fn); },
 };
 global.ReasoningBus = ReasoningBus;  // available to TaskRunner, AgentWorker, etc.
+
+// BotService listens for task lifecycle events → targeted Telegram follow-up
+// (only if the task was dispatched via the bot itself)
+ReasoningBus.addListener(ev => {
+  if (ev?.type === 'task_lifecycle') botService.onTaskLifecycle(ev).catch(() => {});
+});
 
 // GET /api/v2/reasoning/stream — SSE stream of all agent activity
 app.get('/api/v2/reasoning/stream', (req, res) => {
