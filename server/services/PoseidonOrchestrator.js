@@ -1904,6 +1904,70 @@ My response: "${ss.last_response_preview}"${tools}
     } catch (e) { return { ok: false, error: e.message }; }
   }
 
+  /**
+   * Format the skill catalog for the nightly dream prompt.
+   *
+   * Returns an array of human-readable lines, sorted so the LLM sees the
+   * skills most in need of attention FIRST:
+   *
+   *   1. Unreliable: success_rate < 50% AND usage_count >= 3  (broken — rewrite priority)
+   *   2. Mixed:      success_rate 50-79% AND usage_count >= 3 (partially working — polish)
+   *   3. Reliable:   success_rate >= 80%                       (working — leave alone)
+   *   4. Untested:   used but no outcome recorded              (need feedback)
+   *   5. Cold:       never used                                (consider deleting if persistently cold)
+   *
+   * Each line carries the telemetry inline so the dream LLM can decide what to do.
+   * Returns { lines: string[], summary: { unreliable, mixed, reliable, untested, cold } }
+   */
+  async _formatSkillsForDream() {
+    const res = await this._listSkills();
+    if (!res.ok) return { lines: [], summary: { unreliable: 0, mixed: 0, reliable: 0, untested: 0, cold: 0 } };
+
+    const tier = (s) => {
+      if (s.usage_count === 0) return 'cold';
+      if (s.success_rate === null) return 'untested';
+      if (s.usage_count < 3) return 'untested';  // not enough data yet
+      if (s.success_rate < 50) return 'unreliable';
+      if (s.success_rate < 80) return 'mixed';
+      return 'reliable';
+    };
+
+    const TIER_ORDER = { unreliable: 0, mixed: 1, untested: 2, cold: 3, reliable: 4 };
+    const skills = res.skills.map(s => ({ ...s, _tier: tier(s) }));
+    skills.sort((a, b) => {
+      const ta = TIER_ORDER[a._tier], tb = TIER_ORDER[b._tier];
+      if (ta !== tb) return ta - tb;
+      // Within same tier: lower success_rate first, then more uses first
+      if (a.success_rate !== b.success_rate) {
+        return (a.success_rate ?? 999) - (b.success_rate ?? 999);
+      }
+      return (b.usage_count || 0) - (a.usage_count || 0);
+    });
+
+    const summary = { unreliable: 0, mixed: 0, reliable: 0, untested: 0, cold: 0 };
+    const lines = skills.map(s => {
+      summary[s._tier]++;
+      const TIER_TAG = {
+        unreliable: '⚠ UNRELIABLE',
+        mixed:      '~ mixed',
+        reliable:   '✓ reliable',
+        untested:   '? untested',
+        cold:       '· cold',
+      }[s._tier];
+      let stats;
+      if (s.usage_count === 0) {
+        stats = '[never used]';
+      } else if (s.success_rate === null) {
+        stats = `[${s.usage_count} use${s.usage_count > 1 ? 's' : ''}, no outcomes recorded]`;
+      } else {
+        stats = `[${s.usage_count} uses, ${s.success_rate}% success, last:${s.last_outcome || '?'}]`;
+      }
+      return `- ${s.skill_id}: ${s.name} v${s.version || 1} — ${s.summary || ''} ${TIER_TAG} ${stats}`;
+    });
+
+    return { lines, summary };
+  }
+
   async _deleteSkill({ skill_id }) {
     try {
       const AQUARIUM = require('../aquarium');

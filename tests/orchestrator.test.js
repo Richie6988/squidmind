@@ -229,6 +229,83 @@ async function main() {
       !/skills_registry/.test(res.error || ''),
       `err: ${res.error?.slice(0, 120)}`);
 
+  // ── 14. _formatSkillsForDream — telemetry-aware sorting + tier tagging ─────
+  // Seed a controlled mix of skills with different telemetry profiles.
+  // First clear our temp SKILLS dir to start fresh.
+  for (const f of fs.readdirSync(realAquarium.SKILLS)) {
+    fs.rmSync(path.join(realAquarium.SKILLS, f));
+  }
+  // 5 skills covering every tier:
+  fs.writeFileSync(path.join(realAquarium.SKILLS, 'broken.json'), JSON.stringify({
+    skill_id: 'broken', name: 'Broken', version: 1, summary: 'Often fails',
+    triggers: [], steps: [{ order: 1, action: 'x' }],
+    usage_count: 10, last_used_at: '2026-06-20T10:00:00Z', last_outcome: 'fail',
+    outcome_counts: { success: 2, partial: 0, fail: 8 },
+  }));
+  fs.writeFileSync(path.join(realAquarium.SKILLS, 'wobbly.json'), JSON.stringify({
+    skill_id: 'wobbly', name: 'Wobbly', version: 1, summary: 'Sometimes works',
+    triggers: [], steps: [{ order: 1, action: 'x' }],
+    usage_count: 6, last_used_at: '2026-06-21T10:00:00Z', last_outcome: 'partial',
+    outcome_counts: { success: 3, partial: 2, fail: 1 },  // 50% — mixed boundary
+  }));
+  fs.writeFileSync(path.join(realAquarium.SKILLS, 'solid.json'), JSON.stringify({
+    skill_id: 'solid', name: 'Solid', version: 2, summary: 'Just works',
+    triggers: [], steps: [{ order: 1, action: 'x' }],
+    usage_count: 20, last_used_at: '2026-06-22T10:00:00Z', last_outcome: 'success',
+    outcome_counts: { success: 19, partial: 1, fail: 0 },
+  }));
+  fs.writeFileSync(path.join(realAquarium.SKILLS, 'new_skill.json'), JSON.stringify({
+    skill_id: 'new_skill', name: 'New', version: 1, summary: 'Recently added',
+    triggers: [], steps: [{ order: 1, action: 'x' }],
+    usage_count: 1, last_used_at: '2026-06-23T10:00:00Z',
+    outcome_counts: { success: 0, partial: 0, fail: 0 },
+  }));
+  fs.writeFileSync(path.join(realAquarium.SKILLS, 'cold.json'), JSON.stringify({
+    skill_id: 'cold', name: 'Cold', version: 1, summary: 'Never touched',
+    triggers: [], steps: [{ order: 1, action: 'x' }],
+  }));
+
+  const dream = await orch._formatSkillsForDream();
+  log('formatSkillsForDream returns lines + summary',
+      Array.isArray(dream.lines) && typeof dream.summary === 'object');
+  const expectedSummary = { unreliable: 1, mixed: 1, untested: 1, cold: 1, reliable: 1 };
+  const summaryMatch = Object.keys(expectedSummary).every(k => dream.summary[k] === expectedSummary[k])
+                    && Object.keys(dream.summary).length === Object.keys(expectedSummary).length;
+  log('formatSkillsForDream counts tiers correctly',
+      summaryMatch,
+      `summary=${JSON.stringify(dream.summary)}`);
+
+  log('formatSkillsForDream surfaces unreliable FIRST',
+      dream.lines[0].includes('broken') && dream.lines[0].includes('⚠ UNRELIABLE'),
+      `first line: ${dream.lines[0]}`);
+  log('formatSkillsForDream puts mixed second',
+      dream.lines[1].includes('wobbly') && dream.lines[1].includes('~ mixed'));
+  log('formatSkillsForDream puts reliable LAST',
+      dream.lines[dream.lines.length - 1].includes('solid')
+      && dream.lines[dream.lines.length - 1].includes('✓ reliable'),
+      `last line: ${dream.lines[dream.lines.length - 1]}`);
+
+  // Verify telemetry is embedded in each line
+  const brokenLine = dream.lines.find(l => l.includes('broken'));
+  log('broken line shows usage count and success rate',
+      /10 uses/.test(brokenLine) && /20% success/.test(brokenLine),
+      `broken: ${brokenLine}`);
+  const coldLine = dream.lines.find(l => l.includes('cold'));
+  log('cold line shows "[never used]"', /\[never used\]/.test(coldLine), coldLine);
+  const newLine = dream.lines.find(l => l.includes('new_skill'));
+  log('untested line shows "no outcomes recorded"',
+      /no outcomes recorded/.test(newLine), newLine);
+
+  // Empty catalog edge case
+  for (const f of fs.readdirSync(realAquarium.SKILLS)) {
+    fs.rmSync(path.join(realAquarium.SKILLS, f));
+  }
+  const emptyDream = await orch._formatSkillsForDream();
+  const expectedEmpty = { unreliable: 0, mixed: 0, reliable: 0, untested: 0, cold: 0 };
+  const emptyMatch = Object.keys(expectedEmpty).every(k => emptyDream.summary[k] === expectedEmpty[k]);
+  log('formatSkillsForDream handles empty catalog',
+      emptyDream.lines.length === 0 && emptyMatch);
+
   // ── Summary ───────────────────────────────────────────────────────────────
   await cleanup();
   const passed = results.filter(r => r.ok).length;

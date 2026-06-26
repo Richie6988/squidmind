@@ -1575,16 +1575,25 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
       let soul = {};
       try { soul = JSON.parse(fsSync.readFileSync(AQUARIUM.SOUL, 'utf8')); } catch {}
 
-      // ── 3. Read current skills ────────────────────────────────────────────
+      // ── 3. Read current skills with telemetry context ─────────────────────
+      // The orchestrator returns lines pre-sorted: skills needing attention first.
       let skillList = [];
+      let skillSummary = { unreliable: 0, mixed: 0, reliable: 0, untested: 0, cold: 0 };
       try {
-        if (fsSync.existsSync(AQUARIUM.SKILLS)) {
-          skillList = fsSync.readdirSync(AQUARIUM.SKILLS).filter(f => f.endsWith('.json')).map(f => {
-            try {
-              const sk = JSON.parse(fsSync.readFileSync(path.join(AQUARIUM.SKILLS, f), 'utf8'));
-              return `- ${sk.skill_id}: ${sk.name} v${sk.version || 1} — ${sk.summary || ''}`;
-            } catch { return `- ${f.replace('.json', '')}`; }
-          });
+        if (this.orchestrator) {
+          const formatted = await this.orchestrator._formatSkillsForDream();
+          skillList = formatted.lines;
+          skillSummary = formatted.summary;
+        } else if (fsSync.existsSync(AQUARIUM.SKILLS)) {
+          // Fallback if orchestrator not wired (should not happen in prod).
+          skillList = fsSync.readdirSync(AQUARIUM.SKILLS)
+            .filter(f => f.endsWith('.json') && f !== 'skills_registry.json')
+            .map(f => {
+              try {
+                const sk = JSON.parse(fsSync.readFileSync(path.join(AQUARIUM.SKILLS, f), 'utf8'));
+                return `- ${sk.skill_id}: ${sk.name} v${sk.version || 1} — ${sk.summary || ''}`;
+              } catch { return `- ${f.replace('.json', '')}`; }
+            });
         }
       } catch {}
 
@@ -1623,15 +1632,27 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
         '### PHASE 4 — SKILLS: After the JSON, list 0-2 skills to write/update.',
         '  Format: SKILL_UPDATE: <skill_id> | <name> | <summary> | <step1> ;; <step2> ;; <step3>',
         '  Only write skills for patterns you ACTUALLY observed in the log.',
+        '### PHASE 5 — SKILL TRIAGE (based on telemetry stats in the catalog):',
+        '  Each skill in the catalog is tagged ⚠ UNRELIABLE / ~ mixed / ✓ reliable / ? untested / · cold.',
+        '  - ⚠ UNRELIABLE (success_rate < 50% over 3+ uses): MUST emit a SKILL_UPDATE to rewrite it.',
+        '    Look at temp.md for what went wrong, fix the steps. This takes priority over new skills.',
+        '  - ~ mixed (50-79%): consider polishing if you have insight from the log.',
+        '  - · cold (never used for many dreams): consider whether the skill is genuinely useless;',
+        '    if so, note it in skill_insights["candidates_for_deletion"].',
+        '  - ✓ reliable: do not change. Record what makes it work in skill_insights.',
+        '  Stay within the 2-skill update budget; pick the WORST first.',
       ].join('\n');
 
+      const skillStatsHeader = skillList.length
+        ? `(${skillSummary.unreliable} unreliable · ${skillSummary.mixed} mixed · ${skillSummary.untested} untested · ${skillSummary.cold} cold · ${skillSummary.reliable} reliable — sorted worst-first)`
+        : '';
       const dreamUserPrompt = [
         '## CURRENT soul.json',
         '```json',
         soulStr,
         '```',
         '',
-        '## CURRENT SKILLS',
+        `## CURRENT SKILLS  ${skillStatsHeader}`,
         skillList.length ? skillList.join('\n') : '(none yet)',
         '',
         "## TODAY'S INTERACTION LOG (temp.md)",
@@ -1640,7 +1661,7 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
         '```',
         '',
         'Execute the dream protocol. Output the updated soul.json in a ```json block.',
-        'Then list any SKILL_UPDATE lines.',
+        'Then list any SKILL_UPDATE lines. Triage UNRELIABLE skills before anything else.',
       ].join('\n');
 
       // ── 5. Get a dream sequence ───────────────────────────────────────────
