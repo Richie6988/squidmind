@@ -967,6 +967,10 @@ class RegistryManager {
     memory.updated_at = now;
     await fs.mkdir(path.dirname(memPath), { recursive: true });
     await fs.writeFile(memPath, JSON.stringify(memory, null, 2), 'utf8');
+    // Bypass cache — getProjectMemory reads via this.read() which is cache-aware.
+    // Without this, an LLM that calls update_project_memory then read_project_memory
+    // in the same conversation sees the pre-update version.
+    this.invalidateCache(`PROJECTS/${folder}/project_memory.json`);
 
     // Also update registry metrics
     if (section === 'progress' && typeof content === 'object') {

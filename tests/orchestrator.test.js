@@ -555,6 +555,209 @@ async function main() {
   log('getSystemState reports task counts',
       typeof r.open_tasks === 'number' && typeof r.completed_tasks === 'number');
 
+  // ── ASSIGN / UNASSIGN AGENT ────────────────────────────────────────────────
+  // Re-create a project + agent fresh for these tests (previous ones got deleted/archived).
+  await orch._createProject({ name: 'assign_test', vision: 'For assignment tests' });
+  const ag1 = await orch._createAgent({ display_name: 'Alice', specialization: 'general' });
+  const ag2 = await orch._createAgent({ display_name: 'Bob',   specialization: 'general' });
+
+  r = await orch._assignAgent({ agent_id: ag1.agent_id, project_name: 'assign_test' });
+  log('assignAgent ok',                          r.ok === true);
+  // Verify on disk
+  const projReg2 = JSON.parse(fs.readFileSync(path.join(AQ, 'PROJECTS', 'project_registry.json'), 'utf8'));
+  const assignProj = Object.values(projReg2.projects).find(p => p.name === 'ASSIGN_TEST');
+  log('assignAgent adds to project.assigned_agents',
+      assignProj.assigned_agents.includes(ag1.agent_id));
+
+  // Bidirectional: agent.assigned_projects gets the project_id too
+  const agentReg2 = JSON.parse(fs.readFileSync(path.join(AQ, 'AGENTS', 'agent_registry.json'), 'utf8'));
+  log('assignAgent adds project to agent.assigned_projects',
+      (agentReg2.agents[ag1.agent_id].assigned_projects || []).includes(assignProj.project_id));
+
+  // Idempotent — assigning the same agent twice doesn't duplicate
+  await orch._assignAgent({ agent_id: ag1.agent_id, project_name: 'assign_test' });
+  const projReg2b = JSON.parse(fs.readFileSync(path.join(AQ, 'PROJECTS', 'project_registry.json'), 'utf8'));
+  const proj2b = Object.values(projReg2b.projects).find(p => p.name === 'ASSIGN_TEST');
+  const occurrences = proj2b.assigned_agents.filter(id => id === ag1.agent_id).length;
+  log('assignAgent is idempotent',               occurrences === 1, `count=${occurrences}`);
+
+  // Error paths
+  r = await orch._assignAgent({ agent_id: 'ghost', project_name: 'assign_test' });
+  log('assignAgent fails on missing agent',      r.ok === false);
+  r = await orch._assignAgent({ agent_id: ag1.agent_id, project_name: 'never_exists' });
+  log('assignAgent fails on missing project',    r.ok === false);
+
+  // Assign second agent so unassign can verify the array still has entries
+  await orch._assignAgent({ agent_id: ag2.agent_id, project_name: 'assign_test' });
+
+  r = await orch._unassignAgent({ agent_id: ag1.agent_id, project_name: 'assign_test' });
+  log('unassignAgent ok',                        r.ok === true);
+  const projReg3 = JSON.parse(fs.readFileSync(path.join(AQ, 'PROJECTS', 'project_registry.json'), 'utf8'));
+  const projAfterUnassign = Object.values(projReg3.projects).find(p => p.name === 'ASSIGN_TEST');
+  log('unassignAgent removes from project list',
+      !projAfterUnassign.assigned_agents.includes(ag1.agent_id));
+  log('unassignAgent preserves other agents',
+      projAfterUnassign.assigned_agents.includes(ag2.agent_id));
+
+  // Bidirectional cleanup
+  const agentReg3 = JSON.parse(fs.readFileSync(path.join(AQ, 'AGENTS', 'agent_registry.json'), 'utf8'));
+  log('unassignAgent removes project from agent list',
+      !(agentReg3.agents[ag1.agent_id].assigned_projects || []).includes(projAfterUnassign.project_id));
+
+  // ── UPDATE PROJECT ─────────────────────────────────────────────────────────
+  r = await orch._updateProject({ project_name: 'assign_test', field: 'vision', new_value: 'new vision text' });
+  log('updateProject ok',                        r.ok === true);
+  const projReg4 = JSON.parse(fs.readFileSync(path.join(AQ, 'PROJECTS', 'project_registry.json'), 'utf8'));
+  const projAfterUpdate = Object.values(projReg4.projects).find(p => p.name === 'ASSIGN_TEST');
+  log('updateProject persists field',            projAfterUpdate.vision === 'new vision text');
+  log('updateProject sets updated_at timestamp', typeof projAfterUpdate.updated_at === 'string');
+
+  // Rename: field='name' should upper-case the new value
+  r = await orch._updateProject({ project_name: 'assign_test', field: 'name', new_value: 'renamed_proj' });
+  log('updateProject rename ok',                 r.ok === true);
+  const projReg5 = JSON.parse(fs.readFileSync(path.join(AQ, 'PROJECTS', 'project_registry.json'), 'utf8'));
+  const renamedProj = Object.values(projReg5.projects).find(p => p.name === 'RENAMED_PROJ');
+  log('updateProject renames and uppercases',    !!renamedProj && renamedProj.name === 'RENAMED_PROJ');
+
+  r = await orch._updateProject({ project_name: 'ghost', field: 'vision', new_value: 'x' });
+  log('updateProject fails on missing',          r.ok === false);
+
+  // ── DELETE PROJECT ─────────────────────────────────────────────────────────
+  // Create a fresh project with an assigned agent so we can verify cascade
+  await orch._createProject({ name: 'delete_me', vision: 'will die' });
+  await orch._assignAgent({ agent_id: ag2.agent_id, project_name: 'delete_me' });
+
+  r = await orch._deleteProject({ project_name: 'delete_me' });
+  log('deleteProject ok',                        r.ok === true);
+  log('deleteProject lists freed agents',
+      Array.isArray(r.freed_agents) && r.freed_agents.includes(ag2.agent_id));
+  // Verify gone from registry
+  const projRegFinal = JSON.parse(fs.readFileSync(path.join(AQ, 'PROJECTS', 'project_registry.json'), 'utf8'));
+  log('deleteProject removes registry entry',
+      !Object.values(projRegFinal.projects).find(p => p.name === 'DELETE_ME'));
+  // Verify the folder is gone too
+  log('deleteProject removes project folder',
+      !fs.existsSync(path.join(AQ, 'PROJECTS', 'DELETE_ME')));
+
+  r = await orch._deleteProject({ project_name: 'never_existed' });
+  log('deleteProject fails on missing',          r.ok === false);
+
+  // ── PROJECT MEMORY (via rm methods that the handler delegates to) ─────────
+  // Ensure we have an active project to work with.
+  const memTest = await orch._createProject({ name: 'mem_test', vision: 'memory tests' });
+  const memProj = await rm.resolveProjectByNameOrId('mem_test');
+  const memId = memProj.id;
+
+  // Read empty memory
+  const initialMem = await rm.getProjectMemory(memId);
+  log('getProjectMemory returns project_memory.json content',
+      !!initialMem && initialMem.name === 'MEM_TEST',
+      `got=${initialMem?.name}`);
+
+  // Add an achievement via the standard update path
+  const okWrite = await rm.updateProjectMemory(memId, 'achievement', 'Built the foo module', 'poseidon_main');
+  log('updateProjectMemory(achievement) returns true', okWrite === true);
+
+  const updatedMem = await rm.getProjectMemory(memId);
+  log('updateProjectMemory persists achievement to recent_achievements',
+      (updatedMem.progress?.recent_achievements || []).some(a => {
+        const txt = typeof a === 'string' ? a : (a.text || a.description || a.title || a.summary || '');
+        return /Built the foo module/.test(txt);
+      }),
+      `recent_achievements=${JSON.stringify(updatedMem.progress?.recent_achievements?.slice(0,2))}`);
+
+  // Add a decision
+  await rm.updateProjectMemory(memId, 'decision', 'Decided to use PostgreSQL', 'poseidon_main');
+  const memWithDecision = await rm.getProjectMemory(memId);
+  log('updateProjectMemory(decision) appends to decisions[]',
+      (memWithDecision.decisions || []).some(d => {
+        const txt = typeof d === 'string' ? d : (d.text || d.summary || d.description || '');
+        return /PostgreSQL/.test(txt);
+      }),
+      `decisions=${JSON.stringify(memWithDecision.decisions?.slice(0,2))}`);
+
+  // ── TOOL WIRING — locks the chat/BG surface contract ──────────────────────
+  // Without this test, someone could add a new defineChatSessionFunction tool def
+  // without exporting it (typo in the object literal, scoping bug) OR remove a
+  // tool from the BG_TOOLS whitelist by accident. Both kinds of regression
+  // would silently break the LLM's tool surface in production.
+  //
+  // We assert the EXACT expected sets so any drift surfaces in CI loudly.
+
+  const chatTools = await orch.buildFunctions('chat');
+  const bgTools   = await orch.buildFunctions('bg');
+
+  // Each entry should be a defineChatSessionFunction-shaped object
+  log('buildFunctions(chat) returns an object', chatTools && typeof chatTools === 'object');
+  log('buildFunctions(bg) returns an object',   bgTools && typeof bgTools === 'object');
+
+  const expectedChatTools = [
+    // agents
+    'create_agent', 'delete_agent', 'list_agents', 'update_agent_field',
+    // projects
+    'create_project', 'archive_project', 'delete_project', 'list_projects',
+    'update_project', 'update_project_memory', 'read_project_memory', 'audit_project',
+    // tasks
+    'create_task', 'list_tasks', 'update_task', 'delete_task',
+    'assign_agent', 'unassign_agent',
+    // skills
+    'list_skills', 'delete_skill', 'record_skill_outcome', 'write_skill',
+    // logs / brain / state
+    'get_logs', 'log_decision', 'get_system_state',
+    'update_user_context', 'update_brain_field', 'read_my_brain',
+    // files
+    'read_file', 'write_file', 'list_files', 'edit_file',
+    // web
+    'web_search', 'web_fetch', 'fetch_and_save', 'fetch_image_url',
+    // github
+    'github_status', 'github_commit', 'github_diff', 'github_push',
+    // models / images / dispatch
+    'list_models', 'generate_image', 'dispatch_to_agent',
+  ];
+
+  const chatNames = Object.keys(chatTools).sort();
+  const expectedSorted = [...expectedChatTools].sort();
+  const missingChat = expectedSorted.filter(n => !chatNames.includes(n));
+  const extraChat   = chatNames.filter(n => !expectedSorted.includes(n));
+  log(`buildFunctions(chat) exposes exactly ${expectedChatTools.length} expected tools`,
+      missingChat.length === 0 && extraChat.length === 0,
+      `missing=[${missingChat.join(',')}] extra=[${extraChat.join(',')}]`);
+
+  // Spot-check the additions made in this audit (regression guards)
+  log('chat surface includes github_diff (pack #1 fix)',         'github_diff' in chatTools);
+  log('chat surface includes github_push (pack #1 fix)',         'github_push' in chatTools);
+  log('chat surface includes record_skill_outcome (pack #2)',    'record_skill_outcome' in chatTools);
+
+  // BG mode whitelist — locks what background tasks can call
+  const expectedBgTools = [
+    'read_file', 'write_file', 'list_files', 'edit_file',
+    'web_search', 'web_fetch', 'fetch_and_save', 'fetch_image_url',
+    'create_task', 'update_task', 'list_tasks',
+    'update_project_memory', 'read_project_memory', 'audit_project',
+    'list_models', 'generate_image',
+    'list_skills', 'read_my_brain', 'record_skill_outcome',
+  ];
+  const bgNames = Object.keys(bgTools).sort();
+  const expectedBgSorted = [...expectedBgTools].sort();
+  const missingBg = expectedBgSorted.filter(n => !bgNames.includes(n));
+  const extraBg   = bgNames.filter(n => !expectedBgSorted.includes(n));
+  log(`buildFunctions(bg) exposes exactly ${expectedBgTools.length} expected tools`,
+      missingBg.length === 0 && extraBg.length === 0,
+      `missing=[${missingBg.join(',')}] extra=[${extraBg.join(',')}]`);
+
+  log('BG surface is strictly smaller than chat surface',
+      bgNames.length < chatNames.length,
+      `bg=${bgNames.length}, chat=${chatNames.length}`);
+
+  // Smoke-check: handlers actually exist on each tool definition
+  // (catches the case where someone forgets `handler: ...` on a new tool def)
+  const missingHandlers = Object.entries(chatTools)
+    .filter(([, def]) => typeof def.handler !== 'function')
+    .map(([n]) => n);
+  log('Every chat tool has a handler function',
+      missingHandlers.length === 0,
+      `no-handler tools: [${missingHandlers.join(',')}]`);
+
   // ── Summary ───────────────────────────────────────────────────────────────
   await cleanup();
   const passed = results.filter(r => r.ok).length;
