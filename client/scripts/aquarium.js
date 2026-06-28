@@ -57,8 +57,16 @@ const aquarium = {
           squid.current_thought = agentData.current_thought;
         }
       });
+      // Reset error guard on success — next outage will log once again.
+      this._statusErrLogged = false;
     } catch (error) {
-      console.error('Failed to update squid status:', error);
+      // Polling tick failures (network blip, server restart) used to spam
+      // the console every interval. Log only on the first failure of an
+      // outage; subsequent failures are silent until a successful poll.
+      if (!this._statusErrLogged) {
+        console.warn('Squid status polling paused:', error.message);
+        this._statusErrLogged = true;
+      }
     }
   },
 

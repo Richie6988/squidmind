@@ -383,6 +383,68 @@ const SquidAccessories = {
     this._rb(ctx, hw-0.2, -0.8, 1.2, 1.6, TE, '#000', c);
   },
 
+  _pixelGlasses(ctx, c, size) {
+    // Chunky 8-bit pixel glasses — black square frames, cyan tint
+    const lx = -2.4, rx = 1.0, ty = -1.5, W = 2.8, H = 2.8;
+    const FR = '#000000', LE = 'rgba(125,211,252,0.30)', SH = '#FFFFFF';
+    // Tinted lenses
+    this._r(ctx, lx, ty, W, H, LE, c);
+    this._r(ctx, rx, ty, W, H, LE, c);
+    // Thick chunky frame (each side is 1 pixel cell wide)
+    [lx, rx].forEach(x => {
+      this._r(ctx, x,         ty,         W,   0.6, FR, c);  // top
+      this._r(ctx, x,         ty + H - 0.6, W, 0.6, FR, c);  // bottom
+      this._r(ctx, x,         ty,         0.6, H,   FR, c);  // left
+      this._r(ctx, x + W - 0.6, ty,       0.6, H,   FR, c);  // right
+    });
+    // Bridge (thick)
+    this._r(ctx, lx + W, ty + H * 0.35, rx - lx - W, 0.55, FR, c);
+    // Temple arms
+    this._r(ctx, lx - 1.2, ty + 0.4, 1.2, 0.5, FR, c);
+    this._r(ctx, rx + W,   ty + 0.4, 1.2, 0.5, FR, c);
+    // Pixel shine — single corner cell on each lens
+    this._r(ctx, lx + 0.6, ty + 0.6, 0.6, 0.6, SH, c);
+    this._r(ctx, rx + 0.6, ty + 0.6, 0.6, 0.6, SH, c);
+  },
+
+  _3dGlasses(ctx, c, size) {
+    // Classic cyan/magenta 3D glasses — paper frame, two coloured lenses
+    const lx = -2.4, rx = 1.0, ty = -1.5, W = 2.8, H = 2.4;
+    const FR = '#1a1a1a';
+    const LCYAN = 'rgba(0,212,255,0.55)';
+    const LRED  = 'rgba(255,40,90,0.55)';
+    // Left lens — cyan
+    this._r(ctx, lx, ty, W, H, LCYAN, c);
+    // Right lens — magenta/red
+    this._r(ctx, rx, ty, W, H, LRED, c);
+    // Black frame (thin)
+    [lx, rx].forEach(x => {
+      this._r(ctx, x,         ty,         W,   0.35, FR, c);
+      this._r(ctx, x,         ty + H - 0.35, W, 0.35, FR, c);
+      this._r(ctx, x,         ty,         0.35, H,    FR, c);
+      this._r(ctx, x + W - 0.35, ty,       0.35, H,    FR, c);
+    });
+    // Bridge
+    this._r(ctx, lx + W, ty + H * 0.3, rx - lx - W, 0.35, FR, c);
+    // Temple arms
+    this._r(ctx, lx - 1.1, ty + 0.3, 1.1, 0.3, FR, c);
+    this._r(ctx, rx + W,   ty + 0.3, 1.1, 0.3, FR, c);
+  },
+
+  _eyepatch(ctx, c, size) {
+    // Black pirate eyepatch over right eye + strap across head
+    const rx = 0.7, ty = -1.7, W = 3.0, H = 3.0;
+    const PA = '#0a0a0a', ST = '#1f1f1f';
+    // Patch (rounded square — slightly inset corners)
+    this._r(ctx, rx + 0.3, ty,         W - 0.6, H,         PA, c);  // mid stripe
+    this._r(ctx, rx,       ty + 0.3,   W,       H - 0.6,   PA, c);
+    // Single highlight pixel for material
+    this._r(ctx, rx + 0.6, ty + 0.6, 0.6, 0.6, '#3a3a3a', c);
+    // Strap going up-left and down-left across the head
+    this._r(ctx, rx - 3.0, ty - 0.2, 3.2, 0.4, ST, c);  // upper strap
+    this._r(ctx, rx - 3.0, ty + H - 0.2, 3.2, 0.4, ST, c); // lower strap
+  },
+
   // ===================== OUTFITS (shoes at tentacle tips) =====================
   // Shoes are drawn at the tip of each tentacle.
   // Tentacles use ctx.rotate((2π/6)*i) then draw from y=size*0.7 to y=size*1.5.
