@@ -443,13 +443,34 @@ const AgentForm = {
     }
     const SA = window.SquidAccessories;
     if (!SA) return;
-    // Draw ONLY the accessory (no body/tentacles)
+    // Draw a faded squid silhouette as visual anchor — accessories are
+    // positioned relative to a squid (hat above head, glasses on eyes,
+    // outfit around body). Without anchor, previews look empty/off-frame.
     const size = W * 0.72;
-    ctx.save(); ctx.translate(W/2, H/2);
-    if      (key==='hat')     SA.drawHat(ctx, opt, size);
-    else if (key==='glasses') SA.drawGlasses(ctx, opt, size);
-    else if (key==='eyes')    SA.drawEyes(ctx, opt, size);
-    else if (key==='outfit')  SA.drawOutfit(ctx, opt, size, 0);
+    ctx.save();
+    ctx.translate(W/2, H/2);
+
+    if (typeof Squid !== 'undefined') {
+      ctx.save();
+      ctx.globalAlpha = 0.32;
+      try {
+        // Squid.draw(ctx) uses this.x/this.y as origin and a fixed base size.
+        // We translate ctx so that 0,0 == centre of tile, then place ghost at 0,0.
+        const ghost = new Squid({
+          id: '__tile__', name: '',
+          appearance: { primary_color: '#FF6B9D', secondary_color: '#C44569', size_scale: 0.7 },
+          accessories: null, status: 'idle', x: 0, y: 0,
+        });
+        if (typeof ghost.draw === 'function') ghost.draw(ctx);
+      } catch {}
+      ctx.restore();
+    }
+
+    // Now draw the accessory on top, at full opacity.
+    if      (key === 'hat')     SA.drawHat(ctx, opt, size);
+    else if (key === 'glasses') SA.drawGlasses(ctx, opt, size);
+    else if (key === 'eyes')    SA.drawEyes(ctx, opt, size);
+    else if (key === 'outfit')  SA.drawOutfit(ctx, opt, size, 0);
     ctx.restore();
   },
   _updateAppearancePreview() {

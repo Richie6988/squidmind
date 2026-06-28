@@ -23,6 +23,8 @@
 #    ./scripts/fresh-start.sh --no-pull   # skip git pull
 #    ./scripts/fresh-start.sh --no-start  # do everything except launch the server
 #    ./scripts/fresh-start.sh --rebuild-llama   # also rebuild node-llama-cpp
+#    ./scripts/fresh-start.sh --with-imagegen   # clone+build stable-diffusion.cpp
+#                                                 + download Flux companion safetensors
 #
 #  Bail-out: hit Ctrl-C at any prompt.
 # ─────────────────────────────────────────────────────────────────────────────
@@ -35,15 +37,17 @@ DO_PULL=1
 DO_WIPE=1
 DO_START=1
 DO_REBUILD_LLAMA=0
+DO_IMAGEGEN=0
 for arg in "$@"; do
   case "$arg" in
-    --yes|-y)         AUTO_YES=1 ;;
-    --no-pull)        DO_PULL=0 ;;
-    --no-wipe)        DO_WIPE=0 ;;
-    --no-start)       DO_START=0 ;;
-    --rebuild-llama)  DO_REBUILD_LLAMA=1 ;;
+    --yes|-y)           AUTO_YES=1 ;;
+    --no-pull)          DO_PULL=0 ;;
+    --no-wipe)          DO_WIPE=0 ;;
+    --no-start)         DO_START=0 ;;
+    --rebuild-llama)    DO_REBUILD_LLAMA=1 ;;
+    --with-imagegen)    DO_IMAGEGEN=1 ;;
     --help|-h)
-      sed -n '2,30p' "$0"; exit 0 ;;
+      sed -n '2,32p' "$0"; exit 0 ;;
     *) echo "Unknown arg: $arg (use --help)"; exit 1 ;;
   esac
 done
@@ -153,11 +157,95 @@ if [[ $DO_REBUILD_LLAMA -eq 1 ]]; then
   fi
 fi
 
-# ── 8. Sanity check the boot ─────────────────────────────────────────────────
+# ── 8. Optional: image generation (stable-diffusion.cpp + Flux companions) ───
+if [[ $DO_IMAGEGEN -eq 1 ]]; then
+  SD_DIR="$HOME/stable-diffusion.cpp"
+  SD_BIN="$SD_DIR/build/bin/sd"
+  MODELS_DIR="${IAQUA_MODELS_DIR:-$HOME/models}"
+
+  # ── 8a. stable-diffusion.cpp ────────────────────────────────────────────────
+  if [[ -x "$SD_BIN" ]]; then
+    ok "stable-diffusion.cpp already built at $SD_BIN"
+  else
+    if confirm "Clone + build stable-diffusion.cpp into $SD_DIR? (5-10 min)"; then
+      say "Cloning stable-diffusion.cpp…"
+      if [[ ! -d "$SD_DIR" ]]; then
+        git clone --recursive https://github.com/leejet/stable-diffusion.cpp "$SD_DIR" || die "git clone failed."
+      else
+        (cd "$SD_DIR" && git pull --recurse-submodules) || warn "git pull skipped (uncommitted changes)"
+      fi
+      say "Building stable-diffusion.cpp (CUDA enabled if available)…"
+      mkdir -p "$SD_DIR/build"
+      (
+        cd "$SD_DIR/build"
+        # Try CUDA build first; fall back to CPU-only if nvcc missing
+        if command -v nvcc >/dev/null 2>&1; then
+          cmake -DSD_CUDA=ON .. || die "cmake (CUDA) failed."
+        else
+          warn "nvcc not found — building CPU-only sd-cpp (image gen will be slow)."
+          cmake .. || die "cmake failed."
+        fi
+        cmake --build . --config Release -j"$(nproc)" || die "sd-cpp build failed."
+      )
+      if [[ -x "$SD_BIN" ]]; then
+        ok "stable-diffusion.cpp built: $SD_BIN"
+      else
+        warn "Build finished but $SD_BIN is missing. Check $SD_DIR/build for errors."
+      fi
+    fi
+  fi
+
+  # Make sure ImageGenerationService finds it: link to ~/.local/bin
+  if [[ -x "$SD_BIN" ]]; then
+    mkdir -p "$HOME/.local/bin"
+    ln -sf "$SD_BIN" "$HOME/.local/bin/sd-diffusion"
+    ok "Linked $SD_BIN -> ~/.local/bin/sd-diffusion (auto-discovered by IAQUA)"
+  fi
+
+  # ── 8b. Flux companion safetensors ──────────────────────────────────────────
+  mkdir -p "$MODELS_DIR"
+  say "Checking Flux companion files in $MODELS_DIR…"
+  # FLUX needs: ae.safetensors (VAE), clip_l.safetensors (CLIP), t5xxl encoder
+  declare -A FLUX_FILES=(
+    ["ae.safetensors"]="https://huggingface.co/black-forest-labs/FLUX.1-schnell/resolve/main/ae.safetensors"
+    ["clip_l.safetensors"]="https://huggingface.co/comfyanonymous/flux_text_encoders/resolve/main/clip_l.safetensors"
+    ["t5-v1_1-xxl-encoder-Q4_K_M.gguf"]="https://huggingface.co/city96/t5-v1_1-xxl-encoder-gguf/resolve/main/t5-v1_1-xxl-encoder-Q4_K_M.gguf"
+  )
+  MISSING_FLUX=()
+  for f in "${!FLUX_FILES[@]}"; do
+    if [[ -f "$MODELS_DIR/$f" ]]; then
+      ok "Found $f"
+    else
+      MISSING_FLUX+=("$f")
+    fi
+  done
+
+  if (( ${#MISSING_FLUX[@]} > 0 )); then
+    echo
+    warn "Missing Flux companions (${#MISSING_FLUX[@]}):"
+    for f in "${MISSING_FLUX[@]}"; do echo "    - $f"; done
+    # Combined download size: ~325 MB (ae) + 246 MB (clip_l) + ~2.3 GB (t5) = ~2.9 GB
+    if confirm "Download missing files (~2.9 GB total) to $MODELS_DIR?"; then
+      for f in "${MISSING_FLUX[@]}"; do
+        say "Downloading $f…"
+        if ! wget --progress=bar:force -O "$MODELS_DIR/$f.partial" "${FLUX_FILES[$f]}"; then
+          warn "Download failed for $f — leaving .partial in place for retry."
+          continue
+        fi
+        mv "$MODELS_DIR/$f.partial" "$MODELS_DIR/$f"
+        ok "$f downloaded."
+      done
+    else
+      warn "Skipped Flux companion downloads. Image gen with Flux will fail until present."
+    fi
+  fi
+fi
+
+# ── 9. Sanity check the boot ─────────────────────────────────────────────────
 say "Pre-boot syntax check…"
 node --check server/index.js && ok "server/index.js parses cleanly."
 
-# ── 9. Start server ──────────────────────────────────────────────────────────
+# ── 10. Start server ─────────────────────────────────────────────────────────
 if [[ $DO_START -eq 1 ]]; then
   echo
   ok "${C_BOLD}Ready.${C_RESET} Starting server on http://localhost:${PORT:-3000} …"

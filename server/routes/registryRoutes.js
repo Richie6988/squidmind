@@ -34,6 +34,27 @@ router.get('/agents', async (req, res) => {
   try {
     rm.invalidateCache();
     const registry = await rm.getAgentRegistry();
+
+    // Merge brain.appearance + brain.accessories into each registry entry so
+    // the canvas (Squid constructor) gets the customization on a single fetch.
+    // Without this, squids fall back to defaults and the name shows "undefined"
+    // because data.name was never populated (registry stores display_name only).
+    await Promise.all(
+      Object.entries(registry.agents || {}).map(async ([agentId, entry]) => {
+        try {
+          if (!entry.brain_file) return;
+          const brain = await rm.read(`AGENTS/${entry.brain_file}`).catch(() => null);
+          if (!brain) return;
+          entry.name = entry.display_name;                                // Squid constructor reads .name
+          entry.appearance = brain.appearance || {};
+          entry.accessories = brain.appearance?.accessories || null;
+        } catch (err) {
+          // Brain file missing or unreadable — skip enrichment for this agent,
+          // canvas will use defaults rather than the whole endpoint failing.
+        }
+      })
+    );
+
     res.json({ success: true, registry });
   } catch (err) { res.status(500).json({ success: false, error: err.message }); }
 });

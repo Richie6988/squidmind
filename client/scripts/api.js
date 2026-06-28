@@ -29,13 +29,16 @@ const api = {
     list: () => api._fetch('/agents'),
     get: (id) => api._fetch('/agents/' + id),
     create: (data) => api._fetch('/agents', { method: 'POST', body: JSON.stringify(data) }),
-    // Returns agents as a flat array. Normalises agent_id -> id so Squid
-    // constructor (this.id = data.id) always gets a valid value.
+    // Returns agents as a flat array. Normalises agent_id -> id and
+    // display_name -> name so Squid constructor (this.id = data.id,
+    // this.name = data.name) works directly. Server enriches each entry
+    // with brain.appearance + brain.accessories.
     async flat() {
       const r = await api._fetch('/agents');
       return Object.values(r.registry?.agents || {}).map(a => ({
         ...a,
-        id: a.id || a.agent_id
+        id:   a.id   || a.agent_id,
+        name: a.name || a.display_name
       }));
     }
   },
