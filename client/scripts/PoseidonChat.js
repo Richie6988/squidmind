@@ -624,10 +624,15 @@ const PoseidonChat = {
 
     if (aq) {
       const r = aq.getBoundingClientRect();
-      this.modal.style.left   = r.left   + 'px';
+      // Clamp right edge to the left border of the right panel (Tower),
+      // so the overlay never covers it.
+      const rp   = document.getElementById('right-panel');
+      const rpLeft = rp ? rp.getBoundingClientRect().left : window.innerWidth;
+      const maxW = rpLeft - r.left;
+      this.modal.style.left   = r.left + 'px';
       this.modal.style.top    = (hdr ? hdr.getBoundingClientRect().bottom : r.top) + 'px';
-      this.modal.style.width  = r.width  + 'px';
-      this.modal.style.right  = '';       // use left+width instead of right
+      this.modal.style.width  = Math.min(r.width, maxW) + 'px';
+      this.modal.style.right  = '';
       this.modal.style.bottom = '0px';
     } else {
       // Fallback: cover everything left of projects-container

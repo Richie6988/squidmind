@@ -29,10 +29,14 @@ const api = {
     list: () => api._fetch('/agents'),
     get: (id) => api._fetch('/agents/' + id),
     create: (data) => api._fetch('/agents', { method: 'POST', body: JSON.stringify(data) }),
-    // Returns agents as a flat array (transforms the registry-keyed map for canvas/iter usage)
+    // Returns agents as a flat array. Normalises agent_id -> id so Squid
+    // constructor (this.id = data.id) always gets a valid value.
     async flat() {
       const r = await api._fetch('/agents');
-      return Object.values(r.registry?.agents || {});
+      return Object.values(r.registry?.agents || {}).map(a => ({
+        ...a,
+        id: a.id || a.agent_id
+      }));
     }
   },
 
