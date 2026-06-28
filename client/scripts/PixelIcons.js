@@ -33,33 +33,46 @@ const PixelIcons = {
       ]
     },
     
-    // Temple: stone grey columns, gold pediment trim
+    // Temple: warm marble sand, gold pediment trim, dark ground
     temple: {
-      palette: ["#A8A8A8", "#7A7A7A", "#FFD700", "#5A5A5A"],
+      palette: ["#E5C580", "#FFD700", "#7A6E55", "#3A2E1F"],
       pixels: [
-        // pediment (gold edge)
-        "2 7 1 2 1", "2 6 2 4 1", "2 5 3 6 1", "2 4 4 8 1",
-        // architrave (mid grey)
-        "1 3 5 10 1", "1 2 6 12 1",
-        // columns (light grey)
-        "0 3 7 2 7", "0 7 7 2 7", "0 11 7 2 7",
-        // column shading (dark)
-        "3 4 7 1 7", "3 8 7 1 7", "3 12 7 1 7",
-        // base
-        "1 2 14 12 1", "3 1 15 14 1"
+        // Pediment (triangular, sand colored)
+        "0 7 0 2 1", "0 6 1 4 1", "0 5 2 6 1", "0 4 3 8 1", "0 3 4 10 1",
+        // Architrave: gold band sandwiched between sand bands
+        "1 2 5 12 1", "0 2 6 12 1",
+        // Three columns
+        "0 2 7 2 7", "0 7 7 2 7", "0 12 7 2 7",
+        // Column right-edge shadows
+        "2 3 7 1 7", "2 8 7 1 7", "2 13 7 1 7",
+        // Stylobate (upper step) + dark ground
+        "0 1 14 14 1", "3 0 15 16 1"
       ]
     },
     
-    // Poseidon trident: gold
+    // Poseidon trident: 3 clear prongs, S-curl, decorated grip with jewel
     poseidon: {
       palette: ["#FFD700", "#B8860B", "#FFA500"],
       pixels: [
-        "0 3 1 2 5", "0 7 1 2 5", "0 11 1 2 5",
-        "1 4 1 1 5", "1 8 1 1 5", "1 12 1 1 5",
-        "0 2 6 12 2",
-        "1 2 7 12 1",
-        "0 7 8 2 7",
-        "1 7 14 2 1"
+        // Outer prong tips
+        "0 3 1 1 3", "0 12 1 1 3",
+        // Center prong (taller, runs from top into yoke)
+        "0 7 0 2 7",
+        // Curl from outer prongs into yoke (S-shape)
+        "0 4 3 1 1", "0 4 4 1 2", "0 5 5 1 1",
+        "0 11 3 1 1", "0 11 4 1 2", "0 10 5 1 1",
+        // Yoke connecting all three prongs at top of shaft
+        "0 5 6 7 1",
+        // Shaft
+        "0 7 7 2 5",
+        // Decorated grip with orange jewel
+        "0 6 12 4 1",
+        "1 6 13 1 1", "2 7 13 2 1", "1 9 13 1 1",
+        "0 6 14 4 1",
+        // Shaft tail below grip
+        "0 7 15 2 1",
+        // Subtle right-side shadow for depth
+        "1 8 8 1 4"
       ]
     },
     
@@ -149,16 +162,23 @@ const PixelIcons = {
       ]
     },
     
-    // Wrench config: silver/grey
+    // Config: 8-toothed gear with gold center pixel (universal settings symbol)
     config: {
       palette: ["#C0C0C0", "#606060", "#FFD700"],
       pixels: [
-        "0 10 1 3 3", "1 9 2 1 2",
-        "0 9 4 3 1", "0 8 5 3 1",
-        "0 7 6 3 1", "0 6 7 3 1",
-        "0 5 8 3 1", "0 4 9 3 1",
-        "0 3 10 3 1", "0 2 11 3 1",
-        "2 1 12 3 3", "1 3 13 1 1"
+        // Four cardinal teeth (N, S, W, E)
+        "0 6 0 4 3", "0 6 13 4 3",
+        "0 0 6 3 4", "0 13 6 3 4",
+        // Four diagonal teeth
+        "0 2 2 2 2", "0 12 2 2 2", "0 2 12 2 2", "0 12 12 2 2",
+        // Outer disc (silver)
+        "0 3 3 10 10",
+        // Inner well (darker silver)
+        "1 4 4 8 8",
+        // Inner disc back to silver
+        "0 5 5 6 6",
+        // Gold center pixel
+        "2 7 7 2 2"
       ]
     },
     
@@ -249,33 +269,50 @@ const PixelIcons = {
       ]
     },
     
-    // Wave / Ocean: blue waves
+    // Ocean: foam-crested wave with water-depth layers below
     ocean: {
-      palette: ["#3B82F6", "#06B6D4", "#0EA5E9"],
+      palette: ["#7DD3FC", "#3B82F6", "#1A4D7A", "#FFFFFF"],
       pixels: [
-        "0 1 5 2 1", "1 3 4 2 1", "0 5 5 2 1", "1 7 4 2 1", "0 9 5 2 1", "1 11 4 2 1", "0 13 5 2 1",
-        "0 1 9 2 1", "1 3 8 2 1", "0 5 9 2 1", "1 7 8 2 1", "0 9 9 2 1", "1 11 8 2 1", "0 13 9 2 1",
-        "2 1 13 2 1", "0 3 12 2 1", "2 5 13 2 1", "0 7 12 2 1", "2 9 13 2 1", "0 11 12 2 1", "2 13 13 2 1"
+        // Foam crest (white)
+        "3 5 2 5 1",
+        // Wave body widening down (light cyan with foam edges)
+        "3 3 3 2 1", "0 5 3 5 1", "3 10 3 2 1",
+        "3 2 4 1 1", "0 3 4 10 1", "3 13 4 1 1",
+        "3 1 5 1 1", "0 2 5 12 1", "3 14 5 1 1",
+        // Water surface (full row of light cyan)
+        "0 0 6 16 1",
+        // Mid-blue band
+        "1 0 7 16 3",
+        // Alternating depth (deep + mid)
+        "2 0 10 16 1", "1 0 11 16 1",
+        "2 0 12 16 1", "1 0 13 16 1",
+        "2 0 14 16 1", "1 0 15 16 1"
       ]
     },
     
-    // Rocket: red body, blue flame
+    // Launch: paper boat with white sail, squid-pink hull, rippled water
     launch: {
-      palette: ["#DC2626", "#FBBF24", "#06B6D4", "#FFFFFF"],
+      palette: ["#FFFFFF", "#FF6B9D", "#3B82F6", "#C44569"],
       pixels: [
-        // tip
-        "0 7 1 2 2",
-        // body
-        "0 6 3 4 2",
-        "3 5 5 6 4",
-        // window
-        "2 7 6 2 2",
-        // fins
-        "0 4 9 2 4", "0 10 9 2 4",
-        // engine
-        "0 6 9 1 3", "0 9 9 1 3",
-        // flame
-        "1 7 12 2 2"
+        // Sail (triangle pointing up)
+        "0 8 2 1 1",
+        "0 7 3 3 1",
+        "0 6 4 5 1",
+        "0 5 5 7 1",
+        "0 4 6 9 1",
+        "0 3 7 11 1",
+        "0 2 8 13 1",
+        // Hull (pink, tapers)
+        "1 0 9 16 1",
+        "1 1 10 14 1",
+        "1 2 11 12 1",
+        "1 3 12 10 1",
+        // Hull bow + stern outlines (darker pink)
+        "3 0 9 1 1", "3 15 9 1 1",
+        // Water ripples
+        "2 1 14 1 1", "2 3 14 1 1", "2 5 14 1 1", "2 7 14 1 1", "2 9 14 1 1", "2 11 14 1 1", "2 13 14 1 1",
+        // Water base line
+        "2 0 15 16 1"
       ]
     },
     
