@@ -59,6 +59,27 @@ function buildPoseidonRoutes({ rm, refs }) {
     req.on('close', () => ReasoningBus.unsubscribe(res));
   });
 
+  // GET /api/v2/dream-state — poller-friendly read of dream_memory.json.
+  // Returns 200 with { saved_at:null, last_updated:null } when no dream has
+  // happened yet, instead of forcing the client to hit /api/files/read and
+  // pollute the network log with a 404.
+  router.get('/dream-state', async (req, res) => {
+    try {
+      const dm = await rm.read('BRAIN/dream_memory.json').catch(() => null);
+      if (!dm) return res.json({ ok: true, saved_at: null, last_updated: null });
+      res.json({
+        ok: true,
+        saved_at:     dm.saved_at     || null,
+        last_updated: dm.last_updated || null,
+        type:         dm.type         || null,
+        reflection:   dm.reflection   || null,
+        skills_updated: dm.skills_updated || 0,
+      });
+    } catch (err) {
+      res.json({ ok: true, saved_at: null, last_updated: null });
+    }
+  });
+
   return router;
 }
 

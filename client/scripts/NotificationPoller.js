@@ -80,12 +80,12 @@
         }
       }
 
-      // 3. Dream cycle — check dream_memory.json for new entries
+      // 3. Dream cycle — dedicated endpoint that returns 200 even when no
+      //    dream has happened yet (avoids 404 spam from /api/files/read).
       try {
-        const dm = await fetch('/api/files/read?path=BRAIN/dream_memory.json');
+        const dm = await fetch('/api/v2/dream-state');
         if (dm.ok) {
-          const dmText = await dm.text();
-          const dmJson = JSON.parse(dmText);
+          const dmJson = await dm.json();
           const updatedAt = dmJson.saved_at || dmJson.last_updated;
           if (seen.dreamAt && updatedAt && updatedAt !== seen.dreamAt && initialized) {
             window.ToastManager?.show({

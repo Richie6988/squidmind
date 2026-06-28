@@ -406,10 +406,23 @@ function buildRouter(v2ModelService) {
     try {
       const { modelId, model_id, prompt, negativePrompt, negative_prompt,
               width, height, steps, cfg, cfg_scale, seed, project_id, filename } = req.body;
+      const resolvedId = modelId || model_id;
+
+      // Validate inputs up-front so the client gets a clear error before the
+      // request bounces around three layers.
+      if (!resolvedId) {
+        log.warn('[generate-image] missing model_id; body=', JSON.stringify(req.body).slice(0, 200));
+        return res.status(400).json({ success: false, ok: false,
+          error: 'model_id is required — open Models, drag a Flux/SD model into the IMAGE column first.' });
+      }
+      if (!prompt || !String(prompt).trim()) {
+        return res.status(400).json({ success: false, ok: false, error: 'prompt is required' });
+      }
+
       const tools = v2ModelService.orchestrator?.tools;
       if (tools) {
         const result = await tools.generateImage({
-          model_id: modelId || model_id,
+          model_id: resolvedId,
           prompt,
           negative_prompt: negativePrompt || negative_prompt || '',
           width:  Number(width)  || 512,
@@ -420,14 +433,21 @@ function buildRouter(v2ModelService) {
           project_id: project_id || null,
           filename: filename || null,
         });
-        if (!result.ok) return res.status(400).json({ success: false, ok: false, error: result.error });
+        if (!result.ok) {
+          log.warn('[generate-image] failed:', result.error, '— model:', resolvedId);
+          return res.status(400).json({ success: false, ok: false, error: result.error });
+        }
         return res.json({ success: true, ok: true, ...result });
       }
       // Fallback: orchestrator not ready yet
       const result = await v2ModelService.generateImage(req.body);
-      if (!result.ok) return res.status(400).json({ success: false, ok: false, error: result.error });
+      if (!result.ok) {
+        log.warn('[generate-image] (fallback) failed:', result.error, '— model:', resolvedId);
+        return res.status(400).json({ success: false, ok: false, error: result.error });
+      }
       res.json({ success: true, ok: true, ...result });
     } catch (err) {
+      log.warn('[generate-image] exception:', err.message, err.stack?.split('\n').slice(0, 3).join(' | '));
       res.status(500).json({ success: false, ok: false, error: err.message });
     }
   });

@@ -624,25 +624,30 @@ const PoseidonChat = {
 
     if (aq) {
       const r = aq.getBoundingClientRect();
-      // Clamp right edge to the left border of the right panel (Tower),
-      // so the overlay never covers it.
-      const rp   = document.getElementById('right-panel');
+      // Clamp right edge to the left border of the right panel (Tower).
+      // CSS .modal.pc-overlay has width:auto/left:0/right:480px with !important,
+      // so we MUST use setProperty with 'important' or our inline styles lose.
+      const rp     = document.getElementById('right-panel');
       const rpLeft = rp ? rp.getBoundingClientRect().left : window.innerWidth;
-      const maxW = rpLeft - r.left;
-      this.modal.style.left   = r.left + 'px';
-      this.modal.style.top    = (hdr ? hdr.getBoundingClientRect().bottom : r.top) + 'px';
-      this.modal.style.width  = Math.min(r.width, maxW) + 'px';
-      this.modal.style.right  = '';
-      this.modal.style.bottom = '0px';
+      const w      = Math.min(r.width, rpLeft - r.left);
+      const top    = hdr ? hdr.getBoundingClientRect().bottom : r.top;
+      this.modal.style.setProperty('left',   r.left + 'px', 'important');
+      this.modal.style.setProperty('top',    top + 'px',    'important');
+      this.modal.style.setProperty('width',  w + 'px',      'important');
+      this.modal.style.setProperty('right',  'auto',        'important');
+      this.modal.style.setProperty('bottom', '0px',         'important');
     } else {
-      // Fallback: cover everything left of projects-container
+      // Fallback: cover everything left of projects-container (or right-panel)
       const proj = document.getElementById('projects-container');
-      const t = hdr ? hdr.getBoundingClientRect().bottom : 70;
-      this.modal.style.left   = '0px';
-      this.modal.style.top    = t + 'px';
-      this.modal.style.right  = proj ? (window.innerWidth - proj.getBoundingClientRect().left) + 'px' : '480px';
-      this.modal.style.width  = '';
-      this.modal.style.bottom = '0px';
+      const rp   = document.getElementById('right-panel');
+      const cutEl = proj || rp;
+      const t    = hdr ? hdr.getBoundingClientRect().bottom : 70;
+      const rightPx = cutEl ? (window.innerWidth - cutEl.getBoundingClientRect().left) : 480;
+      this.modal.style.setProperty('left',   '0px',        'important');
+      this.modal.style.setProperty('top',    t + 'px',     'important');
+      this.modal.style.setProperty('right',  rightPx + 'px', 'important');
+      this.modal.style.setProperty('width',  'auto',       'important');
+      this.modal.style.setProperty('bottom', '0px',        'important');
     }
   },
 
