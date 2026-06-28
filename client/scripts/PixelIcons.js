@@ -202,31 +202,27 @@ const PixelIcons = {
       ]
     },
     
-    // Brain: pink/purple
-    // Brain: branching coral fan with neural sparkles (marine + neural network metaphor)
+    // Brain: two symmetrical lobes, central fissure, neural texture
     brain: {
-      palette: ["#FF6B9D", "#C44569", "#FFFFFF"],
-      // 0=coral pink (branches), 1=darker pink (base shadow), 2=white (synapse sparkles)
+      palette: ["#FF6B9D", "#C44569", "#FFB6C1"],
+      // 0=bright pink (lobes), 1=deep pink (fissure/shadow), 2=light pink (highlight)
       pixels: [
-        // Synapse sparkles at branch tips
-        "2 6 1 1 1", "2 10 1 1 1",
-        // Top branches (4 antlers spreading outward)
-        "0 4 2 3 1", "0 8 2 3 1",
-        "0 3 3 1 1", "0 6 3 1 1", "0 8 3 1 1", "0 11 3 1 1",
-        // Spreading wider
-        "0 2 4 1 1", "0 13 4 1 1",
-        "0 2 5 2 1", "0 6 5 1 1", "0 8 5 1 1", "0 12 5 2 1",
-        // Merge layer — branches converging
-        "0 3 6 9 1",
-        "0 4 7 7 1",
-        "0 5 8 3 1",
-        // Trunk
-        "0 5 9 3 2",
-        // Base / coral foot (darker pink, expanding)
-        "1 4 11 5 1",
-        "1 3 12 7 1",
-        "1 2 13 9 1",
-        "1 1 14 11 1"
+        // Left lobe top curve
+        "0 1 3 3 1", "0 1 4 5 1", "0 1 5 5 1", "0 1 6 5 3",
+        // Left lobe body
+        "0 2 7 5 2", "0 2 9 4 2",
+        // Right lobe top curve
+        "0 9 3 3 1", "0 8 4 5 1", "0 8 5 5 1", "0 8 6 5 3",
+        // Right lobe body
+        "0 8 7 5 2", "0 9 9 4 2",
+        // Central fissure (vertical gap)
+        "1 6 3 1 8",
+        // Bottom stem
+        "1 5 11 3 2", "0 5 12 3 1",
+        // Texture bumps left lobe
+        "2 2 5 2 1", "1 3 7 2 1",
+        // Texture bumps right lobe
+        "2 10 5 2 1", "1 10 7 2 1"
       ]
     },
     
@@ -383,82 +379,86 @@ const PixelIcons = {
       ]
     },
     
-    // Info: cyan circle with dark i
+    // Info: water-drop shape with ℹ — marine info metaphor
     info: {
-      palette: ["#7DD3FC", "#FFFFFF", "#1A4D7A"],
-      pixels: [
-        // Circle outline (cyan)
-        "0 5 1 6 1", "0 3 2 2 1", "0 11 2 2 1",
-        "0 2 3 1 2", "0 13 3 1 2",
-        "0 1 5 1 6", "0 14 5 1 6",
-        "0 2 11 1 2", "0 13 11 1 2",
-        "0 3 13 2 1", "0 11 13 2 1",
-        "0 5 14 6 1",
-        // Inside (white)
-        "1 5 5 6 8", "1 3 6 1 8", "1 12 6 1 8",
-        // i dot + stem (deep)
-        "2 7 4 2 2",
-        "2 7 7 2 6"
-      ]
-    },
-    
-    // Create: squid-egg — pink ovoid with white shine spot
-    create: {
-      palette: ["#FF6B9D", "#C44569", "#FFFFFF"],
-      pixels: [
-        // Egg top
-        "0 6 1 4 1",
-        // Egg body (wider middle)
-        "0 5 2 6 1",
-        "1 4 3 8 1",
-        "0 4 4 8 1",
-        "0 3 5 10 1",
-        "0 3 6 10 6",
-        // Shine (top-left)
-        "2 5 3 2 2",
-        // Egg bottom taper
-        "0 4 12 8 1",
-        "1 5 13 6 1"
-      ]
-    },
-    
-    // Mouse: tentacle-tip pointer (marine brand pointer)
-    mouse: {
-      palette: ["#FF6B9D", "#C44569", "#FFFFFF"],
-      // 0=pink body, 1=dark shadow, 2=white highlight
-      pixels: [
-        // Arrow shaft (tentacle body)
-        "0 5 1 2 8",
-        "0 4 2 1 7", "0 7 2 1 7",
-        // Tip
-        "0 5 9 2 1", "0 6 10 1 1",
-        // Widening base (sucker-hint)
-        "0 3 6 1 1", "0 8 6 1 1",
-        "0 2 7 1 1", "0 9 7 1 1",
-        "1 3 8 1 1", "1 8 8 1 1",
-        // White highlight strip
-        "2 5 2 1 5",
-        // Two small tentacle curls at base
-        "0 2 11 2 3", "1 4 12 1 2",
-        "0 9 11 2 3", "1 10 12 1 2"
-      ]
-    },
-    
-    // Interact: ocean-blue pointer with click ripple
-    interact: {
       palette: ["#7DD3FC", "#1A4D7A", "#FFFFFF"],
+      // 0=cyan drop, 1=deep shadow, 2=white i
       pixels: [
-        // Arrow body
-        "0 4 1 2 8",
-        "0 3 2 1 7", "0 6 2 1 7",
-        "0 4 9 2 1", "0 5 10 1 1",
-        "0 2 5 1 1", "0 7 5 1 1",
-        // Tip highlight
-        "2 4 2 1 2",
-        // Click ripple arcs (bottom-right)
-        "1 9 8 2 1", "1 10 7 1 1", "1 10 9 1 1",
-        "0 11 6 2 1", "0 12 5 1 1", "0 12 7 1 1",
-        "0 13 6 1 2"
+        // Drop tip (top)
+        "0 7 1 2 1",
+        "0 6 2 4 1", "0 5 3 6 1",
+        // Drop body widening
+        "0 4 4 8 1", "0 3 5 10 1",
+        "0 2 6 12 1", "0 2 7 12 3",
+        "0 2 10 12 1",
+        // Drop bottom curve
+        "0 3 11 10 1", "0 4 12 8 1",
+        "0 6 13 4 1",
+        // Shadow side
+        "1 12 6 2 5",
+        // White i: dot + stem
+        "2 7 4 2 1",
+        "2 7 6 2 1", "2 7 7 2 4"
+      ]
+    },
+    
+    // Create: 4-pointed star spark (new life, creation moment)
+    create: {
+      palette: ["#FF6B9D", "#FFD700", "#FFFFFF"],
+      // 0=pink (rays), 1=gold (core), 2=white (center flash)
+      pixels: [
+        // Vertical ray
+        "0 7 1 2 3",
+        "0 7 12 2 3",
+        // Horizontal ray
+        "0 1 7 3 2",
+        "0 12 7 3 2",
+        // Diagonal rays (thin)
+        "0 4 4 1 1", "0 11 4 1 1",
+        "0 4 11 1 1", "0 11 11 1 1",
+        // Gold inner diamond
+        "1 6 5 4 1", "1 5 6 1 4", "1 10 6 1 4", "1 6 10 4 1",
+        "1 5 7 6 2",
+        // White flash center
+        "2 7 7 2 2"
+      ]
+    },
+    
+    // Mouse: clean arrow pointer — white fill, deep navy outline
+    mouse: {
+      palette: ["#FFFFFF", "#0A2540", "#7DD3FC"],
+      // 0=white fill, 1=dark outline, 2=cyan accent tail
+      pixels: [
+        // Outline (leftmost edge + hypotenuse)
+        "1 3 1 1 12", "1 4 13 1 1",
+        "1 4 2 1 1", "1 5 3 1 1", "1 6 4 1 1", "1 7 5 1 1",
+        "1 8 6 1 1", "1 9 7 1 1", "1 10 8 1 1",
+        "1 7 9 1 1", "1 8 10 1 1", "1 9 11 1 1", "1 10 12 1 1",
+        // White fill interior
+        "0 4 3 1 1", "0 5 4 2 1", "0 6 5 3 1",
+        "0 7 6 3 1", "0 8 7 2 1",
+        "0 4 4 1 5", "0 5 5 1 5", "0 6 6 1 4", "0 7 7 1 3", "0 8 8 1 2",
+        // Cyan accent on tail
+        "2 5 9 3 3"
+      ]
+    },
+    
+    // Interact: clean arrow + concentric click ripples
+    interact: {
+      palette: ["#0A2540", "#7DD3FC", "#FFFFFF"],
+      // 1=dark arrow, 0=cyan ripples, 2=white arrow fill
+      pixels: [
+        // Arrow outline
+        "0 2 1 1 10", "0 3 11 1 1",
+        "0 3 2 1 1", "0 4 3 1 1", "0 5 4 1 1",
+        "0 6 5 1 1", "0 5 7 1 1", "0 6 8 1 1", "0 7 9 1 1",
+        // Arrow white fill
+        "2 3 3 1 1", "2 4 4 2 1", "2 5 5 2 1",
+        "2 3 4 1 4", "2 4 5 1 3", "2 5 6 1 2",
+        // Ripple 1 (inner, bright)
+        "1 9 6 1 1", "1 10 7 1 1", "1 10 9 1 1", "1 9 10 1 1",
+        // Ripple 2 (outer, dimmer)
+        "1 11 5 1 1", "1 12 6 1 1", "1 13 7 1 3", "1 12 10 1 1", "1 11 11 1 1"
       ]
     },
     // text_model: speech bubble (cyan, with text lines)
@@ -603,53 +603,70 @@ const PixelIcons = {
         "4 5 8 3 1", "4 4 9 5 1", "4 5 10 3 1"
       ]
     },
-    // BOLT — simple bright zigzag lightning (active squad)
+    // Bolt: sharp lightning bolt — gold with light inner fill
     bolt: {
-      palette: ['#facc15','#fef9c3','#000000'],
+      palette: ["#FFD700", "#B8860B", "#FFF9C4"],
+      // 0=gold outline, 1=deep gold shadow, 2=pale inner glow
       pixels: [
-        '0 9 1 4 2','0 8 3 4 2','0 7 5 4 2',
-        '0 4 5 8 2',
-        '0 7 7 7 2','0 6 9 7 2','0 5 11 7 2',
-        '0 3 11 5 2','0 2 13 5 2',
-        '1 10 2 2 2','1 9 4 2 2'
+        // Top segment (tilts right)
+        "0 9 1 2 1", "0 8 2 3 1", "0 7 3 4 1", "0 6 4 5 1",
+        // Middle crossbar (left overhang)
+        "0 3 5 9 2",
+        // Bottom segment (tilts right again)
+        "0 7 7 5 1", "0 6 8 6 1", "0 5 9 6 1", "0 4 10 5 1",
+        "0 3 11 4 1", "0 2 12 3 1",
+        // Inner glow fill
+        "2 7 4 3 1", "2 6 5 4 1",
+        "2 7 8 4 1", "2 6 9 4 1", "2 5 10 3 1",
+        // Deep gold shadow right edge
+        "1 11 2 1 1", "1 10 3 1 1", "1 9 4 1 1",
+        "1 11 8 1 1", "1 10 9 1 1", "1 9 10 1 1", "1 8 11 1 1"
       ]
     },
-
-    // MOON — clear crescent shape (sleeping squad)
+    // Moon: gold crescent — mythology night sky, pairs with Poseidon gold
     moon: {
-      palette: ['#94a3b8','#e2e8f0','#1e293b'],
+      palette: ["#FFD700", "#B8860B", "#FFF9C4"],
+      // 0=gold, 1=deep gold (terminator shadow), 2=pale glow
       pixels: [
-        '0 4 1 8 14',
-        '2 5 2 6 12',
-        '2 6 3 4 10',
-        '2 7 4 2 8',
-        '2 8 5 2 6',
-        '2 8 6 2 4',
-        '2 8 7 2 2',
-        '1 6 1 4 2','1 6 13 4 2',
-        '1 9 3 2 2','1 10 5 2 2','1 10 7 2 2','1 10 9 2 2','1 9 11 2 2'
+        // Outer disc (full circle silhouette, gold)
+        "0 4 1 8 1", "0 3 2 3 1", "0 11 2 2 1",
+        "0 2 3 2 1", "0 12 3 1 2",
+        "0 1 4 1 2", "0 13 4 1 3",
+        "0 1 6 2 9", "0 13 7 1 5",
+        "0 2 12 1 2", "0 13 12 1 2",
+        "0 3 13 3 1", "0 11 13 2 1",
+        "0 4 14 8 1",
+        // Inner cutout (shadow — dark gold carves the crescent)
+        "1 5 3 7 10",
+        "1 4 4 1 8", "1 11 4 1 8",
+        // Pale inner glow on lit edge
+        "2 2 4 1 7", "2 3 3 1 1", "2 3 12 1 1"
       ]
     },
-
-    // Clean: pearl shell — a coquille Saint-Jacques pixel (cleanse, new start)
+    // Clean: ✦ 4-ray sparkle — crisp, universally readable, brand seafoam
     clean: {
-      palette: ["#FFFFFF", "#7DD3FC", "#FFD700"],
+      palette: ["#06FFA5", "#1A4D3E", "#FFFFFF"],
+      // 0=seafoam rays, 1=deep tip, 2=white hot center
       pixels: [
-        // Shell fan top (white ribs)
-        "0 8 1 1 4",
-        "0 6 2 2 1", "0 9 2 2 1",
-        "0 5 3 1 1", "0 7 3 4 1", "0 11 3 1 1",
-        "0 4 4 1 1", "0 6 4 1 2", "0 9 4 1 2", "0 12 4 1 1",
-        "0 3 5 2 1", "0 6 5 1 3", "0 9 5 1 3", "0 13 5 2 1",
-        // Shell body (cyan wash)
-        "1 3 6 10 5",
-        "1 4 11 8 2",
-        // Lower curve
-        "0 5 13 6 1",
-        // Gold hinge dot
-        "2 7 14 2 1"
+        // Long vertical ray
+        "1 7 0 2 2",
+        "0 7 2 2 4",
+        "0 7 10 2 4",
+        "1 7 14 2 2",
+        // Long horizontal ray
+        "1 0 7 2 2",
+        "0 2 7 4 2",
+        "0 10 7 4 2",
+        "1 14 7 2 2",
+        // Short diagonal rays (45°)
+        "0 4 4 2 2",
+        "0 10 4 2 2",
+        "0 4 10 2 2",
+        "0 10 10 2 2",
+        // Bright center
+        "2 6 6 4 4"
       ]
-    }
+    },
   },
 
   /**
