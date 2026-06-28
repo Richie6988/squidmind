@@ -114,8 +114,15 @@ const TaskQueueUI = {
       if (doneTasks.length === 0) {
         resultsEl.innerHTML = '<p class="hint" style="font-size:9px;color:var(--text-secondary);padding:8px;">No results yet.</p>';
       } else {
-        // Image tasks pinned at top, then rest sorted by recency
-        const isImg = t => (t.task_type === 'image_gen') || /^generate[: ]/i.test(t.title);
+        // Image tasks pinned at top, then rest sorted by recency.
+        // Server writes task_type 'image_generation' but earlier code only
+        // checked for 'image_gen' — both accepted here. Titles can start with
+        // "Image:" (current) or "Generate:" (older format).
+        const isImg = t =>
+          t.task_type === 'image_generation' ||
+          t.task_type === 'image_gen' ||
+          /^(image|generate)[: ]/i.test(t.title || '') ||
+          !!t.output_preview;  // belt-and-braces: if we have a preview URL it's an image
         const getStatus = t => t.lifecycle?.status || t.status || '';
         const imgTasks  = doneTasks.filter(t => isImg(t) && getStatus(t) === 'completed');
         const restTasks = doneTasks.filter(t => !isImg(t) || getStatus(t) !== 'completed');
@@ -134,7 +141,11 @@ const TaskQueueUI = {
     const agent = t.assigned_name || t.assigned_to || '—';
     const completedAt = t.lifecycle?.completed_at || t.completed_at;
     const when  = completedAt ? this._elapsed(completedAt) : '';
-    const isImageTask = t.task_type === 'image_gen' || /^generate[: ]/i.test(t.title || '');
+    const isImageTask =
+      t.task_type === 'image_generation' ||
+      t.task_type === 'image_gen' ||
+      /^(image|generate)[: ]/i.test(t.title || '') ||
+      !!t.output_preview;
     const imgPreview = (isImageTask && t.output_preview)
       ? `<div style="margin:4px 0;"><img src="${t.output_preview}" style="max-width:100%;max-height:140px;border:1px solid rgba(255,255,255,0.1);border-radius:3px;" onerror="this.style.display='none'"></div>`
       : '';
@@ -162,7 +173,7 @@ const TaskQueueUI = {
   _makeImageCard(t) {
     const when  = t.lifecycle?.completed_at ? this._elapsed(t.lifecycle.completed_at) : '';
     const src   = t.output_preview || '';
-    const label = t.title.replace(/^generate[: ]*/i, '');
+    const label = t.title.replace(/^(image|generate)[: ]*/i, '');
     return `<div class="tq-img-card" onclick="TaskQueueUI.openTaskResult('${t.task_id}')">
       <div class="tq-img-thumb-wrap">
         ${src

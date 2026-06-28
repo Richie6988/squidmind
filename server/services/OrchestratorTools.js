@@ -503,26 +503,31 @@ class OrchestratorTools {
         }
       } catch(e) { log.warn('task creation failed:', e.message); }
 
-      // Route output: project → PROJECTS/<folder>/output/, else → TASKS/<task_id>/
+      // Route output:
+      //   With project: PROJECTS/<folder>/output/<safeFilename>
+      //   Without:      TASKS/OUTPUT/<task_id>.png   (no per-task folder)
       const AQUARIUM = require('../aquarium');
-      let outputDir, serveBase;
+      let outputDir, outFilename, serveBase;
       if (project_id) {
         try {
           const reg = await this.rm.read('PROJECTS/project_registry.json').catch(() => ({ projects: {} }));
           const proj = reg.projects?.[project_id];
           const folder = proj?.folder || project_id;
-          outputDir = require('path').join(AQUARIUM.PROJECTS, folder, 'output');
-          serveBase = require('path').join(AQUARIUM.PROJECTS, folder, 'output', safeFilename);
+          outputDir   = require('path').join(AQUARIUM.PROJECTS, folder, 'output');
+          outFilename = safeFilename;
+          serveBase   = require('path').join(outputDir, outFilename);
         } catch {}
       }
       if (!outputDir) {
-        // No project — flat in task folder
-        outputDir = taskId ? require('path').join(AQUARIUM.TASKS, taskId) : require('path').join(AQUARIUM.TASKS, 'generated');
-        serveBase = require('path').join(outputDir, safeFilename);
+        // Flat layout: every task-scoped image lands in TASKS/OUTPUT/<task_id>.png
+        // (or generated_<ts>.png as fallback when no task could be created).
+        outputDir   = AQUARIUM.OUTPUT;
+        outFilename = taskId ? `${taskId}.png` : (safeFilename || `generated_${Date.now()}.png`);
+        serveBase   = require('path').join(outputDir, outFilename);
       }
       const serveUrl = `/api/files/read?path=${encodeURIComponent(serveBase)}`;
       await fs2.mkdir(outputDir, { recursive: true });
-      const outputPath = path.join(outputDir, safeFilename);
+      const outputPath = path.join(outputDir, outFilename);
 
       if (!this.modelService) return { ok: false, error: 'modelService not available' };
 
@@ -533,25 +538,71 @@ class OrchestratorTools {
         seed: seed ?? -1, negativePrompt: negative_prompt || ''
       });
 
-      // Update task status directly in details.json — avoids flat registry path issues
+      // Update task status + persist a results_log entry so the Results panel
+      // (/api/v2/tasks/results) actually sees the completed image. The earlier
+      // code only set output_preview and bypassed results_log entirely, so
+      // image results never surfaced in the UI.
       if (taskId && taskObj) {
         try {
           const finalStatus = result.ok ? 'completed' : 'failed';
+          const completedAt = new Date().toISOString();
           taskObj.status = finalStatus;
           taskObj.lifecycle = {
             ...(taskObj.lifecycle || {}),
             status: finalStatus,
-            completed_at: new Date().toISOString()
+            completed_at: completedAt
           };
-          if (result.ok) taskObj.output_preview = serveUrl;
+          if (result.ok) {
+            taskObj.output_preview = serveUrl;
+            taskObj.result_file    = serveBase;       // canonical disk path
+            taskObj.result_summary = `Image: ${prompt.slice(0, 80)}`;
+          } else {
+            taskObj.result_summary = `Failed: ${result.error || 'unknown'}`;
+          }
+          taskObj.completed_at = completedAt;
           await this.rm._writeTaskDetails(taskId, taskObj);
           this.rm.invalidateCache();
+
+          // Write to results_log.json so /api/v2/tasks/results returns it.
+          // Use the same shape TaskRunner.setStatus would have written.
+          try {
+            const fsp = require('fs').promises;
+            let rlog = { results: {} };
+            try { rlog = JSON.parse(await fsp.readFile(AQUARIUM.RESULTS_LOG, 'utf8')); } catch {}
+            rlog.results[taskId] = {
+              task_id:        taskId,
+              title:          taskObj.title,
+              task_type:      'image_generation',
+              status:         finalStatus,
+              result_summary: taskObj.result_summary,
+              result_file:    taskObj.result_file || null,
+              output_preview: taskObj.output_preview || null,
+              completed_at:   completedAt,
+              assigned_name:  taskObj.assigned_to || null,
+              project_name:   taskObj.project_name || taskObj.context?.project_name || null,
+              project_id:     taskObj.project_id   || taskObj.context?.project_id   || null,
+            };
+            await fsp.writeFile(AQUARIUM.RESULTS_LOG, JSON.stringify(rlog, null, 2), 'utf8');
+          } catch (re) { log.warn(`results_log write failed for ${taskId}:`, re.message); }
+
+          // Broadcast lifecycle event so the UI refreshes without polling lag.
+          try {
+            global.ReasoningBus?.push({
+              type:           'task_lifecycle',
+              task_id:        taskId,
+              status:         finalStatus,
+              title:          taskObj.title,
+              result_file:    taskObj.result_file || null,
+              result_summary: taskObj.result_summary,
+              timestamp:      Date.now(),
+            });
+          } catch {}
         } catch(e) { log.warn('task status update failed:', e.message); }
       }
 
       if (!result.ok) return result;
       return { ok: true, url: serveUrl, outputPath: result.outputPath, bytes: result.bytes,
-               filename: safeFilename, task_id: taskId,
+               filename: outFilename, task_id: taskId,
                markdown: `![${prompt.slice(0,40)}](${serveUrl})` };
     } catch (err) {
       return { ok: false, error: err.message };
@@ -590,13 +641,17 @@ class OrchestratorTools {
           const fname = output_path || `fetch_${Date.now()}.txt`;
           savePath = path.join(outDir, path.basename(fname));
         } catch {
-          savePath = path.join(AQUARIUM.TASKS, task_id || `tmp_${Date.now()}`, output_path || `fetch_${Date.now()}.txt`);
+          // Last-resort fallback — flat TASKS/OUTPUT/, no per-task folder.
+          await fs.mkdir(AQUARIUM.OUTPUT, { recursive: true });
+          const ext = (output_path || 'fetch.txt').split('.').pop().toLowerCase();
+          savePath = path.join(AQUARIUM.OUTPUT, `${task_id || 'tmp_' + Date.now()}.${ext}`);
         }
       } else if (task_id) {
-        const taskDir = path.join(AQUARIUM.TASKS, task_id);
-        await fs.mkdir(taskDir, { recursive: true });
-        const fname = output_path || `fetch_${Date.now()}.txt`;
-        savePath = path.join(taskDir, path.basename(fname));
+        // Flat layout — single file in TASKS/OUTPUT named after the task ID.
+        // No per-task folder. Multiple fetches under the same task overwrite.
+        await fs.mkdir(AQUARIUM.OUTPUT, { recursive: true });
+        const ext = (output_path || 'fetch.txt').split('.').pop().toLowerCase();
+        savePath = path.join(AQUARIUM.OUTPUT, `${task_id}.${ext}`);
       } else {
         return { ok: false, error: 'Provide task_id or project_id so the file has a destination' };
       }
