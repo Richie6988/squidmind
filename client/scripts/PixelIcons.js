@@ -123,44 +123,53 @@ const PixelIcons = {
       ]
     },
     
-    // Tasks: green checks
+    // Tasks: 3 checkboxes — two ticked (seafoam), one pending (dim)
     tasks: {
-      palette: ["#06FFA5", "#1A4D3E", "#FFFFFF", "#888888"],
+      palette: ["#06FFA5", "#1A4D3E", "#FFFFFF"],
+      // 0=seafoam tick, 1=dark outline, 2=white interior
       pixels: [
-        // Box 1 outline
-        "1 1 1 4 4",
-        // check 1 (green)
-        "0 4 2 1 1", "0 3 3 1 1", "0 2 3 1 1", "0 1 3 1 1",
-        // line 1 (white)
-        "2 7 2 8 1", "2 7 3 6 1",
-        // Box 2
-        "1 1 6 4 4",
-        "0 4 7 1 1", "0 3 8 1 1", "0 2 8 1 1", "0 1 8 1 1",
-        "2 7 7 8 1", "2 7 8 6 1",
-        // Box 3 (empty)
-        "1 1 11 4 1", "1 1 12 1 3", "1 4 12 1 3", "1 1 14 4 1",
-        // dim line 3
-        "3 7 12 8 1", "3 7 13 6 1"
+        // Box 1 outline + fill
+        "1 1 1 5 5", "2 2 2 3 3",
+        // Tick 1 (seafoam)
+        "0 4 3 1 1", "0 3 4 2 1", "0 2 4 1 1",
+        // Box 2 outline + fill
+        "1 1 7 5 5", "2 2 8 3 3",
+        // Tick 2
+        "0 4 8 1 1", "0 3 9 2 1", "0 2 9 1 1",
+        // Box 3 outline only (pending — dark, no fill)
+        "1 1 12 5 1", "1 1 13 1 4", "1 5 13 1 4", "1 1 16 5 1",
+        // Label lines next to each box
+        "0 7 2 8 1", "0 7 3 6 1",
+        "0 7 8 8 1", "0 7 9 6 1",
+        "1 7 13 8 1", "1 7 14 6 1"
       ]
     },
     
-    // Target: red bullseye
+    // Target: anchor ring — marine target metaphor
     target: {
-      palette: ["#DC2626", "#FFFFFF", "#FBBF24"],
+      palette: ["#FFD700", "#B8860B", "#1A4D7A"],
+      // 0=gold ring, 1=dark gold shadow, 2=deep ocean fill
       pixels: [
-        // outer ring (red)
+        // Ring outer edge
         "0 5 1 6 1", "0 3 2 2 1", "0 11 2 2 1",
-        "0 2 3 1 1", "0 13 3 1 1",
-        "0 1 4 1 2", "0 14 4 1 2",
-        "0 1 6 1 4", "0 14 6 1 4",
-        "0 1 10 1 2", "0 14 10 1 2",
-        "0 2 12 1 1", "0 13 12 1 1",
+        "0 2 3 1 2", "0 13 3 1 2",
+        "0 1 5 1 6", "0 14 5 1 6",
+        "0 2 11 1 2", "0 13 11 1 2",
         "0 3 13 2 1", "0 11 13 2 1",
         "0 5 14 6 1",
-        // mid ring (white)
-        "1 5 4 6 1", "1 4 5 1 6", "1 5 11 6 1", "1 11 5 1 6",
-        // center (yellow)
-        "2 7 7 2 2"
+        // Ring interior (ocean)
+        "2 5 4 6 1", "2 4 5 1 6", "2 11 5 1 6", "2 5 11 6 1",
+        "2 5 5 6 6",
+        // Anchor vertical shaft
+        "0 7 3 2 10",
+        // Anchor crossbar
+        "0 4 6 8 1",
+        // Anchor flukes (bottom)
+        "0 4 12 2 2", "0 10 12 2 2",
+        "1 5 13 1 1", "1 10 13 1 1",
+        // Ring on top
+        "0 6 1 4 2",
+        "1 7 0 2 1"
       ]
     },
     
@@ -268,32 +277,34 @@ const PixelIcons = {
       ]
     },
     
-    // Models: stacked colored boxes
+    // Models: 3 stacked rows in brand palette (gold / pink / cyan)
     models: {
-      palette: ["#F59E0B", "#10B981", "#6366F1", "#FBBF24"],
+      palette: ["#FFD700", "#FF6B9D", "#7DD3FC", "#B8860B"],
       pixels: [
-        "0 2 2 12 3",
+        // Top bar: gold
+        "0 2 2 12 3", "3 13 2 1 3",
+        // Mid bar: squid pink
         "1 2 6 12 3",
+        // Bottom bar: cyan
         "2 2 10 12 3",
-        // labels (yellow)
-        "3 4 3 1 1", "3 4 7 1 1", "3 4 11 1 1"
+        // Indent markers (darker shade on right)
+        "3 13 6 1 3", "3 13 10 1 3"
       ]
     },
     
-    // Data / Database: blue cylinders
+    // Data: database cylinders in ocean palette
     data: {
-      palette: ["#3B82F6", "#1E40AF", "#06B6D4"],
+      palette: ["#7DD3FC", "#1A4D7A", "#3B82F6"],
       pixels: [
-        // top
-        "2 3 1 10 1", "0 3 1 10 2", "1 3 2 10 1",
-        // body 1
-        "0 2 4 12 2", "1 2 5 12 1",
-        // body 2
-        "0 3 7 10 2", "1 3 8 10 1",
-        // body 3
-        "0 2 10 12 2", "1 2 11 12 1",
-        // bottom
-        "0 3 13 10 2", "1 3 14 10 1"
+        // Top ellipse
+        "0 3 1 10 1", "2 3 2 10 1", "0 2 3 12 1",
+        // Body
+        "0 2 4 1 8", "0 13 4 1 8",
+        "2 3 4 10 8",
+        // Mid divider (depth hint)
+        "0 2 8 12 1",
+        // Bottom ellipse
+        "0 2 12 12 1", "1 3 13 10 1", "0 3 14 10 1"
       ]
     },
     
@@ -372,103 +383,135 @@ const PixelIcons = {
       ]
     },
     
-    // Info: blue i
+    // Info: cyan circle with dark i
     info: {
-      palette: ["#3B82F6", "#FFFFFF", "#1E40AF"],
+      palette: ["#7DD3FC", "#FFFFFF", "#1A4D7A"],
       pixels: [
-        // circle outline
+        // Circle outline (cyan)
         "0 5 1 6 1", "0 3 2 2 1", "0 11 2 2 1",
         "0 2 3 1 2", "0 13 3 1 2",
         "0 1 5 1 6", "0 14 5 1 6",
         "0 2 11 1 2", "0 13 11 1 2",
         "0 3 13 2 1", "0 11 13 2 1",
         "0 5 14 6 1",
-        // inside (white)
+        // Inside (white)
         "1 5 5 6 8", "1 3 6 1 8", "1 12 6 1 8",
-        // i (dark blue)
+        // i dot + stem (deep)
         "2 7 4 2 2",
         "2 7 7 2 6"
       ]
     },
     
-    // Egg / Create: pink with sparkle
+    // Create: squid-egg — pink ovoid with white shine spot
     create: {
-      palette: ["#FBCFE8", "#F472B6", "#FFFFFF"],
+      palette: ["#FF6B9D", "#C44569", "#FFFFFF"],
       pixels: [
-        "1 6 1 4 1",
+        // Egg top
+        "0 6 1 4 1",
+        // Egg body (wider middle)
         "0 5 2 6 1",
         "1 4 3 8 1",
         "0 4 4 8 1",
         "0 3 5 10 1",
-        "0 3 6 10 7",
-        "2 5 8 1 1", "2 6 9 1 1",
-        "0 4 13 8 1",
-        "1 5 14 6 1"
+        "0 3 6 10 6",
+        // Shine (top-left)
+        "2 5 3 2 2",
+        // Egg bottom taper
+        "0 4 12 8 1",
+        "1 5 13 6 1"
       ]
     },
     
-    // Mouse pointer: white with black outline
+    // Mouse: tentacle-tip pointer (marine brand pointer)
     mouse: {
-      palette: ["#FFFFFF", "#000000", "#3B82F6"],
+      palette: ["#FF6B9D", "#C44569", "#FFFFFF"],
+      // 0=pink body, 1=dark shadow, 2=white highlight
       pixels: [
-        // outline
-        "1 3 2 1 11",
-        "1 4 13 1 1",
-        // arrow body
-        "0 4 3 1 1", "0 4 4 1 1", "0 4 5 1 1", "0 4 6 1 1", "0 4 7 1 1", "0 4 8 1 1", "0 4 9 1 1", "0 4 10 1 1", "0 4 11 1 1", "0 4 12 1 1",
-        "0 5 4 1 1", "0 5 5 1 1", "0 5 6 1 1", "0 5 7 1 1", "0 5 8 1 1", "0 5 9 1 1", "0 5 10 1 1", "0 5 11 1 1",
-        "0 6 5 1 1", "0 6 6 1 1", "0 6 7 1 1", "0 6 8 1 1", "0 6 9 1 1", "0 6 10 1 1",
-        "0 7 6 1 1", "0 7 7 1 1", "0 7 8 1 1", "0 7 9 1 1",
-        "0 8 7 1 1", "0 8 8 1 1",
-        // tail
-        "2 9 10 2 4", "0 11 9 1 1"
+        // Arrow shaft (tentacle body)
+        "0 5 1 2 8",
+        "0 4 2 1 7", "0 7 2 1 7",
+        // Tip
+        "0 5 9 2 1", "0 6 10 1 1",
+        // Widening base (sucker-hint)
+        "0 3 6 1 1", "0 8 6 1 1",
+        "0 2 7 1 1", "0 9 7 1 1",
+        "1 3 8 1 1", "1 8 8 1 1",
+        // White highlight strip
+        "2 5 2 1 5",
+        // Two small tentacle curls at base
+        "0 2 11 2 3", "1 4 12 1 2",
+        "0 9 11 2 3", "1 10 12 1 2"
       ]
     },
     
-    // Cursor interact: blue cursor
+    // Interact: ocean-blue pointer with click ripple
     interact: {
-      palette: ["#3B82F6", "#1E40AF"],
+      palette: ["#7DD3FC", "#1A4D7A", "#FFFFFF"],
       pixels: [
-        "1 3 2 1 11",
-        "0 4 3 1 1", "0 4 5 1 1", "0 4 7 1 1", "0 4 9 1 1", "0 4 11 1 1",
-        "0 5 4 1 1", "0 5 6 1 1", "0 5 8 1 1", "0 5 10 1 1",
-        "0 6 5 1 1", "0 6 7 1 1", "0 6 9 1 1",
-        "0 7 6 1 1", "0 7 8 1 1",
-        "0 8 7 1 1",
-        "1 10 11 2 2"
+        // Arrow body
+        "0 4 1 2 8",
+        "0 3 2 1 7", "0 6 2 1 7",
+        "0 4 9 2 1", "0 5 10 1 1",
+        "0 2 5 1 1", "0 7 5 1 1",
+        // Tip highlight
+        "2 4 2 1 2",
+        // Click ripple arcs (bottom-right)
+        "1 9 8 2 1", "1 10 7 1 1", "1 10 9 1 1",
+        "0 11 6 2 1", "0 12 5 1 1", "0 12 7 1 1",
+        "0 13 6 1 2"
       ]
     },
-
-    // TEXT model — speech bubble with lines
+    // text_model: speech bubble (cyan, with text lines)
     text_model: {
-      palette: ['#4facfe','#0a1628','#7dd3fc'],
+      palette: ["#7DD3FC", "#1A4D7A", "#FFFFFF"],
       pixels: [
-        '0 2 1 12 9','1 3 2 10 7',
-        '2 4 3 8 1','2 4 5 8 1','2 4 7 6 1',
-        '0 4 10 2 2','0 5 12 1 1'
+        // Bubble outline
+        "0 3 1 10 1", "0 2 2 1 1", "0 13 2 1 1",
+        "0 1 3 1 8", "0 14 3 1 8",
+        "0 2 11 4 1", "0 9 11 5 1",
+        "0 2 12 1 1",
+        // Tail
+        "0 3 12 2 1", "0 3 13 1 1",
+        // Interior (white)
+        "2 3 3 10 7",
+        // Text lines (deep)
+        "1 4 4 8 1", "1 4 6 8 1", "1 4 8 5 1"
       ]
     },
-
-    // VLM — eye inside viewfinder
+    // vlm: eye inside viewfinder frame (vision model — seafoam)
     vlm: {
-      palette: ['#34d399','#022c1a','#a7f3d0','#065f46'],
+      palette: ["#06FFA5", "#1A4D3E", "#FFFFFF"],
       pixels: [
-        '0 1 4 14 1','0 1 11 14 1','0 1 4 1 8','0 14 4 1 8',
-        '0 4 6 8 4','1 5 7 6 2','2 7 7 2 2',
-        '3 6 8 1 1','3 9 8 1 1'
+        // Frame corners (seafoam)
+        "0 1 1 4 2", "0 11 1 4 2",
+        "0 1 1 2 4", "0 13 1 2 4",
+        "0 1 11 2 4", "0 13 11 2 4",
+        "0 1 13 4 2", "0 11 13 4 2",
+        // Eye outline (dark)
+        "1 4 6 8 4",
+        // Iris (seafoam)
+        "0 5 7 6 2",
+        // Pupil (white)
+        "2 7 8 2 1",
+        // Highlight
+        "2 6 7 1 1"
       ]
     },
-
-    // TOOLS — wrench pixel
+    // Tools: clean wrench — now unique (config uses gear)
     tools: {
-      palette: ['#f59e0b','#7c2d00','#fde68a'],
+      palette: ["#FFD700", "#B8860B", "#FFFFFF"],
       pixels: [
-        '0 2 1 4 4','0 2 2 2 2','2 3 3 2 1',
-        '0 4 5 8 8','0 5 6 6 6','1 6 7 4 4',
-        '0 10 9 4 4','0 11 10 2 2','0 12 11 2 2','0 13 12 2 2'
+        // Head (box-end)
+        "0 2 1 5 4", "1 3 2 3 2",
+        "2 3 3 1 1",
+        // Handle shaft diagonal
+        "0 6 5 3 3", "0 7 6 3 3",
+        "0 8 7 3 3", "0 9 8 3 3",
+        "0 10 9 3 3",
+        // Tail knob
+        "0 11 11 4 4", "1 12 12 2 2"
       ]
     },
-
     // THINK — air bubble (thought = bubble underwater, double brand metaphor)
     think: {
       palette: ['#7DD3FC', '#1E40AF', '#FFFFFF'],
@@ -496,51 +539,70 @@ const PixelIcons = {
       ]
     },
 
-    // CODE — </>  
+    // code_model: </> brackets — neon seafoam
     code_model: {
-      palette: ['#00ffb4','#003d29','#00cc90'],
+      palette: ["#06FFA5", "#1A4D3E", "#FFFFFF"],
       pixels: [
-        '0 1 5 3 1','0 1 6 2 1','0 1 7 2 1','0 1 8 3 1',
-        '0 3 6 2 2','0 4 8 1 1',
-        '2 7 4 2 1','2 8 5 2 1','2 8 7 2 1','2 7 8 2 1',
-        '0 12 5 3 1','0 13 6 2 1','0 13 7 2 1','0 12 8 3 1',
-        '0 10 6 2 2','0 11 8 1 1'
+        // < bracket
+        "0 5 4 2 1", "0 4 5 2 1", "0 3 6 2 2", "0 4 8 2 1", "0 5 9 2 1",
+        // / slash
+        "0 10 4 2 1", "0 9 5 2 1", "0 8 6 2 2", "0 7 8 2 1", "0 6 9 2 1",
+        // > bracket
+        "0 9 4 2 1", "0 10 5 2 1", "0 11 6 2 2", "0 10 8 2 1", "0 9 9 2 1",
+        // Underline baseline
+        "1 2 12 12 1"
       ]
     },
-
-    // EMBED — grid of dots
+    // Embed: 3x3 dot grid in ocean palette (embed / connection metaphor)
     embed: {
-      palette: ['#94a3b8','#1e293b','#cbd5e1'],
+      palette: ["#3B82F6", "#7DD3FC", "#1A4D7A"],
       pixels: [
-        '0 2 2 2 2','0 7 2 2 2','0 12 2 2 2',
-        '0 2 7 2 2','2 7 7 2 2','0 12 7 2 2',
-        '0 2 12 2 2','0 7 12 2 2','0 12 12 2 2',
-        '1 4 4 8 8'
+        // 3x3 dots
+        "1 2 2 2 2", "0 7 2 2 2", "1 12 2 2 2",
+        "0 2 7 2 2", "2 7 7 2 2", "0 12 7 2 2",
+        "1 2 12 2 2", "0 7 12 2 2", "1 12 12 2 2",
+        // Connecting lines (deep blue)
+        "2 4 3 3 1", "2 9 3 3 1",
+        "2 3 4 1 3", "2 12 4 1 3",
+        "2 4 8 3 1", "2 9 8 3 1",
+        "2 3 9 1 3", "2 12 9 1 3"
       ]
     },
-
-    // MATH — sigma symbol
+    // math_model: Σ sigma — gold (math = logic = gold)
     math_model: {
-      palette: ['#fb923c','#431407','#fed7aa'],
+      palette: ["#FFD700", "#B8860B", "#FFFFFF"],
       pixels: [
-        '0 2 1 12 2','2 3 2 9 1',
-        '0 4 4 5 2','0 3 6 6 2',
-        '0 4 10 5 2','2 3 11 9 1',
-        '0 2 12 12 2'
+        // Top bar
+        "0 2 2 12 2",
+        // Top-right to mid diagonal
+        "1 3 3 8 1", "1 4 4 6 1", "1 5 5 4 1", "1 6 6 3 1",
+        // Mid-left nudge
+        "0 3 7 4 1",
+        // Mid-right to bottom diagonal
+        "1 6 8 3 1", "1 5 9 4 1", "1 4 10 6 1", "1 3 11 8 1",
+        // Bottom bar
+        "0 2 12 12 2",
+        // White highlight on top-left corner
+        "2 2 2 2 1"
       ]
     },
-
-    // IMAGE — landscape in frame
+    // image_model: landscape in gold frame (image = painting = gold frame)
     image_model: {
-      palette: ['#a78bfa','#2e1065','#7c3aed','#ddd6fe','#86efac'],
+      palette: ["#FFD700", "#B8860B", "#7DD3FC", "#3B82F6", "#E5C580"],
       pixels: [
-        '0 1 1 14 14','1 2 2 12 12',
-        '4 3 8 4 5','4 4 9 2 4','4 5 10 1 3',
-        '3 8 5 2 3','3 9 6 1 2',
-        '2 3 3 1 1','0 4 4 1 1'
+        // Gold frame
+        "0 1 1 14 2", "0 1 13 14 2",
+        "0 1 1 2 14", "0 13 1 2 14",
+        // Sky (cyan)
+        "2 3 3 10 6",
+        // Water/ground (mid blue)
+        "3 3 9 10 4",
+        // Sun (gold dot upper-right)
+        "1 10 4 3 3",
+        // Island silhouette (sand)
+        "4 5 8 3 1", "4 4 9 5 1", "4 5 10 3 1"
       ]
     },
-
     // BOLT — simple bright zigzag lightning (active squad)
     bolt: {
       palette: ['#facc15','#fef9c3','#000000'],
@@ -569,16 +631,23 @@ const PixelIcons = {
       ]
     },
 
-    // Clean/Sparkle: cyan
+    // Clean: pearl shell — a coquille Saint-Jacques pixel (cleanse, new start)
     clean: {
-      palette: ["#06FFA5", "#FFD700", "#FFFFFF"],
+      palette: ["#FFFFFF", "#7DD3FC", "#FFD700"],
       pixels: [
-        "0 7 1 2 2",
-        "0 7 13 2 2",
-        "0 1 7 2 2",
-        "0 13 7 2 2",
-        "1 6 6 4 4",
-        "2 7 7 2 2"
+        // Shell fan top (white ribs)
+        "0 8 1 1 4",
+        "0 6 2 2 1", "0 9 2 2 1",
+        "0 5 3 1 1", "0 7 3 4 1", "0 11 3 1 1",
+        "0 4 4 1 1", "0 6 4 1 2", "0 9 4 1 2", "0 12 4 1 1",
+        "0 3 5 2 1", "0 6 5 1 3", "0 9 5 1 3", "0 13 5 2 1",
+        // Shell body (cyan wash)
+        "1 3 6 10 5",
+        "1 4 11 8 2",
+        // Lower curve
+        "0 5 13 6 1",
+        // Gold hinge dot
+        "2 7 14 2 1"
       ]
     }
   },
