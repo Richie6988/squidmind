@@ -351,7 +351,7 @@ const ICONS = {
   },
 
   brain: {
-    title: "Brain · squid-pink alignment",
+    title: "Brain · coral fan + neural sparkles",
     old: {
       palette: ["#EC4899","#9D174D","#FFFFFF"],
       pixels: [
@@ -365,14 +365,45 @@ const ICONS = {
     new: {
       palette: ["#FF6B9D","#C44569","#FFFFFF"],
       pixels: [
-        "1 5 2 6 1","1 3 3 4 1","1 9 3 4 1","1 2 4 4 1","1 10 4 4 1",
-        "0 2 5 5 1","0 9 5 5 1","0 1 6 6 4","0 9 6 6 4",
-        "2 4 7 2 1","2 10 7 2 1",
-        "0 2 10 5 1","0 9 10 5 1","0 3 11 4 1","0 9 11 4 1",
-        "0 4 12 3 1","0 9 12 3 1","1 5 13 6 1"
+        "2 6 1 1 1","2 10 1 1 1",
+        "0 4 2 3 1","0 8 2 3 1",
+        "0 3 3 1 1","0 6 3 1 1","0 8 3 1 1","0 11 3 1 1",
+        "0 2 4 1 1","0 13 4 1 1",
+        "0 2 5 2 1","0 6 5 1 1","0 8 5 1 1","0 12 5 2 1",
+        "0 3 6 9 1","0 4 7 7 1","0 5 8 3 1",
+        "0 5 9 3 2",
+        "1 4 11 5 1","1 3 12 7 1","1 2 13 9 1","1 1 14 11 1"
       ]
     },
-    rationale: "Before: generic Tailwind magenta (#EC4899 / #9D174D). After: same lobed shape, but recolored to the brand squid-pink palette (#FF6B9D / #C44569). Tiny change, big cohesion: the AI brain now reads as 'squid's brain'."
+    rationale: "Wave 2 was just a palette swap — same generic brain lobes, different hex codes. Wave 3 is a real redesign: a coral fan with 4 branching antlers, white synapse sparkles at tips, a trunk, and an expanding coral foot in darker pink. Marine metaphor (coral) AND neural metaphor (branching network). The AI brain is now the squid's coral brain."
+  },
+
+  team: {
+    title: "Team · school of fish",
+    old: {
+      palette: ["#F87171","#60A5FA","#34D399","#444444"],
+      pixels: [
+        "0 3 3 2 2","0 2 5 4 3",
+        "1 7 1 2 2","1 6 3 4 5",
+        "2 11 3 2 2","2 10 5 4 3",
+        "3 1 9 14 1"
+      ]
+    },
+    new: {
+      palette: ["#FF6B9D","#3B82F6","#06FFA5"],
+      pixels: [
+        "0 1 1 1 1","0 2 0 1 1","0 2 2 1 1",
+        "0 3 1 4 1","0 3 2 4 1",
+        "0 7 1 1 1","0 7 2 1 1",
+        "1 5 6 1 1","1 6 5 1 1","1 6 7 1 1",
+        "1 7 6 4 1","1 7 7 4 1",
+        "1 11 6 1 1","1 11 7 1 1",
+        "2 9 11 1 1","2 10 10 1 1","2 10 12 1 1",
+        "2 11 11 4 1","2 11 12 4 1",
+        "2 15 11 1 1","2 15 12 1 1"
+      ]
+    },
+    rationale: "Before: 3 generic stick figures in off-palette red/blue/green over a grey base — human-resource iconography, zero brand. After: 3 fish swimming right in brand colors (squid-pink lead, ocean-blue mid, seafoam rear), each with tail fin, two-row body, snout. Reads 'school / formation / team' instantly, stays in the marine universe."
   }
 };
 
@@ -388,7 +419,7 @@ function paletteSwatch(palette) {
   return `<div class="palette">${palette.map(c => `<div class="swatch" style="background:${c}" title="${c}"></div>`).join('')}</div>`;
 }
 
-const order = ['poseidon', 'temple', 'ocean', 'launch', 'config', 'think', 'logs', 'stats', 'brain'];
+const order = ['poseidon', 'temple', 'ocean', 'launch', 'config', 'think', 'logs', 'stats', 'brain', 'team'];
 const root  = document.getElementById('rows');
 
 order.forEach(name => {

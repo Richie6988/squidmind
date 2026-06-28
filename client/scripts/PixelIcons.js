@@ -194,20 +194,30 @@ const PixelIcons = {
     },
     
     // Brain: pink/purple
-    // Brain: squid-pink brand palette (was generic magenta)
+    // Brain: branching coral fan with neural sparkles (marine + neural network metaphor)
     brain: {
       palette: ["#FF6B9D", "#C44569", "#FFFFFF"],
+      // 0=coral pink (branches), 1=darker pink (base shadow), 2=white (synapse sparkles)
       pixels: [
-        "1 5 2 6 1",
-        "1 3 3 4 1", "1 9 3 4 1",
-        "1 2 4 4 1", "1 10 4 4 1",
-        "0 2 5 5 1", "0 9 5 5 1",
-        "0 1 6 6 4", "0 9 6 6 4",
-        "2 4 7 2 1", "2 10 7 2 1",
-        "0 2 10 5 1", "0 9 10 5 1",
-        "0 3 11 4 1", "0 9 11 4 1",
-        "0 4 12 3 1", "0 9 12 3 1",
-        "1 5 13 6 1"
+        // Synapse sparkles at branch tips
+        "2 6 1 1 1", "2 10 1 1 1",
+        // Top branches (4 antlers spreading outward)
+        "0 4 2 3 1", "0 8 2 3 1",
+        "0 3 3 1 1", "0 6 3 1 1", "0 8 3 1 1", "0 11 3 1 1",
+        // Spreading wider
+        "0 2 4 1 1", "0 13 4 1 1",
+        "0 2 5 2 1", "0 6 5 1 1", "0 8 5 1 1", "0 12 5 2 1",
+        // Merge layer — branches converging
+        "0 3 6 9 1",
+        "0 4 7 7 1",
+        "0 5 8 3 1",
+        // Trunk
+        "0 5 9 3 2",
+        // Base / coral foot (darker pink, expanding)
+        "1 4 11 5 1",
+        "1 3 12 7 1",
+        "1 2 13 9 1",
+        "1 1 14 11 1"
       ]
     },
     
@@ -233,17 +243,28 @@ const PixelIcons = {
     },
     
     // Team: 3 colored people
+    // Team: school of 3 fish swimming right in brand colors
     team: {
-      palette: ["#F87171", "#60A5FA", "#34D399", "#444444"],
+      palette: ["#FF6B9D", "#3B82F6", "#06FFA5"],
+      // 0=squid pink (lead fish), 1=ocean blue (mid), 2=seafoam (rear)
       pixels: [
-        // person 1 (red) head + body
-        "0 3 3 2 2", "0 2 5 4 3",
-        // person 2 (blue) - taller, center
-        "1 7 1 2 2", "1 6 3 4 5",
-        // person 3 (green)
-        "2 11 3 2 2", "2 10 5 4 3",
-        // base shadow
-        "3 1 9 14 1"
+        // Fish A — pink, top-left, leading
+        "0 1 1 1 1",           // tail fin
+        "0 2 0 1 1",           // tail top edge
+        "0 2 2 1 1",           // tail bottom edge
+        "0 3 1 4 1", "0 3 2 4 1",  // body rows
+        "0 7 1 1 1",           // snout top
+        "0 7 2 1 1",           // snout bottom
+        // Fish B — blue, middle
+        "1 5 6 1 1",
+        "1 6 5 1 1", "1 6 7 1 1",
+        "1 7 6 4 1", "1 7 7 4 1",
+        "1 11 6 1 1", "1 11 7 1 1",
+        // Fish C — seafoam, rear/bottom
+        "2 9 11 1 1",
+        "2 10 10 1 1", "2 10 12 1 1",
+        "2 11 11 4 1", "2 11 12 4 1",
+        "2 15 11 1 1", "2 15 12 1 1"
       ]
     },
     
