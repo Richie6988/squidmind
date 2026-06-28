@@ -138,7 +138,7 @@
 
 <header>
   <h1>IAQUA · Icon redesign — before / after</h1>
-  <div class="tag">Senior design pass on 5 brand-defining icons. Constraint: 16×16 pixel grid · ≤5 colors per icon · pixel-art aesthetic preserved.</div>
+  <div class="tag">Senior design pass — wave 1 (5 brand-defining icons) + wave 2 (4 brand-alignment refinements). Constraint: 16×16 pixel grid · ≤5 colors per icon · pixel-art aesthetic preserved.</div>
 </header>
 
 <div class="container" id="rows"></div>
@@ -277,6 +277,103 @@ const ICONS = {
     },
     rationale: "Before: wrench. Identical metaphor to the 'tools' icon — visual collision. The user has to read text to tell them apart. After: 8-toothed gear with a gold center pixel. Universal settings symbol, frees the wrench for the actual tools category."
   },
+
+  think: {
+    title: "Think · bubble (double brand metaphor)",
+    old: {
+      palette: ["#f472b6","#831843","#fce7f3","#4a0520"],
+      pixels: [
+        "0 5 1 6 1","0 3 2 10 1","0 2 3 12 4",
+        "2 4 3 8 3","2 3 4 10 2",
+        "0 3 7 10 1","0 4 8 8 1",
+        "1 5 9 6 1","1 5 10 6 2",
+        "3 6 10 4 1","3 7 11 2 1"
+      ]
+    },
+    new: {
+      palette: ["#7DD3FC","#1E40AF","#FFFFFF"],
+      pixels: [
+        "1 5 1 6 1",
+        "1 3 2 2 1","1 11 2 2 1",
+        "1 2 3 1 1","1 13 3 1 1",
+        "1 1 4 1 5","1 14 4 1 5",
+        "1 2 9 1 1","1 13 9 1 1",
+        "1 3 10 2 1","1 11 10 2 1",
+        "1 5 11 6 1",
+        "0 5 2 6 1","0 3 3 10 1","0 2 4 12 5","0 3 9 10 1","0 5 10 6 1",
+        "2 3 4 2 2",
+        "1 11 13 2 2",
+        "1 14 15 1 1"
+      ]
+    },
+    rationale: "Before: lightbulb — generic SaaS 'idea' icon, off-brand. After: a single round air bubble with white highlight, two trailing smaller bubbles. Doubles as 'thought' AND 'underwater air bubble' — two metaphors for one pixel cost. Reads as 'think' AND ties to the aquarium universe."
+  },
+
+  logs: {
+    title: "Logs · Greek parchment scroll",
+    old: {
+      palette: ["#FFFFFF","#2563EB","#999999"],
+      pixels: [
+        "0 3 1 9 14",
+        "2 3 1 9 1","2 3 14 9 1","2 3 1 1 14","2 11 1 1 14",
+        "1 5 4 5 1","1 5 6 5 1","1 5 8 5 1","1 5 10 5 1","1 5 12 3 1"
+      ]
+    },
+    new: {
+      palette: ["#F5E6D0","#8B4513","#3A2E1F"],
+      pixels: [
+        "1 1 1 14 1","1 0 2 16 1",
+        "0 0 3 16 10",
+        "2 2 4 12 1","2 2 6 12 1","2 2 8 12 1","2 2 10 8 1",
+        "1 0 13 16 1","1 1 14 14 1"
+      ]
+    },
+    rationale: "Before: white sheet with blue lines — looks like a Word document on a SaaS dashboard. After: rolled-end parchment scroll with cream paper and ink lines. Whispers the same Greek-mythology layer as Poseidon and the temple. The ancient logbook of the platform."
+  },
+
+  stats: {
+    title: "Stats · brand palette ascending",
+    old: {
+      palette: ["#FF4444","#FF9944","#FFDD44","#44DD44","#4499FF"],
+      pixels: [
+        "0 1 14 1 1","0 1 2 1 12",
+        "0 3 11 2 3","1 6 8 2 6","2 9 6 2 8","3 12 4 2 10","4 13 4 1 10"
+      ]
+    },
+    new: {
+      palette: ["#7DD3FC","#3B82F6","#1A4D7A","#FF6B9D","#FFD700"],
+      pixels: [
+        "2 1 2 1 12","2 1 14 15 1",
+        "0 3 12 2 2","1 5 10 2 4","2 7 8 2 6","3 9 6 2 8","4 11 3 2 11"
+      ]
+    },
+    rationale: "Before: rainbow red→blue, every chart-icon-stock-illustration vibe. After: same growth-bars idea, but in brand colors only — cyan → mid blue → deep blue → squid pink → gold. The top bar lands on the gold of the trident: 'growth peaks where the brand peaks'."
+  },
+
+  brain: {
+    title: "Brain · squid-pink alignment",
+    old: {
+      palette: ["#EC4899","#9D174D","#FFFFFF"],
+      pixels: [
+        "1 5 2 6 1","1 3 3 4 1","1 9 3 4 1","1 2 4 4 1","1 10 4 4 1",
+        "0 2 5 5 1","0 9 5 5 1","0 1 6 6 4","0 9 6 6 4",
+        "2 4 7 2 1","2 10 7 2 1",
+        "0 2 10 5 1","0 9 10 5 1","0 3 11 4 1","0 9 11 4 1",
+        "0 4 12 3 1","0 9 12 3 1","1 5 13 6 1"
+      ]
+    },
+    new: {
+      palette: ["#FF6B9D","#C44569","#FFFFFF"],
+      pixels: [
+        "1 5 2 6 1","1 3 3 4 1","1 9 3 4 1","1 2 4 4 1","1 10 4 4 1",
+        "0 2 5 5 1","0 9 5 5 1","0 1 6 6 4","0 9 6 6 4",
+        "2 4 7 2 1","2 10 7 2 1",
+        "0 2 10 5 1","0 9 10 5 1","0 3 11 4 1","0 9 11 4 1",
+        "0 4 12 3 1","0 9 12 3 1","1 5 13 6 1"
+      ]
+    },
+    rationale: "Before: generic Tailwind magenta (#EC4899 / #9D174D). After: same lobed shape, but recolored to the brand squid-pink palette (#FF6B9D / #C44569). Tiny change, big cohesion: the AI brain now reads as 'squid's brain'."
+  }
 };
 
 function renderIcon(def, size = 96) {
@@ -291,7 +388,7 @@ function paletteSwatch(palette) {
   return `<div class="palette">${palette.map(c => `<div class="swatch" style="background:${c}" title="${c}"></div>`).join('')}</div>`;
 }
 
-const order = ['poseidon', 'temple', 'ocean', 'launch', 'config'];
+const order = ['poseidon', 'temple', 'ocean', 'launch', 'config', 'think', 'logs', 'stats', 'brain'];
 const root  = document.getElementById('rows');
 
 order.forEach(name => {

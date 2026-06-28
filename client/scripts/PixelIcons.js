@@ -106,18 +106,20 @@ const PixelIcons = {
       ]
     },
     
-    // Chart bars: rainbow ascending
+    // Stats: ascending bars in brand palette (cyan → blue → deep → pink → gold)
     stats: {
-      palette: ["#FF4444", "#FF9944", "#FFDD44", "#44DD44", "#4499FF"],
+      palette: ["#7DD3FC", "#3B82F6", "#1A4D7A", "#FF6B9D", "#FFD700"],
       pixels: [
-        // axes
-        "0 1 14 1 1", "0 1 2 1 12",
-        // bars ascending
-        "0 3 11 2 3",
-        "1 6 8 2 6",
-        "2 9 6 2 8",
-        "3 12 4 2 10",
-        "4 13 4 1 10"
+        // y-axis (deep blue, doubles as axis color)
+        "2 1 2 1 12",
+        // x-axis
+        "2 1 14 15 1",
+        // bars (left → right, short → tall, ending on gold for "growth")
+        "0 3 12 2 2",   // cyan
+        "1 5 10 2 4",   // mid blue
+        "2 7 8 2 6",    // deep blue
+        "3 9 6 2 8",    // squid pink
+        "4 11 3 2 11"   // gold (tallest)
       ]
     },
     
@@ -192,8 +194,9 @@ const PixelIcons = {
     },
     
     // Brain: pink/purple
+    // Brain: squid-pink brand palette (was generic magenta)
     brain: {
-      palette: ["#EC4899", "#9D174D", "#FFFFFF"],
+      palette: ["#FF6B9D", "#C44569", "#FFFFFF"],
       pixels: [
         "1 5 2 6 1",
         "1 3 3 4 1", "1 9 3 4 1",
@@ -208,20 +211,24 @@ const PixelIcons = {
       ]
     },
     
-    // Logs / Document: white paper, blue lines
+    // Logs: Greek parchment scroll — rolled ends + ink lines
     logs: {
-      palette: ["#FFFFFF", "#2563EB", "#999999"],
+      palette: ["#F5E6D0", "#8B4513", "#3A2E1F"],
+      // 0=parchment cream, 1=rolled-end brown, 2=ink
       pixels: [
-        // page
-        "0 3 1 9 14",
-        // edge shadow
-        "2 3 1 9 1", "2 3 14 9 1", "2 3 1 1 14", "2 11 1 1 14",
-        // text lines
-        "1 5 4 5 1",
-        "1 5 6 5 1",
-        "1 5 8 5 1",
-        "1 5 10 5 1",
-        "1 5 12 3 1"
+        // Top roller (with shaved corners for cylindrical hint)
+        "1 1 1 14 1",
+        "1 0 2 16 1",
+        // Parchment body
+        "0 0 3 16 10",
+        // Ink lines (3 full + 1 short paragraph end)
+        "2 2 4 12 1",
+        "2 2 6 12 1",
+        "2 2 8 12 1",
+        "2 2 10 8 1",
+        // Bottom roller (mirror)
+        "1 0 13 16 1",
+        "1 1 14 14 1"
       ]
     },
     
@@ -441,15 +448,30 @@ const PixelIcons = {
       ]
     },
 
-    // THINK — lightbulb
+    // THINK — air bubble (thought = bubble underwater, double brand metaphor)
     think: {
-      palette: ['#f472b6','#831843','#fce7f3','#4a0520'],
+      palette: ['#7DD3FC', '#1E40AF', '#FFFFFF'],
       pixels: [
-        '0 5 1 6 1','0 3 2 10 1','0 2 3 12 4',
-        '2 4 3 8 3','2 3 4 10 2',
-        '0 3 7 10 1','0 4 8 8 1',
-        '1 5 9 6 1','1 5 10 6 2',
-        '3 6 10 4 1','3 7 11 2 1'
+        // Big bubble outline
+        '1 5 1 6 1',
+        '1 3 2 2 1', '1 11 2 2 1',
+        '1 2 3 1 1', '1 13 3 1 1',
+        '1 1 4 1 5', '1 14 4 1 5',
+        '1 2 9 1 1', '1 13 9 1 1',
+        '1 3 10 2 1', '1 11 10 2 1',
+        '1 5 11 6 1',
+        // Bubble body (light cyan)
+        '0 5 2 6 1',
+        '0 3 3 10 1',
+        '0 2 4 12 5',
+        '0 3 9 10 1',
+        '0 5 10 6 1',
+        // White highlight (upper-left curve)
+        '2 3 4 2 2',
+        // Trailing smaller bubble
+        '1 11 13 2 2',
+        // Tiny bubble at the very tail
+        '1 14 15 1 1'
       ]
     },
 
