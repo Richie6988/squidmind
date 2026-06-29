@@ -433,45 +433,46 @@ const AgentForm = {
     const ctx = canvas.getContext('2d');
     const W = canvas.width, H = canvas.height;
     ctx.clearRect(0, 0, W, H);
-    const bg = ctx.createRadialGradient(W/2,H/2,0,W/2,H/2,W/1.5);
-    bg.addColorStop(0,'#0d2340'); bg.addColorStop(1,'#020810');
-    ctx.fillStyle = bg; ctx.fillRect(0,0,W,H);
+    const bg = ctx.createRadialGradient(W/2, H/2, 0, W/2, H/2, W/1.5);
+    bg.addColorStop(0, '#0d2340'); bg.addColorStop(1, '#020810');
+    ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+
     if (!opt || opt === 'none') {
-      ctx.fillStyle='#334155'; ctx.font='bold 14px monospace';
-      ctx.textAlign='center'; ctx.textBaseline='middle';
-      ctx.fillText('–',W/2,H/2); return;
+      ctx.fillStyle = '#334155'; ctx.font = 'bold 14px monospace';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText('–', W/2, H/2);
+      return;
     }
-    const SA = window.SquidAccessories;
-    if (!SA) return;
-    // Draw a faded squid silhouette as visual anchor — accessories are
-    // positioned relative to a squid (hat above head, glasses on eyes,
-    // outfit around body). Without anchor, previews look empty/off-frame.
-    const size = W * 0.72;
-    ctx.save();
-    ctx.translate(W/2, H/2);
 
-    if (typeof Squid !== 'undefined') {
+    if (typeof Squid === 'undefined') return;
+
+    // Build a real Squid with ONLY the picked accessory applied.
+    // The same render pipeline as the aquarium runs — accessory lands in
+    // its correct position relative to the body, no manual coordinate math.
+    const acc = { hat: 'none', glasses: 'none', eyes: 'round', outfit: 'none' };
+    acc[key] = opt;
+
+    try {
+      const sq = new Squid({
+        id: '__tile__', name: '',
+        appearance: { primary_color: '#FF6B9D', secondary_color: '#C44569' },
+        accessories: acc, status: 'idle',
+        x: W/2, y: H/2 + 4,    // shift down so the hat (above body) lands in canvas
+      });
+      // Freeze animation + skip the in-canvas nametag (tile has its own label)
+      sq.animFrame = 0; sq.bobOffset = 0; sq.glowPulse = 0;
+      sq.isSleeping = false; sq.isHovered = false; sq.alpha = 1;
+      sq.insideTemple = null; sq.jumpHeight = 0; sq.heartParticles = []; sq.isDragging = false;
+      sq.baseSize = 0.55;        // ~22 px body in a 60 px tile — fits with hat above
+      sq.drawNameTag = () => {}; // no nametag inside the tile
+
       ctx.save();
-      ctx.globalAlpha = 0.32;
-      try {
-        // Squid.draw(ctx) uses this.x/this.y as origin and a fixed base size.
-        // We translate ctx so that 0,0 == centre of tile, then place ghost at 0,0.
-        const ghost = new Squid({
-          id: '__tile__', name: '',
-          appearance: { primary_color: '#FF6B9D', secondary_color: '#C44569', size_scale: 0.7 },
-          accessories: null, status: 'idle', x: 0, y: 0,
-        });
-        if (typeof ghost.draw === 'function') ghost.draw(ctx);
-      } catch {}
+      ctx.beginPath(); ctx.rect(0, 0, W, H); ctx.clip();
+      sq.draw(ctx);
       ctx.restore();
+    } catch (e) {
+      console.warn('[tile preview]', key, opt, e.message);
     }
-
-    // Now draw the accessory on top, at full opacity.
-    if      (key === 'hat')     SA.drawHat(ctx, opt, size);
-    else if (key === 'glasses') SA.drawGlasses(ctx, opt, size);
-    else if (key === 'eyes')    SA.drawEyes(ctx, opt, size);
-    else if (key === 'outfit')  SA.drawOutfit(ctx, opt, size, 0);
-    ctx.restore();
   },
   _updateAppearancePreview() {
     const canvas = this.modal?.querySelector('#af-preview-canvas');
@@ -479,34 +480,44 @@ const AgentForm = {
     const ctx = canvas.getContext('2d');
     const W = canvas.width, H = canvas.height;
     ctx.clearRect(0, 0, W, H);
-    const bg = ctx.createRadialGradient(W/2,H/2,0,W/2,H/2,W*0.8);
-    bg.addColorStop(0,'#0d2340'); bg.addColorStop(1,'#020810');
-    ctx.fillStyle = bg; ctx.fillRect(0,0,W,H);
-    ctx.strokeStyle='rgba(79,172,254,0.04)'; ctx.lineWidth=1;
-    for(let x=0;x<W;x+=16){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke();}
-    for(let y=0;y<H;y+=16){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();}
+
+    // Background: same gradient as the aquarium scene
+    const bg = ctx.createLinearGradient(0, 0, 0, H);
+    bg.addColorStop(0, '#0a1628'); bg.addColorStop(1, '#020810');
+    ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+
+    // Faint grid (matches aquarium overlay)
+    ctx.strokeStyle = 'rgba(79,172,254,0.04)'; ctx.lineWidth = 1;
+    for (let x = 0; x < W; x += 16) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke(); }
+    for (let y = 0; y < H; y += 16) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
+
     const app = this.brain?.appearance || {};
     try {
+      // Same Squid construction the aquarium uses — appearance + accessories
+      // straight from the brain, default aquarium baseSize (1.0). Output
+      // visually identical to what the user will see once the agent loads.
       const sq = new Squid({
-        id:'__preview__',
+        id: '__preview__',
         name: this.brain?.identity?.display_name || this.brain?.display_name || 'Agent',
-        appearance:{...app, size:'medium'},
-        accessories: app.accessories||null,
-        status:'idle', x:W/2, y:H/2,
+        appearance: { ...app, size: 'medium' },
+        accessories: app.accessories || null,
+        status: 'idle',
+        x: W/2, y: H * 0.42,    // sit slightly above centre so nametag (drawn 35px below body) fits
       });
-      sq.animFrame=0; sq.bobOffset=0; sq.glowPulse=0;
-      sq.isSleeping=false; sq.isHovered=false; sq.alpha=1;
-      sq.insideTemple=null; sq.jumpHeight=0; sq.heartParticles=[]; sq.isDragging=false;
-      sq.baseSize = 0.36;
-      sq.x=W/2; sq.y=H/2 - H*0.06;
-      ctx.save(); ctx.beginPath(); ctx.rect(0,0,W,H); ctx.clip();
-      sq.draw(ctx); ctx.restore();
-      const agName=(sq.name||'Agent').slice(0,16);
-      ctx.fillStyle='rgba(2,8,16,0.75)'; ctx.fillRect(0,H-26,W,26);
-      ctx.fillStyle='#facc15'; ctx.font='6px "Press Start 2P",monospace';
-      ctx.textAlign='center'; ctx.textBaseline='middle';
-      ctx.fillText(agName,W/2,H-13);
-    } catch(e){console.warn('[preview]',e.message);}
+      // Freeze animation state so the preview is a still frame
+      sq.animFrame = 0; sq.bobOffset = 0; sq.glowPulse = 0;
+      sq.isSleeping = false; sq.isHovered = false; sq.alpha = 1;
+      sq.insideTemple = null; sq.jumpHeight = 0; sq.heartParticles = []; sq.isDragging = false;
+      // Use aquarium default baseSize so the preview matches in-canvas exactly
+      sq.baseSize = 1.0;
+
+      ctx.save();
+      ctx.beginPath(); ctx.rect(0, 0, W, H); ctx.clip();
+      sq.draw(ctx);
+      ctx.restore();
+    } catch (e) {
+      console.warn('[preview]', e.message);
+    }
   },
   _addToolsGrid(parent, allTools, allowedTools, brainFile) {
     const section = document.createElement('div');
