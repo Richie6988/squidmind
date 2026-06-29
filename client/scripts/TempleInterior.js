@@ -1053,20 +1053,24 @@ const TempleInterior = {
       const elapsedBadge = elapsed
         ? `<span class="ti-kcard-elapsed" style="color:#06ffa5;font-family:var(--panel-font-mono);font-size:9px;">${elapsed}</span>`
         : '';
-      return `<div class="ti-kcard ${cls}" draggable="true" data-task-id="${task.task_id}"
-          ondragstart="TempleInterior._kDragStart(event)"
-          ondragover="event.preventDefault();event.currentTarget.classList.add('drag-over')"
-          ondragleave="event.currentTarget.classList.remove('drag-over')"
+      return `<div class="ti-kcard ${cls}" data-task-id="${task.task_id}"
           onclick="TempleInterior._openTaskDetail('${task.task_id}')"
-          title="${this._esc(task.title)} — click to open details">
-        <div class="ti-kcard-title">
-          <span style="color:${statusColor};margin-right:5px;">${statusIcon}</span>${this._esc(task.title)}
-        </div>
-        ${prog}${summary}${bar}
-        <div class="ti-kcard-foot">
-          ${agentBadge}
-          ${elapsedBadge}
-          <button class="ti-kcard-del" title="Delete task" onclick="event.stopPropagation();TempleInterior._deleteTask('${task.task_id}')">×</button>
+          title="${this._esc(task.title)} — click to open, drag the ⋮⋮ handle to move">
+        <span class="ti-kcard-handle" draggable="true"
+              ondragstart="TempleInterior._kDragStart(event)"
+              ondragend="TempleInterior._kDragEnd(event)"
+              onclick="event.stopPropagation()"
+              title="Drag to move / reorder">⋮⋮</span>
+        <div class="ti-kcard-body">
+          <div class="ti-kcard-title">
+            <span style="color:${statusColor};margin-right:5px;">${statusIcon}</span>${this._esc(task.title)}
+          </div>
+          ${prog}${summary}${bar}
+          <div class="ti-kcard-foot">
+            ${agentBadge}
+            ${elapsedBadge}
+            <button class="ti-kcard-del" title="Delete task" onclick="event.stopPropagation();TempleInterior._deleteTask('${task.task_id}')">×</button>
+          </div>
         </div>
       </div>`;
     };
@@ -1090,9 +1094,11 @@ const TempleInterior = {
   <div class="ti-kanban-board">
     ${colDefs.map(col => `
     <div class="ti-kcol" id="ti-kcol-${col.key}"
-      ondragover="event.preventDefault();event.currentTarget.classList.add('drag-over')"
-      ondragleave="event.currentTarget.classList.remove('drag-over')"
-      ondrop="TempleInterior._kDrop(event,'${col.drop}')">
+      data-status="${col.drop}"
+      ondragover="event.preventDefault();event.dataTransfer.dropEffect='move';TempleInterior._kDragOver(event);"
+      ondragenter="event.preventDefault();TempleInterior._kColEnter(event);"
+      ondragleave="TempleInterior._kColLeave(event);"
+      ondrop="TempleInterior._kDrop(event,'${col.drop}');">
       <div class="ti-kcol-head ${col.cls}">
         <span>${col.label}</span>
         <span class="ti-kcol-count">${(cols[col.key] || []).length}</span>
@@ -1108,31 +1114,80 @@ const TempleInterior = {
   },
 
   _kDragStart(event) {
-    const el = event.currentTarget;
-    if (!el) return;
-    const id = el.dataset.taskId;
+    const handle = event.currentTarget;
+    const card   = handle.closest('.ti-kcard');
+    if (!card) return;
+    const id = card.dataset.taskId;
     this._dragTaskId = id;
     event.dataTransfer.setData('text/plain', id);
     event.dataTransfer.effectAllowed = 'move';
-    // Capture element ref before setTimeout — event.currentTarget is null after handler returns
-    setTimeout(() => el.classList.add('dragging'), 0);
+    // Use the card itself as the drag image (not just the handle dot)
+    if (event.dataTransfer.setDragImage) {
+      try { event.dataTransfer.setDragImage(card, 20, 20); } catch {}
+    }
+    // setTimeout because the browser snapshots the card BEFORE applying
+    // classes when computing the drag image
+    setTimeout(() => card.classList.add('dragging'), 0);
+  },
+
+  _kDragEnd(event) {
+    // Cleanup regardless of whether drop succeeded (Escape, outside drop, etc.)
+    document.querySelectorAll('.ti-kcard.dragging').forEach(c => c.classList.remove('dragging'));
+    document.querySelectorAll('.ti-kcol.drag-over').forEach(c => {
+      c.classList.remove('drag-over');
+      c.dataset.dragDepth = '0';
+    });
+    document.querySelectorAll('.ti-kcard.drop-before, .ti-kcard.drop-after').forEach(c => {
+      c.classList.remove('drop-before', 'drop-after');
+    });
+    this._dragTaskId = null;
+  },
+
+  // Counter-based dragenter/leave: HTML5 fires enter+leave each time the
+  // pointer crosses a child element, causing flicker. We count nestings.
+  _kColEnter(event) {
+    const col = event.currentTarget;
+    const depth = (parseInt(col.dataset.dragDepth, 10) || 0) + 1;
+    col.dataset.dragDepth = String(depth);
+    col.classList.add('drag-over');
+  },
+  _kColLeave(event) {
+    const col = event.currentTarget;
+    const depth = Math.max(0, (parseInt(col.dataset.dragDepth, 10) || 0) - 1);
+    col.dataset.dragDepth = String(depth);
+    if (depth === 0) col.classList.remove('drag-over');
+  },
+
+  // Insertion indicator: highlight the card the dragged one will land before
+  _kDragOver(event) {
+    const col = event.currentTarget;
+    const cards = [...col.querySelectorAll('.ti-kcards .ti-kcard:not(.dragging)')];
+    cards.forEach(c => c.classList.remove('drop-before', 'drop-after'));
+    if (!cards.length) return;
+    const y = event.clientY;
+    let target = null, targetBefore = true;
+    for (const c of cards) {
+      const r = c.getBoundingClientRect();
+      if (y < r.top + r.height / 2) { target = c; targetBefore = true; break; }
+      target = c; targetBefore = false;  // remember as the last-seen below
+    }
+    if (target) target.classList.add(targetBefore ? 'drop-before' : 'drop-after');
   },
 
   async _kDrop(event, newStatus) {
     event.preventDefault();
-    document.querySelectorAll('.ti-kcol').forEach(c => c.classList.remove('drag-over'));
-    document.querySelectorAll('.ti-kcard.dragging').forEach(c => c.classList.remove('dragging'));
+    event.stopPropagation();
+    const col = event.currentTarget;
     const taskId = event.dataTransfer.getData('text/plain') || this._dragTaskId;
-    this._dragTaskId = null;
+    // Always clean up visual state, even on early returns
+    this._kDragEnd(event);
     if (!taskId) return;
 
-    // Detect drop position within column for reorder
-    const col = event.currentTarget;
-    const cards = [...col.querySelectorAll('.ti-kcards .ti-kcard')];
+    // Detect drop position within column for reorder (cards excluding the dragged one)
+    const cards = [...col.querySelectorAll('.ti-kcards .ti-kcard')].filter(c => c.dataset.taskId !== taskId);
     const dropY = event.clientY;
     let insertBeforeId = null;
     for (const c of cards) {
-      if (c.dataset.taskId === taskId) continue;
       const rect = c.getBoundingClientRect();
       if (dropY < rect.top + rect.height / 2) {
         insertBeforeId = c.dataset.taskId;
@@ -1140,18 +1195,33 @@ const TempleInterior = {
       }
     }
 
+    // Optimistic UI: hide the dragged card immediately, fail-rollback by re-render
+    const draggedCard = document.querySelector(`.ti-kcard[data-task-id="${taskId}"]`);
+    if (draggedCard) draggedCard.style.opacity = '0.4';
+
     try {
-      // Update status (column change) + sort_order in one PATCH
-      await window.api._fetch(`/tasks/${taskId}/status`, {
-        method: 'PATCH',
-        body: JSON.stringify({ status: newStatus })
-      });
-      // Reorder within column
-      if (insertBeforeId !== null || cards.length > 0) {
-        await this._reorderTask(taskId, insertBeforeId, newStatus);
+      // Update status (column change). Skip if dropped in the same column AND
+      // the status didn't change — saves a roundtrip and avoids lifecycle churn.
+      const currentStatus = draggedCard?.classList.contains('done') ? 'completed'
+                          : draggedCard?.classList.contains('prog') ? 'in_progress'
+                          : draggedCard?.classList.contains('fail') ? 'failed' : 'open';
+      if (currentStatus !== newStatus) {
+        const r = await window.api._fetch(`/tasks/${taskId}/status`, {
+          method: 'PATCH',
+          body: JSON.stringify({ status: newStatus })
+        });
+        if (!r.success) throw new Error(r.error || 'status PATCH rejected');
       }
-    } catch (e) { console.warn('[Kanban] drop failed:', e.message); }
-    this._renderKanban();
+      // Reorder within the (now-correct) column
+      await this._reorderTask(taskId, insertBeforeId, newStatus);
+    } catch (e) {
+      console.warn('[Kanban] drop failed:', e.message);
+      if (typeof SquidModal !== 'undefined') {
+        SquidModal.alert(`Could not move task: ${e.message}`);
+      }
+    } finally {
+      this._renderKanban();
+    }
   },
 
   /**
