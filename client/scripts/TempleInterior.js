@@ -1235,21 +1235,21 @@ const TempleInterior = {
     try { agents = Object.values((await window.api._fetch('/agents')).registry.agents || {}); } catch {}
 
     const modal = document.createElement('div');
-    modal.className = 'modal';
+    modal.className = 'modal ntm-modal';
     modal.style.zIndex = '20001';
-    modal.innerHTML = `<div class="modal-content" style="width:520px;">
+    modal.innerHTML = `<div class="modal-content ntm-content">
       <div class="modal-header"><h2>NEW TASK — ${this._esc(pname||'')}</h2>
         <button class="btn-close" onclick="this.closest('.modal').remove()">x</button></div>
-      <div class="modal-body">
+      <div class="modal-body ntm-body">
         <div class="agent-form-row">
           <label>Title *</label>
           <input id="ntm-title" type="text" placeholder="What needs to be done?">
         </div>
         <div class="agent-form-row">
           <label>Description / Instructions</label>
-          <textarea id="ntm-desc" rows="4" placeholder="Detailed instructions for the agent..."></textarea>
+          <textarea id="ntm-desc" rows="5" placeholder="Detailed instructions for the agent..."></textarea>
         </div>
-        <div style="display:flex;gap:12px;">
+        <div style="display:flex;gap:14px;">
           <div class="agent-form-row" style="flex:1;">
             <label>Assign to agent</label>
             <select id="ntm-agent">
@@ -1267,11 +1267,11 @@ const TempleInterior = {
             </select>
           </div>
         </div>
-        <div class="agent-form-section" style="margin-top:8px;">
+        <div class="agent-form-section ntm-cron-section">
           <h3>RECURRING SCHEDULE (CRON)</h3>
-          <div style="display:flex;gap:12px;align-items:flex-end;">
+          <div style="display:flex;gap:14px;align-items:flex-end;">
             <div class="agent-form-row" style="flex:2;">
-              <label>Cron expression <span style="font-size:8px;color:var(--ui-muted);">(leave empty for one-time)</span></label>
+              <label>Cron expression <span class="ntm-hint">(leave empty for one-time)</span></label>
               <input id="ntm-cron" type="text" placeholder="e.g. 0 8 * * * — daily at 8am" style="font-family:'Courier New',monospace;">
             </div>
             <div class="agent-form-row" style="flex:1;">
@@ -1286,7 +1286,7 @@ const TempleInterior = {
               </select>
             </div>
           </div>
-          <p style="font-family:'Courier New',monospace;font-size:9px;color:var(--ui-muted);margin-top:4px;">Format: minute hour day month weekday (0-6=Sun-Sat)</p>
+          <p class="ntm-cron-fmt">Format: minute hour day month weekday (0-6=Sun-Sat)</p>
         </div>
       </div>
       <div class="agent-form-footer">

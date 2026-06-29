@@ -484,9 +484,26 @@ ${task.description}`
 
     // Full result: load from file if available
     let resultHtml = '';
-    const isImageTask = task.task_type === 'image_gen' || /^generate[: ]/i.test(task.title || '');
+    const isImageTask =
+      task.task_type === 'image_generation' ||
+      task.task_type === 'image_gen' ||
+      /^(image|generate)[: ]/i.test(task.title || '') ||
+      !!task.output_preview;
     if (isImageTask && task.output_preview) {
-      resultHtml = `<div style="margin:8px 0"><img src="${task.output_preview}" style="max-width:100%;border:1px solid var(--border);"></div>`;
+      // Big in-panel view: image takes the full modal width (modal widens via
+      // .is-image modifier below). Click opens native-resolution in a new tab.
+      const promptText = (task.description || '').replace(/^.*?Prompt:\s*/is, '').split('\n')[0].slice(0, 200);
+      resultHtml = `
+        <div class="tq-img-bigview">
+          <a href="${task.output_preview}" target="_blank" rel="noopener" title="Open at native resolution">
+            <img src="${task.output_preview}" alt="${this._esc(task.title)}">
+          </a>
+          ${promptText ? `<div class="tq-img-bigview-prompt">${this._esc(promptText)}</div>` : ''}
+          <div class="tq-img-bigview-actions">
+            <a href="${task.output_preview}" target="_blank" rel="noopener" class="tq-img-bigview-link">Open native size →</a>
+            <a href="${task.output_preview}" download class="tq-img-bigview-link">Download</a>
+          </div>
+        </div>`;
     } else if (task.result_summary) {
       resultHtml = `<pre class="tq-result-pre">${this._esc(task.result_summary)}</pre>`;
       // Try to load full result
@@ -501,7 +518,7 @@ ${task.description}`
     }
 
     modal.innerHTML = `
-      <div class="modal-content tq-detail-content">
+      <div class="modal-content tq-detail-content${isImageTask ? ' is-image' : ''}">
         <div class="modal-header">
           <div class="tq-detail-title-row">
             <span class="iaqua-pill ${pillType}">${status.replace('_',' ')}</span>

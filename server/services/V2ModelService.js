@@ -180,7 +180,7 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
     useMmap: true,            // OS-level page sharing for the model file
     useMlock: false,          // disabled by default (can be enabled in Edit Params)
     randomSeed: true,
-    autoUnloadIdleMinutes: 15
+    autoUnloadIdleMinutes: 720
   };
 
   async scanLocalModels() {
@@ -479,7 +479,7 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
       useMmap:       cfg.useMmap       ?? true,
       useMlock:      cfg.useMlock      ?? false,
       randomSeed:    cfg.randomSeed    ?? true,
-      autoUnloadIdleMinutes: cfg.autoUnloadIdleMinutes ?? 15
+      autoUnloadIdleMinutes: cfg.autoUnloadIdleMinutes ?? 720
     };
 
     const modelId   = this._fileNameToId(fileName);
@@ -1052,18 +1052,16 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
       const llamaCpp = await import('node-llama-cpp');
 
       // Reuse the same session across chats so we don't burn through sequences.
-      // Rebuild session if mode changes (chat→bg or bg→chat) — different toolsets
-      const neededMode = _bgMode ? 'bg' : 'chat';
-      if (entry.session && entry._sessionMode && entry._sessionMode !== neededMode) {
-        log.info(` Session mode change ${entry._sessionMode}→${neededMode}, rebuilding session`);
-        // Dispose session first (it owns the sequence internally), THEN null refs
-        // Reversing the order caused "No sequences left" on the next getSequence() call
-        try { if (entry.session?.dispose) await entry.session.dispose(); } catch {}
-        entry.session = null;
-        try { if (entry._currentSequence?.dispose) await entry._currentSequence.dispose(); } catch {}
-        entry._currentSequence = null;
-        entry.sessionTurns = 0;
-        await new Promise(r => setTimeout(r, 600));  // 600ms: ensures llama.cpp native slot release
+      // Rebuild session only on hard incompatibilities, never on mode swap.
+      // The previous code disposed `entry.session` whenever a BG task ran between
+      // user chats (mode 'bg' → 'chat'), forcing a 20-25s system-prompt reprocess
+      // on every user message. We now keep ONE session with the full toolset:
+      //   - BG tools are a subset of chat tools, so they still work in bg context.
+      //   - The ~500-token saving from the slim BG toolset is not worth the
+      //     wall-clock cost of reprocessing the system prompt each turn.
+      // We still record _sessionMode for diagnostics, but no longer reset.
+      if (entry.session && entry._sessionMode && entry._sessionMode !== (_bgMode ? 'bg' : 'chat')) {
+        log.info(` Mode swap ${entry._sessionMode}→${_bgMode ? 'bg' : 'chat'}: keeping session (KV cache preserved)`);
       }
 
       if (!entry.session) {
@@ -1072,8 +1070,10 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
         if (orchestrator) {
           systemPrompt = await orchestrator.buildSystemPrompt(_bgMode);
           try {
-            // BG tasks use a slim toolset (~16 tools vs 39) to save critical context tokens
-            functions = await orchestrator.buildFunctions(_bgMode ? 'bg' : 'chat');
+            // Always use the full toolset. The slim BG variant was an
+            // optimisation that no longer fires (we keep one session across
+            // chat/bg) and forced session rebuild on every mode swap.
+            functions = await orchestrator.buildFunctions('chat');
           } catch (err) {
             log.warn(' Function-calling setup failed:', err.message, '- continuing without functions');
             functions = undefined;
@@ -1186,6 +1186,9 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
         log.info(` Session created for ${this.poseidonModelId} (${wrapper}, ctx=${ctxTokens}, prompt=${promptTokens}tok${functions ? `, ${Object.keys(functions).length} tools` : ', no tools (ctx too small)'})`);
       }
       const session = entry.session;
+      if (entry.sessionTurns > 0) {
+        log.info(` Session reused for ${this.poseidonModelId} (turn ${entry.sessionTurns + 1}, KV cache preserved — no system prompt reprocess)`);
+      }
 
       // Buffer for text chunks AND for tool-call / tool-result events.
       // The model emits text via onTextChunk; we wrap each function so we also

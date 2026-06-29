@@ -25,6 +25,8 @@
 #    ./scripts/fresh-start.sh --rebuild-llama   # also rebuild node-llama-cpp
 #    ./scripts/fresh-start.sh --with-imagegen   # clone+build stable-diffusion.cpp
 #                                                 + download Flux companion safetensors
+#    ./scripts/fresh-start.sh --with-voice      # pull + run speaches-ai docker
+#                                                 container (STT/TTS on :8000)
 #
 #  Bail-out: hit Ctrl-C at any prompt.
 # ─────────────────────────────────────────────────────────────────────────────
@@ -38,6 +40,7 @@ DO_WIPE=1
 DO_START=1
 DO_REBUILD_LLAMA=0
 DO_IMAGEGEN=0
+DO_VOICE=0
 for arg in "$@"; do
   case "$arg" in
     --yes|-y)           AUTO_YES=1 ;;
@@ -46,8 +49,9 @@ for arg in "$@"; do
     --no-start)         DO_START=0 ;;
     --rebuild-llama)    DO_REBUILD_LLAMA=1 ;;
     --with-imagegen)    DO_IMAGEGEN=1 ;;
+    --with-voice)       DO_VOICE=1 ;;
     --help|-h)
-      sed -n '2,32p' "$0"; exit 0 ;;
+      sed -n '2,34p' "$0"; exit 0 ;;
     *) echo "Unknown arg: $arg (use --help)"; exit 1 ;;
   esac
 done
@@ -241,11 +245,71 @@ if [[ $DO_IMAGEGEN -eq 1 ]]; then
   fi
 fi
 
-# ── 9. Sanity check the boot ─────────────────────────────────────────────────
+# ── 9. Optional: voice (Speaches STT/TTS docker container) ───────────────────
+if [[ $DO_VOICE -eq 1 ]]; then
+  if ! command -v docker >/dev/null 2>&1; then
+    warn "docker not installed — skipping voice setup. Install docker first, then rerun."
+  else
+    # Detect CUDA — use cu124 image if nvidia-smi works, else CPU image
+    if command -v nvidia-smi >/dev/null 2>&1 && nvidia-smi >/dev/null 2>&1; then
+      SPEACHES_IMAGE="ghcr.io/speaches-ai/speaches:latest-cuda"
+      SPEACHES_GPU_FLAGS="--gpus all"
+      say "Voice: GPU detected — using CUDA Speaches image."
+    else
+      SPEACHES_IMAGE="ghcr.io/speaches-ai/speaches:latest-cpu"
+      SPEACHES_GPU_FLAGS=""
+      warn "Voice: no GPU detected — using CPU image (transcription will be slow)."
+    fi
+
+    # Is a speaches container already running on :8000?
+    SP_RUNNING=$(docker ps --filter "name=iaqua-speaches" --format "{{.Names}}" 2>/dev/null || true)
+    if [[ -n "$SP_RUNNING" ]]; then
+      ok "Speaches already running (container: $SP_RUNNING)"
+    else
+      # Clean up any stopped container with our name so the run won't conflict
+      docker rm -f iaqua-speaches >/dev/null 2>&1 || true
+
+      if confirm "Pull + run Speaches container ($SPEACHES_IMAGE) on port 8000?"; then
+        say "Pulling $SPEACHES_IMAGE (~2-4 GB first time)…"
+        docker pull "$SPEACHES_IMAGE" || die "docker pull failed."
+
+        say "Starting Speaches container (detached, restart=unless-stopped)…"
+        docker run -d \
+          --name iaqua-speaches \
+          --restart unless-stopped \
+          -p 8000:8000 \
+          $SPEACHES_GPU_FLAGS \
+          "$SPEACHES_IMAGE" \
+          || die "docker run failed."
+
+        # Wait for /v1/models endpoint to come up (max 60s)
+        say "Waiting for Speaches to be ready…"
+        for i in $(seq 1 30); do
+          if curl -fsS http://localhost:8000/v1/models >/dev/null 2>&1; then
+            ok "Speaches up at http://localhost:8000"
+            break
+          fi
+          sleep 2
+        done
+        if ! curl -fsS http://localhost:8000/v1/models >/dev/null 2>&1; then
+          warn "Speaches container is up but /v1/models did not respond within 60s. Check 'docker logs iaqua-speaches'."
+        fi
+      fi
+    fi
+
+    # IAQUA looks for SPEACHES_URL — set it in .env if not already there
+    if [[ -f .env ]] && ! grep -q "^SPEACHES_URL=" .env; then
+      echo "SPEACHES_URL=http://localhost:8000" >> .env
+      ok "Added SPEACHES_URL=http://localhost:8000 to .env"
+    fi
+  fi
+fi
+
+# ── 10. Sanity check the boot ────────────────────────────────────────────────
 say "Pre-boot syntax check…"
 node --check server/index.js && ok "server/index.js parses cleanly."
 
-# ── 10. Start server ─────────────────────────────────────────────────────────
+# ── 11. Start server ─────────────────────────────────────────────────────────
 if [[ $DO_START -eq 1 ]]; then
   echo
   ok "${C_BOLD}Ready.${C_RESET} Starting server on http://localhost:${PORT:-3000} …"
