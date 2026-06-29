@@ -118,11 +118,17 @@ const TaskQueueUI = {
         // Server writes task_type 'image_generation' but earlier code only
         // checked for 'image_gen' — both accepted here. Titles can start with
         // "Image:" (current) or "Generate:" (older format).
+        // The output_preview fallback only triggers when the URL clearly
+        // points at an image file (extension or generated/ path) — otherwise
+        // text/JSON outputs would also be treated as images.
+        const looksLikeImageUrl = (url) =>
+          !!url && (/\.(png|jpe?g|gif|webp|bmp|svg|avif)(\?|#|$)/i.test(url)
+                    || /\/(generated|images?)\//i.test(url));
         const isImg = t =>
           t.task_type === 'image_generation' ||
           t.task_type === 'image_gen' ||
-          /^(image|generate)[: ]/i.test(t.title || '') ||
-          !!t.output_preview;  // belt-and-braces: if we have a preview URL it's an image
+          /^image[: ]/i.test(t.title || '') ||
+          looksLikeImageUrl(t.output_preview);
         const getStatus = t => t.lifecycle?.status || t.status || '';
         const imgTasks  = doneTasks.filter(t => isImg(t) && getStatus(t) === 'completed');
         const restTasks = doneTasks.filter(t => !isImg(t) || getStatus(t) !== 'completed');
@@ -144,8 +150,8 @@ const TaskQueueUI = {
     const isImageTask =
       t.task_type === 'image_generation' ||
       t.task_type === 'image_gen' ||
-      /^(image|generate)[: ]/i.test(t.title || '') ||
-      !!t.output_preview;
+      /^image[: ]/i.test(t.title || '') ||
+      (!!t.output_preview && /\.(png|jpe?g|gif|webp|bmp|svg|avif)(\?|#|$)/i.test(t.output_preview));
     const imgPreview = (isImageTask && t.output_preview)
       ? `<div style="margin:4px 0;"><img src="${t.output_preview}" style="max-width:100%;max-height:140px;border:1px solid rgba(255,255,255,0.1);border-radius:3px;" onerror="this.style.display='none'"></div>`
       : '';
@@ -487,8 +493,8 @@ ${task.description}`
     const isImageTask =
       task.task_type === 'image_generation' ||
       task.task_type === 'image_gen' ||
-      /^(image|generate)[: ]/i.test(task.title || '') ||
-      !!task.output_preview;
+      /^image[: ]/i.test(task.title || '') ||
+      (!!task.output_preview && /\.(png|jpe?g|gif|webp|bmp|svg|avif)(\?|#|$)/i.test(task.output_preview));
     if (isImageTask && task.output_preview) {
       // Big in-panel view: image takes the full modal width (modal widens via
       // .is-image modifier below). Click opens native-resolution in a new tab.

@@ -110,7 +110,14 @@ function buildLegacyV1Routes({ rm }) {
 
       const nextId = registry.metadata.next_id || 1;
       const projectId = `project_${String(nextId).padStart(3, '0')}`;
-      const folderName = RegistryManager.toSlug(upperName);
+      // CRITICAL: must use projectFolder() (uppercase) — toSlug returns
+      // lowercase, which created a "crypto" folder while every other code
+      // path (TaskRunner, OrchestratorTools, resolveProjectByNameOrId
+      // auto-repair) writes to the uppercase "CRYPTO". Result: outputs
+      // went to one folder, the UI read from the other, and the kanban
+      // never saw "done" tasks because their result files lived under
+      // a sibling directory.
+      const folderName = RegistryManager.projectFolder(upperName);
       const projectDir = path.join(AQUARIUM.PROJECTS, folderName);
 
       // 2. Create folder + subfolders

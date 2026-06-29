@@ -51,12 +51,30 @@ function buildPoseidonRoutes({ rm, refs }) {
 
   router.get('/reasoning/stream', (req, res) => {
     res.setHeader('Content-Type',      'text/event-stream');
-    res.setHeader('Cache-Control',     'no-cache');
+    res.setHeader('Cache-Control',     'no-cache, no-transform');
     res.setHeader('Connection',        'keep-alive');
     res.setHeader('X-Accel-Buffering', 'no');
+    // CRITICAL: flush headers so the browser's EventSource onopen fires
+    // immediately. Without this, Node may buffer until the first big payload,
+    // which never comes when no agent is running — and the temple's live
+    // stream sits "empty" until something happens, looking broken.
+    if (typeof res.flushHeaders === 'function') res.flushHeaders();
     res.write('data: {"type":"connected"}\n\n');
+
     ReasoningBus.subscribe(res);
-    req.on('close', () => ReasoningBus.unsubscribe(res));
+
+    // Periodic SSE keepalive (comment lines, ignored by EventSource).
+    // Required to keep the connection alive through proxies / Node idle
+    // socket timeouts that otherwise close it after ~2 minutes of silence.
+    const keepalive = setInterval(() => {
+      try { res.write(': keepalive\n\n'); } catch { /* socket closed */ }
+    }, 20_000);
+    keepalive.unref();
+
+    req.on('close', () => {
+      clearInterval(keepalive);
+      ReasoningBus.unsubscribe(res);
+    });
   });
 
   // GET /api/v2/dream-state — poller-friendly read of dream_memory.json.

@@ -133,7 +133,7 @@ const TempleInterior = {
     <div id="ti-content-area" style="flex:1;min-height:0;position:relative;overflow:hidden;">
       <!-- Reasoning stream — shown when no file open -->
       <div id="ti-reasoning-panel"
-        style="position:absolute;inset:0;overflow-y:auto;background:#020810;color:#00ffb4;font-family:'Courier New',monospace;font-size:10px;padding:12px;line-height:1.6;z-index:1;"></div>
+        style="position:absolute;inset:0;display:block;overflow-y:auto;background:#020810;color:#00ffb4;font-family:'Courier New',monospace;font-size:12px;padding:14px;line-height:1.6;z-index:1;"></div>
       <!-- Editor — overlays reasoning when a text/code file is open -->
       <textarea id="ti-editor" class="ti-editor" spellcheck="false"
         oninput="TempleInterior._ideMarkDirty()"
@@ -1993,8 +1993,20 @@ const TempleInterior = {
       }).join('');
 
       // Empty state
+      // Connection state shown in the empty-state block so user can tell
+      // "no events yet" (✓ connected) from "feed broken" (✗ disconnected).
+      const isConnected = !!this._reasoningEvtSource && this._reasoningEvtSource.readyState === 1;
+      const isConnecting = !!this._reasoningEvtSource && this._reasoningEvtSource.readyState === 0;
+      const dotColor = isConnected ? '#06ffa5' : (isConnecting ? '#fbbf24' : '#ef4444');
+      const stateLabel = isConnected ? 'Live feed connected' : (isConnecting ? 'Connecting…' : 'Disconnected — retrying');
       const empty = groups.length === 0
-        ? `<div style="color:#475569;padding:16px;text-align:center;font-size:10px;">Waiting for activity…</div>`
+        ? `<div style="color:#94a3b8;padding:24px 16px;text-align:center;font-size:12px;line-height:1.7;font-family:var(--panel-font),sans-serif;">
+            <div style="display:inline-flex;align-items:center;gap:8px;margin-bottom:10px;">
+              <span style="width:9px;height:9px;border-radius:50%;background:${dotColor};box-shadow:0 0 6px ${dotColor};display:inline-block;"></span>
+              <span style="color:${dotColor};font-weight:600;">${stateLabel}</span>
+            </div>
+            <div style="color:#64748b;font-size:11px;">Agent reasoning will appear here when a task runs.</div>
+          </div>`
         : '';
 
       panel.innerHTML = `<div style="min-height:100%;">${empty}${groupsHtml}<div id="ti-reason-end"></div></div>`;
@@ -2009,17 +2021,26 @@ const TempleInterior = {
     const es = new EventSource('/api/v2/reasoning/stream');
     this._reasoningEvtSource = es;
 
+    es.onopen = () => {
+      console.info('[TempleInterior] reasoning stream connected');
+      render();  // refresh the empty-state badge to "connected"
+    };
+
     es.onmessage = (e) => {
       try {
         const ev = JSON.parse(e.data);
         log.push(ev);
         if (log.length > 200) log.splice(0, log.length - 200);
         render();
-      } catch {}
+      } catch (err) {
+        console.warn('[TempleInterior] bad SSE payload:', e.data?.slice?.(0, 120));
+      }
     };
 
     es.onerror = () => {
-      // Silent reconnect — browser EventSource retries automatically
+      // Browser EventSource auto-retries. Re-render so the user sees the
+      // "Disconnected — retrying" state instead of a stale connected badge.
+      render();
     };
   },
 

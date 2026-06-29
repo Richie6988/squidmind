@@ -857,9 +857,38 @@ class RegistryManager {
     }
     if (!found) return null;
 
-    // Repair: ensure folder = canonical name (fixes old project_id-named folders)
+    // Repair: ensure folder = canonical name (fixes old project_id-named folders
+    // or legacy lowercase folders created by toSlug). Also physically rename
+    // the directory on disk so existing input/output files come with us.
     const canonical = RegistryManager.projectFolder(found.entry);
     if (found.entry.folder !== canonical) {
+      const oldFolder = found.entry.folder;
+      try {
+        const fs = require('fs').promises;
+        const path = require('path');
+        const AQUARIUM = require('../aquarium');
+        const oldPath = path.join(AQUARIUM.PROJECTS, oldFolder);
+        const newPath = path.join(AQUARIUM.PROJECTS, canonical);
+        // Only rename if old folder exists AND new folder does not
+        // (avoids clobbering data when both somehow co-exist).
+        const oldExists = await fs.access(oldPath).then(() => true).catch(() => false);
+        const newExists = await fs.access(newPath).then(() => true).catch(() => false);
+        if (oldExists && !newExists) {
+          await fs.rename(oldPath, newPath);
+        } else if (oldExists && newExists) {
+          // Both exist — merge: move any files from old → new without overwriting
+          const entries = await fs.readdir(oldPath, { withFileTypes: true }).catch(() => []);
+          for (const e of entries) {
+            const src = path.join(oldPath, e.name);
+            const dst = path.join(newPath, e.name);
+            const dstExists = await fs.access(dst).then(() => true).catch(() => false);
+            if (!dstExists) await fs.rename(src, dst).catch(() => {});
+          }
+          // Best-effort cleanup of the now-empty old directory
+          await fs.rm(oldPath, { recursive: true, force: true }).catch(() => {});
+        }
+      } catch { /* migration is best-effort */ }
+
       found.entry.folder = canonical;
       found.entry.memory_file = `${canonical}/project_memory.json`;
       reg.projects[found.id] = found.entry;
