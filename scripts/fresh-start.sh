@@ -250,11 +250,15 @@ if [[ $DO_VOICE -eq 1 ]]; then
   if ! command -v docker >/dev/null 2>&1; then
     warn "docker not installed — skipping voice setup. Install docker first, then rerun."
   else
-    # Detect CUDA — use cu124 image if nvidia-smi works, else CPU image
+    # Image tag selection. The Speaches project publishes:
+    #   :latest-cuda-12.4.1    CUDA 12.4 (their officially recommended GPU image)
+    #   :latest-cuda-12.6.3    CUDA 12.6
+    #   :latest-cpu            CPU-only
+    # We pick the cuda-12.4.1 build because it covers RTX 30/40/50 series.
     if command -v nvidia-smi >/dev/null 2>&1 && nvidia-smi >/dev/null 2>&1; then
-      SPEACHES_IMAGE="ghcr.io/speaches-ai/speaches:latest-cuda"
+      SPEACHES_IMAGE="ghcr.io/speaches-ai/speaches:latest-cuda-12.4.1"
       SPEACHES_GPU_FLAGS="--gpus all"
-      say "Voice: GPU detected — using CUDA Speaches image."
+      say "Voice: GPU detected — using CUDA 12.4 Speaches image."
     else
       SPEACHES_IMAGE="ghcr.io/speaches-ai/speaches:latest-cpu"
       SPEACHES_GPU_FLAGS=""
@@ -262,7 +266,7 @@ if [[ $DO_VOICE -eq 1 ]]; then
     fi
 
     # Is a speaches container already running on :8000?
-    SP_RUNNING=$(docker ps --filter "name=iaqua-speaches" --format "{{.Names}}" 2>/dev/null || true)
+    SP_RUNNING=$(docker ps --filter "name=iaqua-speaches" --filter "status=running" --format "{{.Names}}" 2>/dev/null || true)
     if [[ -n "$SP_RUNNING" ]]; then
       ok "Speaches already running (container: $SP_RUNNING)"
     else
@@ -271,7 +275,11 @@ if [[ $DO_VOICE -eq 1 ]]; then
 
       if confirm "Pull + run Speaches container ($SPEACHES_IMAGE) on port 8000?"; then
         say "Pulling $SPEACHES_IMAGE (~2-4 GB first time)…"
-        docker pull "$SPEACHES_IMAGE" || die "docker pull failed."
+        if ! docker pull "$SPEACHES_IMAGE"; then
+          warn "Pull failed for $SPEACHES_IMAGE — trying the generic :latest-cuda tag as fallback."
+          SPEACHES_IMAGE="ghcr.io/speaches-ai/speaches:latest-cuda"
+          docker pull "$SPEACHES_IMAGE" || die "docker pull failed for both image tags."
+        fi
 
         say "Starting Speaches container (detached, restart=unless-stopped)…"
         docker run -d \
@@ -280,11 +288,12 @@ if [[ $DO_VOICE -eq 1 ]]; then
           -p 8000:8000 \
           $SPEACHES_GPU_FLAGS \
           "$SPEACHES_IMAGE" \
-          || die "docker run failed."
+          || die "docker run failed. Check 'docker logs iaqua-speaches' or run 'docker ps -a'."
 
-        # Wait for /v1/models endpoint to come up (max 60s)
-        say "Waiting for Speaches to be ready…"
-        for i in $(seq 1 30); do
+        # Wait for /v1/models endpoint to come up (max 90s — first-time model
+        # downloads can take a while on the container's first run)
+        say "Waiting for Speaches to be ready (up to 90s)…"
+        for i in $(seq 1 45); do
           if curl -fsS http://localhost:8000/v1/models >/dev/null 2>&1; then
             ok "Speaches up at http://localhost:8000"
             break
@@ -292,15 +301,35 @@ if [[ $DO_VOICE -eq 1 ]]; then
           sleep 2
         done
         if ! curl -fsS http://localhost:8000/v1/models >/dev/null 2>&1; then
-          warn "Speaches container is up but /v1/models did not respond within 60s. Check 'docker logs iaqua-speaches'."
+          warn "Speaches container running but /v1/models is unreachable after 90s."
+          warn "Diagnose with:  docker logs --tail 80 iaqua-speaches"
+          warn "Common causes: nvidia-container-toolkit missing, port 8000 taken, model download pending."
         fi
       fi
     fi
 
-    # IAQUA looks for SPEACHES_URL — set it in .env if not already there
+    # Make sure IAQUA itself knows voice is enabled.
+    # 1. .env — used by the server start
     if [[ -f .env ]] && ! grep -q "^SPEACHES_URL=" .env; then
       echo "SPEACHES_URL=http://localhost:8000" >> .env
       ok "Added SPEACHES_URL=http://localhost:8000 to .env"
+    fi
+    # 2. aquarium/COMMS/comms_config.json — runtime config the voice routes check.
+    #    Voice routes return 503 "Voice service not enabled" when voice.enabled
+    #    is false, even when speaches is reachable. We flip the flag here so the
+    #    user does not have to dig through Comms settings after a fresh start.
+    COMMS_CFG="aquarium/COMMS/comms_config.json"
+    if [[ -f "$COMMS_CFG" ]] && command -v node >/dev/null 2>&1; then
+      node -e "
+        const fs = require('fs');
+        const f = '$COMMS_CFG';
+        const cfg = JSON.parse(fs.readFileSync(f, 'utf8'));
+        cfg.voice = cfg.voice || {};
+        cfg.voice.enabled = true;
+        cfg.voice.speaches_url = cfg.voice.speaches_url || 'http://localhost:8000';
+        fs.writeFileSync(f, JSON.stringify(cfg, null, 2));
+        console.log(' Voice enabled in', f);
+      " && ok "Voice enabled in comms_config.json"
     fi
   fi
 fi

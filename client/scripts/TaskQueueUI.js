@@ -560,6 +560,15 @@ ${task.description}`
     try {
       const r = await window.api.tasks.list();
       task = r.registry.tasks?.[taskId];
+      // Completed/failed/cancelled tasks are purged from the registry and
+      // persisted to results_log.json. Mirror the same fallback openTaskResult
+      // does so "Edit" works on image-gen and any other finished task.
+      if (!task) {
+        try {
+          const rr = await window.api._fetch('/tasks/results');
+          task = rr.results?.[taskId];
+        } catch { /* fall through to "not found" */ }
+      }
     } catch (err) {
       return SquidModal.alert('Could not load task: ' + err.message);
     }
