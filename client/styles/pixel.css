@@ -8249,3 +8249,120 @@ h4.pc-md-h { font-size: 8px; color: #94a3b8; }
 .resource-upload-btn { font-size: 12px !important; padding: 7px 13px !important; border-radius: 4px !important; }
 .resource-drop-hint  { font-size: 11px !important; color: var(--ui-muted) !important; }
 .resource-del-btn    { font-size: 14px !important; }
+
+/* ════════════════════════════════════════════════════════════════════════════
+ * TEMPLE LEFT PANEL — bigger fonts for the top area (FILES/MEMORY tabs,
+ * INPUT FILES / OUTPUT FILES / POSEIDON INSTRUCTIONS / AGENTS section
+ * titles, drop zone hints, etc.), and supporting styles for the agent
+ * action popover that replaces the old static row of EDIT/SEND/OUT buttons.
+ * ════════════════════════════════════════════════════════════════════════════ */
+.ti-left,
+.ti-left * { font-family: var(--panel-font); }
+
+.ti-tabs       { gap: 2px !important; padding: 0 !important; border-bottom: 1px solid var(--border) !important; }
+.ti-tab        { font-size: 12px !important; padding: 9px 16px !important; letter-spacing: 0.04em !important; font-weight: 600 !important; }
+.ti-tab.active { border-bottom-width: 2px !important; }
+.ti-tab-sm     { font-size: 11px !important; padding: 4px 10px !important; }
+.ti-tabs-end   { gap: 6px !important; }
+
+.ti-sec {
+  font-size: 12px !important; letter-spacing: 0.04em !important; font-weight: 600 !important;
+  padding: 8px 12px !important; color: #4facfe !important; text-transform: uppercase;
+}
+.ti-sec-btn { font-size: 11px !important; padding: 6px 12px !important; border-radius: 3px !important; font-weight: 500 !important; }
+.ti-empty   { font-size: 12px !important; padding: 14px 12px !important; color: var(--ui-muted) !important; }
+
+/* The "POSEIDON INSTRUCTIONS" header is an inline-styled div — override it too */
+.ti-left > div[style*="POSEIDON INSTRUCTIONS"],
+#ti-left-body + div > div:first-child {
+  font-size: 12px !important;
+}
+
+/* Drop zone hint */
+.ti-drop-hint,
+.ti-drop-zone     { font-size: 12px !important; padding: 18px 12px !important; }
+
+/* Walker labels in the arena: more legible without dominating */
+.ti-walker.clickable { pointer-events: auto !important; cursor: pointer; transition: transform .15s; }
+.ti-walker.clickable:hover { transform: translateY(-2px) scale(1.08); z-index: 5; }
+.ti-walker.clickable:hover .ti-walker-name { color: #06ffa5; }
+.ti-walker.running .ti-walker-name { color: #06ffa5; text-shadow: 0 0 6px rgba(6,255,165,0.5); }
+.ti-walker-name { font-size: 9px !important; margin-top: 0 !important; }
+
+/* "No agents assigned" overlay inside the arena */
+.ti-arena-empty {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--panel-font); font-size: 13px;
+  color: rgba(148,163,184,0.6); pointer-events: none;
+  letter-spacing: 0.04em;
+}
+
+/* ───────── Agent action popover ───────── */
+.ti-agent-popover {
+  position: fixed;
+  width: 220px;
+  background: linear-gradient(180deg, #0d1f3c 0%, #07111e 100%);
+  border: 1px solid rgba(79,172,254,0.4);
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.6), 0 0 0 1px rgba(0,0,0,0.4);
+  z-index: 9999;
+  font-family: var(--panel-font);
+  padding: 10px 12px;
+  animation: ti-pop-in 0.12s ease-out;
+}
+@keyframes ti-pop-in {
+  from { opacity: 0; transform: scale(0.92) translateY(-4px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+.ti-agent-pop-hdr {
+  display: flex; align-items: center; gap: 8px; margin-bottom: 4px;
+}
+.ti-agent-pop-dot {
+  width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+}
+.ti-agent-pop-dot.run  { background: #06ffa5; box-shadow: 0 0 6px rgba(6,255,165,0.6); animation: ti-dot-pulse .9s ease-in-out infinite; }
+.ti-agent-pop-dot.idle { background: #475569; }
+.ti-agent-pop-name {
+  font-size: 13px; font-weight: 600; color: #e2e8f0;
+  flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ti-agent-pop-pill {
+  font-size: 10px; padding: 2px 7px; border-radius: 3px;
+  letter-spacing: 0.04em; font-weight: 600;
+}
+.ti-agent-pop-pill.run  { background: rgba(6,255,165,0.15); color: #06ffa5; border: 1px solid rgba(6,255,165,0.4); }
+.ti-agent-pop-pill.idle { background: rgba(148,163,184,0.1); color: #94a3b8; border: 1px solid rgba(148,163,184,0.3); }
+.ti-agent-pop-sub {
+  font-size: 11px; color: #94a3b8; line-height: 1.4;
+  padding: 4px 0 10px;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  margin-bottom: 10px;
+  font-family: var(--panel-font-mono);
+}
+.ti-agent-pop-actions {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 6px;
+}
+.ti-pop-btn {
+  font-family: var(--panel-font);
+  font-size: 11px; font-weight: 600;
+  padding: 7px 10px;
+  background: rgba(0,0,0,0.3);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  letter-spacing: 0.04em;
+  transition: all 0.12s;
+}
+.ti-pop-btn:hover { transform: translateY(-1px); }
+.ti-pop-btn.run  { color: #06ffa5; border-color: rgba(6,255,165,0.4); }
+.ti-pop-btn.run:hover  { background: rgba(6,255,165,0.12); border-color: #06ffa5; }
+.ti-pop-btn.edit { color: #4facfe; border-color: rgba(79,172,254,0.4); }
+.ti-pop-btn.edit:hover { background: rgba(79,172,254,0.12); border-color: #4facfe; }
+.ti-pop-btn.send { color: #f59e0b; border-color: rgba(245,158,11,0.4); }
+.ti-pop-btn.send:hover { background: rgba(245,158,11,0.12); border-color: #f59e0b; }
+.ti-pop-btn.out  { color: #ef4444; border-color: rgba(239,68,68,0.4); }
+.ti-pop-btn.out:hover  { background: rgba(239,68,68,0.12); border-color: #ef4444; }
+
+.ti-dropzone { font-size: 12px !important; padding: 18px 12px !important; letter-spacing: 0.04em !important; }

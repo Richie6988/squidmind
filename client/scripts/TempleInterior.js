@@ -93,7 +93,7 @@ const TempleInterior = {
     <div id="ti-left-body" style="flex:0 0 auto;min-height:0;overflow:hidden;max-height:30%;display:flex;flex-direction:column;"></div>
     <!-- Poseidon chat — just below files -->
     <div id="ti-proj-chat" style="flex-shrink:0;border-top:1px solid var(--border);border-bottom:1px solid var(--border);display:flex;flex-direction:column;background:rgba(2,8,16,0.98);height:120px;">
-      <div style="font-size:8px;color:#4facfe;padding:3px 8px 1px;letter-spacing:.08em;opacity:.85;flex-shrink:0;">&#x2B21; POSEIDON INSTRUCTIONS</div>
+      <div class="ti-sec ti-pos-instr-hdr">&#x2B21; POSEIDON INSTRUCTIONS</div>
       <div id="ti-proj-chat-log" style="flex:1;overflow-y:auto;padding:2px 6px;font-size:9px;line-height:1.4;color:var(--text-secondary);"></div>
       <div style="display:flex;gap:3px;padding:3px 5px;flex-shrink:0;">
         <textarea id="ti-proj-chat-input" rows="2"
@@ -326,14 +326,18 @@ const TempleInterior = {
     let listContainer   = container.querySelector('#ti-agent-list');
 
     if (!existingArena) {
-      // First render: build full structure including arena canvas
+      // First render: build full structure. Arena now takes the entire
+      // section (flex:1). The old text list below was redundant — every
+      // agent already appears in the arena. Click any walker to open the
+      // action popover (RUN / EDIT / SEND / OUT).
       container.innerHTML = `
-<div id="ti-arena-always" style="position:relative;overflow:hidden;height:130px;background:linear-gradient(180deg,#07111e 0%,#04080f 100%);border-bottom:1px solid rgba(79,172,254,0.12);flex-shrink:0;cursor:crosshair;">
+<div id="ti-arena-always" style="position:relative;overflow:hidden;flex:1;min-height:160px;background:linear-gradient(180deg,#07111e 0%,#04080f 100%);border-bottom:1px solid rgba(79,172,254,0.12);cursor:crosshair;">
   <canvas id="ti-arena-canvas" style="position:absolute;inset:0;width:100%;height:100%;"></canvas>
+  <div id="ti-arena-empty" class="ti-arena-empty" style="display:none;">No agents assigned</div>
 </div>
-<div id="ti-agent-list" style="flex:1;overflow-y:auto;"></div>
-<div style="padding:5px;border-top:1px solid var(--border);flex-shrink:0;">
-  <button class="ti-sec-btn" style="width:100%;text-align:center;" onclick="TempleInterior._showAssigner()">ASSIGN AGENT</button>
+<div id="ti-agent-list" style="display:none;"></div>
+<div style="padding:8px 10px;border-top:1px solid var(--border);flex-shrink:0;">
+  <button class="ti-sec-btn ti-assign-btn" style="width:100%;text-align:center;" onclick="TempleInterior._showAssigner()">ASSIGN AGENT</button>
 </div>`;
       listContainer = container.querySelector('#ti-agent-list');
 
@@ -382,13 +386,18 @@ const TempleInterior = {
           if (this._arenaRaf) cancelAnimationFrame(this._arenaRaf);
           tick();
 
-          // Add squid walkers
+          // Add squid walkers — each is clickable and opens the action popover.
           agents.forEach((a) => {
             const squid = (window.aquarium?.squids || []).find(s => (s.agent_id || s.id) === a.agent_id)
               || { id: a.agent_id, name: a.display_name || a.agent_id, appearance: a.appearance || {} };
             const walker = document.createElement('div');
-            walker.className = 'ti-walker';
+            walker.className = 'ti-walker clickable';
             walker.dataset.agentId = a.agent_id;
+            walker.title = `${a.display_name || a.agent_id} — click for actions`;
+            walker.onclick = (e) => {
+              e.stopPropagation();
+              TempleInterior._showAgentPopover(a.agent_id, walker);
+            };
             const cvs = document.createElement('canvas');
             cvs.width = 52; cvs.height = 58;
             const lbl = document.createElement('div');
@@ -403,26 +412,147 @@ const TempleInterior = {
       }
     }
 
-    // ── Always update agent list (without destroying arena canvas) ──
-    if (listContainer) {
-      listContainer.innerHTML = agents.length === 0
-        ? '<p class="ti-empty" style="font-size:8px;padding:10px 8px;">No agents assigned</p>'
-        : agents.map(a => {
-            const w     = workers[a.agent_id] || {};
-            const isRun = w.status === 'running' || a.status === 'active';
-            const taskId = a.current_task_id || '';
-            return `<div class="ti-agent-row ${isRun ? 'running' : ''}">
-              <div class="ti-agent-dot ${isRun ? 'run' : 'idle'}" style="${isRun ? 'animation:ti-dot-pulse .9s ease-in-out infinite;' : ''}"></div>
-              <div style="flex:1;min-width:0;">
-                <div class="ti-agent-name">${this._esc(a.display_name || a.agent_id)}</div>
-                <div class="ti-agent-spec">${taskId ? '<span style="color:var(--ui-accent2);">▶ ' + this._esc(taskId) + '</span>' : this._esc(a.specialization || '')}</div>
-              </div>
-              <span class="ti-agent-badge ${isRun ? 'run' : 'idle'}">${isRun ? 'RUN' : 'IDLE'}</span>
-              <button class="ti-sec-btn" onclick="TempleInterior._editAgent('${a.agent_id}')" style="font-size:6px;padding:2px 5px;border-color:rgba(79,172,254,0.4);color:#4facfe;">EDIT</button>
-              <button class="ti-sec-btn" onclick="TempleInterior._dispatchAgent('${a.agent_id}')" style="font-size:6px;padding:2px 5px;">SEND</button>
-              <button class="ti-sec-btn" onclick="TempleInterior.unassignSquid('${a.agent_id}')" style="font-size:6px;padding:2px 5px;border-color:var(--danger);color:var(--danger);">OUT</button>
-            </div>`;
-          }).join('');
+    // ── Always update: empty-state overlay + walker hot-add for newly assigned agents ──
+    const arenaEl = container.querySelector('#ti-arena-always');
+    const emptyEl = container.querySelector('#ti-arena-empty');
+    if (emptyEl) emptyEl.style.display = agents.length === 0 ? 'flex' : 'none';
+
+    // Hot-add walkers if an agent was assigned after first render. (Existing
+    // walkers stay where they are; arena animation continues uninterrupted.)
+    if (arenaEl && agents.length > 0) {
+      const presentIds = new Set(
+        Array.from(arenaEl.querySelectorAll('.ti-walker')).map(w => w.dataset.agentId)
+      );
+      const newAgents = agents.filter(a => !presentIds.has(a.agent_id));
+      if (newAgents.length) {
+        const arenaCvs = arenaEl.querySelector('#ti-arena-canvas');
+        const AW = arenaCvs?.width  || 260;
+        const AH = arenaCvs?.height || 160;
+        newAgents.forEach((a) => {
+          const squid = (window.aquarium?.squids || []).find(s => (s.agent_id || s.id) === a.agent_id)
+            || { id: a.agent_id, name: a.display_name || a.agent_id, appearance: a.appearance || {} };
+          const walker = document.createElement('div');
+          walker.className = 'ti-walker clickable';
+          walker.dataset.agentId = a.agent_id;
+          walker.title = `${a.display_name || a.agent_id} — click for actions`;
+          walker.onclick = (e) => { e.stopPropagation(); TempleInterior._showAgentPopover(a.agent_id, walker); };
+          const cvs = document.createElement('canvas');
+          cvs.width = 52; cvs.height = 58;
+          const lbl = document.createElement('div');
+          lbl.className = 'ti-walker-name';
+          lbl.textContent = (a.display_name || a.agent_id).slice(0, 10).toUpperCase();
+          arenaEl.appendChild(walker);
+          walker.appendChild(cvs);
+          walker.appendChild(lbl);
+          this._animateSquid(walker, cvs, squid, AW, AH);
+        });
+      }
+      // Hot-remove walkers for agents that were unassigned
+      const agentIdSet = new Set(agents.map(a => a.agent_id));
+      Array.from(arenaEl.querySelectorAll('.ti-walker')).forEach(w => {
+        if (!agentIdSet.has(w.dataset.agentId)) w.remove();
+      });
+      // Update running-state badges (canvas redraws each frame so we just
+      // toggle a class on the walker for any CSS-driven highlight)
+      Array.from(arenaEl.querySelectorAll('.ti-walker')).forEach(w => {
+        const a = agents.find(x => x.agent_id === w.dataset.agentId);
+        if (!a) return;
+        const wk = workers[a.agent_id] || {};
+        const isRun = wk.status === 'running' || a.status === 'active';
+        w.classList.toggle('running', isRun);
+      });
+    }
+  },
+
+  // ═══ AGENT ACTION POPOVER ═════════════════════════════════════════════════
+  // Click a walker → show this popover with RUN / EDIT / SEND / OUT.
+  // Closes on outside-click, Esc, or after an action fires.
+  async _showAgentPopover(agentId, anchorEl) {
+    // Tear down any open popover first (also acts as a toggle if same walker)
+    const existing = document.getElementById('ti-agent-popover');
+    if (existing) {
+      const sameAnchor = existing.dataset.agentId === agentId;
+      existing.remove();
+      if (sameAnchor) return;
+    }
+
+    let agent = null, worker = null;
+    try {
+      const ar = await window.api._fetch('/agents');
+      agent = ar.registry?.agents?.[agentId];
+    } catch {}
+    try {
+      const wr = await window.api._fetch('/agents/pool/status');
+      worker = wr.workers?.[agentId];
+    } catch {}
+    if (!agent) return;
+
+    const isRun = worker?.status === 'running' || agent.status === 'active';
+    const taskId = agent.current_task_id || '';
+    const specOrTask = taskId ? `▶ ${taskId}` : (agent.specialization || 'no specialization');
+
+    const pop = document.createElement('div');
+    pop.id = 'ti-agent-popover';
+    pop.className = 'ti-agent-popover';
+    pop.dataset.agentId = agentId;
+    pop.innerHTML = `
+      <div class="ti-agent-pop-hdr">
+        <span class="ti-agent-pop-dot ${isRun ? 'run' : 'idle'}"></span>
+        <span class="ti-agent-pop-name">${this._esc(agent.display_name || agentId)}</span>
+        <span class="ti-agent-pop-pill ${isRun ? 'run' : 'idle'}">${isRun ? 'RUN' : 'IDLE'}</span>
+      </div>
+      <div class="ti-agent-pop-sub">${this._esc(specOrTask)}</div>
+      <div class="ti-agent-pop-actions">
+        <button class="ti-pop-btn run"  onclick="TempleInterior._popAction('run','${agentId}')">RUN</button>
+        <button class="ti-pop-btn edit" onclick="TempleInterior._popAction('edit','${agentId}')">EDIT</button>
+        <button class="ti-pop-btn send" onclick="TempleInterior._popAction('send','${agentId}')">SEND</button>
+        <button class="ti-pop-btn out"  onclick="TempleInterior._popAction('out','${agentId}')">OUT</button>
+      </div>`;
+    document.body.appendChild(pop);
+
+    // Anchor near the walker — open to the right if there's room, else left.
+    const r = anchorEl.getBoundingClientRect();
+    const pw = 220, ph = 130;
+    let left = r.right + 8;
+    let top  = r.top - (ph / 2) + (r.height / 2);
+    if (left + pw > window.innerWidth - 8) left = r.left - pw - 8;
+    if (top < 8) top = 8;
+    if (top + ph > window.innerHeight - 8) top = window.innerHeight - ph - 8;
+    pop.style.left = `${Math.max(8, left)}px`;
+    pop.style.top  = `${top}px`;
+
+    // Dismiss on outside-click + Esc
+    setTimeout(() => {
+      const closeOutside = (e) => {
+        if (!pop.contains(e.target) && e.target !== anchorEl && !anchorEl.contains(e.target)) {
+          pop.remove();
+          document.removeEventListener('mousedown', closeOutside, true);
+          document.removeEventListener('keydown', closeEsc, true);
+        }
+      };
+      const closeEsc = (e) => {
+        if (e.key === 'Escape') {
+          pop.remove();
+          document.removeEventListener('mousedown', closeOutside, true);
+          document.removeEventListener('keydown', closeEsc, true);
+        }
+      };
+      document.addEventListener('mousedown', closeOutside, true);
+      document.addEventListener('keydown', closeEsc, true);
+    }, 0);
+  },
+
+  async _popAction(kind, agentId) {
+    const pop = document.getElementById('ti-agent-popover');
+    if (pop) pop.remove();
+    switch (kind) {
+      case 'run':  return this._runAgent ? this._runAgent(agentId)
+                          : (typeof TaskQueueUI !== 'undefined' && TaskQueueUI._scheduleForAgent
+                              ? TaskQueueUI._scheduleForAgent(agentId)
+                              : SquidModal.alert('Use Send to dispatch a new task to this agent.'));
+      case 'edit': return this._editAgent(agentId);
+      case 'send': return this._dispatchAgent(agentId);
+      case 'out':  return this.unassignSquid(agentId);
     }
   },
 
