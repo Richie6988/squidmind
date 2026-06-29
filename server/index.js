@@ -300,12 +300,24 @@ async function start() {
       console.log(`\n[Shutdown] ${signal} received — beginning graceful shutdown…`);
       const startMs = Date.now();
       const hardTimeout = setTimeout(() => {
-        console.error('[Shutdown] Hard timeout (15s) — forcing exit');
+        console.error('[Shutdown] Hard timeout (6s) — forcing exit');
         process.exit(1);
-      }, 15_000);
+      }, 6_000);
       hardTimeout.unref();
 
-      // Stop accepting new HTTP connections (drains existing ones)
+      // Force-close all open sockets BEFORE httpServer.close().
+      // Without this, SSE streams (chat, reasoning) and keep-alive HTTP keep
+      // close() blocked forever — which is what triggered the old 15s timeout.
+      // closeAllConnections is available in Node 18.2+.
+      try {
+        if (typeof httpServer.closeAllConnections === 'function') {
+          httpServer.closeAllConnections();
+        } else if (typeof httpServer.closeIdleConnections === 'function') {
+          httpServer.closeIdleConnections();
+        }
+      } catch (e) { /* not fatal */ }
+
+      // Stop accepting new HTTP connections (drains existing ones — now empty)
       try {
         await new Promise(r => httpServer.close(r));
         console.log('[Shutdown] ✓ HTTP server closed');

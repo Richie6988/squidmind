@@ -467,10 +467,15 @@ const AgentForm = {
         ctx.translate(W/2, H/2);
         SA.drawGlasses(ctx, opt, size);
       } else if (key === 'eyes') {
-        // Eyes also at y=0 in drawer space.
+        // 'round' is a no-op in drawEyes (it's the squid's default rendering).
+        // The picker still needs a visible tile, so call the dedicated helper.
         const size = W * 0.85;
         ctx.translate(W/2, H/2);
-        SA.drawEyes(ctx, opt, size);
+        if (opt === 'round' && typeof SA.drawRoundEyes === 'function') {
+          SA.drawRoundEyes(ctx, size);
+        } else {
+          SA.drawEyes(ctx, opt, size);
+        }
       } else if (key === 'outfit') {
         // Outfit = 6 shoes placed at tentacle tips. Drawing them all radially
         // would shrink each to a few pixels. Instead, sample the bottom-most

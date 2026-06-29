@@ -615,8 +615,26 @@ const SquidAccessories = {
       case 'angry':  this._angryEyes(ctx, c, size); break;
       case 'star':   this._starEyes(ctx, c, size); break;
       case 'heart':  this._heartEyes(ctx, c, size); break;
+      case 'dizzy':     this._dizzyEyes(ctx, c, size); break;
+      case 'wink':      this._winkEyes(ctx, c, size); break;
+      case 'surprised': this._surprisedEyes(ctx, c, size); break;
+      case 'laser':     this._laserEyes(ctx, c, size); break;
     }
     ctx.restore();
+  },
+
+  // Default round eyes — drawEyes('round') returns early so we keep the
+  // squid's own default rendering. Exposed publicly so the AgentForm tile
+  // preview can render a visible "round" tile instead of an empty one.
+  drawRoundEyes(ctx, size) {
+    const c = size / 10;
+    // Eye centres at ±size*0.25 → ±2.5c. Match the Squid body's default
+    // round eyes: small white sclera + black pupil per eye.
+    [-2.5, 2.5].forEach(ex => {
+      this._r(ctx, ex - 1.0, -1.0, 2.0, 2.0, '#FFFFFF', c);  // sclera
+      this._r(ctx, ex - 0.5, -0.5, 1.0, 1.0, '#111111', c);  // pupil
+      this._r(ctx, ex - 0.3, -0.7, 0.4, 0.4, '#FFFFFF', c);  // catch-light
+    });
   },
 
   _happyEyes(ctx, c, size) {

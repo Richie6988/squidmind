@@ -312,7 +312,7 @@ const PoseidonChat = {
     const sendBtn   = this.modal.querySelector('#pc-send');
     const sendIcon  = this.modal.querySelector('#pc-send-icon');
     sendBtn.disabled = true;
-    sendIcon.textContent = '⏳';
+    sendIcon.innerHTML = '<circle cx="12" cy="12" r="3" opacity=".4"><animate attributeName="r" values="3;8;3" dur="1s" repeatCount="indefinite"/><animate attributeName="opacity" values=".8;.1;.8" dur="1s" repeatCount="indefinite"/></circle>';
     const stopBtn = this.modal.querySelector('#pc-stop');
     if (stopBtn) stopBtn.style.display = 'inline-flex';
     const sendBtn2 = this.modal?.querySelector('#pc-send');
@@ -438,7 +438,7 @@ const PoseidonChat = {
       this.currentRequest = null;
       this._generating = false;
       sendBtn.disabled = false;
-      sendIcon.textContent = '▶';
+      sendIcon.innerHTML = '<path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>';
       if (stopBtn) stopBtn.style.display = 'none';
       const sendBtnEnd = this.modal?.querySelector('#pc-send');
       if (sendBtnEnd) sendBtnEnd.style.display = '';
