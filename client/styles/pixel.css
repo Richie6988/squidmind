@@ -5451,14 +5451,14 @@ button .pixel-icon {
 .af-accessory-grid {
   flex: 1;
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
-  gap: 8px;
+  grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+  gap: 10px;
 }
 .af-accessory-tile {
   background: rgba(15,35,64,0.6);
   border: 2px solid var(--border);
   border-radius: 6px;
-  padding: 6px 4px 4px;
+  padding: 8px 4px 6px;
   cursor: pointer;
   text-align: center;
   transition: border-color 0.15s, transform 0.15s, background 0.15s;
@@ -5475,13 +5475,13 @@ button .pixel-icon {
 }
 .af-accessory-tile canvas {
   display: block;
-  width: 60px;
-  height: 60px;
+  width: 80px;
+  height: 80px;
   margin: 0 auto;
   image-rendering: pixelated;
 }
 .af-accessory-tile-label {
-  font-size: 7px;
+  font-size: 11px;
   color: var(--text-secondary);
   margin-top: 4px;
   font-family: 'Courier New', monospace;

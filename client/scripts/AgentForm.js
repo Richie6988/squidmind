@@ -406,7 +406,7 @@ const AgentForm = {
       tile.title = opt;
       // Canvas with the accessory drawn
       const canvas = document.createElement('canvas');
-      canvas.width = 60; canvas.height = 60;
+      canvas.width = 80; canvas.height = 80;
       this._drawAccessoryPreview(canvas, key, opt);
       tile.appendChild(canvas);
       const tag = document.createElement('div');
@@ -444,35 +444,68 @@ const AgentForm = {
       return;
     }
 
-    if (typeof Squid === 'undefined') return;
+    const SA = window.SquidAccessories;
+    if (!SA) return;
 
-    // Build a real Squid with ONLY the picked accessory applied.
-    // The same render pipeline as the aquarium runs — accessory lands in
-    // its correct position relative to the body, no manual coordinate math.
-    const acc = { hat: 'none', glasses: 'none', eyes: 'round', outfit: 'none' };
-    acc[key] = opt;
+    // Inventory-style: draw ONLY the item, centred in the tile. Each accessory
+    // drawer has its own internal translate relative to a "squid origin" — we
+    // counter-translate so the item lands at the tile centre regardless.
+    // (Hat is drawn at -size*0.87 from origin; outfit at +size*1.5 etc.)
+    ctx.save();
+    ctx.beginPath(); ctx.rect(0, 0, W, H); ctx.clip();
 
     try {
-      const sq = new Squid({
-        id: '__tile__', name: '',
-        appearance: { primary_color: '#FF6B9D', secondary_color: '#C44569' },
-        accessories: acc, status: 'idle',
-        x: W/2, y: H/2 + 4,    // shift down so the hat (above body) lands in canvas
-      });
-      // Freeze animation + skip the in-canvas nametag (tile has its own label)
-      sq.animFrame = 0; sq.bobOffset = 0; sq.glowPulse = 0;
-      sq.isSleeping = false; sq.isHovered = false; sq.alpha = 1;
-      sq.insideTemple = null; sq.jumpHeight = 0; sq.heartParticles = []; sq.isDragging = false;
-      sq.baseSize = 0.55;        // ~22 px body in a 60 px tile — fits with hat above
-      sq.drawNameTag = () => {}; // no nametag inside the tile
-
-      ctx.save();
-      ctx.beginPath(); ctx.rect(0, 0, W, H); ctx.clip();
-      sq.draw(ctx);
-      ctx.restore();
+      if (key === 'hat') {
+        // Hat: drawer translates to (0, -size*0.87). Move squid origin DOWN
+        // by that much so the hat lands at canvas centre.
+        const size = W * 0.62;
+        ctx.translate(W/2, H/2 + size * 0.87);
+        SA.drawHat(ctx, opt, size);
+      } else if (key === 'glasses') {
+        // Glasses sit on the eye line (y=0 in drawer space) — centre directly.
+        const size = W * 0.85;
+        ctx.translate(W/2, H/2);
+        SA.drawGlasses(ctx, opt, size);
+      } else if (key === 'eyes') {
+        // Eyes also at y=0 in drawer space.
+        const size = W * 0.85;
+        ctx.translate(W/2, H/2);
+        SA.drawEyes(ctx, opt, size);
+      } else if (key === 'outfit') {
+        // Outfit = 6 shoes placed at tentacle tips. Drawing them all radially
+        // would shrink each to a few pixels. Instead, sample the bottom-most
+        // shoe (tentacle facing down = i=0 in the loop after PI/2 offset) by
+        // calling the internal drawer directly when available, else fall back
+        // to drawing the radial group at large size with the canvas centred
+        // on the tentacle ring.
+        const size = W * 0.55;
+        const TENTACLES = 6;
+        // Pick the bottom tentacle (i = TENTACLES/2 ≈ 3 → angle = π → pointing down)
+        // and render a single shoe enlarged for clarity.
+        const map = {
+          'scarf':    '_shoeSneaker',
+          'tie':      '_shoeLoafer',
+          'cape':     '_shoeBoots',
+          'lab_coat': '_shoeLabShoe',
+          'armor':    '_shoeArmorBoot',
+          'hoodie':   '_shoeHoodie',
+          'kimono':   '_shoeKimono',
+          'cloak':    '_shoeCloak',
+        };
+        const fn = map[opt] && SA[map[opt]];
+        ctx.translate(W/2, H/2);
+        if (typeof fn === 'function') {
+          // Single enlarged shoe in the centre of the tile.
+          fn.call(SA, ctx, size, 0);
+        } else {
+          // Unknown outfit name — fall back to the radial group, scaled small.
+          SA.drawOutfit(ctx, opt, size * 0.45, 0);
+        }
+      }
     } catch (e) {
       console.warn('[tile preview]', key, opt, e.message);
     }
+    ctx.restore();
   },
   _updateAppearancePreview() {
     const canvas = this.modal?.querySelector('#af-preview-canvas');

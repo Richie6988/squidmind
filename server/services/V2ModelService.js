@@ -1180,7 +1180,7 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
         entry._functions         = functions;
         entry._currentSequence   = sequence;
         entry.sessionTurns       = 0;
-        entry._sessionMode       = neededMode;
+        entry._sessionMode       = _bgMode ? 'bg' : 'chat';
         entry._lastSystemPromptChars = systemPrompt.length;
         const wrapper = entry.session.chatWrapper?.constructor?.name || 'unknown';
         log.info(` Session created for ${this.poseidonModelId} (${wrapper}, ctx=${ctxTokens}, prompt=${promptTokens}tok${functions ? `, ${Object.keys(functions).length} tools` : ', no tools (ctx too small)'})`);
