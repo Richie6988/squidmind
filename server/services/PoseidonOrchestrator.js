@@ -1612,8 +1612,6 @@ My response: "${ss.last_response_preview}"${tools}
     try {
       const upperName = project_name.toUpperCase();
       this.rm.invalidateCache();
-      const AQUARIUM = require('../aquarium');
-      const fsp = require('fs').promises;
       const reg = await this.rm.read('PROJECTS/project_registry.json');
 
       let targetId = null;
@@ -1622,44 +1620,20 @@ My response: "${ss.last_response_preview}"${tools}
       }
       if (!targetId) return { ok: false, error: `Project "${upperName}" not found. Use list_projects to check existing names.` };
 
-      const proj = reg.projects[targetId];
-      const assignedAgents = [...(proj.assigned_agents || [])];
+      // Delegate to RegistryManager.deleteProject — single cascade implementation.
+      // It removes: project folder, frees agents, cascade-deletes all related
+      // tasks (live registry + results_log), removes TASKS/OUTPUT files, then
+      // unregisters the project. Without this delegation, Poseidon's deletion
+      // bypassed the task cascade and left orphaned tasks behind.
+      const result = await this.rm.deleteProject(targetId);
 
-      // Free assigned agents
-      if (assignedAgents.length > 0) {
-        try {
-          const agentReg = await this.rm.read('AGENTS/agent_registry.json');
-          for (const agentId of assignedAgents) {
-            const agent = agentReg.agents?.[agentId];
-            if (agent) agent.assigned_projects = (agent.assigned_projects || []).filter(id => id !== targetId);
-          }
-          await this.rm.write('AGENTS/agent_registry.json', agentReg);
-        } catch {}
-      }
-
-      // Delete project folder
-      const projectDir = AQUARIUM.projects(proj.folder || targetId);
-      try {
-        await fsp.rm(projectDir, { recursive: true, force: true });
-      } catch (e) {
-        log.warn(`Could not delete project folder ${projectDir}:`, e.message);
-      }
-
-      // Remove from registry
-      delete reg.projects[targetId];
-      if (reg.metadata?.total_active) reg.metadata.total_active = Math.max(0, reg.metadata.total_active - 1);
-      await this.rm.write('PROJECTS/project_registry.json', reg);
-
-      await this.rm.log({
-        event_type: 'project_deleted', severity: 'info',
-        actor: { type: 'system', id: 'poseidon_main' },
-        subject: { type: 'project', id: targetId },
-        action: `Permanently deleted project ${upperName}`,
-        context: { freed_agents: assignedAgents }
-      });
-
-      return { ok: true, project_id: targetId, name: upperName, freed_agents: assignedAgents,
-        message: `Deleted project ${upperName} permanently. Folder and registry entry removed.` };
+      return {
+        ok: true,
+        project_id: result.project_id,
+        name: result.name,
+        freed_agents: result.freed_agents || [],
+        message: `Deleted project ${upperName} permanently. Folder, registry entry, and all related tasks removed.`,
+      };
     } catch (err) {
       return { ok: false, error: err.message };
     }

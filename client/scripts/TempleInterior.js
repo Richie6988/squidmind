@@ -1842,6 +1842,14 @@ const TempleInterior = {
     }
 
     if (noTabs) noTabs.style.display = 'none';
+    if (toolbar) toolbar.style.display = 'flex';
+    // Push reasoning panel BEHIND the editor/preview (z-index 2). Without
+    // this, opening a .md or any text file loaded its content into the
+    // hidden frame but the reasoning panel (z-index 3 from the previous
+    // "no files" state) stayed on top and covered it — the user saw
+    // "nothing happens" even though the file was correctly loaded.
+    const rPanel = document.getElementById('ti-reasoning-panel');
+    if (rPanel) rPanel.style.zIndex = '1';
 
     this._openFiles.forEach((f, i) => {
       const btn = document.createElement('button');
