@@ -986,11 +986,18 @@ const TempleInterior = {
     let tasks = [];
     let brokerOwner = '';  // e.g. "bg_task_task_0008"
     try {
-      const [r, ms] = await Promise.all([
+      const [r, ms, rl] = await Promise.all([
         window.api._fetch('/tasks'),
-        window.api._fetch('/models/status').catch(() => ({}))
+        window.api._fetch('/models/status').catch(() => ({})),
+        // Terminal tasks (completed/failed/cancelled) are purged from the
+        // live registry by RegistryManager._writeTaskDetails and persisted
+        // to results_log.json. Without this fetch, the kanban DONE column
+        // stays permanently empty even though tasks ARE finishing.
+        window.api._fetch('/tasks/results').catch(() => ({ results: {} })),
       ]);
-      tasks = this._filterProjectTasks(Object.values(r.registry?.tasks || {}));
+      const liveTasks = Object.values(r.registry?.tasks || {});
+      const doneTasks = Object.values(rl.results || {});
+      tasks = this._filterProjectTasks([...liveTasks, ...doneTasks]);
       brokerOwner = ms?.broker?.owner || ms?.status?.broker?.owner || '';
     } catch {
       try {
@@ -1811,6 +1818,7 @@ const TempleInterior = {
 
 
   _renderIdeTabs() {
+    const bar     = document.getElementById('ti-ide-tabbar');
     const noTabs  = document.getElementById('ti-ide-notabs');
     const toolbar = document.getElementById('ti-ide-toolbar');
     if (!bar) return;

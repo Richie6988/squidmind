@@ -1040,6 +1040,57 @@ class RegistryManager {
       try { await fsp.rm(projDir, { recursive: true, force: true }); } catch {}
     }
 
+    // Cascade-delete all tasks belonging to this project — without this,
+    // tasks remain orphaned in tasks_registry.json + results_log.json after
+    // the project disappears, polluting the kanban and the global queue.
+    const deletedTaskIds = [];
+    try {
+      const AQUARIUM = require('../aquarium');
+      const path     = require('path');
+      const fsp      = require('fs').promises;
+
+      // ── Live registry ──
+      const liveTasksPath = path.join(AQUARIUM.TASKS, 'tasks_registry.json');
+      let liveReg = { metadata: { next_id: 1 }, tasks: {} };
+      try { liveReg = JSON.parse(await fsp.readFile(liveTasksPath, 'utf8')); } catch {}
+      const belongs = (t) =>
+        t.project_id          === projectId ||
+        t.context?.project_id === projectId ||
+        (projectName && (t.project_name === projectName || t.context?.project_name === projectName));
+      Object.entries(liveReg.tasks || {}).forEach(([tid, t]) => {
+        if (belongs(t)) { deletedTaskIds.push(tid); delete liveReg.tasks[tid]; }
+      });
+      await fsp.writeFile(liveTasksPath, JSON.stringify(liveReg, null, 2), 'utf8');
+
+      // ── Results log (terminal tasks live here after purge) ──
+      const resultsPath = path.join(AQUARIUM.TASKS, 'results_log.json');
+      let resLog = { results: {} };
+      try { resLog = JSON.parse(await fsp.readFile(resultsPath, 'utf8')); } catch {}
+      Object.entries(resLog.results || {}).forEach(([tid, t]) => {
+        if (belongs(t)) { deletedTaskIds.push(tid); delete resLog.results[tid]; }
+      });
+      await fsp.writeFile(resultsPath, JSON.stringify(resLog, null, 2), 'utf8');
+
+      // ── Per-task OUTPUT files (flat layout: TASKS/OUTPUT/<id>.<ext>) ──
+      const outDir = AQUARIUM.OUTPUT;
+      try {
+        const entries = await fsp.readdir(outDir).catch(() => []);
+        for (const fname of entries) {
+          const tid = fname.replace(/\.[^.]+$/, '');
+          if (deletedTaskIds.includes(tid)) {
+            await fsp.unlink(path.join(outDir, fname)).catch(() => {});
+          }
+        }
+      } catch { /* output dir may not exist */ }
+
+      this.invalidateCache();
+      if (deletedTaskIds.length) {
+        log.info(`[deleteProject] cascade-deleted ${deletedTaskIds.length} task(s) of ${projectId}`);
+      }
+    } catch (err) {
+      log.warn('[deleteProject] task cascade failed:', err.message);
+    }
+
     // Remove project from registry
     delete reg.projects[projectId];
     await this.write('PROJECTS/project_registry.json', reg);

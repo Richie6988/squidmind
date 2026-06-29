@@ -314,11 +314,12 @@ if [[ $DO_VOICE -eq 1 ]]; then
       echo "SPEACHES_URL=http://localhost:8000" >> .env
       ok "Added SPEACHES_URL=http://localhost:8000 to .env"
     fi
-    # 2. aquarium/COMMS/comms_config.json — runtime config the voice routes check.
+    # 2. aquarium/CHANNELS/comms_config.json — runtime config the voice routes check.
     #    Voice routes return 503 "Voice service not enabled" when voice.enabled
     #    is false, even when speaches is reachable. We flip the flag here so the
     #    user does not have to dig through Comms settings after a fresh start.
-    COMMS_CFG="aquarium/COMMS/comms_config.json"
+    #    (Canonical folder is CHANNELS, NOT COMMS — see server/aquarium.js.)
+    COMMS_CFG="aquarium/CHANNELS/comms_config.json"
     if [[ -f "$COMMS_CFG" ]] && command -v node >/dev/null 2>&1; then
       node -e "
         const fs = require('fs');
@@ -330,6 +331,8 @@ if [[ $DO_VOICE -eq 1 ]]; then
         fs.writeFileSync(f, JSON.stringify(cfg, null, 2));
         console.log(' Voice enabled in', f);
       " && ok "Voice enabled in comms_config.json"
+    else
+      warn "Could not patch $COMMS_CFG — file missing? Start the server once to seed it, then re-run."
     fi
   fi
 fi
