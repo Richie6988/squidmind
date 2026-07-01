@@ -1292,14 +1292,17 @@ const ModelLoader = {
   _imggenDefaultNegative(fileName) {
     const f = (fileName || '').toLowerCase();
     const isFlux = /flux/i.test(f);
+    // Content-neutral defaults: only visual-artifact terms, no subject-matter
+    // or style filters. Previous version included "nsfw" and blocked every
+    // non-photorealistic style (cartoon, painting, sketch…) — that was
+    // opinionated censorship, not a "smart default". If the user wants to
+    // avoid something specific they type it in the field.
     if (isFlux) {
-      // Flux is a DiT — negative prompts have minimal effect but still filter artifacts
-      return 'blurry, watermark, text, logo, ugly, deformed, signature';
+      // Flux DiT — negative prompts have minimal effect anyway
+      return 'blurry, watermark';
     }
-    // SD1.5 / SDXL — negative prompts have strong effect
-    return 'blurry, low quality, low res, ugly, deformed, mutated, watermark, text, logo, ' +
-      'extra limbs, missing fingers, bad anatomy, bad proportions, jpeg artifacts, oversaturated, ' +
-      'cartoonish, flat, 2d, sketch, painting, drawing, illustration, nsfw';
+    // SD1.5 / SDXL — artifact terms only
+    return 'blurry, low quality, watermark, extra limbs, missing fingers, bad anatomy, jpeg artifacts';
   },
 
   // Prompt gallery: organized by use-case with embedded quality tokens

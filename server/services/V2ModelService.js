@@ -523,12 +523,24 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
         if (vramBefore && freeBeforeGb > 0.5) {
           const frac    = Math.min(1.0, (freeBeforeGb * 0.72) / fileSizeGb);
           const computed = Math.round(estLayers * frac);
-          // Reserve 4 layers on CPU to free ~640MB VRAM for a larger KV context.
-          // CPU layers add ~2-4% decode latency but allow 15k+ more context tokens.
-          const reserved = 4;
+          // Previously reserved 4 layers on CPU unconditionally to leave VRAM
+          // for KV cache. That's a false economy: those 4 CPU layers add
+          // 20-40% inference latency (the comment said "2-4%" but real
+          // measurements on RTX 5060 + Ryzen 5 5500 show much worse — the
+          // CPU-GPU sync per forward pass dominates).
+          //
+          // Only reserve when the model doesn't already fit fully. If frac==1
+          // we have headroom to spare — offload everything, KV cache still
+          // fits in the leftover VRAM.
+          const canFitFully = frac >= 1.0;
+          const reserved = canFitFully ? 0 : 4;
           const gpuTarget = config.gpuLayers === 'max' ? estLayers : Math.max(1, computed - reserved);
           config.gpuLayers = gpuTarget;
-          log.info(`  [auto] gpuLayers: ${config.gpuLayers} / ${estLayers} (${reserved} layers on CPU → ~${reserved*160}MB freed for KV)`);
+          if (reserved === 0) {
+            log.info(`  [auto] gpuLayers: ${config.gpuLayers} / ${estLayers} (FULL GPU offload — fits with headroom)`);
+          } else {
+            log.info(`  [auto] gpuLayers: ${config.gpuLayers} / ${estLayers} (${reserved} layers on CPU — model larger than VRAM)`);
+          }
         } else {
           config.gpuLayers = 0;
           log.info(`  [auto] gpuLayers: 0 (no VRAM info, CPU only)`);
