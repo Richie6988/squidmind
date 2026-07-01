@@ -536,13 +536,33 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
       }
 
       // ── Step 2: LOAD WEIGHTS ONCE ────────────────────────────────────────
-      model = await llama.loadModel({
-        modelPath:  fullPath,
-        gpuLayers:  config.gpuLayers,
-        useMmap:    config.useMmap,
-        useMlock:   config.useMlock,
-        defaultContextFlashAttention: config.flashAttention
-      });
+      try {
+        model = await llama.loadModel({
+          modelPath:  fullPath,
+          gpuLayers:  config.gpuLayers,
+          useMmap:    config.useMmap,
+          useMlock:   config.useMlock,
+          defaultContextFlashAttention: config.flashAttention
+        });
+      } catch (loadErr) {
+        const msg = loadErr.message || '';
+        // llama.cpp tensor-shape errors surface as "missing blk.X.<tensor>.weight"
+        // when the GGUF file's architecture doesn't match what the loader
+        // expects (e.g. a text-encoder GGUF loaded as a chat model, an SSM
+        // file loaded by a non-mamba build, or a corrupt / truncated file).
+        if (/missing blk\.\d+\.[a-z_]+\.weight/i.test(msg)) {
+          throw new Error(
+            `${msg}\n\n` +
+            `This usually means the GGUF file is NOT a chat LLM your llama.cpp build ` +
+            `supports:\n` +
+            `  • Diffusion companion (T5/CLIP/VAE text-encoder) — cannot run as chat model.\n` +
+            `  • SSM / hybrid architecture (Mamba, Jamba) — needs a llama.cpp built with SSM support.\n` +
+            `  • Truncated / corrupt download — retry or verify the sha256.\n\n` +
+            `File: ${fileName}`
+          );
+        }
+        throw loadErr;
+      }
 
       const trainCtx = model.trainContextSize;
       log.info(`  Weights loaded. trainCtx=${trainCtx}, gpuLayers=${config.gpuLayers}`);
@@ -1576,7 +1596,17 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
       // ── 1. Read temp.md (interaction log) ────────────────────────────────
       let tempLog = '';
       try { tempLog = fsSync.readFileSync(AQUARIUM.TEMP_LOG, 'utf8').trim(); } catch {}
-      if (!tempLog || tempLog.startsWith('<!--')) {
+      // Strip the seeded header comments before checking emptiness. Without
+      // this, temp.md ALWAYS starts with "<!-- POSEIDON …" from the seed
+      // file, so the naive startsWith('<!--') bail-out triggered even when
+      // thousands of lines of interaction had been appended below the header
+      // — the dream never actually ran.
+      const contentBelowHeader = tempLog
+        .split('\n')
+        .filter(line => !line.trim().startsWith('<!--'))
+        .join('\n')
+        .trim();
+      if (!contentBelowHeader) {
         log.info('[Dream] 💤 temp.md is empty or already cleared — nothing to consolidate. Skipping.');
         this.broker.release(dreamBrokerToken);
         entry.dreaming = false;

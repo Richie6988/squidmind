@@ -112,12 +112,20 @@ class ModelDownloader {
         if (depth > 10) return reject(new Error('Too many redirects'));
         
         const lib = currentUrl.startsWith('https:') ? https : http;
-        const req = lib.get(currentUrl, {
-          headers: {
-            'User-Agent': 'SquidMind/2.0',
-            'Accept': '*/*'
-          }
-        }, (res) => {
+        // Gated Hugging Face models return 401 without a bearer token.
+        // Read HF_TOKEN (aka HUGGING_FACE_HUB_TOKEN) from env; propagate it
+        // only to huggingface.co and cdn-lfs.huggingface.co so we don't
+        // leak the token when the URL redirects to a signed S3 URL that
+        // already carries its own credentials in the query string.
+        const isHfHost = /(^|\.)huggingface\.co$/i.test(new URL(currentUrl).hostname);
+        const hfToken  = process.env.HF_TOKEN || process.env.HUGGING_FACE_HUB_TOKEN || '';
+        const headers  = {
+          'User-Agent': 'SquidMind/2.0',
+          'Accept':     '*/*',
+        };
+        if (isHfHost && hfToken) headers['Authorization'] = `Bearer ${hfToken}`;
+
+        const req = lib.get(currentUrl, { headers }, (res) => {
           // Follow 3xx redirects
           if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
             res.resume();
@@ -125,6 +133,19 @@ class ModelDownloader {
               ? res.headers.location
               : new URL(res.headers.location, currentUrl).toString();
             return followRedirect(next, depth + 1);
+          }
+          if (res.statusCode === 401 || res.statusCode === 403) {
+            res.resume();
+            const isGated = res.statusCode === 401;
+            return reject(new Error(
+              `HTTP ${res.statusCode} from ${currentUrl}\n` +
+              (isGated
+                ? 'This model is GATED. Accept its license on huggingface.co, ' +
+                  'then set HF_TOKEN=hf_… in your .env (get one at ' +
+                  'https://huggingface.co/settings/tokens) and retry.'
+                : 'Access forbidden. Check that your HF_TOKEN has "read" ' +
+                  'scope and that you have accepted the model license.')
+            ));
           }
           if (res.statusCode !== 200) {
             res.resume();

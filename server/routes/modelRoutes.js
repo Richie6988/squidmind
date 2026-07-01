@@ -82,9 +82,14 @@ function buildRouter(v2ModelService) {
     // path = e.g. 'models/org/repo' — DON'T encodeURIComponent the slashes
     const url = 'https://huggingface.co/api/' + path + (qs ? '?' + qs : '');
     return new Promise((resolve, reject) => {
-      const req = https.get(url, {
-        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; SquidMind/2.0)', 'Accept': 'application/json' }
-      }, (r) => {
+      const headers = {
+        'User-Agent': 'Mozilla/5.0 (compatible; SquidMind/2.0)',
+        'Accept':     'application/json',
+      };
+      // If HF_TOKEN is set, authenticate — lets users browse gated repos too
+      const hfToken = process.env.HF_TOKEN || process.env.HUGGING_FACE_HUB_TOKEN || '';
+      if (hfToken) headers['Authorization'] = `Bearer ${hfToken}`;
+      const req = https.get(url, { headers }, (r) => {
         // Follow redirects
         if (r.statusCode >= 300 && r.statusCode < 400 && r.headers.location) {
           r.resume();
@@ -271,8 +276,34 @@ function buildRouter(v2ModelService) {
     // POST /api/v2/models/download - download from HuggingFace or direct URL
   router.post('/download', async (req, res) => {
     try {
-      const { url, fileName } = req.body;
+      const { url, fileName, force } = req.body;
       if (!url) return res.status(400).json({ success: false, error: 'url required' });
+
+      // Sanity check: refuse (soft) when URL clearly points at a component
+      // of a diffusion pipeline rather than a chat LLM. Users often click on
+      // the wrong file in a HF repo — this catches the mistake before a 5 GB
+      // download of something llama.cpp can't run at all. `force: true`
+      // overrides for the rare legit case.
+      if (!force) {
+        const urlLower = String(url).toLowerCase();
+        const NON_CHAT_PATTERNS = [
+          /text[-_]encoder/i, /encoder[-_]only/i, /clip[-_]?[lg]?\b/i,
+          /\/(t5xxl|t5-encoder)/i, /^.*\/vae[-_]/i, /-vae\.gguf/i,
+          /-tokenizer\.gguf/i, /vision[-_]encoder/i,
+        ];
+        const hit = NON_CHAT_PATTERNS.find(r => r.test(urlLower));
+        if (hit) {
+          return res.status(400).json({
+            success: false,
+            error: `This URL looks like a diffusion-pipeline component (${hit.source.replace(/[\\/\\|^$]/g, '')}), not a chat LLM. ` +
+                   `llama.cpp cannot run it — you would get "missing blk.X…weight" errors on load. ` +
+                   `Companion files (T5/CLIP/VAE) belong next to the Flux/SD model, not in your LLM library. ` +
+                   `Retry with { "force": true } if you're sure.`,
+            hint: 'non_chat_model_url'
+          });
+        }
+      }
+
       const state = downloader.startDownload(url, fileName);
       res.json({ success: true, downloadId: state.downloadId, fileName: state.fileName });
     } catch (err) {
