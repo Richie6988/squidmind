@@ -98,6 +98,27 @@ function buildPoseidonRoutes({ rm, refs }) {
     }
   });
 
+  // POST /api/v2/poseidon/dream — manually kick off a dream cycle.
+  // Useful for debugging when the heartbeat conditions (idle threshold,
+  // cooldown) haven't been met, or when the user wants to force a soul
+  // consolidation before shutting down.
+  router.post('/poseidon/dream', async (req, res) => {
+    try {
+      const v2 = refs.v2ModelService;
+      if (!v2?.triggerDream) {
+        return res.status(503).json({ ok: false, error: 'Model service not ready' });
+      }
+      // Fire-and-forget so the HTTP round-trip is quick; client polls
+      // /dream-state to observe progress.
+      v2.triggerDream()
+        .then(() => console.info('[poseidon/dream] manual dream complete'))
+        .catch(e => console.warn('[poseidon/dream] manual dream error:', e.message));
+      res.json({ ok: true, message: 'Dream cycle triggered — check /dream-state for progress' });
+    } catch (err) {
+      res.status(500).json({ ok: false, error: err.message });
+    }
+  });
+
   return router;
 }
 

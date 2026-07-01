@@ -23,9 +23,10 @@ class HeartbeatService {
     this.modelService = null;          // wired in by index.js
     this.taskRunner   = null;          // wired in by index.js
     this._lastPlannerAt = 0;
-    this.dreamIdleMinutes = 10;        // dream after N minutes of Poseidon idle
+    this.dreamIdleMinutes = 3;         // dream after N minutes of Poseidon idle
     this._lastDreamAt = 0;
-    this.dreamCooldownMinutes = 30;    // min gap between dream cycles
+    this.dreamCooldownMinutes = 15;    // min gap between dream cycles
+    this._lastDreamSkipLogAt = 0;      // rate-limit skip-reason logs to once/60s
     this._lastProjectAuditAt = {};     // project_id → last audit timestamp
     this.projectAuditIntervalMs = 2 * 60 * 60 * 1000; // audit each project at most every 2h
   }
@@ -115,20 +116,35 @@ class HeartbeatService {
       try {
         const broker = this.modelService.broker;
         const brokerState = broker?.getState?.();
-        // Skip if broker busy or has queued requests
-        if (brokerState && brokerState.state === 'IDLE' && brokerState.queue.length === 0) {
-          const status = this.modelService.getStatus();
-          const pm = status.loaded_models.find(m => m.model_id === status.poseidon_model_id);
-          if (pm && !pm.generating && !pm.dreaming && pm.idle_minutes >= this.dreamIdleMinutes) {
-            const cooldownOk = (Date.now() - this._lastDreamAt) > this.dreamCooldownMinutes * 60 * 1000;
-            if (cooldownOk) {
-              this._lastDreamAt = Date.now();
-              log.info(`[Heartbeat] 💤 Poseidon idle ${pm.idle_minutes.toFixed(1)}min, broker IDLE — triggering dream`);
-              this.modelService.triggerDream().catch(e =>
-                log.warn('[Heartbeat] Dream trigger error:', e.message)
-              );
-            }
+        const status = this.modelService.getStatus();
+        const pm = status.loaded_models.find(m => m.model_id === status.poseidon_model_id);
+        let skipReason = null;
+        if (!brokerState || brokerState.state !== 'IDLE' || brokerState.queue.length > 0) {
+          skipReason = `broker busy (state=${brokerState?.state}, queue=${brokerState?.queue?.length})`;
+        } else if (!pm) {
+          skipReason = 'poseidon model not loaded';
+        } else if (pm.generating) {
+          skipReason = 'model generating';
+        } else if (pm.dreaming) {
+          skipReason = 'already dreaming';
+        } else if (pm.idle_minutes < this.dreamIdleMinutes) {
+          skipReason = `idle ${pm.idle_minutes.toFixed(1)}min < threshold ${this.dreamIdleMinutes}min`;
+        } else if ((Date.now() - this._lastDreamAt) <= this.dreamCooldownMinutes * 60 * 1000) {
+          const cooldownRemainingMin = Math.round((this.dreamCooldownMinutes * 60 * 1000 - (Date.now() - this._lastDreamAt)) / 60000);
+          skipReason = `cooldown ${cooldownRemainingMin}min remaining`;
+        }
+        if (skipReason) {
+          // Rate-limit these to once/60s so the log isn't spammed
+          if ((Date.now() - this._lastDreamSkipLogAt) > 60_000) {
+            this._lastDreamSkipLogAt = Date.now();
+            log.info(`[Heartbeat] 💤 dream skipped — ${skipReason}`);
           }
+        } else {
+          this._lastDreamAt = Date.now();
+          log.info(`[Heartbeat] 💤 Poseidon idle ${pm.idle_minutes.toFixed(1)}min, broker IDLE — triggering dream`);
+          this.modelService.triggerDream().catch(e =>
+            log.warn('[Heartbeat] Dream trigger error:', e.message)
+          );
         }
       } catch {}
     }

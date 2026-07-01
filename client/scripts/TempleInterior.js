@@ -124,8 +124,9 @@ const TempleInterior = {
     <div class="ti-ide-toolbar" id="ti-ide-toolbar"
       style="display:none;align-items:center;flex-shrink:0;border-bottom:1px solid var(--border);background:#030d1a;padding:2px 6px;gap:6px;z-index:2;">
       <span class="ti-ide-fname" id="ti-ide-fname"
-        style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:9px;color:#94a3b8;"></span>
-      <button class="ti-tab-sm accent" onclick="TempleInterior._ideSave()" id="ti-ide-save-btn">SAVE</button>
+        style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;color:#94a3b8;"></span>
+      <button class="ti-tab-sm" id="ti-prev-toggle" onclick="TempleInterior._ideTogglePreview()" title="Toggle between editor and preview">PREVIEW</button>
+      <button class="ti-tab-sm accent" onclick="TempleInterior._ideSave()" id="ti-ide-save-btn" title="Save (Ctrl+S)">SAVE</button>
       <button class="ti-tab-sm" onclick="TempleInterior._closeAllFiles()" title="Close all open files and return to live stream"
         style="border-color:rgba(239,68,68,0.3);color:#94a3b8;">CLOSE ALL</button>
     </div>
@@ -137,6 +138,7 @@ const TempleInterior = {
       <!-- Editor — overlays reasoning when a text/code file is open -->
       <textarea id="ti-editor" class="ti-editor" spellcheck="false"
         oninput="TempleInterior._ideMarkDirty()"
+        onkeydown="if((event.ctrlKey||event.metaKey)&&event.key==='s'){event.preventDefault();TempleInterior._ideSave();}"
         placeholder="Open a file to edit..."
         style="display:none;position:absolute;inset:0;width:100%;height:100%;box-sizing:border-box;resize:none;border:none;outline:none;z-index:2;"></textarea>
       <!-- Preview iframe — full area for md/html/images -->
@@ -386,29 +388,12 @@ const TempleInterior = {
           if (this._arenaRaf) cancelAnimationFrame(this._arenaRaf);
           tick();
 
-          // Add squid walkers — each is clickable and opens the action popover.
-          agents.forEach((a) => {
-            const squid = (window.aquarium?.squids || []).find(s => (s.agent_id || s.id) === a.agent_id)
-              || { id: a.agent_id, name: a.display_name || a.agent_id, appearance: a.appearance || {} };
-            const walker = document.createElement('div');
-            walker.className = 'ti-walker clickable';
-            walker.dataset.agentId = a.agent_id;
-            walker.title = `${a.display_name || a.agent_id} — click for actions`;
-            walker.onclick = (e) => {
-              e.stopPropagation();
-              TempleInterior._showAgentPopover(a.agent_id, walker);
-            };
-            const cvs = document.createElement('canvas');
-            cvs.width = 52; cvs.height = 58;
-            const lbl = document.createElement('div');
-            lbl.className = 'ti-walker-name';
-            lbl.textContent = (a.display_name || a.agent_id).slice(0, 10).toUpperCase();
-            arena.appendChild(walker);
-            walker.appendChild(cvs);
-            walker.appendChild(lbl);
-            this._animateSquid(walker, cvs, squid, AW, AH);
-          });
-        }, 80);
+          // NOTE: do NOT add walkers here. The unconditional hot-add code
+          // path below (`if (arenaEl && agents.length > 0)`) handles both
+          // initial population AND mid-session add/remove. Adding here
+          // duplicated every walker on first render, because the hot-add
+          // runs synchronously while this block runs after a setTimeout.
+        }, 50);
       }
     }
 
@@ -1638,91 +1623,90 @@ const TempleInterior = {
     const isCode = isPy || isJs || isShell ||
                    /\.(rs|go|java|cpp|c|h|css|yaml|yml|toml|ini|rb|php|swift|kt|r)$/i.test(f.name);
 
-    // Reasoning stays in bg (z:1), file content at z:2
-    if (rPanel) rPanel.style.zIndex = '1';
+    // Decide DEFAULT mode: markdown/html → preview, everything else → editor.
+    // Per-file override stored in f._previewMode after user toggles.
+    if (typeof f._previewMode === 'undefined') {
+      f._previewMode = (isMd || isHtml || f.isImg);
+    }
+    const showPreview = f._previewMode;
 
-    // Hide both by default
-    if (ed)    { ed.style.display = 'none'; }
-    if (frame) { frame.style.display = 'none'; }
+    // Reasoning panel goes BEHIND (z-index 1) so the editor/preview at z:5 is on top
+    if (rPanel) {
+      rPanel.style.zIndex = '1';
+    }
+
+    // Reset both views
+    if (ed)    { ed.style.display = 'none'; ed.style.zIndex = '5'; }
+    if (frame) { frame.style.display = 'none'; frame.style.zIndex = '5'; }
+
+    // Wire up file metadata UI
+    if (fnEl) fnEl.textContent = f.name + (f.dirty ? ' ●' : '');
+    if (toolbar) toolbar.style.display = 'flex';
+
+    // Hide PREVIEW button for images (no editing makes sense) and when no
+    // alternate view exists (plain .txt has no syntax highlight branch)
+    if (prevBtn) {
+      prevBtn.style.display = (f.isImg ? 'none' : '');
+      prevBtn.textContent = showPreview ? 'EDIT' : 'PREVIEW';
+    }
 
     if (f.isImg) {
+      // Images: preview only
       if (frame) {
         frame.style.display = 'block';
-        frame.style.zIndex  = '2';
         frame.srcdoc = `<html><body style="margin:0;background:#020810;display:flex;align-items:center;justify-content:center;height:100vh;"><img src="${f.imgUrl}" style="max-width:100%;max-height:100%;object-fit:contain;"></body></html>`;
       }
-      if (prevBtn) prevBtn.style.display = 'none';
       if (status) status.textContent = f.name + ' [IMAGE]';
+      return;
+    }
 
-    } else if (isMd) {
-      // Markdown: rendered preview fills full area
-      if (frame) {
-        frame.style.display = 'block';
-        frame.style.zIndex  = '2';
-        this._renderMarkdownPreview(f.loading ? '' : (f.content || ''));
+    if (showPreview) {
+      // ── PREVIEW MODE ──
+      if (frame) frame.style.display = 'block';
+      if (isMd) {
+        this._renderMarkdownPreview(f.loading ? '*Loading…*' : (f.content || '*(empty file)*'));
+        if (status) status.textContent = f.name + ' [MARKDOWN PREVIEW]';
+      } else if (isHtml) {
+        if (frame) frame.srcdoc = f.loading ? '<p>Loading…</p>' : (f.content || '<p>(empty)</p>');
+        if (status) status.textContent = f.name + ' [HTML PREVIEW]';
+      } else if (isCode) {
+        const fileLang = f.name.match(/\.(\w+)$/)?.[1] || 'text';
+        this._renderCodePreview(f.loading ? '// Loading…' : (f.content || ''), fileLang);
+        if (status) status.textContent = f.name + ' [' + fileLang.toUpperCase() + ' SYNTAX]';
+      } else {
+        // Plain text fallback — render as <pre>
+        if (frame) frame.srcdoc = `<html><body style="margin:0;background:#0a1628;color:#c8d8f0;padding:14px;"><pre style="font-family:'Courier New',monospace;font-size:13px;white-space:pre-wrap;word-break:break-word;">${
+          (f.content || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+        }</pre></body></html>`;
+        if (status) status.textContent = f.name + ' [TEXT]';
       }
-      if (prevBtn) prevBtn.style.display = 'none';
-      if (status) status.textContent = f.name + ' [MARKDOWN PREVIEW]';
-
-    } else if (isHtml) {
-      // HTML: rendered live
-      if (frame) {
-        frame.style.display = 'block';
-        frame.style.zIndex  = '2';
-        frame.srcdoc = f.loading ? '' : (f.content || '');
-      }
-      if (prevBtn) prevBtn.style.display = '';
-      if (status) status.textContent = f.name + ' [HTML PREVIEW]';
-
     } else {
-      // Text / code — show syntax-highlighted preview in iframe, editor hidden
+      // ── EDIT MODE ── always use the textarea
       if (ed) {
-        ed.style.display = 'none'; // hidden by default
+        ed.style.display = 'block';
         ed.value = f.loading ? '' : (f.content || '');
         const fileLang = f.name.match(/\.(\w+)$/)?.[1] || 'text';
         ed.setAttribute('data-lang', fileLang);
+        if (f.loading) ed.placeholder = 'Loading…'; else ed.placeholder = '';
       }
-
-      if (isCode && !f.loading) {
-        // Syntax highlighted view
-        if (frame) {
-          frame.style.display = 'block';
-          frame.style.zIndex  = '2';
-          const fileLang2 = f.name.match(/\.(\w+)$/)?.[1] || 'text';
-          this._renderCodePreview(f.content || '', fileLang2);
-        }
-        if (prevBtn) prevBtn.style.display = ''; // allow toggle to raw editor
-      } else if (isCode && f.loading) {
-        // Still loading — show placeholder
-        if (frame) {
-          frame.style.display = 'block';
-          frame.style.zIndex  = '2';
-          frame.srcdoc = '<html><body style="margin:0;background:#1e2127;color:#5c6370;font-family:monospace;padding:20px;">Loading…</body></html>';
-        }
-      } else {
-        // Plain text — raw editor
-        if (ed) {
-          ed.style.display    = 'block';
-          ed.style.zIndex     = '2';
-          ed.value            = f.loading ? 'Loading...' : (f.content || '');
-          ed.style.fontFamily = "'Courier New',monospace";
-          ed.style.fontSize   = '11px';
-          ed.style.lineHeight = '1.6';
-          ed.style.color      = '#c8d8f0';
-          ed.style.background = '#020810';
-          ed.style.padding    = '12px';
-        }
-      }
-      if (prevBtn && !isCode) prevBtn.style.display = 'none';
-      const lang = f.name.match(/\.(\w+)$/)?.[1] || 'text';
-      const langLabel = isCode ? lang.toUpperCase() : (isJson ? 'JSON' : 'TEXT');
-      if (status) status.textContent = f.name + ` [${langLabel}]`;
+      const langLabel = f.name.match(/\.(\w+)$/)?.[1]?.toUpperCase() || 'TEXT';
+      if (status) status.textContent = f.name + ' [' + langLabel + ' EDIT]';
     }
-
-    // Show file toolbar
-    if (toolbar) toolbar.style.display = 'flex';
-    if (fnEl) fnEl.textContent = f.name;
+    console.info('[IDE] activated', f.name, 'mode=' + (showPreview ? 'preview' : 'edit'), 'content=' + (f.content?.length || 0) + 'B', 'loading=' + !!f.loading);
+    // Refresh the tabbar (tab underline, close buttons) — regression risk if omitted
     this._renderIdeTabs();
+  },
+
+  // Toggle between preview and editor for the current file
+  _ideTogglePreview() {
+    if (this._activeFileIdx < 0) return;
+    const f = this._openFiles[this._activeFileIdx];
+    if (!f) return;
+    // Save current editor content before swapping out
+    const ed = document.getElementById('ti-editor');
+    if (ed && ed.style.display !== 'none') f.content = ed.value;
+    f._previewMode = !f._previewMode;
+    this._ideActivate(this._activeFileIdx);
   },
 
   _renderMarkdownPreview(md) {
