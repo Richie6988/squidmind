@@ -797,11 +797,13 @@ const AgentForm = {
   // ===== DIRTY TRACKING + SAVE =====
 
   _markDirty(filePath, fieldPath, newValue) {
-    if (this.isCreating) {
-      // In create mode: don't send PATCHes (agent doesn't exist yet).
-      // Just stage values on our in-memory brain/registry so save() can POST them.
-      this._stageValue(filePath, fieldPath, newValue);
-    }
+    // ALWAYS stage the value on the local brain/registry object so the
+    // live preview (_updateAppearancePreview) reads the new colour/size
+    // and the save() call knows what to persist. Previously this only ran
+    // in create mode, so colour picker → no visible preview update on
+    // existing agents, and the aquarium squid kept its old colours until
+    // the whole thing was reloaded from disk after save.
+    this._stageValue(filePath, fieldPath, newValue);
     const key = `${filePath}::${fieldPath}`;
     this.dirty.set(key, { filePath, fieldPath, newValue });
     this._updateSaveButton();

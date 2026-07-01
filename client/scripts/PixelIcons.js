@@ -497,19 +497,24 @@ const PixelIcons = {
         "2 6 7 1 1"
       ]
     },
-    // Tools: clean wrench — now unique (config uses gear)
+    // Tools: vertical wrench — solid box-end head + straight handle, so
+    // it stays readable at 10-12px (the old diagonal design read as a
+    // lightning bolt after downscaling).
     tools: {
       palette: ["#FFD700", "#B8860B", "#FFFFFF"],
       pixels: [
-        // Head (box-end)
-        "0 2 1 5 4", "1 3 2 3 2",
-        "2 3 3 1 1",
-        // Handle shaft diagonal
-        "0 6 5 3 3", "0 7 6 3 3",
-        "0 8 7 3 3", "0 9 8 3 3",
-        "0 10 9 3 3",
-        // Tail knob
-        "0 11 11 4 4", "1 12 12 2 2"
+        // Solid head block (8 wide × 5 tall, centred on the vertical axis)
+        "0 4 1 8 5",
+        // Dark notch cut into the top — signals "open-end wrench"
+        "1 7 1 2 2",
+        // Highlight on the upper-left of the head
+        "2 5 2 1 1",
+        // Straight handle running down the centre
+        "0 7 6 2 7",
+        // Wider grip at the bottom
+        "0 6 13 4 2",
+        // Tip of the grip (darker for shading)
+        "1 7 15 2 1"
       ]
     },
     // THINK — air bubble (thought = bubble underwater, double brand metaphor)

@@ -23,10 +23,11 @@ class HeartbeatService {
     this.modelService = null;          // wired in by index.js
     this.taskRunner   = null;          // wired in by index.js
     this._lastPlannerAt = 0;
-    this.dreamIdleMinutes = 3;         // dream after N minutes of Poseidon idle
+    this.dreamIdleMinutes = 15;        // dream after N minutes of Poseidon idle
     this._lastDreamAt = 0;
-    this.dreamCooldownMinutes = 15;    // min gap between dream cycles
+    this.dreamCooldownMinutes = 30;    // min gap between dream cycles
     this._lastDreamSkipLogAt = 0;      // rate-limit skip-reason logs to once/60s
+    this.dreamRequiresIdleSession = true;  // when true, skip dream if chat session has active turns unless idle > 45min
     this._lastProjectAuditAt = {};     // project_id → last audit timestamp
     this.projectAuditIntervalMs = 2 * 60 * 60 * 1000; // audit each project at most every 2h
   }
@@ -129,6 +130,13 @@ class HeartbeatService {
           skipReason = 'already dreaming';
         } else if (pm.idle_minutes < this.dreamIdleMinutes) {
           skipReason = `idle ${pm.idle_minutes.toFixed(1)}min < threshold ${this.dreamIdleMinutes}min`;
+        } else if (this.dreamRequiresIdleSession && this.modelService.hasActiveChatSession?.() && pm.idle_minutes < 45) {
+          // triggerDream disposes the chat session (sequences:1 requires the
+          // slot to be freed). If the user has an active conversation with
+          // meaningful KV cache, forcing a dispose now costs a 20-25s prompt
+          // reprocess on their next message. Wait until they've been away
+          // 45+ minutes before we sacrifice their session for a dream.
+          skipReason = `chat session active — will wait 45min idle before disposing (currently ${pm.idle_minutes.toFixed(1)}min)`;
         } else if ((Date.now() - this._lastDreamAt) <= this.dreamCooldownMinutes * 60 * 1000) {
           const cooldownRemainingMin = Math.round((this.dreamCooldownMinutes * 60 * 1000 - (Date.now() - this._lastDreamAt)) / 60000);
           skipReason = `cooldown ${cooldownRemainingMin}min remaining`;

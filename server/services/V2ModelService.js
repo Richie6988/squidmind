@@ -830,6 +830,17 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
     return { success: true, model_id: modelId, loaded: this.loaded.has(modelId), preloading: !this.loaded.has(modelId) };
   }
 
+  /**
+   * Returns true if Poseidon has a warm chat session with turns > 0.
+   * Used by HeartbeatService to defer dream disposal while user is actively
+   * chatting — the dream would otherwise force a 20-25s system prompt
+   * reprocess on the next user message.
+   */
+  hasActiveChatSession() {
+    const entry = this.poseidonModelId ? this.loaded.get(this.poseidonModelId) : null;
+    return !!(entry && entry.session && (entry.sessionTurns || 0) > 0);
+  }
+
   getStatus() {
     return {
       loaded_count: this.loaded.size,
