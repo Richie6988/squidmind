@@ -451,24 +451,43 @@ function buildRouter(v2ModelService) {
   router.post('/generate-image', async (req, res) => {
     try {
       const { modelId, model_id, prompt, negativePrompt, negative_prompt,
-              width, height, steps, cfg, cfg_scale, seed, project_id, filename } = req.body;
+              width, height, steps, cfg, cfg_scale, seed, project_id, filename, upscale,
+              source_image, strength } = req.body;
       const resolvedId = modelId || model_id;
 
       // Validate inputs up-front so the client gets a clear error before the
       // request bounces around three layers.
-      if (!resolvedId) {
+      let effectiveId = resolvedId;
+      if (!effectiveId) {
+        // Auto-pick the first image-tagged model — needed for the file-browser
+        // "upscale existing image" quick action where the user hasn't selected
+        // a specific model.
+        try {
+          const reg = await v2ModelService.rm.read('MODELS/model_registry.json').catch(() => ({ models: {} }));
+          const imgEntry = Object.entries(reg.models || {}).find(([, e]) =>
+            (e.config?.model_type || e.model_type) === 'image' ||
+            (e.config?.model_category || e.model_category) === 'image'
+          );
+          if (imgEntry) effectiveId = imgEntry[0];
+        } catch { /* fall through to error below */ }
+      }
+      if (!effectiveId) {
         log.warn('[generate-image] missing model_id; body=', JSON.stringify(req.body).slice(0, 200));
         return res.status(400).json({ success: false, ok: false,
           error: 'model_id is required — open Models, drag a Flux/SD model into the IMAGE column first.' });
       }
       if (!prompt || !String(prompt).trim()) {
-        return res.status(400).json({ success: false, ok: false, error: 'prompt is required' });
+        // Empty prompt is legit ONLY when we're upscaling an existing image
+        // — no new subject, just detail refinement via low-strength img2img.
+        if (!source_image) {
+          return res.status(400).json({ success: false, ok: false, error: 'prompt is required' });
+        }
       }
 
       const tools = v2ModelService.orchestrator?.tools;
       if (tools) {
         const result = await tools.generateImage({
-          model_id: resolvedId,
+          model_id: effectiveId,
           prompt,
           negative_prompt: negativePrompt || negative_prompt || '',
           width:  Number(width)  || 512,
@@ -478,9 +497,12 @@ function buildRouter(v2ModelService) {
           seed:   seed ?? -1,
           project_id: project_id || null,
           filename: filename || null,
+          upscale: Number(upscale) || 0,
+          source_image: source_image || null,
+          strength: strength != null ? Number(strength) : undefined,
         });
         if (!result.ok) {
-          log.warn('[generate-image] failed:', result.error, '— model:', resolvedId);
+          log.warn('[generate-image] failed:', result.error, '— model:', effectiveId);
           return res.status(400).json({ success: false, ok: false, error: result.error });
         }
         return res.json({ success: true, ok: true, ...result });

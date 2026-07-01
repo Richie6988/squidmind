@@ -1360,8 +1360,10 @@ const ModelLoader = {
         '</div>' +
         '<div style="font-size:8px;color:#64748b;margin-bottom:1px;">Prompt suggestions — click to use:</div>' +
         '<div style="display:flex;flex-wrap:wrap;gap:4px;max-height:72px;overflow-y:auto;padding:1px 0;">' + promptChips + '</div>' +
-        '<textarea id="imggen-prompt" placeholder="Describe the image…" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:8px;color:#e2e8f0;font-size:10px;padding:8px;resize:vertical;min-height:58px;font-family:inherit;"></textarea>' +
-        '<input id="imggen-neg" type="text" placeholder="Negative prompt — leave empty for smart default" value="' + S(this._imggenDefaultNegative(m.file_name)) + '" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:8px;color:#e2e8f0;font-size:10px;padding:6px 10px;">' +
+        '<div style="font-size:9px;color:#4facfe;font-weight:700;letter-spacing:0.06em;margin:2px 0 2px 0;">POSITIVE PROMPT</div>' +
+        '<textarea id="imggen-prompt" placeholder="Describe what the image SHOULD contain…" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:8px;color:#e2e8f0;font-size:10px;padding:8px;resize:vertical;min-height:58px;font-family:inherit;"></textarea>' +
+        '<div style="font-size:9px;color:#f87171;font-weight:700;letter-spacing:0.06em;margin:2px 0 2px 0;">NEGATIVE PROMPT <span style="color:#64748b;font-weight:400;font-size:8px;">(what to avoid — optional)</span></div>' +
+        '<input id="imggen-neg" type="text" placeholder="e.g. blurry, deformed — leave empty for smart default" value="' + S(this._imggenDefaultNegative(m.file_name)) + '" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:8px;color:#e2e8f0;font-size:10px;padding:6px 10px;">' +
         '<div style="display:flex;align-items:center;gap:8px;background:rgba(79,172,254,0.07);border:1px solid rgba(79,172,254,0.18);border-radius:7px;padding:6px 10px;">' +
           '<span style="font-size:8px;color:#4facfe;font-weight:700;letter-spacing:.5px;">AUTO</span>' +
           '<span style="font-size:8px;color:#64748b;">' + auto.label + ' — ' + auto.width + '×' + auto.height + ' · ' + auto.steps + ' steps · CFG ' + auto.cfg + '</span>' +
@@ -1373,6 +1375,13 @@ const ModelLoader = {
           '<label title="' + stepTitle + '" style="font-size:9px;color:#64748b;display:flex;flex-direction:column;gap:3px;">Steps<input id="imggen-steps" type="number" value="' + auto.steps + '" min="1" max="100" style="width:55px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:6px;color:#e2e8f0;font-size:10px;padding:4px 6px;"></label>' +
           '<label title="' + cfgTitle + '" style="font-size:9px;color:#64748b;display:flex;flex-direction:column;gap:3px;">CFG<input id="imggen-cfg" type="number" value="' + auto.cfg + '" min="0.1" max="30" step="0.1" style="width:55px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:6px;color:#e2e8f0;font-size:10px;padding:4px 6px;"></label>' +
           '<label title="Seed (-1 = random, set a value to reproduce exact result)" style="font-size:9px;color:#64748b;display:flex;flex-direction:column;gap:3px;">Seed<input id="imggen-seed" type="number" value="-1" min="-1" max="2147483647" style="width:78px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:6px;color:#e2e8f0;font-size:10px;padding:4px 6px;"></label>' +
+        '</div>' +
+        '<div style="display:flex;align-items:center;gap:10px;margin-top:2px;background:rgba(6,255,165,0.05);border:1px solid rgba(6,255,165,0.18);border-radius:7px;padding:6px 10px;">' +
+          '<span style="font-size:9px;color:#06ffa5;font-weight:700;letter-spacing:.06em;">UPSCALE</span>' +
+          '<label style="font-size:9px;color:#94a3b8;display:flex;align-items:center;gap:3px;cursor:pointer;"><input type="radio" name="imggen-upscale" value="0" checked style="margin:0;">Off</label>' +
+          '<label style="font-size:9px;color:#94a3b8;display:flex;align-items:center;gap:3px;cursor:pointer;"><input type="radio" name="imggen-upscale" value="2" style="margin:0;">2×</label>' +
+          '<label style="font-size:9px;color:#94a3b8;display:flex;align-items:center;gap:3px;cursor:pointer;"><input type="radio" name="imggen-upscale" value="4" style="margin:0;">4×</label>' +
+          '<span style="font-size:8px;color:#64748b;margin-left:auto;">2nd img2img pass at higher res (strength 0.35)</span>' +
         '</div>' +
         '<div style="display:flex;align-items:center;gap:8px;margin-top:2px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);border-radius:7px;padding:6px 10px;">' +
           '<span style="font-size:8px;color:#64748b;">Assign to agent (optional):</span>' +
@@ -1424,6 +1433,7 @@ const ModelLoader = {
     const cfg     = parseFloat(dlg.querySelector('#imggen-cfg')?.value) || 7;
     const seed    = parseInt(dlg.querySelector('#imggen-seed')?.value)  ?? -1;
     const agentId = dlg.querySelector('#imggen-agent')?.value || null;
+    const upscale = parseInt(dlg.querySelector('input[name="imggen-upscale"]:checked')?.value) || 0;
     if (!prompt) { await SquidModal.alert('Enter a prompt first'); return; }
     const runBtn  = dlg.querySelector('#imggen-run');
     const result  = dlg.querySelector('#imggen-result');
@@ -1481,7 +1491,7 @@ const ModelLoader = {
     try {
       const data = await window.api._fetch('/models/generate-image', {
         method: 'POST',
-        body: JSON.stringify({ modelId, model_id: modelId, prompt, negativePrompt: neg, width, height, steps, cfg, seed })
+        body: JSON.stringify({ modelId, model_id: modelId, prompt, negativePrompt: neg, width, height, steps, cfg, seed, upscale })
       });
       _stopFastPoll();
       if (data.ok && data.url) {

@@ -8435,3 +8435,22 @@ h4.pc-md-h { font-size: 8px; color: #94a3b8; }
 
 /* Subtle hint that the column is a drop target even when not actively dragged */
 .ti-kcards { min-height: 30px; transition: background 0.15s; }
+
+/* Image quick-action buttons on file rows (UPSCALE, EDIT) */
+.ti-file-imgact {
+  background: rgba(6,255,165,0.10);
+  border: 1px solid rgba(6,255,165,0.35);
+  color: #06ffa5;
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 9px;
+  font-family: var(--panel-font), sans-serif;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s, background 0.15s;
+  margin-right: 2px;
+}
+.ti-file:hover .ti-file-imgact { opacity: 1; }
+.ti-file-imgact:hover { background: rgba(6,255,165,0.25); }

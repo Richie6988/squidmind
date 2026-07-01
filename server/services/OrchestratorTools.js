@@ -469,7 +469,7 @@ class OrchestratorTools {
    * Generate an image using an assigned image-type GGUF model.
    * Saves the result to the project outputs folder and returns a URL.
    */
-  async generateImage({ model_id, prompt, project_id, filename, width, height, steps, cfg_scale, seed, negative_prompt }) {
+  async generateImage({ model_id, prompt, project_id, filename, width, height, steps, cfg_scale, seed, negative_prompt, upscale, source_image, strength }) {
     try {
       if (!model_id) return { ok: false, error: 'model_id is required' };
       if (!prompt)   return { ok: false, error: 'prompt is required' };
@@ -535,8 +535,42 @@ class OrchestratorTools {
         modelId: model_id, prompt, outputPath,
         width: width || 512, height: height || 512,
         steps: steps || 20, cfg: cfg_scale || 7,
-        seed: seed ?? -1, negativePrompt: negative_prompt || ''
+        seed: seed ?? -1, negativePrompt: negative_prompt || '',
+        initImage: source_image || null,
+        strength: strength != null ? strength : 0.75,
       });
+
+      // Second-wave upscale (mirrors the img task-runner path). Runs img2img
+      // with the wave-1 output as init-img at N× the dims, strength=0.35 so
+      // details refine without redesign. Silently no-op if wave 1 failed.
+      if (result?.ok && result.outputPath && Number(upscale) >= 2) {
+        const scale = Number(upscale);
+        const upscaledPath = result.outputPath.replace(/\.(png|jpe?g)$/i, `_x${scale}.$1`);
+        try {
+          log.info(`upscale pass x${scale} on ${outFilename}`);
+          const up = await this.modelService.generateImage({
+            modelId:        model_id,
+            prompt,
+            negativePrompt: negative_prompt || '',
+            outputPath:     upscaledPath,
+            width:          (width  || 512) * scale,
+            height:         (height || 512) * scale,
+            steps:          Math.min(steps || 20, 6),
+            cfg:            cfg_scale || 7,
+            seed:           seed ?? -1,
+            initImage:      result.outputPath,
+            strength:       0.35,
+          });
+          if (up?.ok && up.outputPath) {
+            // Point the serveUrl at the upscaled version — that's what users want to see
+            result.outputPath = up.outputPath;
+            const upBase = require('path').basename(up.outputPath);
+            serveBase = require('path').join(outputDir, upBase);
+          } else {
+            log.warn(`upscale pass x${scale} failed:`, up?.error || 'unknown');
+          }
+        } catch (e) { log.warn(`upscale pass error:`, e.message); }
+      }
 
       // Update task status + persist a results_log entry so the Results panel
       // (/api/v2/tasks/results) actually sees the completed image. The earlier

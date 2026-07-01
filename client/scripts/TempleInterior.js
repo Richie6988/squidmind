@@ -617,9 +617,15 @@ const TempleInterior = {
         const sz    = f.size ? `<span class="ti-file-size">${this._fmtSize(f.size)}</span>` : '';
         const ts    = (type === 'output' && f.mtime)
           ? `<span class="ti-file-mtime" title="${f.mtime}">${this._relTime(f.mtime)}</span>` : '';
+        // Image quick-actions — UPSCALE (2× hi-res pass) + EDIT (img2img with prompt)
+        const imgActions = (isImg && type === 'output')
+          ? `<button class="ti-file-imgact" title="Upscale 2×" onclick="event.stopPropagation();TempleInterior._upscaleImage('${this._esc(f.path||'')}','${ename}')">↑2×</button>
+             <button class="ti-file-imgact" title="Edit with prompt (img2img)" onclick="event.stopPropagation();TempleInterior._editImage('${this._esc(f.path||'')}','${ename}')">✎</button>`
+          : '';
         return `<div class="ti-file" onclick="TempleInterior._openFile('${ename}','${this._esc(f.path||'')}','${type}','${folder}',${f.size||0})">
           ${thumb}
           <span class="ti-file-name" title="${ename}">${ename}</span>${sz}${ts}
+          ${imgActions}
           <button class="ti-file-del" onclick="event.stopPropagation();TempleInterior._deleteFile('${folder}','${ename}','${type}')">X</button>
         </div>`;
       }).join('');
@@ -677,6 +683,67 @@ const TempleInterior = {
           body: JSON.stringify({ fileName: file.name, content, encoding })
         });
       } catch (e) { console.warn('[Temple] upload failed:', file.name, e.message); }
+    }
+  },
+
+  // ── Image quick actions (upscale / edit-with-prompt) ─────────────────────
+  async _upscaleImage(filepath, name) {
+    if (!filepath) return;
+    // Ask for scale factor (2 or 4)
+    const scale = window.confirm('Upscale ' + name + ' by 4×?  OK = 4×, Cancel = 2×') ? 4 : 2;
+    this._setStatus(`Queueing ${scale}× upscale of ${name}…`);
+    try {
+      // We reuse generate_image with source_image + upscale — hi-res img2img pass.
+      // Prompt is empty (same content, just refined) — strength 0.35 keeps composition.
+      const r = await fetch('/api/v2/models/generate-image', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          prompt:        '',            // keep composition, just refine detail
+          source_image:  filepath,
+          strength:      0.35,
+          upscale:       scale,
+          filename:      name.replace(/\.(png|jpe?g)$/i, `_x${scale}.$1`),
+        }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || (j && j.ok === false)) {
+        this._setStatus(`Upscale failed: ${(j && j.error) || r.status}`);
+        return;
+      }
+      this._setStatus(`${scale}× upscale queued as ${j.task_id || 'task'} — watch the queue.`);
+      // Refresh file list after a beat so the new file appears
+      setTimeout(() => this._switchLeft('files'), 3000);
+    } catch (e) {
+      this._setStatus(`Upscale failed: ${e.message}`);
+    }
+  },
+
+  async _editImage(filepath, name) {
+    if (!filepath) return;
+    const prompt = window.prompt(`Edit "${name}" — describe what to change:\n(strength 0.6 = moderate rework; leave blank to cancel)`, '');
+    if (!prompt || !prompt.trim()) return;
+    this._setStatus(`Queueing edit of ${name}…`);
+    try {
+      const r = await fetch('/api/v2/models/generate-image', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          prompt,
+          source_image: filepath,
+          strength:     0.6,
+          filename:     name.replace(/(\.[^.]+)$/, `_edit_${Date.now()}$1`),
+        }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || (j && j.ok === false)) {
+        this._setStatus(`Edit failed: ${(j && j.error) || r.status}`);
+        return;
+      }
+      this._setStatus(`Edit queued as ${j.task_id || 'task'} — watch the queue.`);
+      setTimeout(() => this._switchLeft('files'), 3000);
+    } catch (e) {
+      this._setStatus(`Edit failed: ${e.message}`);
     }
   },
 
