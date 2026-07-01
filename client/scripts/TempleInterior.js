@@ -1580,21 +1580,49 @@ const TempleInterior = {
 
     (async () => {
       let content = '';
+      let loadError = null;
       try {
+        let resp;
         if (filepath) {
-          const d = await (await fetch('/api/files/read?path=' + encodeURIComponent(filepath))).json();
-          content = typeof d.content === 'string' ? d.content : JSON.stringify(d.content || '', null, 2);
+          resp = await fetch('/api/files/read?path=' + encodeURIComponent(filepath));
+          const isJson = (resp.headers.get('content-type') || '').includes('application/json');
+          if (!resp.ok) {
+            // Server returned an error — surface it instead of silently
+            // turning `d.error` into an empty string.
+            const errBody = isJson ? await resp.json().catch(() => ({})) : await resp.text().catch(() => '');
+            const errMsg = (errBody && errBody.error) || (typeof errBody === 'string' && errBody.slice(0, 200)) || `HTTP ${resp.status}`;
+            throw new Error(errMsg);
+          }
+          const d = isJson ? await resp.json() : { content: await resp.text() };
+          if (d.error) throw new Error(d.error);
+          content = typeof d.content === 'string' ? d.content : JSON.stringify(d.content ?? '', null, 2);
         } else {
           const ep = type === 'input' ? 'inputs' : 'outputs';
-          content  = await (await fetch(`/api/v2/projects/${folder}/${ep}/${encodeURIComponent(name)}`)).text();
+          resp = await fetch(`/api/v2/projects/${folder}/${ep}/${encodeURIComponent(name)}`);
+          if (!resp.ok) {
+            const isJson = (resp.headers.get('content-type') || '').includes('application/json');
+            const errBody = isJson ? await resp.json().catch(() => ({})) : await resp.text().catch(() => '');
+            const errMsg = (errBody && errBody.error) || (typeof errBody === 'string' && errBody.slice(0, 200)) || `HTTP ${resp.status}`;
+            throw new Error(errMsg);
+          }
+          content = await resp.text();
         }
-      } catch (e) { content = `// Error loading: ${e.message}`; }
+        console.info('[IDE] file loaded', name, 'bytes=' + content.length, 'via=' + (filepath ? '/api/files/read' : '/api/v2/projects/'));
+      } catch (e) {
+        loadError = e.message;
+        content = `⚠️  Could not load ${name}\n\n**${e.message}**\n\nRequested path: ${filepath || '(from project endpoint)'}`;
+        console.warn('[IDE] file load failed', name, e.message);
+      }
       const f = this._openFiles[idx];
-      if (f) { f.content = content; f.loading = false; }
+      if (f) {
+        f.content = content;
+        f.loading = false;
+        f._loadError = loadError;
+      }
       if (this._activeFileIdx === idx) {
         // Re-activate with loaded content — _ideActivate handles all file types
         this._ideActivate(idx);
-        this._setStatus(`${name} loaded`);
+        this._setStatus(loadError ? `Error: ${loadError}` : `${name} loaded (${content.length}B)`);
       }
     })();
   },
@@ -2020,7 +2048,14 @@ const TempleInterior = {
     };
 
     const render = () => {
-      if (panel.style.display === 'none') return;
+      // Do NOT bail early if display is 'none' — the caller might have hidden
+      // the panel programmatically (file open, etc.) but the log should still
+      // render so it's ready the moment the panel is un-hidden. We only skip
+      // if the panel itself was removed from the DOM.
+      if (!panel.isConnected) return;
+      // Ensure the panel is visible: some paths could have set display:none
+      // as a side-effect (e.g. bad CSS interaction). Enforce.
+      if (panel.style.display === 'none') panel.style.display = 'block';
 
       // Group events by task_id with start/end markers
       const groups = [];
@@ -2062,20 +2097,25 @@ const TempleInterior = {
         return header + `<div style="padding-left:6px;">${events}</div>`;
       }).join('');
 
-      // Empty state
-      // Connection state shown in the empty-state block so user can tell
-      // "no events yet" (✓ connected) from "feed broken" (✗ disconnected).
+      // Empty state — MUST be highly visible so the user can tell whether
+      // the panel is empty because nothing has happened OR because the panel
+      // itself is broken. Includes readyState + event count for diagnosis.
       const isConnected = !!this._reasoningEvtSource && this._reasoningEvtSource.readyState === 1;
       const isConnecting = !!this._reasoningEvtSource && this._reasoningEvtSource.readyState === 0;
       const dotColor = isConnected ? '#06ffa5' : (isConnecting ? '#fbbf24' : '#ef4444');
-      const stateLabel = isConnected ? 'Live feed connected' : (isConnecting ? 'Connecting…' : 'Disconnected — retrying');
+      const stateLabel = isConnected ? 'LIVE FEED CONNECTED' : (isConnecting ? 'CONNECTING…' : 'DISCONNECTED — RETRYING');
+      const totalEvents = log.length;
       const empty = groups.length === 0
-        ? `<div style="color:#94a3b8;padding:24px 16px;text-align:center;font-size:12px;line-height:1.7;font-family:var(--panel-font),sans-serif;">
-            <div style="display:inline-flex;align-items:center;gap:8px;margin-bottom:10px;">
-              <span style="width:9px;height:9px;border-radius:50%;background:${dotColor};box-shadow:0 0 6px ${dotColor};display:inline-block;"></span>
-              <span style="color:${dotColor};font-weight:600;">${stateLabel}</span>
+        ? `<div style="color:#94a3b8;padding:32px 20px;text-align:center;font-family:var(--panel-font),sans-serif;">
+            <div style="display:inline-flex;align-items:center;gap:10px;margin-bottom:14px;padding:8px 16px;border:1px solid ${dotColor};border-radius:6px;background:rgba(6,255,165,0.05);">
+              <span style="width:10px;height:10px;border-radius:50%;background:${dotColor};box-shadow:0 0 8px ${dotColor};display:inline-block;animation:${isConnected ? 'ti-dot-pulse 2s ease-in-out infinite' : 'none'};"></span>
+              <span style="color:${dotColor};font-weight:700;font-size:12px;letter-spacing:0.06em;">${stateLabel}</span>
             </div>
-            <div style="color:#64748b;font-size:11px;">Agent reasoning will appear here when a task runs.</div>
+            <div style="color:#e2e8f0;font-size:13px;margin-bottom:6px;">Waiting for agent activity…</div>
+            <div style="color:#64748b;font-size:11px;">Agent reasoning appears here when a task runs from the kanban.</div>
+            <div style="color:#475569;font-size:10px;font-family:var(--panel-font-mono);margin-top:12px;opacity:0.7;">
+              events received: ${totalEvents} · readyState: ${this._reasoningEvtSource?.readyState ?? 'no-es'}
+            </div>
           </div>`
         : '';
 

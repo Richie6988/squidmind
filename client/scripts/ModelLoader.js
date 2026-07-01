@@ -163,6 +163,7 @@ const ModelLoader = {
                   <div class="ml-hf-drop-item active" data-val="downloads" onclick="ModelLoader._hfPickSort(this)">Downloads</div>
                   <div class="ml-hf-drop-item" data-val="trending" onclick="ModelLoader._hfPickSort(this)">Trending</div>
                   <div class="ml-hf-drop-item" data-val="likes" onclick="ModelLoader._hfPickSort(this)">Likes</div>
+                  <div class="ml-hf-drop-item" data-val="createdAt" onclick="ModelLoader._hfPickSort(this)">Release Date</div>
                   <div class="ml-hf-drop-item" data-val="lastModified" onclick="ModelLoader._hfPickSort(this)">Recent</div>
                 </div>
               </div>

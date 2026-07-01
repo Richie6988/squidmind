@@ -103,14 +103,29 @@ function buildRouter(v2ModelService) {
 
   // GET /api/v2/models/hf-search
   // params: q, pipeline (text-generation|image-to-image|text-to-image|feature-extraction|any)
-  //         minSize (0.5|1|3|7|13|30), maxSize same, sort (downloads|likes|trending)
+  //         minSize (0.5|1|3|7|13|30), maxSize same,
+  //         sort (downloads|likes|trending|createdAt|lastModified)
   router.get('/hf-search', async (req, res) => {
     const { q = '', limit = 30, sort = 'downloads', pipeline = '', minSize = '', maxSize = '', quant = '' } = req.query;
     try {
       // Build filter: always gguf + optional pipeline tag
       let filter = 'gguf';
       if (pipeline && pipeline !== 'any') filter += ',' + pipeline;
-      const qs = `search=${encodeURIComponent(q)}&filter=${encodeURIComponent(filter)}&sort=${sort}&limit=${limit}&full=false`;
+      // Map client-side names → what the HF API actually accepts.
+      // HF /api/models rejects sort=trending with 400; the correct field
+      // is trendingScore. Same with "recent" alias → lastModified.
+      const HF_SORT_MAP = {
+        downloads:    'downloads',
+        likes:        'likes',
+        trending:     'trendingScore',
+        recent:       'lastModified',
+        lastModified: 'lastModified',
+        createdAt:    'createdAt',
+        release:      'createdAt',
+      };
+      const hfSort = HF_SORT_MAP[sort] || 'downloads';
+      // Always descending — user picks a metric, we give the top of it
+      const qs = `search=${encodeURIComponent(q)}&filter=${encodeURIComponent(filter)}&sort=${hfSort}&direction=-1&limit=${limit}&full=false`;
       const models = await hfFetch('models', qs);
       const annotated = (Array.isArray(models) ? models : []).map(m => {
         const id = m.modelId || m.id || '';
