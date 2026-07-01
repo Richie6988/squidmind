@@ -1810,7 +1810,7 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
    * Generate an image using an image-type GGUF model.
    * Returns { ok, outputPath, bytes, url } or { ok:false, error }.
    */
-  async generateImage({ modelId, model_id, prompt, outputPath, task_id, width, height, steps, cfg, seed, negativePrompt }) {
+  async generateImage({ modelId, model_id, prompt, outputPath, task_id, width, height, steps, cfg, seed, negativePrompt, initImage, strength }) {
     // Support both camelCase and snake_case model id
     modelId = modelId || model_id;
 
@@ -1908,7 +1908,8 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
       }
       result = await this.imageGen.generate({
       modelPath,
-      prompt, outputPath, width, height, steps, cfg, seed, negativePrompt
+      prompt, outputPath, width, height, steps, cfg, seed, negativePrompt,
+      initImage, strength,
     });
 
       log.info(` Image generation ${result.ok ? 'completed' : 'failed'} — reloading Poseidon before releasing broker...`);

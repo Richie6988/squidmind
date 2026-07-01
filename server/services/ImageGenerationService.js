@@ -81,7 +81,7 @@ class ImageGenerationService {
    *   seed       - seed (-1 = random)
    * @returns {Promise<{ ok: true, outputPath: string, bytes: number }|{ ok: false, error: string }>}
    */
-  async generate({ modelPath, prompt, outputPath, width = 512, height = 512, steps = 20, cfg = 7, seed = -1, negativePrompt = '' }) {
+  async generate({ modelPath, prompt, outputPath, width = 512, height = 512, steps = 20, cfg = 7, seed = -1, negativePrompt = '', initImage = null, strength = 0.75 }) {
     const isFlux = /flux/i.test(path.basename(modelPath));
 
     // Apply Flux-specific defaults only when user hasn't overridden them
@@ -108,7 +108,7 @@ class ImageGenerationService {
     await fs.mkdir(path.dirname(outputPath), { recursive: true });
 
     if (backend.type === 'sd') {
-      return this._generateWithSd({ bin: backend.bin, modelPath, prompt, negativePrompt, outputPath, width, height, steps, cfg, seed });
+      return this._generateWithSd({ bin: backend.bin, modelPath, prompt, negativePrompt, outputPath, width, height, steps, cfg, seed, initImage, strength });
     }
 
     return { ok: false, error: `Unknown backend type: ${backend.type}` };
@@ -117,7 +117,7 @@ class ImageGenerationService {
   /**
    * Spawn stable-diffusion.cpp CLI to generate.
    */
-  _generateWithSd({ bin, modelPath, prompt, negativePrompt, outputPath, width, height, steps, cfg, seed }) {
+  _generateWithSd({ bin, modelPath, prompt, negativePrompt, outputPath, width, height, steps, cfg, seed, initImage, strength }) {
     return new Promise((resolve) => {
       const path2 = require('path');
       const fs2   = require('fs');
@@ -139,6 +139,12 @@ class ImageGenerationService {
         '--cfg-scale', String(cfg),
         '--seed',   String(seed),
       ];
+      // img2img: sd-diffusion accepts --init-img + --strength (0..1, 1=noise, 0=input)
+      if (initImage && fs2.existsSync(initImage)) {
+        args.push('--mode', 'img2img');
+        args.push('--init-img', initImage);
+        args.push('--strength', String(strength ?? 0.75));
+      }
 
       // Q4_K_M / Q4_0 and larger quantizations need too much VRAM on 8GB GPUs
       // Use full CPU for Q4+ to avoid cublas OOM during inference

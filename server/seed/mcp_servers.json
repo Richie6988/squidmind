@@ -1,0 +1,16 @@
+{
+  "servers": {
+  },
+  "_help": {
+    "example": {
+      "postgres_readonly": {
+        "transport": "http",
+        "url":       "https://mcp.example.com/postgres",
+        "headers":   { "Authorization": "Bearer …" },
+        "enabled":   true,
+        "description": "Read-only Postgres for analytics"
+      }
+    },
+    "notes": "Set enabled:false to keep an entry but block use. transport 'stdio' is not yet implemented — HTTP only for now."
+  }
+}

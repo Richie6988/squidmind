@@ -42,6 +42,31 @@ class PoseidonOrchestrator {
       githubToken,
       modelService: modelService   // needed for image generation
     });
+
+    // Optional services — instantiated lazily so users who don't use
+    // email or MCP don't pay init cost + don't hit missing config errors.
+    this._emailService = null;
+    this._mcpClient    = null;
+  }
+
+  _getEmailService() {
+    if (!this._emailService) {
+      try {
+        const { EmailService } = require('./EmailService');
+        this._emailService = new EmailService(this.rm);
+      } catch (e) { console.warn('[Poseidon] EmailService init failed:', e.message); }
+    }
+    return this._emailService;
+  }
+
+  _getMCPClient() {
+    if (!this._mcpClient) {
+      try {
+        const { MCPClient } = require('./MCPClient');
+        this._mcpClient = new MCPClient(this.rm);
+      } catch (e) { console.warn('[Poseidon] MCPClient init failed:', e.message); }
+    }
+    return this._mcpClient;
   }
 
   /** Called from server/index.js after pool is created */
@@ -1250,7 +1275,8 @@ My response: "${ss.last_response_preview}"${tools}
           'after Poseidon\'s LLM is evicted to free VRAM, then Poseidon reloads automatically. ' +
           'For Flux: cfg_scale=1.0, steps=4-8. For SD1.5/SDXL: cfg_scale=7, steps=20. ' +
           'If unsure of model_id, call list_models(filter_type="image") first, or pass a partial ' +
-          'name like "flux" and it will be resolved automatically.',
+          'name like "flux" and it will be resolved automatically. ' +
+          'Optional: set upscale=2 or 4 to run a second-wave hi-res pass right after the base image.',
         params: {
           type: 'object',
           properties: {
@@ -1263,7 +1289,8 @@ My response: "${ss.last_response_preview}"${tools}
             height:          { type: 'integer', description: 'Height in pixels (default 512)' },
             steps:           { type: 'integer', description: 'Inference steps: 4-8 for Flux-schnell, 20 for SD' },
             cfg_scale:       { type: 'number',  description: 'CFG scale: 1.0 for Flux, 7 for SD (default 1.0)' },
-            seed:            { type: 'integer', description: 'Seed for reproducibility (-1 = random)' }
+            seed:            { type: 'integer', description: 'Seed for reproducibility (-1 = random)' },
+            upscale:         { type: 'integer', description: 'Optional second-wave hi-res factor (2 or 4). Runs img2img at 2x/4x with strength=0.35 to add detail without redesign.' }
           },
           required: ['prompt']
         },
@@ -1311,6 +1338,7 @@ My response: "${ss.last_response_preview}"${tools}
               seed:            params.seed   ?? -1,
               filename:        params.filename || `image_${Date.now()}.png`,
               project_id:      params.project_id || null,
+              upscale:         params.upscale || 0,
             };
 
             // Create image_gen task at max sort_order so it runs FIRST
@@ -1345,6 +1373,177 @@ My response: "${ss.last_response_preview}"${tools}
           } catch(e) {
             return { ok: false, error: e.message };
           }
+        }
+      }),
+
+      edit_image: defineChatSessionFunction({
+        description: 'Modify an existing image with a text prompt (img2img). ' +
+          'Takes the source image, adds noise proportional to `strength`, and regenerates ' +
+          'toward the new prompt. strength=0.2 → tiny tweak, 0.5 → moderate rework, 0.85 → strong reinterpretation. ' +
+          'Uses the same image model + VRAM-swap pipeline as generate_image. ' +
+          'Handy for: extending a scene, restyling, small object edits, hi-res refinement.',
+        params: {
+          type: 'object',
+          properties: {
+            source_image:    { type: 'string',  description: 'Absolute path OR aquarium-relative path to the source image (e.g. TASKS/OUTPUT/task_0032.png).' },
+            prompt:          { type: 'string',  description: 'What the image should become / gain / lose.' },
+            strength:        { type: 'number',  description: '0..1 — how much to deviate from the source (default 0.6). 0.2 = subtle, 0.85 = strong.' },
+            model_id:        { type: 'string',  description: 'Image model or partial name (default: auto-pick from library).' },
+            negative_prompt: { type: 'string',  description: 'Things to avoid.' },
+            width:           { type: 'integer', description: 'Output width (defaults to source dimensions).' },
+            height:          { type: 'integer', description: 'Output height (defaults to source dimensions).' },
+            steps:           { type: 'integer', description: 'Inference steps.' },
+            cfg_scale:       { type: 'number',  description: 'CFG scale.' },
+            seed:            { type: 'integer', description: 'Seed (-1 = random).' },
+            project_id:      { type: 'string',  description: 'Optional project to link output to.' }
+          },
+          required: ['source_image', 'prompt']
+        },
+        handler: async (params) => {
+          try {
+            const path = require('path');
+            const fs   = require('fs');
+            const AQUARIUM = require('../aquarium');
+            // Resolve source path: absolute → as-is; relative → anchored to aquarium root
+            let src = params.source_image;
+            if (!path.isAbsolute(src)) src = path.join(AQUARIUM.ROOT, src);
+            if (!fs.existsSync(src))    return { ok: false, error: `Source image not found: ${src}` };
+
+            self.rm.invalidateCache();
+            const reg = await self.rm.read('MODELS/model_registry.json').catch(() => ({ models: {} }));
+            const imgModels = Object.values(reg.models || {}).filter(m =>
+              (m.model_type || m.config?.model_type) === 'image' ||
+              (m.config?.model_category || m.model_category) === 'image'
+            );
+            if (!imgModels.length) return { ok: false, error: 'No image model in library.' };
+
+            const rawId = (params.model_id || '').toLowerCase().trim();
+            let resolvedModel = null;
+            if (rawId) {
+              resolvedModel = imgModels.find(m => m.model_id === rawId)
+                || imgModels.find(m => m.model_id.startsWith(rawId))
+                || imgModels.find(m => m.model_id.includes(rawId));
+            }
+            if (!resolvedModel) resolvedModel = imgModels[0];
+            const modelId = resolvedModel.model_id;
+
+            const mname = modelId.toLowerCase();
+            const isFlux = mname.includes('flux');
+            const defaultSteps = isFlux ? 6 : 20;
+            const defaultCfg   = isFlux ? 1.0 : 7.0;
+
+            const imageParams = {
+              model_id:        modelId,
+              prompt:          params.prompt,
+              negative_prompt: params.negative_prompt || '',
+              width:           params.width  || 0,   // 0 = use source dims (ImageGenerationService)
+              height:          params.height || 0,
+              steps:           params.steps  || defaultSteps,
+              cfg_scale:       params.cfg_scale ?? defaultCfg,
+              seed:            params.seed   ?? -1,
+              init_image:      src,
+              strength:        params.strength ?? 0.6,
+              filename:        `edit_${Date.now()}.png`,
+              project_id:      params.project_id || null,
+            };
+            const taskObj = await self.rm.createTask({
+              title:       `Edit: ${params.prompt.slice(0, 60)}`,
+              description: JSON.stringify(imageParams),
+              task_type:   'image_gen',
+              project_id:  params.project_id || null,
+            });
+            const taskId = taskObj?.task_id;
+            if (taskId) {
+              const det = await self.rm._readTaskDetails(taskId);
+              if (det) { det.sort_order = 9999; det.image_params = imageParams; await self.rm._writeTaskDetails(taskId, det); }
+            }
+            return {
+              ok: true, task_id: taskId, model_id: modelId,
+              message: `Image edit queued as ${taskId} — src=${path.basename(src)}, strength=${imageParams.strength}. Watch the queue for the result.`
+            };
+          } catch (e) { return { ok: false, error: e.message }; }
+        }
+      }),
+
+      send_email: defineChatSessionFunction({
+        description: 'Send an email via SMTP. Config comes from SMTP_URL env var, ' +
+          'SMTP_HOST/SMTP_USER/... env vars, or comms_config.json email section. ' +
+          'Use for: notifying the user, sending reports, forwarding task outputs.',
+        params: {
+          type: 'object',
+          properties: {
+            to:      { type: 'string', description: 'Recipient(s), comma-separated' },
+            subject: { type: 'string', description: 'Email subject' },
+            body:    { type: 'string', description: 'Plain-text body' },
+            html:    { type: 'string', description: 'Optional HTML body (overrides plain text rendering in most clients)' },
+            cc:      { type: 'string', description: 'CC recipients, comma-separated (optional)' },
+            bcc:     { type: 'string', description: 'BCC recipients, comma-separated (optional)' },
+            from:    { type: 'string', description: 'Override the default From address (optional)' }
+          },
+          required: ['to', 'subject', 'body']
+        },
+        handler: async (params) => {
+          const svc = self._getEmailService?.();
+          if (!svc) return { ok: false, error: 'EmailService not wired into the orchestrator.' };
+          const toList  = params.to.split(',').map(s => s.trim()).filter(Boolean);
+          const ccList  = params.cc  ? params.cc.split(',').map(s => s.trim()).filter(Boolean) : undefined;
+          const bccList = params.bcc ? params.bcc.split(',').map(s => s.trim()).filter(Boolean) : undefined;
+          const r = await svc.send({
+            to: toList, subject: params.subject, body: params.body, html: params.html,
+            cc: ccList, bcc: bccList, from: params.from,
+          });
+          if (!r.ok) return { ok: false, error: r.error };
+          return {
+            ok: true, messageId: r.messageId,
+            accepted: r.accepted, rejected: r.rejected,
+            message: `Email sent to ${toList.join(', ')} — messageId ${r.messageId || 'n/a'}.`
+          };
+        }
+      }),
+
+      list_mcp_servers: defineChatSessionFunction({
+        description: 'List configured MCP (Model Context Protocol) servers — external tool/data providers ' +
+          'that Poseidon can call via call_mcp_tool. Returns each server\'s name, transport, url, ' +
+          'enabled flag, and description. Config lives in aquarium/CHANNELS/mcp_servers.json.',
+        params: { type: 'object', properties: {} },
+        handler: async () => {
+          const client = self._getMCPClient?.();
+          if (!client) return { ok: false, error: 'MCPClient not wired.' };
+          const servers = await client.listServers();
+          if (servers.length === 0) {
+            return {
+              ok: true, servers: [],
+              message: 'No MCP servers configured. Add them to aquarium/CHANNELS/mcp_servers.json ' +
+                       'under { "servers": { "name": { "transport": "http", "url": "...", ... } } }'
+            };
+          }
+          return { ok: true, servers, message: `${servers.length} MCP server(s) registered.` };
+        }
+      }),
+
+      call_mcp_tool: defineChatSessionFunction({
+        description: 'Call a tool on a registered MCP server. First discover what tools a server exposes by ' +
+          'calling with name="tools/list" and arguments={}. Then invoke a specific one with ' +
+          'name="<tool_name>" and arguments={ ... }. Returns the server\'s response, which for tool ' +
+          'invocations is a text summary of the tool\'s output.',
+        params: {
+          type: 'object',
+          properties: {
+            server:    { type: 'string', description: 'MCP server name from list_mcp_servers' },
+            name:      { type: 'string', description: 'Tool name to invoke, OR the MCP method "tools/list" to discover available tools' },
+            arguments: { type: 'object', description: 'Tool-specific arguments (empty {} for tools/list)' }
+          },
+          required: ['server', 'name']
+        },
+        handler: async ({ server, name, arguments: args }) => {
+          const client = self._getMCPClient?.();
+          if (!client) return { ok: false, error: 'MCPClient not wired.' };
+          if (name === 'tools/list' || name === 'list') {
+            const r = await client.listTools(server);
+            if (!r.ok) return r;
+            return { ok: true, tools: r.tools, message: `${r.tools.length} tool(s) on ${server}.` };
+          }
+          return client.callTool(server, name, args || {});
         }
       }),
 
@@ -1385,7 +1584,8 @@ My response: "${ss.last_response_preview}"${tools}
         'web_search', 'web_fetch', 'fetch_and_save', 'fetch_image_url',
         'create_task', 'update_task', 'list_tasks',
         'update_project_memory', 'read_project_memory', 'audit_project',
-        'list_models', 'generate_image',
+        'list_models', 'generate_image', 'edit_image',
+        'send_email', 'list_mcp_servers', 'call_mcp_tool',
         'list_skills', 'read_my_brain', 'record_skill_outcome',
       ]);
       const slim = {};

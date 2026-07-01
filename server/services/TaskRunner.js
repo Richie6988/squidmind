@@ -376,7 +376,9 @@ class TaskRunner {
             negativePrompt: negPrompt,
             outputPath:     null,
             task_id:        taskId,
-            width, height, steps, cfg, seed
+            width, height, steps, cfg, seed,
+            initImage:      ip?.init_image || null,
+            strength:       ip?.strength ?? 0.75,
           });
 
           resolvedModelId = result?.resolvedModelId || reqModelId;
@@ -384,6 +386,38 @@ class TaskRunner {
           if (result?.ok && result.outputPath) {
             imageServeUrl = `/api/files/read?path=${encodeURIComponent(result.outputPath)}`;
             output = `Image saved: ${result.outputPath}`;
+
+            // Optional second-wave upscale (hi-res fix). Uses the just-generated
+            // image as init-img at doubled dimensions with low strength so the
+            // final image gains detail rather than diverging from wave 1.
+            const upscale = Number(ip?.upscale || 0);
+            if (upscale >= 2) {
+              const path2 = require('path');
+              const upscaledPath = result.outputPath.replace(/\.(png|jpe?g)$/i, '_x' + upscale + '.$1');
+              log.info(`Image gen ${taskId}: running upscale pass x${upscale} → ${path2.basename(upscaledPath)}`);
+              const up = await this.modelService.generateImage({
+                modelId:        reqModelId,
+                model_id:       reqModelId,
+                prompt,
+                negativePrompt: negPrompt,
+                outputPath:     upscaledPath,
+                task_id:        taskId + '_upscale',
+                width:          width  * upscale,
+                height:         height * upscale,
+                // Fewer steps in the refinement pass — details, not composition
+                steps:          Math.min(steps, 6),
+                cfg,
+                seed,
+                initImage:      result.outputPath,
+                strength:       0.35,   // mostly preserve the wave-1 image
+              });
+              if (up?.ok && up.outputPath) {
+                imageServeUrl = `/api/files/read?path=${encodeURIComponent(up.outputPath)}`;
+                output += `\nUpscale x${upscale} saved: ${up.outputPath}`;
+              } else {
+                output += `\nUpscale x${upscale} FAILED: ${up?.error || 'unknown'}`;
+              }
+            }
           } else {
             // Include full error detail so it's visible in the task output
             const errDetail = result?.error || result?.stderr || JSON.stringify(result);

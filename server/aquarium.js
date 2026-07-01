@@ -116,6 +116,7 @@ const AQUARIUM = {
     { seed: 'logs.json',             dst: AQUARIUM.logs('logs.json') },
     { seed: 'tasks_registry.json',   dst: AQUARIUM.tasks('tasks_registry.json') },
     { seed: 'comms_config.json',     dst: AQUARIUM.channels('comms_config.json') },
+    { seed: 'mcp_servers.json',      dst: AQUARIUM.channels('mcp_servers.json') },
     { seed: 'soul.json',             dst: AQUARIUM.SOUL },
     { seed: 'dream_memory.json',     dst: AQUARIUM.DREAM_MEMORY },
     { seed: 'temp.md',               dst: AQUARIUM.TEMP_LOG },
