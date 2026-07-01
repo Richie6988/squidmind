@@ -157,6 +157,27 @@ class ModelBroker extends EventEmitter {
   }
 
   /**
+   * forceReleaseAll(reason)
+   * Emergency unblock: drops any held token AND drains the queue,
+   * rejecting every waiter. Used by the /unload?force=1 endpoint so a
+   * stuck generation doesn't strand the broker in BUSY forever.
+   */
+  forceReleaseAll(reason = 'forced') {
+    const dropped = this._token
+      ? `${this._token.id} (held ${Math.round((Date.now() - this._token.acquiredAt) / 1000)}s)`
+      : 'none';
+    log.warn(`[Broker] FORCE-RELEASE — token=${dropped}, queue=${this._queue.length}, reason=${reason}`);
+    this._token = null;
+    this._lastReleasedAt = Date.now();
+    // Reject every queued waiter so they can bail cleanly
+    for (const w of this._queue) {
+      try { w.reject(new Error(`Broker force-released: ${reason}`)); } catch {}
+    }
+    this._queue = [];
+    this.emit('idle');
+  }
+
+  /**
    * isDreamAllowed()
    * True only if slot free AND queue empty.
    */

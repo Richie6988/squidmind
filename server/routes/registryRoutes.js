@@ -166,17 +166,30 @@ router.get('/projects/:id', async (req, res) => {
 // PATCH /tasks/:id/status — quick status update used by kanban drag-drop
 router.patch('/tasks/:id/status', async (req, res) => {
   try {
-    const { status } = req.body;
+    const { status, cancel_running } = req.body;
     if (!status) return res.status(400).json({ success: false, error: 'status required' });
     const task = await rm._readTaskDetails(req.params.id);
     if (!task) return res.status(404).json({ success: false, error: 'Task not found' });
+    // If the caller is stopping a running task and asked us to abort the
+    // underlying generation, signal every warmed entry to stop. TaskRunner's
+    // status polling will pick up the new value on its next check.
+    if (cancel_running === true) {
+      try {
+        const ms = req.app.get?.('v2ModelService') || req.app.locals?.v2ModelService;
+        if (ms?.loaded) {
+          for (const entry of ms.loaded.values()) {
+            entry._abortRequested = true;
+          }
+        }
+      } catch { /* non-fatal */ }
+    }
     task.lifecycle = { ...(task.lifecycle || {}), status };
     task.status = status;
     if (status === 'in_progress' && !task.lifecycle.started_at) task.lifecycle.started_at = new Date().toISOString();
     if (['completed','failed','cancelled'].includes(status)) task.lifecycle.completed_at = new Date().toISOString();
     await rm._writeTaskDetails(req.params.id, task);
     rm.invalidateCache();
-    res.json({ success: true, task_id: req.params.id, status });
+    res.json({ success: true, task_id: req.params.id, status, cancelled: cancel_running === true });
   } catch (err) { res.status(500).json({ success: false, error: err.message }); }
 });
 

@@ -8454,3 +8454,89 @@ h4.pc-md-h { font-size: 8px; color: #94a3b8; }
 }
 .ti-file:hover .ti-file-imgact { opacity: 1; }
 .ti-file-imgact:hover { background: rgba(6,255,165,0.25); }
+
+/* ═══ Zoom controller pill (bottom-right, always visible) ══════════════ */
+#zoom-controller {
+  position: fixed;
+  bottom: 12px;
+  right: 12px;
+  z-index: 99999;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  background: rgba(10, 22, 40, 0.85);
+  border: 1px solid rgba(79, 172, 254, 0.35);
+  border-radius: 20px;
+  backdrop-filter: blur(6px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  font-family: var(--panel-font), sans-serif;
+  opacity: 0.55;
+  transition: opacity 0.15s;
+}
+#zoom-controller:hover { opacity: 1; }
+#zoom-controller .zc-btn {
+  background: rgba(79,172,254,0.10);
+  border: 1px solid rgba(79,172,254,0.30);
+  color: #4facfe;
+  border-radius: 4px;
+  width: 22px;
+  height: 22px;
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+#zoom-controller .zc-btn:hover { background: rgba(79,172,254,0.25); }
+#zoom-controller .zc-slider {
+  width: 110px;
+  height: 3px;
+  accent-color: #4facfe;
+  cursor: pointer;
+}
+#zoom-controller .zc-val {
+  color: #4facfe;
+  font-size: 10px;
+  font-weight: 700;
+  min-width: 34px;
+  text-align: center;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 3px;
+  letter-spacing: 0.04em;
+}
+#zoom-controller .zc-val:hover { background: rgba(79,172,254,0.15); }
+
+/* ═══ Kanban card quick-action buttons (▶ start / ■ stop) ══════════════ */
+.ti-kcard-quickact {
+  background: transparent;
+  border: 1px solid rgba(255,255,255,0.15);
+  color: #94a3b8;
+  border-radius: 3px;
+  font-size: 10px;
+  line-height: 1;
+  padding: 2px 5px;
+  cursor: pointer;
+  transition: all 0.12s;
+  margin-right: 3px;
+  font-family: var(--panel-font-mono);
+}
+.ti-kcard-quickact.play {
+  border-color: rgba(6,255,165,0.40);
+  color: #06ffa5;
+}
+.ti-kcard-quickact.play:hover {
+  background: rgba(6,255,165,0.20);
+  box-shadow: 0 0 6px rgba(6,255,165,0.35);
+}
+.ti-kcard-quickact.stop {
+  border-color: rgba(248,113,113,0.45);
+  color: #f87171;
+}
+.ti-kcard-quickact.stop:hover {
+  background: rgba(248,113,113,0.20);
+  box-shadow: 0 0 6px rgba(248,113,113,0.35);
+}

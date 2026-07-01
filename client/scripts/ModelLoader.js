@@ -471,7 +471,7 @@ const ModelLoader = {
         <button class="btn-secondary" onclick="ModelLoader.showImportDialog('${this._escape(m.file_name)}', '${m.model_id}')">Edit Params</button>
         <button class="btn-secondary" onclick="ModelLoader.renameModel('${m.model_id}', this)" style="display:inline-flex;align-items:center;gap:3px;">${window.PixelIcons?.inline('config',11)||''}Rename</button>
         <button class="btn-secondary" title="Toggle between text and image generation mode" onclick="ModelLoader.setModelType('${m.model_id}','${nextType}')">${toggleLabel}</button>
-        ${m.is_loaded ? `<button class="btn-secondary" onclick="ModelLoader.unload('${m.model_id}', this)" title="Unload model from VRAM (auto-reloads on next request)">Unload from Memory</button>` : ''}
+        ${m.is_loaded ? `<button class="btn-secondary" onclick="ModelLoader.unload('${m.model_id}', this, event.shiftKey)" title="Unload model from VRAM (auto-reloads on next request). Hold Shift for FORCE unload — kills any in-flight generation.">Unload from Memory</button><button class="btn-danger" onclick="ModelLoader.unload('${m.model_id}', this, true)" title="Force unload — kills any in-flight generation, drops broker state, evicts weights">⚠ Force</button>` : ''}
         <button class="btn-secondary danger-action" onclick="ModelLoader.remove('${m.model_id}', this)" title="Remove model from library (file on disk is kept)">Remove</button>
       `;
     }
@@ -780,14 +780,21 @@ const ModelLoader = {
     }
   },
   
-  async unload(modelId, btnEl) {
-    if (!await SquidModal.confirm(`Unload ${modelId} from memory? (will auto-reload on next request)`)) return;
+  async unload(modelId, btnEl, force = false) {
+    const msg = force
+      ? `FORCE-UNLOAD ${modelId}?\n\nThis will kill any in-flight generation (chat replies, image gen, background tasks), drop broker state, and evict weights.\n\nUse when the model is stuck or you need VRAM back RIGHT NOW.`
+      : `Unload ${modelId} from memory? (will auto-reload on next request)`;
+    if (!await SquidModal.confirm(msg)) return;
     try {
       const fn = async () => {
-        await window.api._fetch(`/models/${modelId}/unload`, { method: 'POST' });
+        await window.api._fetch(`/models/${modelId}/unload`, {
+          method: 'POST',
+          body:   force ? JSON.stringify({ force: true }) : undefined,
+        });
         await this._refresh();
       };
-      if (btnEl && window.LoadingButton) await window.LoadingButton.run(btnEl, fn, 'Unloading…');
+      const label = force ? 'Force-unloading…' : 'Unloading…';
+      if (btnEl && window.LoadingButton) await window.LoadingButton.run(btnEl, fn, label);
       else await fn();
     } catch (err) {
       await SquidModal.alert('Unload failed: ' + err.message);

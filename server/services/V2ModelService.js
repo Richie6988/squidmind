@@ -1252,6 +1252,31 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
             ...fnDef,
             handler: async (args) => {
               const callTime = Date.now();
+              // ── Loop guard: fingerprint = tool name + normalised args.
+              // If the last 2 calls have the same fingerprint, this would be
+              // the 3rd → interrupt with an error result the LLM can see and
+              // (hopefully) adjust from. Prevents runaway when the model gets
+              // stuck on a failing read/write pattern.
+              const fp = fnName + '|' + JSON.stringify(args || {}).slice(0, 400);
+              entry._loopHistory = entry._loopHistory || [];
+              const recentSame = entry._loopHistory.filter(x => x === fp).length;
+              entry._loopHistory.push(fp);
+              // keep last 5 fingerprints only
+              if (entry._loopHistory.length > 5) entry._loopHistory.shift();
+              if (recentSame >= 2) {
+                const loopErr = {
+                  ok: false,
+                  error: `LOOP DETECTED — you have called ${fnName} with identical arguments ${recentSame + 1} times in a row. This attempt is BLOCKED. Change your approach: try different arguments, use a different tool, or answer the user based on what you already know. If you cannot proceed, tell the user what you tried and why it isn't working.`,
+                  loop_broken: true,
+                  repeat_count: recentSame + 1,
+                };
+                log.warn(`Loop guard: ${fnName} called ${recentSame + 1}× in a row — interrupting`);
+                events.push({ type: 'tool_call',   name: fnName, args, at: callTime, loop_broken: true });
+                events.push({ type: 'tool_result', name: fnName, result: loopErr, duration_ms: 0, loop_broken: true });
+                // Also request abort so the LLM's thinking loop breaks quickly
+                entry._abortRequested = true;
+                return loopErr;
+              }
               events.push({ type: 'tool_call', name: fnName, args, at: callTime });
               try {
                 const result = await originalHandler(args);
@@ -1266,6 +1291,9 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
           };
         }
       }
+      // Reset loop history for each fresh turn so we detect within-turn loops,
+      // not cross-turn coincidences.
+      entry._loopHistory = [];
       
       // Read inference params from brain (set via AgentForm or brain.json).
       // Fall back to generous defaults so Qwen3 thinking blocks don't eat all tokens.

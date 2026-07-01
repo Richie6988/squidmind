@@ -47,6 +47,7 @@ class PoseidonOrchestrator {
     // email or MCP don't pay init cost + don't hit missing config errors.
     this._emailService = null;
     this._mcpClient    = null;
+    this._bashExecutor = null;
   }
 
   _getEmailService() {
@@ -67,6 +68,16 @@ class PoseidonOrchestrator {
       } catch (e) { console.warn('[Poseidon] MCPClient init failed:', e.message); }
     }
     return this._mcpClient;
+  }
+
+  _getBashExecutor() {
+    if (!this._bashExecutor) {
+      try {
+        const { BashExecutor } = require('./BashExecutor');
+        this._bashExecutor = new BashExecutor({ rm: this.rm });
+      } catch (e) { console.warn('[Poseidon] BashExecutor init failed:', e.message); }
+    }
+    return this._bashExecutor;
   }
 
   /** Called from server/index.js after pool is created */
@@ -1549,6 +1560,35 @@ My response: "${ss.last_response_preview}"${tools}
         }
       }),
 
+      execute_bash: defineChatSessionFunction({
+        description: 'Execute a shell command on the operator\'s local machine and return stdout, stderr, and exit code. ' +
+          'Runs via /bin/sh -c so full shell syntax works (pipes, redirects, &&). Default cwd is aquarium/; pass `cwd` for a different location. ' +
+          'Timeout defaults to 30s (max 600s). ' +
+          'Use for: reading system state (ls, ps, git status), running scripts, node/python one-liners, ffmpeg conversions, file inspection. ' +
+          'For file edits, prefer write_file — bash cat > with special chars is fragile. ' +
+          'Every command is logged to aquarium/LOGS/bash_history.jsonl. Dangerous patterns (rm on system paths, curl|sh, sudo) are flagged in the response.',
+        params: {
+          type: 'object',
+          properties: {
+            command:    { type: 'string',  description: 'Shell command to run. Full sh -c syntax accepted.' },
+            cwd:        { type: 'string',  description: 'Working directory (default: aquarium root). Absolute or aquarium-relative.' },
+            timeout_ms: { type: 'integer', description: 'Kill the command after N milliseconds (default 30000, max 600000).' }
+          },
+          required: ['command']
+        },
+        handler: async (params) => {
+          const bash = self._getBashExecutor?.();
+          if (!bash) return { ok: false, error: 'BashExecutor not wired.' };
+          // Resolve aquarium-relative cwd against AQUARIUM.ROOT
+          let cwd = params.cwd;
+          if (cwd && !require('path').isAbsolute(cwd)) {
+            const AQUARIUM = require('../aquarium');
+            cwd = require('path').join(AQUARIUM.ROOT, cwd);
+          }
+          return bash.run({ command: params.command, cwd, timeout_ms: params.timeout_ms });
+        }
+      }),
+
       dispatch_to_agent: defineChatSessionFunction({
         description: 'Create a task assigned to a specific agent and queue it for execution. The TaskRunner will pick it up automatically. Prefer create_task directly for most cases. Use this when you need to assign to a specific agent immediately.',
         params: {
@@ -1588,6 +1628,7 @@ My response: "${ss.last_response_preview}"${tools}
         'update_project_memory', 'read_project_memory', 'audit_project',
         'list_models', 'generate_image', 'edit_image',
         'send_email', 'list_mcp_servers', 'call_mcp_tool',
+        'execute_bash',
         'list_skills', 'read_my_brain', 'record_skill_outcome',
       ]);
       const slim = {};

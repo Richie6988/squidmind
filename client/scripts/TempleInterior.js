@@ -1127,6 +1127,14 @@ const TempleInterior = {
       const elapsedBadge = elapsed
         ? `<span class="ti-kcard-elapsed" style="color:#06ffa5;font-family:var(--panel-font-mono);font-size:9px;">${elapsed}</span>`
         : '';
+      // Quick action: play (open→in_progress) or stop (in_progress→open).
+      // Visible only for movable statuses so completed/failed cards stay clean.
+      const st = String(task.lifecycle?.status || task.status || 'open').toLowerCase();
+      const quickAction = (st === 'open' || st === 'planned' || st === 'assigned' || st === 'queued')
+        ? `<button class="ti-kcard-quickact play" title="Start task" onclick="event.stopPropagation();TempleInterior._quickStartTask('${task.task_id}')">▶</button>`
+        : (st === 'in_progress' || st === 'running')
+        ? `<button class="ti-kcard-quickact stop" title="Stop task" onclick="event.stopPropagation();TempleInterior._quickStopTask('${task.task_id}')">■</button>`
+        : '';
       return `<div class="ti-kcard ${cls}" data-task-id="${task.task_id}"
           onclick="TempleInterior._openTaskDetail('${task.task_id}')"
           title="${this._esc(task.title)} — click to open, drag the ⋮⋮ handle to move">
@@ -1143,6 +1151,7 @@ const TempleInterior = {
           <div class="ti-kcard-foot">
             ${agentBadge}
             ${elapsedBadge}
+            ${quickAction}
             <button class="ti-kcard-del" title="Delete task" onclick="event.stopPropagation();TempleInterior._deleteTask('${task.task_id}')">×</button>
           </div>
         </div>
@@ -1597,6 +1606,50 @@ const TempleInterior = {
 
   async _openTaskDetail(taskId) {
     if (typeof TaskQueueUI !== 'undefined') TaskQueueUI.openTaskDetail(taskId);
+  },
+
+  // ── Task quick actions (start / stop) ────────────────────────────────────
+  async _quickStartTask(taskId) {
+    this._setStatus(`Starting ${taskId}…`);
+    try {
+      const r = await fetch(`/api/v2/tasks/${taskId}/status`, {
+        method:  'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ status: 'in_progress' }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || j?.ok === false) {
+        this._setStatus(`Start failed: ${j?.error || r.status}`);
+        return;
+      }
+      this._setStatus(`${taskId} → in_progress`);
+      this._renderKanban();
+    } catch (e) {
+      this._setStatus(`Start failed: ${e.message}`);
+    }
+  },
+
+  async _quickStopTask(taskId) {
+    this._setStatus(`Stopping ${taskId}…`);
+    try {
+      // Two-step: flip status back to `open` so the worker's cooperative
+      // status check picks it up, AND signal an abort to whichever LLM
+      // instance is currently running it (agent worker or Poseidon BG).
+      const r = await fetch(`/api/v2/tasks/${taskId}/status`, {
+        method:  'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ status: 'open', cancel_running: true }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || j?.ok === false) {
+        this._setStatus(`Stop failed: ${j?.error || r.status}`);
+        return;
+      }
+      this._setStatus(`${taskId} stopped`);
+      this._renderKanban();
+    } catch (e) {
+      this._setStatus(`Stop failed: ${e.message}`);
+    }
   },
 
   async _deleteTask(taskId) {

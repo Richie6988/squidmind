@@ -429,8 +429,30 @@ function buildRouter(v2ModelService) {
   // POST /api/v2/models/:modelId/unload
   router.post('/:modelId/unload', async (req, res) => {
     try {
+      const force = req.body?.force === true || req.query?.force === '1';
+      if (force) {
+        // Abort any in-flight generation for this model before unloading, so
+        // the broker doesn't stay pinned to BUSY. Signal every warmed entry;
+        // the actual dispose runs inside unloadModel.
+        try {
+          const entry = v2ModelService.loaded?.get?.(req.params.modelId);
+          if (entry) entry._abortRequested = true;
+          // Poseidon's entry gets the same signal in case caller passed the
+          // wrong ID
+          if (v2ModelService.poseidonModelId) {
+            const pos = v2ModelService.loaded?.get?.(v2ModelService.poseidonModelId);
+            if (pos) pos._abortRequested = true;
+          }
+          // Small wait so the generator sees the flag and exits cleanly
+          await new Promise(r => setTimeout(r, 250));
+          // Force-release any lingering broker tokens for this model
+          if (v2ModelService.broker?.forceReleaseAll) {
+            v2ModelService.broker.forceReleaseAll(`force-unload:${req.params.modelId}`);
+          }
+        } catch (e) { log.warn?.('[force-unload] pre-abort error:', e.message); }
+      }
       const result = await v2ModelService.unloadModel(req.params.modelId);
-      res.json(result);
+      res.json({ ...result, forced: force });
     } catch (err) {
       res.status(500).json({ success: false, error: err.message });
     }
