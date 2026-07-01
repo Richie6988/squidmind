@@ -254,10 +254,25 @@ const TempleInterior = {
           right.style.background = `linear-gradient(180deg, ${tint15} 0%, rgba(${r},${g},${b},0.03) 100%)`;
           right.style.borderLeft = `1px solid ${tint20}`;
         }
-        // Active tabs
+        // Active tabs — use a LEGIBLE variant of the theme colour. Raw
+        // `inside` can be a dark hex (a project's assigned base tone) and
+        // when applied directly to tab text on a near-black background the
+        // labels vanish — that's why FILES/KANBAN read as "blurry".
+        // Boost each channel toward white until the perceived lightness
+        // (rec.709 luma) is at least 0.65.
+        const luma = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+        let textColor = inside;
+        if (luma < 0.65) {
+          // Blend toward white with weight based on how dark it is
+          const t = Math.min(1, (0.85 - luma) / 0.85);
+          const rr = Math.round(r + (255 - r) * t);
+          const gg = Math.round(g + (255 - g) * t);
+          const bb = Math.round(b + (255 - b) * t);
+          textColor = `rgb(${rr},${gg},${bb})`;
+        }
         root.querySelectorAll('.ti-tab.active, .ti-tab-sm.accent').forEach(el => {
-          el.style.borderBottomColor = inside;
-          el.style.color = inside;
+          el.style.borderBottomColor = inside;    // border stays saturated
+          el.style.color = textColor;             // text uses the legible variant
         });
         // Section headers
         root.querySelectorAll('.ti-sec').forEach(el => {
@@ -602,7 +617,7 @@ const TempleInterior = {
         const sz    = f.size ? `<span class="ti-file-size">${this._fmtSize(f.size)}</span>` : '';
         const ts    = (type === 'output' && f.mtime)
           ? `<span class="ti-file-mtime" title="${f.mtime}">${this._relTime(f.mtime)}</span>` : '';
-        return `<div class="ti-file" onclick="TempleInterior._openFile('${ename}','${this._esc(f.path||'')}','${type}','${folder}')">
+        return `<div class="ti-file" onclick="TempleInterior._openFile('${ename}','${this._esc(f.path||'')}','${type}','${folder}',${f.size||0})">
           ${thumb}
           <span class="ti-file-name" title="${ename}">${ename}</span>${sz}${ts}
           <button class="ti-file-del" onclick="event.stopPropagation();TempleInterior._deleteFile('${folder}','${ename}','${type}')">X</button>
@@ -1554,7 +1569,7 @@ const TempleInterior = {
   },
 
   // ═══ IDE ═════════════════════════════════════════════════════════════════
-  _openFile(name, filepath, type, folder) {
+  _openFile(name, filepath, type, folder, serverSize = 0) {
     const existing = this._openFiles.findIndex(f => f.name === name && f.folder === folder);
     if (existing >= 0) { this._ideActivate(existing); return; }
 
@@ -1573,7 +1588,7 @@ const TempleInterior = {
       return;
     }
 
-    this._openFiles.push({ name, path: filepath, folder, type, content: '', dirty: false, loading: true });
+    this._openFiles.push({ name, path: filepath, folder, type, content: '', dirty: false, loading: true, serverSize });
     const idx = this._openFiles.length - 1;
     this._ideActivate(idx);
     this._setStatus(`Loading ${name}...`);
@@ -1630,7 +1645,15 @@ const TempleInterior = {
   _ideActivate(idx) {
     if (idx < 0 || idx >= this._openFiles.length) return;
     const ed = document.getElementById('ti-editor');
-    if (ed && this._activeFileIdx >= 0 && this._openFiles[this._activeFileIdx]) {
+    // Only capture the editor's value if we are SWITCHING to a different
+    // file AND the editor is actually visible. Without both guards, the
+    // re-activation triggered by the async file-load completion would
+    // clobber the just-loaded content with the empty textarea value —
+    // that's exactly what caused "(empty file)" to show for real files.
+    if (ed && ed.style.display !== 'none'
+        && this._activeFileIdx >= 0
+        && this._activeFileIdx !== idx
+        && this._openFiles[this._activeFileIdx]) {
       this._openFiles[this._activeFileIdx].content = ed.value;
     }
     this._activeFileIdx = idx;
@@ -1691,20 +1714,32 @@ const TempleInterior = {
     if (showPreview) {
       // ── PREVIEW MODE ──
       if (frame) frame.style.display = 'block';
+      // Diagnostic: if server said the file was N > 0 bytes but the client
+      // ended up with an empty content string, surface a specific message
+      // instead of the misleading "(empty file)" placeholder.
+      const emptyExplained = () => {
+        if (f.loading) return '*Loading…*';
+        if (f.content) return f.content;
+        if (f.serverSize && f.serverSize > 0) {
+          console.warn('[IDE] empty content but server reported', f.serverSize, 'bytes for', f.name);
+          return `⚠️  **Empty response**\n\nServer listing says this file is **${f.serverSize} bytes**, but the loader returned zero bytes.\n\nLikely causes:\n- The read endpoint sent JSON \`{content:""}\` — check server logs for a permissions error on ${f.path || f.name}.\n- The file was deleted or renamed between listing and read.\n- Middleware stripped the body.\n\nTry the EDIT button to see the raw editor value, and check DevTools console for network errors.`;
+        }
+        return '*(empty file — 0 bytes on disk)*';
+      };
       if (isMd) {
-        this._renderMarkdownPreview(f.loading ? '*Loading…*' : (f.content || '*(empty file)*'));
+        this._renderMarkdownPreview(emptyExplained());
         if (status) status.textContent = f.name + ' [MARKDOWN PREVIEW]';
       } else if (isHtml) {
         if (frame) frame.srcdoc = f.loading ? '<p>Loading…</p>' : (f.content || '<p>(empty)</p>');
         if (status) status.textContent = f.name + ' [HTML PREVIEW]';
       } else if (isCode) {
         const fileLang = f.name.match(/\.(\w+)$/)?.[1] || 'text';
-        this._renderCodePreview(f.loading ? '// Loading…' : (f.content || ''), fileLang);
+        this._renderCodePreview(f.loading ? '// Loading…' : (f.content || `// (empty file — server size: ${f.serverSize || 0} B)`), fileLang);
         if (status) status.textContent = f.name + ' [' + fileLang.toUpperCase() + ' SYNTAX]';
       } else {
         // Plain text fallback — render as <pre>
         if (frame) frame.srcdoc = `<html><body style="margin:0;background:#0a1628;color:#c8d8f0;padding:14px;"><pre style="font-family:'Courier New',monospace;font-size:13px;white-space:pre-wrap;word-break:break-word;">${
-          (f.content || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+          (f.content || `(empty file — server size: ${f.serverSize || 0} B)`).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
         }</pre></body></html>`;
         if (status) status.textContent = f.name + ' [TEXT]';
       }
