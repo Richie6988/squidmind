@@ -1347,8 +1347,24 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
         // Stop button: abort requested from UI
         if (entry._abortRequested) {
           entry._abortRequested = false;
-          log.info(' Generation aborted by user');
+          log.info(' Generation aborted by user — disposing session for clean reset');
           yield { type: 'text', chunk: '\n\n_[Generation stopped by user]_' };
+          // CRITICAL: dispose the session + sequence so the next turn creates
+          // a fresh session. Without this, the aborted internal inference
+          // state persists and the next session.prompt() can hang forever
+          // (observed: broker acquires CHAT-poseidon_chat-3 with "Session
+          // reused (turn 3, KV cache preserved)" but never releases; next
+          // heartbeats log "broker busy (state=BUSY, queue=0)" indefinitely).
+          // We accept the ~20s system-prompt reprocess on the next message
+          // — a slow reply beats an infinite wait.
+          try { if (entry.session?.dispose) await entry.session.dispose(); } catch {}
+          try { if (entry._currentSequence?.dispose) await entry._currentSequence.dispose(); } catch {}
+          entry.session          = null;
+          entry._currentSequence = null;
+          entry.sessionTurns     = 0;
+          entry._thinkBuf        = '';
+          entry._inThink         = false;
+          entry._abortedAt       = Date.now();  // signal for downstream loop guard
           break;
         }
 
@@ -1381,8 +1397,13 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
       entry._thinkBuf = '';
       entry._inThink  = false;
 
-      // Successfully completed a turn
-      entry.sessionTurns++;
+      // Successfully completed a turn — but NOT if we aborted (session was
+      // disposed, so sessionTurns must stay at 0 for the next call to create
+      // a fresh session).
+      if (!entry._abortedAt || entry.session) {
+        entry.sessionTurns++;
+      }
+      entry._abortedAt = 0;
       // Track interactions for self-improvement audit trigger
       this._interactionsSinceAudit = (this._interactionsSinceAudit || 0) + 1;
       if (this._interactionsSinceAudit >= 5) {

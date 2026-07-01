@@ -339,7 +339,16 @@ const PoseidonChat = {
     }, 1000);
 
     // Progressive status messages
-    const statusSeq = [
+    // Adapt wording to whether the model has already produced a reply
+    // in this session. First-message wording talks about loading; after
+    // that we know the model is loaded and the wait is just inference.
+    const isWarm = this._hasHadReply === true;
+    const statusSeq = isWarm ? [
+      [1500, 'Processing your message…'],
+      [8000, 'Thinking…'],
+      [30000,'Long response — still generating…'],
+      [90000,'Taking longer than usual — you can hit stop and rephrase…'],
+    ] : [
       [800,  'Sending to model…'],
       [3000, 'Loading model into VRAM…'],
       [12000,'Still loading — large model, please wait…'],
@@ -398,6 +407,7 @@ const PoseidonChat = {
             this._handleEvent(evType, p, contentEl, msgs, () => {
               if (!firstToken) {
                 firstToken = true;
+                this._hasHadReply = true;
                 clearTimers();
                 contentEl.querySelector('.pc-loader')?.remove();
                 this._setStatus('Generating…', 'generating');
