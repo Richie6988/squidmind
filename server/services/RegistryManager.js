@@ -148,6 +148,24 @@ class RegistryManager {
         const m = id.match(/(\d+)$/);
         if (m) maxFromKeys = Math.max(maxFromKeys, parseInt(m[1], 10));
       }
+      // For task IDs, ALSO scan results_log.json — completed tasks were
+      // purged from the live registry (see _writeTaskDetails) but their IDs
+      // must not be re-used. Defense in depth against last_id_used drift.
+      if (registryPath.includes('task')) {
+        try {
+          const AQUARIUM = require('../aquarium');
+          const path = require('path');
+          const fsSync = require('fs');
+          const resultsPath = path.join(AQUARIUM.TASKS, 'results_log.json');
+          if (fsSync.existsSync(resultsPath)) {
+            const rl = JSON.parse(fsSync.readFileSync(resultsPath, 'utf8'));
+            for (const tid of Object.keys(rl.results || {})) {
+              const m = tid.match(/(\d+)$/);
+              if (m) maxFromKeys = Math.max(maxFromKeys, parseInt(m[1], 10));
+            }
+          }
+        } catch { /* results_log optional */ }
+      }
       const lastUsed = registry.metadata.last_id_used ?? 0;
       const nextNum  = Math.max(maxFromKeys, lastUsed) + 1;
 
@@ -1156,12 +1174,16 @@ class RegistryManager {
   }
 
   async _writeTaskDetails(taskId, task) {
-    const fs   = require('fs').promises;
-    const path = require('path');
-    const AQUARIUM = require('../aquarium');
-    const flatPath = path.join(AQUARIUM.TASKS, 'tasks_registry.json');
-    let reg = { metadata: { next_id: 1, id_format: 'task_NNNN' }, tasks: {} };
-    try { reg = JSON.parse(await fs.readFile(flatPath, 'utf8')); } catch {}
+    // CRITICAL: use this.write (which chains through writeLocks) instead of
+    // a raw fs.writeFile. Otherwise this can race with generateNextId's
+    // write of last_id_used → if we read the file BEFORE generateNextId's
+    // write has landed AND the read fails / default kicks in, we clobber
+    // last_id_used=48 with last_id_used=0. Next task then generates as
+    // task_0001, colliding with the seed.
+    const reg = await this.read('TASKS/tasks_registry.json').catch(() => null)
+              || { metadata: { next_id: 1, id_format: 'task_NNNN' }, tasks: {} };
+    if (!reg.metadata) reg.metadata = { next_id: 1, id_format: 'task_NNNN' };
+    if (!reg.tasks)    reg.tasks    = {};
 
     const terminalStatuses = new Set(['completed', 'cancelled', 'archived', 'failed']);
     const status = task.lifecycle?.status || task.status || '';
@@ -1172,8 +1194,7 @@ class RegistryManager {
       reg.tasks[taskId] = { ...task, task_id: task.task_id || taskId };
     }
 
-    await fs.writeFile(flatPath, JSON.stringify(reg, null, 2), 'utf8');
-    this.invalidateCache();
+    await this.write('TASKS/tasks_registry.json', reg);
   }
 
   async getTasksRegistry() {

@@ -329,8 +329,8 @@ My response: "${ss.last_response_preview}"${tools}
       lines.push('  list_files("PROJECTS")                  → list all project folders');
       lines.push('CRITICAL: folder name = project NAME not project_id. Use list_files("PROJECTS") to see all folders.');
       lines.push('MULTI-STEP TASKS: after each step call update_task(id, "progress", "step N/M done: ...") so context resets dont lose state.');
-      lines.push('DATA OUTPUT RULE — MANDATORY: when a task produces structured data (prices, stats, lists, research, any tabular data), you MUST write_file with the actual data in an appropriate format: .csv for tables, .json for structured data, .md only for reports/docs. NEVER summarize data without also saving the raw data. Example: crypto prices → write a .csv with columns date,coin,open,high,low,close,volume. A task whose output is only a .md summary when it should have produced data is INCOMPLETE.');
-      lines.push('PROJECT MEMORY PROTOCOL — MANDATORY for project tasks:');
+      lines.push('DATA OUTPUT RULE — MANDATORY (applies to AGENTS executing tasks, NOT to Poseidon): when a task produces structured data (prices, stats, lists, research, any tabular data), the executing agent MUST write_file with the actual data in an appropriate format: .csv for tables, .json for structured data, .md only for reports/docs. Poseidon MUST NOT call write_file for project deliverables — that is the agent\'s job. Enforce this by mentioning it in the task description.');
+      lines.push('PROJECT MEMORY PROTOCOL — MANDATORY (mostly for AGENTS; Poseidon calls read_project_memory + update_project_memory only for orchestration events):');
       lines.push('  BEFORE starting work on a project task: call read_project_memory(project_name) to see current state.');
       lines.push('  AFTER completing a task: call update_project_memory(project_name, "achievement", "brief description").');
       lines.push('  WHEN blocking issue found: call update_project_memory(project_name, "blocker", "description").');
@@ -1556,7 +1556,15 @@ My response: "${ss.last_response_preview}"${tools}
       });
 
       return { ok: true, project_id: projectId, name: upperName, folder,
-        message: `Created project ${upperName}. Files go in PROJECTS/${folder}/input/ and PROJECTS/${folder}/output/.` };
+        next_step: 'DELEGATE — do not execute project work yourself',
+        message:
+          `Created project ${upperName}. Files go in PROJECTS/${folder}/input/ and PROJECTS/${folder}/output/. ` +
+          `NEXT STEPS (mandatory, in order): ` +
+          `(1) Break the vision into 3-8 atomic tasks — call create_task once per unit of work. ` +
+          `(2) Assign each task to an agent (assign_agent_to_project first if none is assigned). ` +
+          `(3) Reply to the user with the list of created tasks. ` +
+          `DO NOT write_file, read_file, or execute any of the project's work yourself. You are the orchestrator, agents are the workers.`
+      };
     } catch (err) {
       return { ok: false, error: err.message };
     }

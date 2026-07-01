@@ -15,6 +15,15 @@ function buildVoiceRoutes({ rm, fetchWithRetry }) {
   const express = require('express');
   const router  = express.Router();
 
+  // Voice can be enabled two ways:
+  //  1. voice.enabled=true in aquarium/CHANNELS/comms_config.json
+  //  2. SPEACHES_URL env var is set (means an operator opted in at startup)
+  // The env-var path bypasses the comms_config flag so fresh installs work
+  // out of the box: run Speaches, export SPEACHES_URL=http://localhost:8000,
+  // done. No need to edit JSON.
+  const isVoiceEnabled = (cfg) => !!(cfg?.enabled) || !!process.env.SPEACHES_URL;
+  const speachesBase   = (cfg) => (cfg?.speaches_url || process.env.SPEACHES_URL || 'http://localhost:8000').replace(/\/$/, '');
+
   // ── GET config ──────────────────────────────────────────────────────────────
   router.get('/config', async (req, res) => {
     try {
@@ -22,8 +31,8 @@ function buildVoiceRoutes({ rm, fetchWithRetry }) {
       const cfg = await rm.read('CHANNELS/comms_config.json').catch(() => ({}));
       const v = cfg.voice || {};
       res.json({ ok: true, config: {
-        enabled:       v.enabled || false,
-        speaches_url:  v.speaches_url || 'http://localhost:8000',
+        enabled:       isVoiceEnabled(v),
+        speaches_url:  speachesBase(v),
         tts_voice:     v.tts_voice || 'af_heart',
         tts_speed:     v.tts_speed ?? 1.0,
         language:      v.language || 'fr',
@@ -49,9 +58,9 @@ function buildVoiceRoutes({ rm, fetchWithRetry }) {
     try {
       rm.invalidateCache();
       const cfg = (await rm.read('CHANNELS/comms_config.json').catch(() => ({}))).voice || {};
-      if (!cfg.enabled) return res.status(503).json({ ok: false, error: 'Voice service not enabled. Configure Speaches URL in settings.' });
+      if (!isVoiceEnabled(cfg)) return res.status(503).json({ ok: false, error: 'Voice not enabled. Set SPEACHES_URL env var or enable voice in Comms settings.' });
 
-      const baseUrl = (cfg.speaches_url || 'http://localhost:8000').replace(/\/$/, '');
+      const baseUrl = speachesBase(cfg);
 
       // Buffer the raw request body, then forward to Speaches.
       const chunks = [];
@@ -92,12 +101,12 @@ function buildVoiceRoutes({ rm, fetchWithRetry }) {
     try {
       rm.invalidateCache();
       const cfg = (await rm.read('CHANNELS/comms_config.json').catch(() => ({}))).voice || {};
-      if (!cfg.enabled) return res.status(503).json({ ok: false, error: 'Voice not enabled — click 🎙 Voice in chat header to enable Speaches and save.' });
+      if (!isVoiceEnabled(cfg)) return res.status(503).json({ ok: false, error: 'Voice not enabled. Set SPEACHES_URL env var (e.g. http://localhost:8000) or enable voice in Comms settings.' });
 
       const { text, voice, speed } = req.body;
       if (!text) return res.status(400).json({ ok: false, error: 'text required' });
 
-      const baseUrl = (cfg.speaches_url || 'http://localhost:8000').replace(/\/$/, '');
+      const baseUrl = speachesBase(cfg);
 
       const response = await fetchWithRetry(`${baseUrl}/v1/audio/speech`, {
         retries: 2, baseDelayMs: 500, timeoutMs: 60_000,

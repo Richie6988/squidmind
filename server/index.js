@@ -271,6 +271,23 @@ async function start() {
       await fs.mkdir(dir, { recursive: true }).catch(() => {});
     }
 
+    // Legacy cleanup: old versions created per-task folders TASKS/task_NNNN/.
+    // Canonical layout is now TASKS/OUTPUT/<task_id>.<ext> (flat). Sweep any
+    // orphan task_* directories at boot so they don't clutter file browsers
+    // and don't get mistaken for live data.
+    try {
+      const entries = await fs.readdir(AQUARIUM.TASKS, { withFileTypes: true }).catch(() => []);
+      let removed = 0;
+      for (const e of entries) {
+        if (e.isDirectory() && /^task_\d+/.test(e.name)) {
+          const dp = path.join(AQUARIUM.TASKS, e.name);
+          await fs.rm(dp, { recursive: true, force: true }).catch(() => {});
+          removed++;
+        }
+      }
+      if (removed > 0) console.log(`[Boot] Cleaned up ${removed} legacy TASKS/task_* folder(s)`);
+    } catch { /* non-fatal */ }
+
     // Initialize tool registry (filesystem tools, etc.)
     await toolRegistry.init();
     // Mirror built-in tools to V2 tool_registry.json so AgentForm sees them
