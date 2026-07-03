@@ -208,7 +208,8 @@ const TaskQueueUI = {
 
     const workerStatus = assignee ? (this._workerStatuses[assignee]?.status || 'idle') : null;
     const isRunning   = status === 'in_progress' || workerStatus === 'running';
-    const canRun      = false;  // tasks auto-run — manual run removed
+    const canStart    = ['open','planned','assigned','queued'].includes(status) && !isRunning;
+    const canStop     = isRunning;
     const isCron      = !!t.cron_schedule;
     const projectName = t.project_name || t.context?.project_id || null;
 
@@ -246,7 +247,8 @@ const TaskQueueUI = {
           <span class="tq-rank">#${idx + 1}</span>
           <span class="tq-dot ${statusDot.cls} ${(isRunning || isBrokerActive) ? 'tq-dot-pulse' : ''}" title="${statusDot.label}">⬤</span>
           <span class="tq-title tq-title-link" title="Click to view/edit details">${this._esc(t.title)}</span>
-          ${canRun ? `<button class="tq-run-btn" onclick="TaskQueueUI.runTask('${t.task_id}')" title="▶ Run now">▶</button>` : ''}
+          ${canStart ? `<button class="tq-quickact tq-play" onclick="event.stopPropagation();TaskQueueUI.quickStart('${t.task_id}')" title="Start task">▶</button>` : ''}
+          ${canStop  ? `<button class="tq-quickact tq-stop" onclick="event.stopPropagation();TaskQueueUI.quickStop('${t.task_id}')" title="Stop task">■</button>` : ''}
           <button class="tq-cancel" onclick="TaskQueueUI.deleteTask('${t.task_id}')" title="Delete task">✕</button>
         </div>
         <div class="tq-row2">
@@ -752,6 +754,39 @@ ${task.description}`
   },
 
   // ── Delete (hard) ──────────────────────────────────────────────────────────
+
+  // ── Quick start / stop (same PATCH endpoint used by the temple kanban) ──
+  async quickStart(taskId) {
+    try {
+      const r = await fetch(`/api/v2/tasks/${taskId}/status`, {
+        method:  'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ status: 'in_progress' }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || j?.success === false) {
+        console.warn('[TaskQueueUI] start failed:', j?.error || r.status);
+        return;
+      }
+      this._render();
+    } catch (e) { console.warn('[TaskQueueUI] start error:', e.message); }
+  },
+
+  async quickStop(taskId) {
+    try {
+      const r = await fetch(`/api/v2/tasks/${taskId}/status`, {
+        method:  'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ status: 'open', cancel_running: true }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || j?.success === false) {
+        console.warn('[TaskQueueUI] stop failed:', j?.error || r.status);
+        return;
+      }
+      this._render();
+    } catch (e) { console.warn('[TaskQueueUI] stop error:', e.message); }
+  },
 
   async deleteTask(taskId) {
     // Active queued tasks only — soft delete with undo (UndoManager)

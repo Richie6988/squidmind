@@ -5,7 +5,13 @@
 
 const PanelResizer = {
   MIN_WIDTH: 200,
-  MAX_WIDTH: 600,
+  // MAX is dynamic — 60% of viewport width, clamped to [600, 1200]. On a
+  // 1920 screen that's 1152 px, on 2560 it's 1200 px, on 1366 it's 820 px.
+  // A hard cap at 600 (previous value) made the panel feel un-resizable
+  // beyond a certain point.
+  get MAX_WIDTH() {
+    return Math.max(600, Math.min(1200, Math.floor((window.innerWidth || 1280) * 0.6)));
+  },
   STORAGE_KEY: 'squidmind_right_panel_width',
 
   init() {

@@ -8540,3 +8540,34 @@ h4.pc-md-h { font-size: 8px; color: #94a3b8; }
   background: rgba(248,113,113,0.20);
   box-shadow: 0 0 6px rgba(248,113,113,0.35);
 }
+
+/* ═══ Task-queue quick-action buttons (▶ start / ■ stop) ═══════════════ */
+.tq-quickact {
+  background: transparent;
+  border: 1px solid rgba(255,255,255,0.15);
+  color: #94a3b8;
+  border-radius: 3px;
+  font-size: 10px;
+  line-height: 1;
+  padding: 2px 6px;
+  cursor: pointer;
+  transition: all 0.12s;
+  margin: 0 2px;
+  font-family: var(--panel-font-mono), monospace;
+}
+.tq-quickact.tq-play {
+  border-color: rgba(6,255,165,0.40);
+  color: #06ffa5;
+}
+.tq-quickact.tq-play:hover {
+  background: rgba(6,255,165,0.20);
+  box-shadow: 0 0 6px rgba(6,255,165,0.35);
+}
+.tq-quickact.tq-stop {
+  border-color: rgba(248,113,113,0.45);
+  color: #f87171;
+}
+.tq-quickact.tq-stop:hover {
+  background: rgba(248,113,113,0.20);
+  box-shadow: 0 0 6px rgba(248,113,113,0.35);
+}
