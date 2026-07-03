@@ -48,6 +48,7 @@ class PoseidonOrchestrator {
     this._emailService = null;
     this._mcpClient    = null;
     this._bashExecutor = null;
+    this._docGenerator = null;
   }
 
   _getEmailService() {
@@ -78,6 +79,16 @@ class PoseidonOrchestrator {
       } catch (e) { console.warn('[Poseidon] BashExecutor init failed:', e.message); }
     }
     return this._bashExecutor;
+  }
+
+  _getDocGenerator() {
+    if (!this._docGenerator) {
+      try {
+        const { DocGenerator } = require('./DocGenerator');
+        this._docGenerator = new DocGenerator({ rm: this.rm });
+      } catch (e) { console.warn('[Poseidon] DocGenerator init failed:', e.message); }
+    }
+    return this._docGenerator;
   }
 
   /** Called from server/index.js after pool is created */
@@ -1560,6 +1571,68 @@ My response: "${ss.last_response_preview}"${tools}
         }
       }),
 
+      generate_pptx: defineChatSessionFunction({
+        description: 'Generate a PowerPoint (.pptx) file from a structured slide array. ' +
+          'Each slide has a title, plus either `bullets` (array of strings) or `body` (single string). ' +
+          'First slide auto-detects as a title slide if it has no body/bullets. Add speaker `notes` per slide if useful. ' +
+          'Theme: "light" (default) or "dark". Output goes to PROJECTS/<folder>/output/ if project_id set, ' +
+          'else TASKS/OUTPUT/.',
+        params: {
+          type: 'object',
+          properties: {
+            slides: {
+              type: 'array',
+              description: 'Slide list',
+              items: {
+                type: 'object',
+                properties: {
+                  title:   { type: 'string' },
+                  bullets: { type: 'array', items: { type: 'string' }, description: 'Bulleted content (mutually exclusive with body)' },
+                  body:    { type: 'string', description: 'Single-paragraph body (used when bullets empty)' },
+                  notes:   { type: 'string', description: 'Speaker notes' },
+                  layout:  { type: 'string', description: '"title" forces title-slide layout; omit for auto' }
+                },
+                required: ['title']
+              }
+            },
+            filename:   { type: 'string' },
+            project_id: { type: 'string' },
+            title:      { type: 'string', description: 'Deck metadata title' },
+            author:     { type: 'string', description: 'Deck metadata author' },
+            theme:      { type: 'string', description: '"light" or "dark"' }
+          },
+          required: ['slides']
+        },
+        handler: async (params) => {
+          const gen = self._getDocGenerator?.();
+          if (!gen) return { ok: false, error: 'DocGenerator not wired.' };
+          return gen.generatePptx(params);
+        }
+      }),
+
+      generate_docx: defineChatSessionFunction({
+        description: 'Generate a Word (.docx) file from markdown content. ' +
+          'Supports # ## ### headings, - or * unordered lists, 1. 2. 3. numbered lists, ' +
+          '**bold**, *italic*, and blank-line-separated paragraphs. ' +
+          'For structured docs prefer explicit headings so the outline pane renders properly. ' +
+          'Output goes to PROJECTS/<folder>/output/ if project_id set, else TASKS/OUTPUT/.',
+        params: {
+          type: 'object',
+          properties: {
+            markdown:   { type: 'string', description: 'Full document body as markdown' },
+            filename:   { type: 'string' },
+            project_id: { type: 'string' },
+            title:      { type: 'string', description: 'Optional centred title above the body' }
+          },
+          required: ['markdown']
+        },
+        handler: async (params) => {
+          const gen = self._getDocGenerator?.();
+          if (!gen) return { ok: false, error: 'DocGenerator not wired.' };
+          return gen.generateDocx(params);
+        }
+      }),
+
       execute_bash: defineChatSessionFunction({
         description: 'Execute a shell command on the operator\'s local machine and return stdout, stderr, and exit code. ' +
           'Runs via /bin/sh -c so full shell syntax works (pipes, redirects, &&). Default cwd is aquarium/; pass `cwd` for a different location. ' +
@@ -1628,7 +1701,7 @@ My response: "${ss.last_response_preview}"${tools}
         'update_project_memory', 'read_project_memory', 'audit_project',
         'list_models', 'generate_image', 'edit_image',
         'send_email', 'list_mcp_servers', 'call_mcp_tool',
-        'execute_bash',
+        'execute_bash', 'generate_pptx', 'generate_docx',
         'list_skills', 'read_my_brain', 'record_skill_outcome',
       ]);
       const slim = {};
