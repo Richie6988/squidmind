@@ -525,7 +525,6 @@ class OrchestratorTools {
         outFilename = taskId ? `${taskId}.png` : (safeFilename || `generated_${Date.now()}.png`);
         serveBase   = require('path').join(outputDir, outFilename);
       }
-      const serveUrl = `/api/files/read?path=${encodeURIComponent(serveBase)}`;
       await fs2.mkdir(outputDir, { recursive: true });
       const outputPath = path.join(outputDir, outFilename);
 
@@ -562,15 +561,20 @@ class OrchestratorTools {
             strength:       0.35,
           });
           if (up?.ok && up.outputPath) {
-            // Point the serveUrl at the upscaled version — that's what users want to see
+            // Point serveBase at the upscaled version — that's what users want to see
             result.outputPath = up.outputPath;
-            const upBase = require('path').basename(up.outputPath);
-            serveBase = require('path').join(outputDir, upBase);
+            serveBase = require('path').join(outputDir, require('path').basename(up.outputPath));
           } else {
             log.warn(`upscale pass x${scale} failed:`, up?.error || 'unknown');
           }
         } catch (e) { log.warn(`upscale pass error:`, e.message); }
       }
+
+      // serveUrl computed AFTER upscale so it reflects the upscaled file when
+      // present. Previously this was a const set before the upscale block, so
+      // the returned URL + markdown always pointed at the low-res wave-1 image
+      // and the upscale was invisible even though it was generated on disk.
+      const serveUrl = `/api/files/read?path=${encodeURIComponent(serveBase)}`;
 
       // Update task status + persist a results_log entry so the Results panel
       // (/api/v2/tasks/results) actually sees the completed image. The earlier

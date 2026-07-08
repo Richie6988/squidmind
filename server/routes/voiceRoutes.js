@@ -45,11 +45,21 @@ function buildVoiceRoutes({ rm, fetchWithRetry }) {
   // ── PATCH config (partial update) ───────────────────────────────────────────
   router.patch('/config', express.json(), async (req, res) => {
     try {
+      if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body)) {
+        return res.status(400).json({ ok: false, error: 'JSON body required. Got: ' + JSON.stringify(req.body) });
+      }
       rm.invalidateCache();
       const cfg = await rm.read('CHANNELS/comms_config.json').catch(() => ({}));
-      cfg.voice = { ...(cfg.voice || {}), ...req.body };
+      // Whitelist the fields we accept so a malformed client can't clobber
+      // unrelated comms config.
+      const allowed = ['enabled', 'speaches_url', 'tts_voice', 'tts_speed', 'language', 'stt_model', 'tts_model'];
+      const patch = {};
+      for (const k of allowed) if (k in req.body) patch[k] = req.body[k];
+      cfg.voice = { ...(cfg.voice || {}), ...patch };
       await rm.write('CHANNELS/comms_config.json', cfg);
-      res.json({ ok: true });
+      rm.invalidateCache();  // ensure the next GET reads fresh from disk
+      // Echo back the persisted voice block so the client can confirm + refresh
+      res.json({ ok: true, saved: cfg.voice });
     } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
   });
 
@@ -128,12 +138,34 @@ function buildVoiceRoutes({ rm, fetchWithRetry }) {
       }
 
       res.setHeader('Content-Type', 'audio/wav');
-      res.setHeader('Transfer-Encoding', 'chunked');
-      response.body.pipe(res);
+      // Node's global fetch (undici) returns a WHATWG ReadableStream on
+      // response.body — it has NO .pipe() method. Calling .pipe() throws
+      // "response.body.pipe is not a function" and the TTS silently fails
+      // even when Speaches responded 200. Convert to a Node Readable first.
+      const { Readable } = require('stream');
+      if (response.body && typeof response.body.pipe === 'function') {
+        // node-fetch style (Node Readable) — pipe directly
+        response.body.pipe(res);
+      } else if (response.body) {
+        // undici/global fetch (Web ReadableStream) — bridge it
+        Readable.fromWeb(response.body).pipe(res);
+      } else {
+        // No streaming body — fall back to buffering
+        const buf = Buffer.from(await response.arrayBuffer());
+        res.end(buf);
+      }
     } catch (e) {
-      const isConn = /ECONNREFUSED|fetch failed/i.test(e.message);
+      const isConn = /ECONNREFUSED|fetch failed|ENOTFOUND|ETIMEDOUT|network|abort/i.test(e.message);
       if (!res.headersSent) {
-        res.status(isConn ? 503 : 500).json({ ok: false, error: isConn ? 'Speaches unreachable' : e.message });
+        res.status(isConn ? 503 : 500).json({
+          ok: false,
+          error: isConn
+            ? `Cannot reach Speaches at ${speachesBase((await rm.read('CHANNELS/comms_config.json').catch(()=>({}))).voice || {})}. ` +
+              `Verify: (1) the container is running (docker ps), (2) it maps port 8000 (-p 8000:8000), ` +
+              `(3) curl the URL from the SAME machine the SquidMind server runs on — if SquidMind is itself in Docker, ` +
+              `"localhost" points at its own container, use host.docker.internal or the host IP instead.`
+            : e.message
+        });
       }
     }
   });
