@@ -2404,21 +2404,6 @@ const TempleInterior = {
     this._createNewFile(this._folder());
   },
 
-  _ideTogglePreview() {
-    const frame = document.getElementById('ti-preview-frame');
-    const ed    = document.getElementById('ti-editor');
-    if (!frame) return;
-    if (frame.style.display === 'none' || !frame.style.display) {
-      const blob = new Blob([ed?.value || ''], { type: 'text/html' });
-      const url  = URL.createObjectURL(blob);
-      frame.src = url;
-      frame.style.display = '';
-      frame.onload = () => { URL.revokeObjectURL(url); frame.onload = null; };
-    } else {
-      frame.style.display = 'none';
-    }
-  },
-
   _setStatus(msg) {
     const el = document.getElementById('ti-ide-status');
     if (el) el.textContent = msg.toUpperCase();

@@ -469,45 +469,46 @@ function buildRouter(v2ModelService) {
   });
 
   // POST /api/v2/models/upscale-image
-  // REAL upscaling via sharp (Lanczos3 resampling) — NOT a diffusion regen.
-  // Takes an existing image, enlarges it by `scale` (2 or 4), sharpens
-  // lightly, and writes <name>_upscaledNx.<ext> next to the source.
+  // REAL upscaling via jimp (pure-JS bicubic resampling) — NOT a diffusion
+  // regen. jimp has no native build step so it always installs cleanly.
   router.post('/upscale-image', async (req, res) => {
     try {
       const { source_image, scale = 2 } = req.body;
       if (!source_image) return res.status(400).json({ ok: false, error: 'source_image is required' });
       const factor = (Number(scale) === 4) ? 4 : 2;
 
-      let sharp;
-      try { sharp = require('sharp'); }
-      catch { return res.status(501).json({ ok: false, error: 'sharp not installed. Run: npm install sharp' }); }
+      let Jimp;
+      try { Jimp = require('jimp'); }
+      catch { return res.status(501).json({ ok: false, error: 'jimp not installed. Run: npm install (jimp is in package.json).' }); }
 
       const path = require('path');
       const fs   = require('fs');
       const AQUARIUM = require('../aquarium');
-      // Resolve path: absolute → as-is; relative → anchored to aquarium root
       let src = source_image;
       if (!path.isAbsolute(src)) src = path.join(AQUARIUM.ROOT, src);
       if (!fs.existsSync(src)) return res.status(404).json({ ok: false, error: `Source image not found: ${src}` });
 
-      const meta = await sharp(src).metadata();
-      const newW = Math.round((meta.width  || 512) * factor);
-      const newH = Math.round((meta.height || 512) * factor);
+      const img  = await Jimp.read(src);
+      const fromW = img.bitmap.width, fromH = img.bitmap.height;
+      const newW = fromW * factor, newH = fromH * factor;
+      // Bicubic resize + a light sharpen convolution to recover edge detail
+      img.resize(newW, newH, Jimp.RESIZE_BICUBIC);
+      img.convolute([
+        [ 0,   -0.15,  0   ],
+        [-0.15, 1.6,  -0.15],
+        [ 0,   -0.15,  0   ],
+      ]);
 
       const ext = path.extname(src) || '.png';
       const out = src.replace(new RegExp(`\\${ext}$`, 'i'), `_upscaled${factor}x${ext}`);
-
-      await sharp(src)
-        .resize(newW, newH, { kernel: sharp.kernel.lanczos3, fit: 'fill' })
-        .sharpen({ sigma: 0.6 })   // light detail recovery after enlarge
-        .toFile(out);
+      await img.writeAsync(out);
 
       const serveUrl = `/api/files/read?path=${encodeURIComponent(out)}`;
-      log.info?.(`[upscale-image] ${factor}x ${meta.width}x${meta.height} → ${newW}x${newH}: ${path.basename(out)}`);
+      log.info?.(`[upscale-image] ${factor}x ${fromW}x${fromH} → ${newW}x${newH}: ${path.basename(out)}`);
       res.json({
         ok: true, success: true,
         outputPath: out, url: serveUrl,
-        from: `${meta.width}x${meta.height}`, to: `${newW}x${newH}`, scale: factor,
+        from: `${fromW}x${fromH}`, to: `${newW}x${newH}`, scale: factor,
       });
     } catch (err) {
       res.status(500).json({ ok: false, success: false, error: err.message });

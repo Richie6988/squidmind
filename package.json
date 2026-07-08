@@ -6,6 +6,8 @@
   "scripts": {
     "start": "node server/index.js",
     "dev": "node --watch server/index.js",
+    "setup": "npm install && node scripts/doctor.js",
+    "doctor": "node scripts/doctor.js",
     "test": "npm run test:smoke && npm run test:integration && npm run test:stream && npm run test:orchestrator",
     "rebuild-llama": "bash scripts/rebuild-llama.sh",
     "test:smoke": "node tests/smoke.test.js",
@@ -42,7 +44,7 @@
     "nodemailer": "^6.9.16",
     "pptxgenjs": "^3.12.0",
     "docx": "^9.0.0",
-    "sharp": "^0.33.5",
+    "jimp": "^0.22.12",
     "ws": "^8.21.0"
   }
 }
