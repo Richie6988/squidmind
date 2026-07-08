@@ -1882,13 +1882,23 @@ const TempleInterior = {
 
   // Toggle between preview and editor for the current file
   _ideTogglePreview() {
-    if (this._activeFileIdx < 0) return;
+    if (this._activeFileIdx < 0 || this._activeFileIdx >= this._openFiles.length) {
+      console.warn('[IDE] toggle preview ignored — no active file (idx=' + this._activeFileIdx + ')');
+      return;
+    }
     const f = this._openFiles[this._activeFileIdx];
-    if (!f) return;
-    // Save current editor content before swapping out
+    if (!f) { console.warn('[IDE] toggle preview — file object missing'); return; }
+    // Save current editor content before swapping out — but ONLY if the
+    // editor is the visible view. In preview mode the textarea is
+    // display:none and reading its (stale/empty) value here would clobber
+    // the real content, which is what made the file look like it "closed"
+    // / went blank when clicking EDIT.
     const ed = document.getElementById('ti-editor');
-    if (ed && ed.style.display !== 'none') f.content = ed.value;
+    if (ed && ed.style.display !== 'none' && !f._previewMode) {
+      f.content = ed.value;
+    }
     f._previewMode = !f._previewMode;
+    console.info('[IDE] toggled', f.name, '→', f._previewMode ? 'preview' : 'edit', 'content=' + (f.content?.length || 0) + 'B');
     this._ideActivate(this._activeFileIdx);
   },
 

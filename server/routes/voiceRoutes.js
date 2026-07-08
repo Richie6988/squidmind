@@ -22,7 +22,34 @@ function buildVoiceRoutes({ rm, fetchWithRetry }) {
   // out of the box: run Speaches, export SPEACHES_URL=http://localhost:8000,
   // done. No need to edit JSON.
   const isVoiceEnabled = (cfg) => !!(cfg?.enabled) || !!process.env.SPEACHES_URL;
-  const speachesBase   = (cfg) => (cfg?.speaches_url || process.env.SPEACHES_URL || 'http://localhost:8000').replace(/\/$/, '');
+  const speachesBase   = (cfg) => {
+    let url = (cfg?.speaches_url || process.env.SPEACHES_URL || 'http://localhost:8000').replace(/\/$/, '');
+    // Node 18+ resolves "localhost" to IPv6 ::1 first. Speaches/docker
+    // usually binds IPv4 0.0.0.0:8000, so a ::1 connection is refused and
+    // surfaces as ECONNREFUSED — the #1 cause of "unreachable" when the
+    // container is demonstrably running. Force IPv4 loopback.
+    url = url.replace(/^(https?:\/\/)localhost(?=[:\/]|$)/i, '$1127.0.0.1');
+    return url;
+  };
+
+  // ── GET /ping — diagnostic: can the SERVER reach Speaches? ──────────────────
+  router.get('/ping', async (req, res) => {
+    const cfg = (await rm.read('CHANNELS/comms_config.json').catch(() => ({}))).voice || {};
+    const base = speachesBase(cfg);
+    try {
+      const r = await fetch(`${base}/v1/models`, { signal: AbortSignal.timeout(5000) });
+      const body = await r.text();
+      res.json({
+        ok: r.ok, reachable: true, url: base, status: r.status,
+        models_preview: body.slice(0, 300),
+      });
+    } catch (e) {
+      res.json({
+        ok: false, reachable: false, url: base, error: e.message,
+        hint: 'Server process cannot open a socket to this URL. Check the container is up and the port is published to the host the SquidMind server runs on.',
+      });
+    }
+  });
 
   // ── GET config ──────────────────────────────────────────────────────────────
   router.get('/config', async (req, res) => {
