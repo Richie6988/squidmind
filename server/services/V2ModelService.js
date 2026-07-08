@@ -1281,6 +1281,22 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
               try {
                 const result = await originalHandler(args);
                 events.push({ type: 'tool_result', name: fnName, result, duration_ms: Date.now() - callTime });
+                // If an image tool returned a usable image URL, emit a display
+                // event so the picture actually renders in chat — the model
+                // often forgets to echo the markdown ![](url) itself.
+                if (result && result.ok !== false) {
+                  const imgTools = new Set(['search_image', 'fetch_image_url', 'generate_image', 'edit_image']);
+                  let imgUrl = null, alt = '';
+                  if (imgTools.has(fnName)) {
+                    imgUrl = result.image || result.url
+                      || (Array.isArray(result.results) && result.results[0] && result.results[0].image)
+                      || null;
+                    alt = result.title || args?.query || args?.prompt || args?.subject || '';
+                  }
+                  if (imgUrl && /^https?:\/\//i.test(imgUrl)) {
+                    events.push({ type: 'image', url: imgUrl, alt, caption: alt });
+                  }
+                }
                 return result;
               } catch (err) {
                 const errResult = { ok: false, error: err.message };
