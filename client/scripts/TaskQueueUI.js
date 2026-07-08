@@ -507,16 +507,18 @@ ${task.description}`
     const src = await this._resolveImagePath(taskId);
     if (!src) return SquidModal.alert('Could not resolve the source image path.');
     try {
-      const r = await fetch('/api/v2/models/generate-image', {
+      // Real Lanczos upscale — enlarges the existing pixels, does NOT
+      // regenerate the image through the diffusion model.
+      const r = await fetch('/api/v2/models/upscale-image', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt: '', source_image: src, strength: 0.35, upscale: scale }),
+        body: JSON.stringify({ source_image: src, scale }),
       });
       const j = await r.json().catch(() => ({}));
-      if (!r.ok || j.ok === false || j.success === false) {
+      if (!r.ok || j.ok === false) {
         return SquidModal.alert('Upscale failed: ' + (j.error || r.status));
       }
-      SquidModal.alert(`${scale}× upscale queued. Watch the results panel — it appears when done.`);
+      SquidModal.alert(`Upscaled ${j.from} → ${j.to}. Saved as ${j.outputPath?.split('/').pop() || 'upscaled file'}.`);
     } catch (e) { SquidModal.alert('Upscale failed: ' + e.message); }
   },
 
@@ -582,13 +584,6 @@ ${task.description}`
             <img src="${task.output_preview}" alt="${this._esc(task.title)}">
           </a>
           ${promptText ? `<div class="tq-img-bigview-prompt">${this._esc(promptText)}</div>` : ''}
-          <div class="tq-img-bigview-actions">
-            <a href="${task.output_preview}" target="_blank" rel="noopener" class="tq-img-bigview-link">Open native size →</a>
-            <a href="${task.output_preview}" download class="tq-img-bigview-link">Download</a>
-            <button class="tq-img-bigview-link" style="background:rgba(6,255,165,0.12);border-color:rgba(6,255,165,0.4);color:#06ffa5;cursor:pointer;" onclick="TaskQueueUI.upscaleResult('${taskId}',2)">↑ Upscale 2×</button>
-            <button class="tq-img-bigview-link" style="background:rgba(6,255,165,0.12);border-color:rgba(6,255,165,0.4);color:#06ffa5;cursor:pointer;" onclick="TaskQueueUI.upscaleResult('${taskId}',4)">↑ Upscale 4×</button>
-            <button class="tq-img-bigview-link" style="background:rgba(79,172,254,0.12);border-color:rgba(79,172,254,0.4);color:#4facfe;cursor:pointer;" onclick="TaskQueueUI.editResult('${taskId}')">✎ Edit</button>
-          </div>
         </div>`;
     } else if (task.result_summary) {
       resultHtml = `<pre class="tq-result-pre">${this._esc(task.result_summary)}</pre>`;
@@ -626,8 +621,17 @@ ${task.description}`
           ${task.result_summary && task.output_preview ? '' :
             (task.description ? `<div class="tq-detail-field"><label>Task</label><div class="tq-detail-result">${this._esc(task.description || '')}</div></div>` : '')}
         </div>
-        <div class="agent-form-footer">
-          <button class="btn-secondary" onclick="TaskQueueUI.openTaskDetail('${taskId}')" style="display:inline-flex;align-items:center;gap:3px;">${window.PixelIcons?.inline('config',11)||''} Edit</button>
+        <div class="agent-form-footer tq-img-footer">
+          ${isImageTask && task.output_preview ? `
+            <a href="${task.output_preview}" target="_blank" rel="noopener" class="tq-img-bigview-link">Open native →</a>
+            <a href="${task.output_preview}" download class="tq-img-bigview-link">Download</a>
+            <button class="tq-img-bigview-link tq-up" onclick="TaskQueueUI.upscaleResult('${taskId}',2)">↑ Upscale 2×</button>
+            <button class="tq-img-bigview-link tq-up" onclick="TaskQueueUI.upscaleResult('${taskId}',4)">↑ Upscale 4×</button>
+            <button class="tq-img-bigview-link tq-editbtn" onclick="TaskQueueUI.editResult('${taskId}')">✎ Edit img</button>
+            <span style="flex:1;"></span>
+          ` : `
+            <button class="btn-secondary" onclick="TaskQueueUI.openTaskDetail('${taskId}')" style="display:inline-flex;align-items:center;gap:3px;">${window.PixelIcons?.inline('config',11)||''} Edit</button>
+          `}
           <button class="btn-primary" onclick="this.closest('.modal').remove()">Close</button>
         </div>
       </div>

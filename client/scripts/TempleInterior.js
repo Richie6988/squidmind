@@ -689,31 +689,22 @@ const TempleInterior = {
   // ── Image quick actions (upscale / edit-with-prompt) ─────────────────────
   async _upscaleImage(filepath, name) {
     if (!filepath) return;
-    // Ask for scale factor (2 or 4)
     const scale = window.confirm('Upscale ' + name + ' by 4×?  OK = 4×, Cancel = 2×') ? 4 : 2;
-    this._setStatus(`Queueing ${scale}× upscale of ${name}…`);
+    this._setStatus(`Upscaling ${name} ${scale}×…`);
     try {
-      // We reuse generate_image with source_image + upscale — hi-res img2img pass.
-      // Prompt is empty (same content, just refined) — strength 0.35 keeps composition.
-      const r = await fetch('/api/v2/models/generate-image', {
+      // Real Lanczos resample — not a diffusion regen.
+      const r = await fetch('/api/v2/models/upscale-image', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          prompt:        '',            // keep composition, just refine detail
-          source_image:  filepath,
-          strength:      0.35,
-          upscale:       scale,
-          filename:      name.replace(/\.(png|jpe?g)$/i, `_x${scale}.$1`),
-        }),
+        body: JSON.stringify({ source_image: filepath, scale }),
       });
       const j = await r.json().catch(() => ({}));
       if (!r.ok || (j && j.ok === false)) {
         this._setStatus(`Upscale failed: ${(j && j.error) || r.status}`);
         return;
       }
-      this._setStatus(`${scale}× upscale queued as ${j.task_id || 'task'} — watch the queue.`);
-      // Refresh file list after a beat so the new file appears
-      setTimeout(() => this._switchLeft('files'), 3000);
+      this._setStatus(`Upscaled ${j.from} → ${j.to}. Saved ${j.outputPath?.split('/').pop() || ''}.`);
+      setTimeout(() => this._switchLeft('files'), 1500);
     } catch (e) {
       this._setStatus(`Upscale failed: ${e.message}`);
     }
