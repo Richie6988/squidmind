@@ -132,9 +132,21 @@ const TaskQueueUI = {
         const getStatus = t => t.lifecycle?.status || t.status || '';
         const imgTasks  = doneTasks.filter(t => isImg(t) && getStatus(t) === 'completed');
         const restTasks = doneTasks.filter(t => !isImg(t) || getStatus(t) !== 'completed');
-        resultsEl.innerHTML =
-          (imgTasks.length  ? `<div class="tq-img-pinned">${imgTasks.map(t => this._makeImageCard(t)).join('')}</div>` : '') +
-          restTasks.map(t => this._makeDoneItem(t)).join('');
+        const carousel = imgTasks.length
+          ? `<div class="tq-img-carousel-wrap">
+               <div class="tq-carousel-head">
+                 <span class="tq-carousel-title">${window.PixelIcons?.inline('data',10)||'🖼'} IMAGES (${imgTasks.length})</span>
+                 <div class="tq-carousel-nav">
+                   <button class="tq-carousel-btn" onclick="TaskQueueUI._carouselScroll(-1)" title="Previous">‹</button>
+                   <button class="tq-carousel-btn" onclick="TaskQueueUI._carouselScroll(1)" title="Next">›</button>
+                 </div>
+               </div>
+               <div class="tq-img-carousel" id="tq-img-carousel">
+                 ${imgTasks.map(t => this._makeImageCard(t)).join('')}
+               </div>
+             </div>`
+          : '';
+        resultsEl.innerHTML = carousel + restTasks.map(t => this._makeDoneItem(t)).join('');
       }
     } catch (err) {
       queueEl.innerHTML = `<p class="hint" style="font-size:9px;color:var(--danger);">Failed: ${this._esc(err.message)}</p>`;
@@ -174,6 +186,13 @@ const TaskQueueUI = {
         <div class="tq-done-summary">${summary}</div>
         </div>
       </div>`;
+  },
+
+  _carouselScroll(dir) {
+    const el = document.getElementById('tq-img-carousel');
+    if (!el) return;
+    // Scroll by roughly one card width (thumb + gap)
+    el.scrollBy({ left: dir * 200, behavior: 'smooth' });
   },
 
   _makeImageCard(t) {

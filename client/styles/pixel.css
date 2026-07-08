@@ -8571,3 +8571,52 @@ h4.pc-md-h { font-size: 8px; color: #94a3b8; }
   background: rgba(248,113,113,0.20);
   box-shadow: 0 0 6px rgba(248,113,113,0.35);
 }
+
+/* ═══ Task-results image carousel (horizontal scroll, pinned above list) ═══ */
+.tq-img-carousel-wrap {
+  border-bottom: 1px solid rgba(79,172,254,0.15);
+  margin-bottom: 6px;
+  padding-bottom: 6px;
+}
+.tq-carousel-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 4px 8px 2px 8px;
+}
+.tq-carousel-title {
+  font-family: var(--panel-font), sans-serif; font-size: 9px; font-weight: 700;
+  letter-spacing: 0.06em; color: #4facfe;
+  display: inline-flex; align-items: center; gap: 5px;
+}
+.tq-carousel-nav { display: flex; gap: 3px; }
+.tq-carousel-btn {
+  background: rgba(79,172,254,0.10);
+  border: 1px solid rgba(79,172,254,0.30);
+  color: #4facfe; border-radius: 4px;
+  width: 22px; height: 20px; font-size: 14px; line-height: 1;
+  cursor: pointer; padding: 0; display: flex; align-items: center; justify-content: center;
+}
+.tq-carousel-btn:hover { background: rgba(79,172,254,0.25); }
+.tq-img-carousel {
+  display: flex;
+  flex-direction: row;
+  gap: 8px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 4px 8px 8px 8px;
+  scroll-behavior: smooth;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(79,172,254,0.4) transparent;
+}
+.tq-img-carousel::-webkit-scrollbar { height: 6px; }
+.tq-img-carousel::-webkit-scrollbar-thumb { background: rgba(79,172,254,0.4); border-radius: 3px; }
+.tq-img-carousel::-webkit-scrollbar-track { background: transparent; }
+/* Cards inside the carousel are fixed-width so they line up as a filmstrip
+   and don't get squeezed by the flex-wrap rules the pinned grid used. */
+.tq-img-carousel .tq-img-card {
+  width: 180px;
+  min-width: 180px;
+  flex: 0 0 180px;
+}
+.tq-img-carousel .tq-img-thumb-wrap {
+  aspect-ratio: 16 / 10;   /* landscape strip reads better than square here */
+}

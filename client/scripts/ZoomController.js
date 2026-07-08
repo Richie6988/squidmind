@@ -16,24 +16,41 @@ window.ZoomController = {
   _current: 100,
 
   init() {
-    // Restore saved value before anything renders so we don't get a
-    // visible resize flash on load.
     const saved = parseInt(localStorage.getItem(this.STORAGE_KEY) || '', 10);
     this._current = (Number.isFinite(saved) && saved >= this.MIN && saved <= this.MAX)
       ? saved
       : this.DEFAULT;
-    this._apply(this._current);
-    // Wait for body before mounting the pill
-    if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', () => this._mount());
-    } else {
+    const start = () => {
+      if (!document.body) { setTimeout(start, 50); return; }
+      this._apply(this._current);
       this._mount();
+    };
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', start);
+    } else {
+      start();
     }
   },
 
   _apply(pct) {
-    document.documentElement.style.zoom = (pct / 100).toString();
+    // Apply to <body> rather than <html>. `zoom` on documentElement is
+    // inconsistently honoured and position:fixed descendants of body ignore
+    // it entirely. Setting it on body is the most reliable approach short
+    // of a transform hack.
+    const z = (pct / 100).toString();
+    const supportsZoom = 'zoom' in document.body.style;
+    if (supportsZoom) {
+      document.body.style.zoom = z;
+    } else {
+      // Fallback for engines that ignore CSS zoom (older Firefox): scale
+      // transform on the main container.
+      const main = document.querySelector('.main-container') || document.body;
+      main.style.transformOrigin = 'top left';
+      main.style.transform = `scale(${z})`;
+      main.style.width  = `${100 / (pct / 100)}%`;
+    }
     this._current = pct;
+    console.info('[ZoomController] applied', pct + '%', 'via', supportsZoom ? 'zoom' : 'transform');
   },
 
   _persist(pct) {
