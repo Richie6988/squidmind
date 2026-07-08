@@ -52,23 +52,40 @@ function buildVoiceRoutes({ rm, fetchWithRetry }) {
     // Already up?
     if (await ping()) return res.json({ ok: true, already_running: true, url: base });
 
-    // Is docker even available?
-    const dockerOk = await new Promise(r => exec('docker --version', e => r(!e)));
-    if (!dockerOk) {
+    // Is a container runtime available? The Node process may have a
+    // restricted PATH (systemd services, some launchers) that omits
+    // /usr/local/bin etc., so probe explicit paths and podman too.
+    const which = (cmd) => new Promise(r => exec(`command -v ${cmd}`, (e, out) => r(e ? null : out.trim())));
+    let runtime = await which('docker');
+    if (!runtime) {
+      for (const p of ['/usr/bin/docker', '/usr/local/bin/docker', '/snap/bin/docker']) {
+        if (await new Promise(r => exec(`test -x ${p}`, e => r(!e)))) { runtime = p; break; }
+      }
+    }
+    if (!runtime) runtime = await which('podman');   // podman is CLI-compatible for run/rm
+    if (!runtime) {
+      for (const p of ['/usr/bin/podman', '/usr/local/bin/podman']) {
+        if (await new Promise(r => exec(`test -x ${p}`, e => r(!e)))) { runtime = p; break; }
+      }
+    }
+    if (!runtime) {
       return res.status(501).json({
         ok: false,
-        error: 'Docker not found on this machine. Install Docker, or start Speaches manually.',
+        error: 'No container runtime (docker/podman) found on the machine running the SquidMind server. ' +
+               'If Docker IS installed, the server process may have a restricted PATH — set ' +
+               'SPEACHES_IMAGE and run the container manually, or start SquidMind from a shell where ' +
+               '`docker` is on PATH.',
       });
     }
 
     const name  = 'squidmind-speaches';
     const image = process.env.SPEACHES_IMAGE || 'ghcr.io/speaches-ai/speaches:latest-cuda';
     // Remove any stale container with the same name first (ignore errors)
-    await new Promise(r => exec(`docker rm -f ${name}`, () => r()));
+    await new Promise(r => exec(`${runtime} rm -f ${name}`, () => r()));
     const args = ['run', '-d', '--rm', '--name', name, '-p', `${port}:8000`, '--gpus', 'all', image];
 
     try {
-      const child = spawn('docker', args, { detached: true, stdio: 'ignore' });
+      const child = spawn(runtime, args, { detached: true, stdio: 'ignore' });
       child.unref();
     } catch (e) {
       return res.status(500).json({ ok: false, error: `docker run failed: ${e.message}` });

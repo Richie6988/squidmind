@@ -483,6 +483,62 @@ ${task.description}`
 
   // ── Task detail popup ──────────────────────────────────────────────────────
 
+  // Resolve a task's output image to an absolute/aquarium path the
+  // generate-image endpoint can read as source_image.
+  async _resolveImagePath(taskId) {
+    let task;
+    try {
+      const r = await window.api.tasks.list();
+      task = r.registry.tasks?.[taskId];
+      if (!task) { const rr = await window.api._fetch('/tasks/results'); task = rr.results?.[taskId]; }
+    } catch { return null; }
+    if (!task) return null;
+    // output_preview is like /api/files/read?path=<abs> — extract the path
+    const prev = task.output_preview || '';
+    const m = prev.match(/[?&]path=([^&]+)/);
+    if (m) return decodeURIComponent(m[1]);
+    // Or a projects serve URL: /api/v2/projects/<folder>/outputs/<file>
+    const pm = prev.match(/\/projects\/([^/]+)\/outputs\/([^?&]+)/);
+    if (pm) return `PROJECTS/${pm[1]}/output/${decodeURIComponent(pm[2])}`;
+    return null;
+  },
+
+  async upscaleResult(taskId, scale = 2) {
+    const src = await this._resolveImagePath(taskId);
+    if (!src) return SquidModal.alert('Could not resolve the source image path.');
+    try {
+      const r = await fetch('/api/v2/models/generate-image', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: '', source_image: src, strength: 0.35, upscale: scale }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || j.ok === false || j.success === false) {
+        return SquidModal.alert('Upscale failed: ' + (j.error || r.status));
+      }
+      SquidModal.alert(`${scale}× upscale queued. Watch the results panel — it appears when done.`);
+    } catch (e) { SquidModal.alert('Upscale failed: ' + e.message); }
+  },
+
+  async editResult(taskId) {
+    const src = await this._resolveImagePath(taskId);
+    if (!src) return SquidModal.alert('Could not resolve the source image path.');
+    const prompt = window.prompt('Edit this image — describe the change (strength 0.6):', '');
+    if (!prompt || !prompt.trim()) return;
+    try {
+      const r = await fetch('/api/v2/models/generate-image', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt, source_image: src, strength: 0.6 }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || j.ok === false || j.success === false) {
+        return SquidModal.alert('Edit failed: ' + (j.error || r.status));
+      }
+      SquidModal.alert('Edit queued. Watch the results panel — it appears when done.');
+    } catch (e) { SquidModal.alert('Edit failed: ' + e.message); }
+  },
+
   async openTaskResult(taskId) {
     let task;
     try {
@@ -529,6 +585,9 @@ ${task.description}`
           <div class="tq-img-bigview-actions">
             <a href="${task.output_preview}" target="_blank" rel="noopener" class="tq-img-bigview-link">Open native size →</a>
             <a href="${task.output_preview}" download class="tq-img-bigview-link">Download</a>
+            <button class="tq-img-bigview-link" style="background:rgba(6,255,165,0.12);border-color:rgba(6,255,165,0.4);color:#06ffa5;cursor:pointer;" onclick="TaskQueueUI.upscaleResult('${taskId}',2)">↑ Upscale 2×</button>
+            <button class="tq-img-bigview-link" style="background:rgba(6,255,165,0.12);border-color:rgba(6,255,165,0.4);color:#06ffa5;cursor:pointer;" onclick="TaskQueueUI.upscaleResult('${taskId}',4)">↑ Upscale 4×</button>
+            <button class="tq-img-bigview-link" style="background:rgba(79,172,254,0.12);border-color:rgba(79,172,254,0.4);color:#4facfe;cursor:pointer;" onclick="TaskQueueUI.editResult('${taskId}')">✎ Edit</button>
           </div>
         </div>`;
     } else if (task.result_summary) {
