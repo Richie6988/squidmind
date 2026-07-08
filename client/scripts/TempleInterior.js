@@ -1693,7 +1693,9 @@ const TempleInterior = {
       this._ideActivate(this._openFiles.length - 1);
       const frame = document.getElementById('ti-preview-frame');
       if (frame) {
-        frame.style.display = '';
+        frame.style.display    = '';
+        frame.style.visibility = 'visible';
+        frame.style.zIndex     = '20';
         frame.srcdoc = `<html><body style="margin:0;background:#0a2239;display:flex;align-items:center;justify-content:center;min-height:100vh;"><img src="${url}" style="max-width:100%;max-height:100vh;"></body></html>`;
       }
       const ed = document.getElementById('ti-editor');
@@ -1799,9 +1801,13 @@ const TempleInterior = {
       rPanel.style.zIndex = '1';
     }
 
-    // Reset both views
-    if (ed)    { ed.style.display = 'none'; ed.style.zIndex = '5'; }
-    if (frame) { frame.style.display = 'none'; frame.style.zIndex = '5'; }
+    // Reset ALL three layers to a known hidden state before showing one.
+    // Use both display AND visibility so a stale frame can't bleed through,
+    // and give each layer a distinct z-index band so ordering is never
+    // ambiguous (reasoning < preview < editor).
+    if (rPanel) { rPanel.style.zIndex = '1'; }
+    if (ed)     { ed.style.display = 'none';    ed.style.visibility = 'hidden';    ed.style.zIndex = '30'; }
+    if (frame)  { frame.style.display = 'none'; frame.style.visibility = 'hidden'; frame.style.zIndex = '20'; }
 
     // Wire up file metadata UI
     if (fnEl) fnEl.textContent = f.name + (f.dirty ? ' ●' : '');
@@ -1817,7 +1823,9 @@ const TempleInterior = {
     if (f.isImg) {
       // Images: preview only, with an action bar (upscale / edit) overlaid.
       if (frame) {
-        frame.style.display = 'block';
+        frame.style.display    = 'block';
+        frame.style.visibility = 'visible';
+        frame.style.zIndex     = '20';
         const fp = (f.path || '').replace(/'/g, "\\'");
         const nm = (f.name || '').replace(/'/g, "\\'");
         frame.srcdoc = `<html><body style="margin:0;background:#020810;display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;position:relative;">
@@ -1836,7 +1844,7 @@ const TempleInterior = {
 
     if (showPreview) {
       // ── PREVIEW MODE ──
-      if (frame) frame.style.display = 'block';
+      if (frame) { frame.style.display = 'block'; frame.style.visibility = 'visible'; frame.style.zIndex = '20'; }
       // Diagnostic: if server said the file was N > 0 bytes but the client
       // ended up with an empty content string, surface a specific message
       // instead of the misleading "(empty file)" placeholder.
@@ -1868,18 +1876,23 @@ const TempleInterior = {
       }
     } else {
       // ── EDIT MODE ── always use the textarea
-      if (frame)  frame.style.display = 'none';
+      if (frame)  { frame.style.display = 'none'; frame.style.visibility = 'hidden'; }
       if (rPanel) rPanel.style.zIndex = '0';
       if (ed) {
-        ed.style.display = 'block';
-        ed.style.zIndex  = '10';           // above reasoning(0) + frame(5)
+        ed.style.display    = 'block';
         ed.style.visibility = 'visible';
+        ed.style.zIndex     = '30';
         ed.value = f.loading ? '' : (f.content || '');
         const fileLang = f.name.match(/\.(\w+)$/)?.[1] || 'text';
         ed.setAttribute('data-lang', fileLang);
         if (f.loading) ed.placeholder = 'Loading…'; else ed.placeholder = '';
-        // Focus so the user can type immediately
-        setTimeout(() => { try { ed.focus(); } catch {} }, 0);
+        setTimeout(() => {
+          try {
+            ed.focus();
+            const r = ed.getBoundingClientRect();
+            console.info('[IDE] editor shown', f.name, `${Math.round(r.width)}x${Math.round(r.height)}px`, 'val=' + ed.value.length + 'B', 'display=' + getComputedStyle(ed).display, 'vis=' + getComputedStyle(ed).visibility);
+          } catch {}
+        }, 0);
       }
       const langLabel = f.name.match(/\.(\w+)$/)?.[1]?.toUpperCase() || 'TEXT';
       if (status) status.textContent = f.name + ' [' + langLabel + ' EDIT]';

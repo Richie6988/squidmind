@@ -52,43 +52,82 @@ function buildVoiceRoutes({ rm, fetchWithRetry }) {
     // Already up?
     if (await ping()) return res.json({ ok: true, already_running: true, url: base });
 
-    // Is a container runtime available? The Node process may have a
-    // restricted PATH (systemd services, some launchers) that omits
-    // /usr/local/bin etc., so probe explicit paths and podman too.
-    const which = (cmd) => new Promise(r => exec(`command -v ${cmd}`, (e, out) => r(e ? null : out.trim())));
-    let runtime = await which('docker');
-    if (!runtime) {
-      for (const p of ['/usr/bin/docker', '/usr/local/bin/docker', '/snap/bin/docker']) {
-        if (await new Promise(r => exec(`test -x ${p}`, e => r(!e)))) { runtime = p; break; }
+    // Is a container runtime available? The Node process often has a
+    // restricted PATH (desktop launchers, AppImages, systemd) that omits
+    // the dirs where docker actually lives. We therefore:
+    //  1. ask the user's LOGIN shell for its PATH and search that,
+    //  2. probe an expanded explicit list (incl. rootless + Desktop),
+    //  3. fall back to podman the same way.
+    const os = require('os');
+    const home = os.homedir();
+    const runCmd = (cmd, opts = {}) => new Promise(r =>
+      exec(cmd, { timeout: 4000, ...opts }, (e, out) => r(e ? null : (out || '').trim())));
+
+    // 1. login-shell PATH — bash -lc inherits the interactive PATH
+    let loginPath = await runCmd(`bash -lc 'echo $PATH'`);
+    const findIn = async (bin) => {
+      if (loginPath) {
+        const hit = await runCmd(`bash -lc 'command -v ${bin}'`);
+        if (hit && hit.startsWith('/')) return hit;
       }
-    }
-    if (!runtime) runtime = await which('podman');   // podman is CLI-compatible for run/rm
-    if (!runtime) {
-      for (const p of ['/usr/bin/podman', '/usr/local/bin/podman']) {
-        if (await new Promise(r => exec(`test -x ${p}`, e => r(!e)))) { runtime = p; break; }
+      return null;
+    };
+
+    const explicit = (bin) => [
+      `/usr/bin/${bin}`, `/usr/local/bin/${bin}`, `/snap/bin/${bin}`,
+      `/opt/homebrew/bin/${bin}`, `/usr/sbin/${bin}`,
+      `${home}/.local/bin/${bin}`, `${home}/bin/${bin}`,
+      `/var/lib/flatpak/exports/bin/${bin}`,
+    ];
+    const probeExplicit = async (bin) => {
+      for (const p of explicit(bin)) {
+        if (await new Promise(r => exec(`test -x "${p}"`, e => r(!e)))) return p;
       }
-    }
+      return null;
+    };
+
+    let runtime = await findIn('docker') || await probeExplicit('docker')
+               || await findIn('podman') || await probeExplicit('podman');
+
     if (!runtime) {
       return res.status(501).json({
         ok: false,
-        error: 'No container runtime (docker/podman) found on the machine running the SquidMind server. ' +
-               'If Docker IS installed, the server process may have a restricted PATH — set ' +
-               'SPEACHES_IMAGE and run the container manually, or start SquidMind from a shell where ' +
-               '`docker` is on PATH.',
+        error: 'No container runtime (docker/podman) found. Searched the login-shell PATH and the usual ' +
+               'locations. If Docker is installed, run this in your terminal to confirm: `which docker`. ' +
+               'If it prints a path, tell me — otherwise install Docker, or set SPEACHES_URL to a Speaches ' +
+               'instance you start yourself.',
+        searched_login_path: loginPath || '(could not read login PATH)',
       });
     }
+    log.info?.(`[autostart] using container runtime: ${runtime}`);
 
     const name  = 'squidmind-speaches';
     const image = process.env.SPEACHES_IMAGE || 'ghcr.io/speaches-ai/speaches:latest-cuda';
     // Remove any stale container with the same name first (ignore errors)
     await new Promise(r => exec(`${runtime} rm -f ${name}`, () => r()));
-    const args = ['run', '-d', '--rm', '--name', name, '-p', `${port}:8000`, '--gpus', 'all', image];
+    const baseArgs = ['run', '-d', '--rm', '--name', name, '-p', `${port}:8000`];
 
-    try {
-      const child = spawn(runtime, args, { detached: true, stdio: 'ignore' });
-      child.unref();
-    } catch (e) {
-      return res.status(500).json({ ok: false, error: `docker run failed: ${e.message}` });
+    const tryRun = (extraArgs) => new Promise((resolve) => {
+      const child = spawn(runtime, [...baseArgs, ...extraArgs, image], { detached: true, stdio: ['ignore', 'ignore', 'pipe'] });
+      let err = '';
+      child.stderr?.on('data', d => { err += d.toString(); });
+      child.on('close', (code) => resolve({ code, err }));
+      child.on('error', (e) => resolve({ code: -1, err: e.message }));
+    });
+
+    // Attempt with GPU first; if docker rejects --gpus (no NVIDIA toolkit),
+    // retry without it so CPU inference still works.
+    let runResult = await tryRun(['--gpus', 'all']);
+    if (runResult.code !== 0 && /gpu|nvidia|--gpus|not supported|unknown flag/i.test(runResult.err)) {
+      log.info?.('[autostart] --gpus rejected, retrying CPU-only');
+      await new Promise(r => exec(`${runtime} rm -f ${name}`, () => r()));
+      runResult = await tryRun([]);
+    }
+    if (runResult.code !== 0) {
+      return res.status(500).json({
+        ok: false,
+        error: `Container failed to start (exit ${runResult.code}): ${(runResult.err || '').slice(0, 300)}`,
+      });
     }
 
     // Poll for readiness — model download on first run can take a while.
