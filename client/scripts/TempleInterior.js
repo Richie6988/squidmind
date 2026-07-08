@@ -1875,12 +1875,18 @@ const TempleInterior = {
       }
     } else {
       // ── EDIT MODE ── always use the textarea
+      if (frame)  frame.style.display = 'none';
+      if (rPanel) rPanel.style.zIndex = '0';
       if (ed) {
         ed.style.display = 'block';
+        ed.style.zIndex  = '10';           // above reasoning(0) + frame(5)
+        ed.style.visibility = 'visible';
         ed.value = f.loading ? '' : (f.content || '');
         const fileLang = f.name.match(/\.(\w+)$/)?.[1] || 'text';
         ed.setAttribute('data-lang', fileLang);
         if (f.loading) ed.placeholder = 'Loading…'; else ed.placeholder = '';
+        // Focus so the user can type immediately
+        setTimeout(() => { try { ed.focus(); } catch {} }, 0);
       }
       const langLabel = f.name.match(/\.(\w+)$/)?.[1]?.toUpperCase() || 'TEXT';
       if (status) status.textContent = f.name + ' [' + langLabel + ' EDIT]';
@@ -2349,6 +2355,23 @@ const TempleInterior = {
     } else {
       // No more open files — return to reasoning view
       this._showReasoning();
+    }
+  },
+
+  // Called on every keystroke in the editor textarea (oninput). This was
+  // referenced in the markup but never defined — so every keystroke threw
+  // "TempleInterior._ideMarkDirty is not a function". Define it: sync the
+  // buffer, flag dirty, update the tab marker.
+  _ideMarkDirty() {
+    if (this._activeFileIdx < 0 || !this._openFiles[this._activeFileIdx]) return;
+    const f  = this._openFiles[this._activeFileIdx];
+    const ed = document.getElementById('ti-editor');
+    if (ed) f.content = ed.value;   // keep the buffer in sync as the user types
+    if (!f.dirty) {
+      f.dirty = true;
+      const fnEl = document.getElementById('ti-ide-fname');
+      if (fnEl) fnEl.textContent = f.name + ' ●';
+      this._renderIdeTabs();
     }
   },
 

@@ -1549,8 +1549,16 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
           reflection: null
         }).catch(() => {});
 
-        // Wipe session — next request will create a fresh one with the checkpoint injected
+        // Wipe session — next request will create a fresh one with the checkpoint injected.
+        // CRITICAL: dispose the sequence too, not just null the ref. If the
+        // underlying llama.cpp sequence slot is left allocated, the next
+        // getSequence() may hand back the SAME slot with a stale internal
+        // nextTokenIndex while the KV cache has been partially cleared —
+        // producing "[node-llama-cpp] Checkpoint max position mismatch:
+        // expected X, got Y". Disposing forces a clean slot next time.
         try { if (entry.session?.dispose) await entry.session.dispose(); } catch {}
+        try { if (entry._currentSequence?.dispose) await entry._currentSequence.dispose(); } catch {}
+        await new Promise(r => setTimeout(r, 100));  // let llama.cpp release the slot
         entry.session = null;
         entry._currentSequence = null;
         entry.sessionTurns = 0;
@@ -1560,7 +1568,7 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
       // Session wipe done (or not needed)
     } catch (err) {
       // Log every error — 0s broker release with no log makes debugging impossible
-      const isKnown = /no sequences|sequence|context|too long|compress|prompt|system message/i.test(err.message);
+      const isKnown = /no sequences|sequence|context|too long|compress|prompt|system message|checkpoint|max position|position mismatch/i.test(err.message);
       log.error(` chatWithPoseidon error (${isKnown ? 'session' : 'unknown'}):`, err.message);
       if (!isKnown) log.error(err.stack?.split('\n').slice(0,4).join('\n'));
       // Catch all session/context/prompt errors and reset session state fully
