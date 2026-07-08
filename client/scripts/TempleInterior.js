@@ -1822,10 +1822,20 @@ const TempleInterior = {
     }
 
     if (f.isImg) {
-      // Images: preview only
+      // Images: preview only, with an action bar (upscale / edit) overlaid.
       if (frame) {
         frame.style.display = 'block';
-        frame.srcdoc = `<html><body style="margin:0;background:#020810;display:flex;align-items:center;justify-content:center;height:100vh;"><img src="${f.imgUrl}" style="max-width:100%;max-height:100%;object-fit:contain;"></body></html>`;
+        const fp = (f.path || '').replace(/'/g, "\\'");
+        const nm = (f.name || '').replace(/'/g, "\\'");
+        frame.srcdoc = `<html><body style="margin:0;background:#020810;display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;position:relative;">
+          <img src="${f.imgUrl}" style="max-width:100%;max-height:100%;object-fit:contain;">
+          <div style="position:fixed;bottom:12px;left:50%;transform:translateX(-50%);display:flex;gap:8px;">
+            <button onclick="parent.TempleInterior._upscaleImage('${fp}','${nm}')"
+              style="background:rgba(6,255,165,0.15);border:1px solid rgba(6,255,165,0.4);color:#06ffa5;border-radius:6px;padding:6px 14px;font-size:12px;font-family:sans-serif;font-weight:700;cursor:pointer;backdrop-filter:blur(4px);">↑ UPSCALE</button>
+            <button onclick="parent.TempleInterior._editImage('${fp}','${nm}')"
+              style="background:rgba(79,172,254,0.15);border:1px solid rgba(79,172,254,0.4);color:#4facfe;border-radius:6px;padding:6px 14px;font-size:12px;font-family:sans-serif;font-weight:700;cursor:pointer;backdrop-filter:blur(4px);">✎ EDIT</button>
+          </div>
+        </body></html>`;
       }
       if (status) status.textContent = f.name + ' [IMAGE]';
       return;

@@ -1150,8 +1150,9 @@ const PoseidonChat = {
   <button id="pv-test" style="background:rgba(79,172,254,0.1);border:1px solid rgba(79,172,254,0.3);color:#4facfe;padding:6px 14px;font-size:9px;cursor:pointer;border-radius:4px;">TEST TTS</button>
   <span id="pv-status" style="font-size:9px;color:#475569;"></span>
 </div>
-<div style="margin-top:10px;font-size:8.5px;color:#334155;line-height:1.6;">
-  Start Speaches: <code style="color:#4facfe;">docker run -p 8000:8000 ghcr.io/speaches-ai/speaches:latest-cu124</code>
+<div style="margin-top:10px;display:flex;align-items:center;gap:8px;">
+  <button id="pv-autostart" style="background:rgba(6,255,165,0.15);border:1px solid rgba(6,255,165,0.4);color:#06ffa5;padding:6px 12px;font-size:10px;font-weight:700;cursor:pointer;border-radius:5px;">⚡ AUTO-START SPEACHES</button>
+  <span id="pv-autostart-status" style="font-size:8.5px;color:#475569;line-height:1.5;">Launches the Docker container for you.</span>
 </div>`;
 
     panel.querySelector('#pv-save').onclick = async () => {
@@ -1168,6 +1169,31 @@ const PoseidonChat = {
         status.textContent = '✓ Saved';
         setTimeout(() => { status.textContent = ''; }, 2000);
       } catch (e) { status.textContent = '✗ ' + e.message; }
+    };
+
+    panel.querySelector('#pv-autostart').onclick = async () => {
+      const btn = panel.querySelector('#pv-autostart');
+      const st  = panel.querySelector('#pv-autostart-status');
+      btn.disabled = true;
+      st.textContent = 'Starting container (first run downloads models, up to 90s)...';
+      st.style.color = '#fbbf24';
+      try {
+        const r = await fetch('/api/v2/voice/autostart', { method: 'POST' });
+        const d = await r.json();
+        if (d.ok) {
+          st.textContent = d.already_running ? '\u2713 Already running at ' + d.url : '\u2713 Speaches started at ' + d.url;
+          st.style.color = '#06ffa5';
+          const en = panel.querySelector('#pv-enabled'); if (en) en.checked = true;
+        } else {
+          st.textContent = '\u2717 ' + (d.error || 'Failed to start');
+          st.style.color = '#f87171';
+        }
+      } catch (e) {
+        st.textContent = '\u2717 ' + e.message;
+        st.style.color = '#f87171';
+      } finally {
+        btn.disabled = false;
+      }
     };
 
     panel.querySelector('#pv-test').onclick = async () => {

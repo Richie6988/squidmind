@@ -1169,7 +1169,18 @@ class RegistryManager {
       const path = require('path');
       const flatPath = path.join(AQUARIUM.TASKS, 'tasks_registry.json');
       const reg = JSON.parse(require('fs').readFileSync(flatPath, 'utf8'));
-      return reg.tasks?.[taskId] || null;
+      if (reg.tasks?.[taskId]) return reg.tasks[taskId];
+      // Not in the live registry — it may be a terminal task (completed/
+      // failed/cancelled) that was moved to results_log.json. Look there
+      // too, so operations like "drag a Done card back to To-Do for a new
+      // iteration" can find the task instead of 404-ing with "Task not found".
+      const resultsPath = path.join(AQUARIUM.TASKS, 'results_log.json');
+      if (require('fs').existsSync(resultsPath)) {
+        const rl = JSON.parse(require('fs').readFileSync(resultsPath, 'utf8'));
+        const found = rl.results?.[taskId] || (Array.isArray(rl.results) ? rl.results.find(r => r.task_id === taskId) : null);
+        if (found) return { ...found, task_id: found.task_id || taskId, _fromResultsLog: true };
+      }
+      return null;
     } catch { return null; }
   }
 
@@ -1191,7 +1202,32 @@ class RegistryManager {
       // Remove terminal tasks from registry — output is in result_file on disk
       delete reg.tasks[taskId];
     } else {
-      reg.tasks[taskId] = { ...task, task_id: task.task_id || taskId };
+      // Non-terminal: (re)insert into the live registry. Strip the marker we
+      // add when a task was read out of results_log.
+      const clean = { ...task, task_id: task.task_id || taskId };
+      delete clean._fromResultsLog;
+      reg.tasks[taskId] = clean;
+      // If this task was previously terminal (living in results_log), remove
+      // it from there so it doesn't exist in both places. This is what makes
+      // "drag Done → To-Do" actually re-open the task for a new iteration.
+      try {
+        const AQUARIUM = require('../aquarium');
+        const path = require('path');
+        const fsSync = require('fs');
+        const resultsPath = path.join(AQUARIUM.TASKS, 'results_log.json');
+        if (fsSync.existsSync(resultsPath)) {
+          const rl = JSON.parse(fsSync.readFileSync(resultsPath, 'utf8'));
+          let changed = false;
+          if (rl.results && !Array.isArray(rl.results) && rl.results[taskId]) {
+            delete rl.results[taskId]; changed = true;
+          } else if (Array.isArray(rl.results)) {
+            const before = rl.results.length;
+            rl.results = rl.results.filter(r => r.task_id !== taskId);
+            changed = rl.results.length !== before;
+          }
+          if (changed) fsSync.writeFileSync(resultsPath, JSON.stringify(rl, null, 2), 'utf8');
+        }
+      } catch { /* non-fatal */ }
     }
 
     await this.write('TASKS/tasks_registry.json', reg);

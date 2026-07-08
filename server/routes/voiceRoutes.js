@@ -32,6 +32,69 @@ function buildVoiceRoutes({ rm, fetchWithRetry }) {
     return url;
   };
 
+  // ── POST /autostart — launch the Speaches container automatically ───────────
+  // Saves the user from running `docker run …` by hand. Checks whether
+  // Speaches already answers; if not, spawns the container detached and
+  // polls until /v1/models responds (or times out).
+  router.post('/autostart', async (req, res) => {
+    const { spawn, exec } = require('child_process');
+    const cfg  = (await rm.read('CHANNELS/comms_config.json').catch(() => ({}))).voice || {};
+    const base = speachesBase(cfg);
+    const port = (base.match(/:(\d+)/) || [])[1] || '8000';
+
+    const ping = async () => {
+      try {
+        const r = await fetch(`${base}/v1/models`, { signal: AbortSignal.timeout(3000) });
+        return r.ok;
+      } catch { return false; }
+    };
+
+    // Already up?
+    if (await ping()) return res.json({ ok: true, already_running: true, url: base });
+
+    // Is docker even available?
+    const dockerOk = await new Promise(r => exec('docker --version', e => r(!e)));
+    if (!dockerOk) {
+      return res.status(501).json({
+        ok: false,
+        error: 'Docker not found on this machine. Install Docker, or start Speaches manually.',
+      });
+    }
+
+    const name  = 'squidmind-speaches';
+    const image = process.env.SPEACHES_IMAGE || 'ghcr.io/speaches-ai/speaches:latest-cuda';
+    // Remove any stale container with the same name first (ignore errors)
+    await new Promise(r => exec(`docker rm -f ${name}`, () => r()));
+    const args = ['run', '-d', '--rm', '--name', name, '-p', `${port}:8000`, '--gpus', 'all', image];
+
+    try {
+      const child = spawn('docker', args, { detached: true, stdio: 'ignore' });
+      child.unref();
+    } catch (e) {
+      return res.status(500).json({ ok: false, error: `docker run failed: ${e.message}` });
+    }
+
+    // Poll for readiness — model download on first run can take a while.
+    const deadline = Date.now() + 90_000;
+    while (Date.now() < deadline) {
+      await new Promise(r => setTimeout(r, 3000));
+      if (await ping()) {
+        try {
+          const full = await rm.read('CHANNELS/comms_config.json').catch(() => ({}));
+          full.voice = { ...(full.voice || {}), enabled: true, speaches_url: base };
+          await rm.write('CHANNELS/comms_config.json', full);
+          rm.invalidateCache();
+        } catch {}
+        return res.json({ ok: true, started: true, url: base });
+      }
+    }
+    return res.status(504).json({
+      ok: false,
+      error: `Started the Speaches container but it did not become ready within 90s at ${base}. ` +
+             `First run downloads models — it may still be pulling. Try again in a minute, or check: docker logs ${name}`,
+    });
+  });
+
   // ── GET /ping — diagnostic: can the SERVER reach Speaches? ──────────────────
   router.get('/ping', async (req, res) => {
     const cfg = (await rm.read('CHANNELS/comms_config.json').catch(() => ({}))).voice || {};
