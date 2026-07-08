@@ -2294,7 +2294,13 @@ input[type="color"]::-webkit-color-swatch {
   text-shadow: 1px 1px 0 rgba(0,0,0,0.8);
 }
 .ti-kcard-prog  { font-family: 'Courier New', monospace; font-size: 8px; color: var(--ui-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 3px; }
-.ti-kcard-foot  { display: flex; align-items: center; justify-content: space-between; margin-top: 4px; gap: 4px; }
+.ti-kcard-foot  { display: flex; align-items: center; justify-content: space-between; margin-top: 4px; gap: 6px; }
+.ti-kcard-foot-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;   /* never let elapsed + buttons get squeezed */
+}
 .ti-kcard-agent {
   font-family: var(--panel-font);
   font-size: 6px;
@@ -2302,6 +2308,10 @@ input[type="color"]::-webkit-color-swatch {
   background: rgba(6,255,165,0.06);
   border: 1px solid rgba(6,255,165,0.2);
   padding: 1px 5px;
+  min-width: 0;                 /* allow the agent name to shrink/ellipsis */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .ti-kcard-agent.running {
   color: var(--success);
@@ -8463,10 +8473,10 @@ h4.pc-md-h { font-size: 8px; color: #94a3b8; }
   border-radius: 3px;
   font-size: 10px;
   line-height: 1;
-  padding: 2px 5px;
+  padding: 2px 6px;
   cursor: pointer;
   transition: all 0.12s;
-  margin-right: 3px;
+  flex-shrink: 0;
   font-family: var(--panel-font-mono);
 }
 .ti-kcard-quickact.play {

@@ -1125,7 +1125,7 @@ const TempleInterior = {
         ? `<span class="ti-kcard-agent${isRun ? ' running' : ''}" title="Assigned to ${this._esc(agent)}">${isRun ? '▶' : '·'} ${this._esc(agent.slice(0,14))}</span>`
         : '';
       const elapsedBadge = elapsed
-        ? `<span class="ti-kcard-elapsed" style="color:#06ffa5;font-family:var(--panel-font-mono);font-size:9px;">${elapsed}</span>`
+        ? `<span class="ti-kcard-elapsed" style="color:#06ffa5;font-family:var(--panel-font-mono);font-size:9px;white-space:nowrap;flex-shrink:0;">${elapsed}</span>`
         : '';
       // Quick action: play (open→in_progress) or stop (in_progress→open).
       // Visible only for movable statuses so completed/failed cards stay clean.
@@ -1150,9 +1150,11 @@ const TempleInterior = {
           ${prog}${summary}${bar}
           <div class="ti-kcard-foot">
             ${agentBadge}
-            ${elapsedBadge}
-            ${quickAction}
-            <button class="ti-kcard-del" title="Delete task" onclick="event.stopPropagation();TempleInterior._deleteTask('${task.task_id}')">×</button>
+            <span class="ti-kcard-foot-right">
+              ${elapsedBadge}
+              ${quickAction}
+              <button class="ti-kcard-del" title="Delete task" onclick="event.stopPropagation();TempleInterior._deleteTask('${task.task_id}')">×</button>
+            </span>
           </div>
         </div>
       </div>`;
