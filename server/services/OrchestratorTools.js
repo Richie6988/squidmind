@@ -41,6 +41,63 @@ class OrchestratorTools {
    * Web search. Tries DuckDuckGo first, falls back to public SearXNG instances.
    * Returns top results with title, url, snippet.
    */
+  /**
+   * searchImage — returns DIRECT image URLs (not result-page URLs).
+   * Uses DuckDuckGo's i.js image endpoint, which needs a one-time `vqd`
+   * token scraped from the HTML search page first. Returns entries with
+   * a direct `image` URL, a `thumbnail`, source page, and dimensions —
+   * ready to embed as markdown or feed to fetch_image_url.
+   */
+  async searchImage({ query, num_results = 6 }) {
+    if (!query || typeof query !== 'string') {
+      return { ok: false, error: 'query is required' };
+    }
+    const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+    try {
+      // Step 1: get the vqd token from the HTML endpoint
+      const tokRes = await fetch(`https://duckduckgo.com/?q=${encodeURIComponent(query)}&iax=images&ia=images`, {
+        headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(12000),
+      });
+      const tokHtml = await tokRes.text();
+      const vqd = (tokHtml.match(/vqd=["']?([\d-]+)["']?/) || tokHtml.match(/vqd=([^&"']+)/) || [])[1];
+      if (!vqd) {
+        return { ok: false, error: 'Could not obtain DuckDuckGo image token (vqd). Image search unavailable right now.' };
+      }
+      // Step 2: hit the i.js image JSON endpoint with the token
+      const imgRes = await fetch(
+        `https://duckduckgo.com/i.js?l=us-en&o=json&q=${encodeURIComponent(query)}&vqd=${encodeURIComponent(vqd)}&f=,,,&p=1`,
+        {
+          headers: {
+            'User-Agent': UA,
+            'Accept': 'application/json',
+            'Referer': 'https://duckduckgo.com/',
+          },
+          signal: AbortSignal.timeout(12000),
+        }
+      );
+      if (!imgRes.ok) return { ok: false, error: `Image endpoint HTTP ${imgRes.status}` };
+      const json = await imgRes.json();
+      const results = (json.results || []).slice(0, Math.min(num_results, 12)).map(r => ({
+        title:     r.title || '',
+        image:     r.image,          // direct image URL
+        thumbnail: r.thumbnail,
+        source:    r.url,            // source page
+        width:     r.width,
+        height:    r.height,
+      })).filter(r => r.image);
+      if (!results.length) return { ok: false, error: 'No images found for that query.' };
+      return {
+        ok: true,
+        count: results.length,
+        results,
+        // First result as a ready-to-embed markdown convenience
+        markdown: `![${(results[0].title || query).replace(/[[\]]/g, '')}](${results[0].image})`,
+      };
+    } catch (e) {
+      return { ok: false, error: e.message };
+    }
+  }
+
   async webSearch({ query, num_results = 5 }) {
     if (!query || typeof query !== 'string') {
       return { ok: false, error: 'query is required' };

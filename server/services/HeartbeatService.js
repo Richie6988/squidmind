@@ -29,7 +29,7 @@ class HeartbeatService {
     this._lastDreamSkipLogAt = 0;      // rate-limit skip-reason logs to once/60s
     this.dreamRequiresIdleSession = true;  // when true, skip dream if chat session has active turns unless idle > 45min
     this._lastProjectAuditAt = {};     // project_id → last audit timestamp
-    this.projectAuditIntervalMs = 2 * 60 * 60 * 1000; // audit each project at most every 2h
+    this.projectAuditIntervalMs = 20 * 60 * 1000; // review each project at most every 20 min
   }
 
   setModelService(ms) { this.modelService = ms; }
@@ -232,36 +232,61 @@ class HeartbeatService {
       const now = Date.now();
 
       for (const [projId, proj] of Object.entries(projReg.projects || {})) {
-        // Only audit projects that have active or planned tasks
+        // Active/planned work in this project
         const active = allTasks.filter(t =>
           (t.project_id === projId || t.project_name === proj.name) &&
           ['planned', 'in_progress'].includes(t.lifecycle?.status || t.status)
         );
-        if (active.length === 0) continue;
+        // Recently-completed tasks (still in the live registry OR results_log)
+        // whose output Poseidon hasn't reviewed yet. These are what we want
+        // Poseidon to judge for quality and possibly re-run.
+        let recentlyDone = [];
+        try {
+          const results = await this.rm.read('TASKS/results_log.json').catch(() => ({ results: {} }));
+          const resArr = Array.isArray(results.results) ? results.results : Object.values(results.results || {});
+          recentlyDone = resArr.filter(t =>
+            (t.project_id === projId || t.project_name === proj.name) &&
+            (t.lifecycle?.status || t.status) === 'completed' &&
+            !t._quality_reviewed
+          ).slice(0, 5);
+        } catch {}
+
+        // Nothing to do for this project
+        if (active.length === 0 && recentlyDone.length === 0) continue;
 
         // Cooldown per project
         const lastAudit = this._lastProjectAuditAt[projId] || 0;
         if (now - lastAudit < this.projectAuditIntervalMs) continue;
 
         this._lastProjectAuditAt[projId] = now;
-        log.info(`[Heartbeat] 🔍 Auto-audit: project ${proj.name} (${active.length} active/planned tasks)`);
+        log.info(`[Heartbeat] 🔍 Auto-review: ${proj.name} (${active.length} active, ${recentlyDone.length} completed to review)`);
 
-        // Build the BG audit message for Poseidon
+        const doneList = recentlyDone.length
+          ? recentlyDone.map(t => `  [${t.task_id}] ${t.title} → ${(t.result_summary || '(no summary)').slice(0, 120)}`).join('\n')
+          : '  (none)';
+
+        // Build the BG review message for Poseidon
         const msg = [
-          `PROACTIVE PROJECT AUDIT: "${proj.name}"`,
-          `This project has ${active.length} active/planned task(s). No user is waiting.`,
-          `Please:`,
-          `1. Call audit_project("${proj.name}") to get full status.`,
-          `2. Evaluate: are any tasks blocked or redundant? Are the next steps still relevant?`,
-          `3. If next tasks are unclear: create 1-3 specific follow-up tasks and assign them.`,
-          `4. Update project memory (next_steps section) with your recommended roadmap.`,
-          `5. If all tasks are done: summarise completion and suggest archiving.`,
-          `Be concise. No user is present — just update state and plan.`
+          `PROACTIVE PROJECT REVIEW: "${proj.name}"`,
+          `No user is waiting. Review this project's health and the QUALITY of completed work.`,
+          ``,
+          `Active/planned tasks: ${active.length}`,
+          `Recently completed tasks to evaluate:`,
+          doneList,
+          ``,
+          `Do the following:`,
+          `1. Call audit_project("${proj.name}") for full status.`,
+          `2. For each completed task above: judge whether its result actually satisfies the task's intent.`,
+          `   - If a result is INCOMPLETE, WRONG, or LOW-QUALITY: create a NEW follow-up task that redoes or improves it (reference the original task_id in the description), and assign it to a capable agent.`,
+          `   - If a result is GOOD: leave it. Do not create busywork.`,
+          `3. If active tasks look blocked or redundant, adjust them (reassign, or create clearer replacements).`,
+          `4. Update project memory (next_steps) with the roadmap.`,
+          `5. If everything is done and good: summarise completion.`,
+          `Be decisive and concise. Only create tasks that genuinely improve the outcome.`
         ].join('\n');
 
-        // Queue as BG Poseidon task (uses existing BG chat mechanism)
-        this.modelService.queueBgMessage?.(msg, `audit_${projId}`);
-        break; // audit one project per tick to avoid flooding
+        this.modelService.queueBgMessage?.(msg, `review_${projId}`);
+        break; // one project per tick to avoid flooding
       }
     } catch (e) {
       log.warn('[Heartbeat] _projectAuditTick error:', e.message);

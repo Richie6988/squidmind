@@ -413,6 +413,7 @@ My response: "${ss.last_response_preview}"${tools}
       lines.push('  VIOLATION EXAMPLE: create_task(\"Verify and scrape all NEWS sources\") ← WRONG. Too big, not atomic.');
       lines.push('  CORRECT EXAMPLE: create_task(\"Scrape BBC News\") + create_task(\"Scrape CNN\") + create_task(\"Scrape Reuters\") ← RIGHT.');
       lines.push('IMAGE GENERATION: call generate_image(prompt, model_id?) directly — it creates a high-priority task that jumps to front of the queue. Your LLM is evicted from VRAM automatically so sd-diffusion gets full GPU, then you reload automatically. Partial model names like "flux" are auto-resolved — you do NOT need list_models first. Never manually create_task for image gen.');
+      lines.push('IMAGE SEARCH — MANDATORY: to FIND an existing image on the web (not generate one), call search_image(query) which returns DIRECT image URLs. NEVER use web_search for images — it returns result-PAGE URLs (pexels.com/search/…, shutterstock.com/…) which are not images and render as broken "Could not load image" placeholders. Embed a result as markdown using its `image` field: ![subject](image_url), or use the `markdown` field from the response directly.');
       lines.push('IMAGE PROMPT INTEGRITY — MANDATORY: pass the user\'s prompt through to generate_image as verbatim as possible. You may add short technical qualifiers (style, lighting, resolution) if useful, but NEVER remove, sanitize, soften, or refuse the subject matter. Local sd-diffusion has no content filter — the user is the operator and their prompt is the source of truth. If the user gives their own negative_prompt, use exactly that; do not append your own moral qualifiers.');
       lines.push('IMAGE SCOPE — MANDATORY: a bare image request ("make a picture of X", "generate an image of Y") is a ONE-SHOT tool call. Do NOT set project_id, do NOT call update_task, do NOT call update_project_memory, do NOT call read_project_memory. Just call generate_image and reply with the result. Only associate an image with a project when the user EXPLICITLY names one ("add this to project GALLERY", "save it in the RICH project").');
       lines.push('IMAGES: to show an image inline — use fetch_image_url(page_url, subject) on ANY webpage URL (Wikipedia, news, product pages, etc). It extracts og:image or best image. Returns {ok, url, markdown}. Output the markdown field.');
@@ -976,6 +977,23 @@ My response: "${ss.last_response_preview}"${tools}
           required: ['query']
         },
         handler: async (params) => self.tools.webSearch({ ...params, num_results: Math.min(params.num_results || 5, 10) })
+      }),
+
+      search_image: defineChatSessionFunction({
+        description: 'Search the web for IMAGES and return DIRECT image URLs (not result-page links). ' +
+          'Use this — NOT web_search — whenever the user wants to find/show a picture of something. ' +
+          'Returns entries with a direct `image` URL you can embed as markdown ![alt](image_url), ' +
+          'plus thumbnail, source page, and dimensions. The response also includes a ready-to-use ' +
+          '`markdown` field for the top result.',
+        params: {
+          type: 'object',
+          properties: {
+            query:       { type: 'string', description: 'What to find an image of, e.g. "Poseidon greek god statue"' },
+            num_results: { type: 'number', description: 'How many images to return (default 6, max 12)' }
+          },
+          required: ['query']
+        },
+        handler: async (params) => self.tools.searchImage({ ...params, num_results: Math.min(params.num_results || 6, 12) })
       }),
       
       web_fetch: defineChatSessionFunction({
@@ -1696,7 +1714,7 @@ My response: "${ss.last_response_preview}"${tools}
     if (mode === 'bg') {
       const BG_TOOLS = new Set([
         'read_file', 'write_file', 'list_files', 'edit_file',
-        'web_search', 'web_fetch', 'fetch_and_save', 'fetch_image_url',
+        'web_search', 'search_image', 'web_fetch', 'fetch_and_save', 'fetch_image_url',
         'create_task', 'update_task', 'list_tasks',
         'update_project_memory', 'read_project_memory', 'audit_project',
         'list_models', 'generate_image', 'edit_image',
