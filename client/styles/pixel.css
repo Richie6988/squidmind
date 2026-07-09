@@ -8742,3 +8742,17 @@ h4.pc-md-h { font-size: 8px; color: #94a3b8; }
   margin-bottom: 10px;
   line-height: 1.5;
 }
+
+/* ═══ Poseidon chat TTS (read-aloud) button ═══════════════════════════ */
+.pc-tts-btn {
+  background: transparent;
+  border: 1px solid rgba(79,172,254,0.3);
+  border-radius: 6px;
+  color: #4facfe;
+  font-size: 13px;
+  padding: 4px 8px;
+  cursor: pointer;
+  align-items: center;
+  transition: background 0.15s, border-color 0.15s;
+}
+.pc-tts-btn:hover { background: rgba(79,172,254,0.1); border-color: rgba(79,172,254,0.6); }
