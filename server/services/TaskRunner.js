@@ -235,6 +235,11 @@ class TaskRunner {
       if (rt?.assigned_to) agentsRunning.add(rt.assigned_to);
     }
 
+    // Live task ids — used for dependency resolution. Completed/failed/
+    // cancelled tasks are PURGED from the registry into results_log, so
+    // "dependency id still present in the registry" == "not finished yet".
+    const liveIds = new Set(allTasks.map(t => t.task_id));
+
     const runnable = allTasks
       .filter(t => {
         const s = t.lifecycle?.status || t.status || 'open';
@@ -243,11 +248,20 @@ class TaskRunner {
         const agentId = t.assigned_to;
         // Block if this agent already has a running task
         const agentBusy = agentId && agentId !== 'poseidon_main' && agentsRunning.has(agentId);
+        // Dependencies: depends_on can be a task id string or an array of ids.
+        // A dependency blocks while it still exists in the live registry
+        // (i.e. hasn't completed). Missing/unknown ids don't block — a
+        // deleted dependency should not deadlock its dependents forever.
+        const deps = t.depends_on
+          ? (Array.isArray(t.depends_on) ? t.depends_on : [t.depends_on])
+          : [];
+        const depsPending = deps.some(d => d && d !== t.task_id && liveIds.has(d));
         return !TERMINAL.has(s)
           && !this._running.has(t.task_id)
           && !this._done.has(t.task_id)
           && !tooManyFails
           && !agentBusy
+          && !depsPending
           && Date.now() >= retryDelay;
       })
       // Queue order: explicit sort_order bump (image/urgent tasks) then FIFO by task_id

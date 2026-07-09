@@ -8666,3 +8666,22 @@ h4.pc-md-h { font-size: 8px; color: #94a3b8; }
   flex-shrink: 0;
 }
 @keyframes sqSpin { to { transform: rotate(360deg); } }
+
+/* ═══ Dependency badges (⧗ waits for task_XXXX) ═══════════════════════ */
+.ti-kcard-dep {
+  font-family: var(--panel-font-mono), monospace;
+  font-size: 8px;
+  color: #fbbf24;
+  background: rgba(251,191,36,0.08);
+  border: 1px solid rgba(251,191,36,0.30);
+  padding: 1px 5px;
+  border-radius: 3px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.tq-type-badge.tq-type-dep {
+  color: #fbbf24;
+  background: rgba(251,191,36,0.08);
+  border: 1px solid rgba(251,191,36,0.30);
+  margin-left: 4px;
+}

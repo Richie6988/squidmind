@@ -290,6 +290,27 @@ class HeartbeatService {
         ].join('\n');
 
         this.modelService.queueBgMessage?.(msg, `review_${projId}`);
+
+        // Mark these tasks as reviewed NOW (when queued). Without this the
+        // same completed tasks were re-reviewed every 20 minutes forever —
+        // an improvement loop that never converges just burns tokens. If
+        // Poseidon creates a follow-up task, that follow-up will itself get
+        // reviewed once completed, so nothing is lost by marking here.
+        if (recentlyDone.length) {
+          try {
+            const rl = await this.rm.read('TASKS/results_log.json').catch(() => null);
+            if (rl?.results) {
+              const ids = new Set(recentlyDone.map(t => t.task_id));
+              if (Array.isArray(rl.results)) {
+                for (const r of rl.results) if (ids.has(r.task_id)) r._quality_reviewed = true;
+              } else {
+                for (const id of ids) if (rl.results[id]) rl.results[id]._quality_reviewed = true;
+              }
+              await this.rm.write('TASKS/results_log.json', rl);
+              this.rm.invalidateCache();
+            }
+          } catch (e) { log.warn('[Heartbeat] could not mark reviewed:', e.message); }
+        }
         break; // one project per tick to avoid flooding
       }
     } catch (e) {

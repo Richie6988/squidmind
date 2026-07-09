@@ -243,6 +243,11 @@ const TaskQueueUI = {
     } else {
       typeBadge = `<span class="tq-type-badge tq-type-oneshot" title="One-time task">◈ ONE-TIME</span>`;
     }
+    // Dependency badge — task waits for these ids to complete before running
+    const tDeps = t.depends_on ? (Array.isArray(t.depends_on) ? t.depends_on : [t.depends_on]) : [];
+    if (tDeps.length) {
+      typeBadge += `<span class="tq-type-badge tq-type-dep" title="Waits for ${this._esc(tDeps.join(', '))} to complete">⧗ ${this._esc(tDeps.length === 1 ? tDeps[0] : tDeps.length + ' deps')}</span>`;
+    }
 
     // Status dot + label
     const statusDot = {

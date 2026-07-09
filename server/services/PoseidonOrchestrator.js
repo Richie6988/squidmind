@@ -413,6 +413,7 @@ My response: "${ss.last_response_preview}"${tools}
       lines.push('  VIOLATION EXAMPLE: create_task(\"Verify and scrape all NEWS sources\") ← WRONG. Too big, not atomic.');
       lines.push('  CORRECT EXAMPLE: create_task(\"Scrape BBC News\") + create_task(\"Scrape CNN\") + create_task(\"Scrape Reuters\") ← RIGHT.');
       lines.push('IMAGE GENERATION: call generate_image(prompt, model_id?) directly — it creates a high-priority task that jumps to front of the queue. Your LLM is evicted from VRAM automatically so sd-diffusion gets full GPU, then you reload automatically. Partial model names like "flux" are auto-resolved — you do NOT need list_models first. Never manually create_task for image gen.');
+      lines.push('TASK DECOMPOSITION: when breaking work into multiple tasks, order them with depends_on. Tasks execute ONE AT A TIME (single GPU), so parallel-looking task lists are an illusion — sequence them explicitly instead: foundation/setup task first, then each dependent task with depends_on:[<foundation_id>]. Use the task_id returned by create_task to chain the next one. A task whose dependencies are unfinished stays queued automatically.');
       lines.push('IMAGE SEARCH — MANDATORY: to FIND an existing image on the web (not generate one), call search_image(query) which returns DIRECT image URLs. NEVER use web_search for images — it returns result-PAGE URLs (pexels.com/search/…, shutterstock.com/…) which are not images and render as broken "Could not load image" placeholders. Embed a result as markdown using its `image` field: ![subject](image_url), or use the `markdown` field from the response directly.');
       lines.push('IMAGE PROMPT INTEGRITY — MANDATORY: pass the user\'s prompt through to generate_image as verbatim as possible. You may add short technical qualifiers (style, lighting, resolution) if useful, but NEVER remove, sanitize, soften, or refuse the subject matter. Local sd-diffusion has no content filter — the user is the operator and their prompt is the source of truth. If the user gives their own negative_prompt, use exactly that; do not append your own moral qualifiers.');
       lines.push('IMAGE SCOPE — MANDATORY: a bare image request ("make a picture of X", "generate an image of Y") is a ONE-SHOT tool call. Do NOT set project_id, do NOT call update_task, do NOT call update_project_memory, do NOT call read_project_memory. Just call generate_image and reply with the result. Only associate an image with a project when the user EXPLICITLY names one ("add this to project GALLERY", "save it in the RICH project").');
@@ -606,7 +607,10 @@ My response: "${ss.last_response_preview}"${tools}
       }),
 
       create_task: defineChatSessionFunction({
-        description: 'Create a task in the tasks registry. Optionally assign to a specific agent.',
+        description: 'Create a task in the tasks registry. Optionally assign to a specific agent. ' +
+          'For multi-step work, CHAIN tasks with depends_on: a task will not start until every task id ' +
+          'listed in depends_on has completed. Example: create the "directory structure" task first, then ' +
+          'create each module task with depends_on set to the structure task\'s id.',
         params: {
           type: 'object',
           properties: {
@@ -614,7 +618,8 @@ My response: "${ss.last_response_preview}"${tools}
             description: { type: 'string' },
             project: { type: 'string', description: 'Project name to attach this task to' },
             assigned_agent_id: { type: 'string', description: 'Optional agent_id to assign immediately' },
-            priority: { type: 'string', enum: ['low', 'medium', 'high', 'critical'], description: 'Default: medium' }
+            priority: { type: 'string', enum: ['low', 'medium', 'high', 'critical'], description: 'Default: medium' },
+            depends_on: { type: 'array', items: { type: 'string' }, description: 'Task ids that must COMPLETE before this one can start (e.g. ["task_0042"])' }
           },
           required: ['title']
         },
@@ -1997,10 +2002,15 @@ My response: "${ss.last_response_preview}"${tools}
     }
   }
 
-  async _createTask({ title, description, project, assigned_agent_id, priority }) {
+  async _createTask({ title, description, project, assigned_agent_id, priority, depends_on }) {
     try {
       // Use the serialized generateNextId — prevents duplicate IDs on concurrent calls
       const taskId = await this.rm.generateNextId('TASKS/tasks_registry.json');
+
+      // Normalise depends_on: accept string or array, keep valid-looking ids only
+      const deps = (Array.isArray(depends_on) ? depends_on : (depends_on ? [depends_on] : []))
+        .filter(d => typeof d === 'string' && /^task_\d+$/i.test(d.trim()))
+        .map(d => d.trim());
 
       // Resolve agent name
       let agentName = null;
@@ -2031,6 +2041,7 @@ My response: "${ss.last_response_preview}"${tools}
         project_id:   projectId || null,
         assigned_to:  assigned_agent_id || null,
         assigned_name: assigned_agent_id ? (agentName || await this.rm._resolveAgentName(assigned_agent_id)) : null,
+        depends_on:   deps.length ? deps : undefined,
         status:       'planned',
         lifecycle:    { status: 'planned', status_history: [{ status: 'planned', at: new Date().toISOString(), by: 'poseidon' }], started_at: null, completed_at: null },
         result_file:  null,
@@ -2048,7 +2059,7 @@ My response: "${ss.last_response_preview}"${tools}
         context: { project, project_id: projectId, assigned_to: assigned_agent_id, priority }
       });
 
-      return { ok: true, task_id: taskId, title, message: `Created task ${taskId}: "${title}"${assigned_agent_id ? ` assigned to ${agentName || assigned_agent_id}` : ''}${project ? ` (project: ${project})` : ''}.` };
+      return { ok: true, task_id: taskId, title, depends_on: deps.length ? deps : undefined, message: `Created task ${taskId}: "${title}"${assigned_agent_id ? ` assigned to ${agentName || assigned_agent_id}` : ''}${project ? ` (project: ${project})` : ''}${deps.length ? ` — waits for ${deps.join(', ')}` : ''}.` };
     } catch (err) {
       return { ok: false, error: err.message };
     }

@@ -1121,6 +1121,10 @@ const TempleInterior = {
       // Quick action: play (open→in_progress) or stop (in_progress→open).
       // Visible only for movable statuses so completed/failed cards stay clean.
       const st = String(task.lifecycle?.status || task.status || 'open').toLowerCase();
+      const deps = task.depends_on ? (Array.isArray(task.depends_on) ? task.depends_on : [task.depends_on]) : [];
+      const depBadge = deps.length
+        ? `<span class="ti-kcard-dep" title="Waits for ${this._esc(deps.join(', '))} to complete">⧗ ${this._esc(deps.length === 1 ? deps[0] : deps.length + ' deps')}</span>`
+        : '';
       const quickAction = (st === 'open' || st === 'planned' || st === 'assigned' || st === 'queued')
         ? `<button class="ti-kcard-quickact play" title="Start task" onclick="event.stopPropagation();TempleInterior._quickStartTask('${task.task_id}')">▶</button>`
         : (st === 'in_progress' || st === 'running')
@@ -1141,6 +1145,7 @@ const TempleInterior = {
           ${prog}${summary}${bar}
           <div class="ti-kcard-foot">
             ${agentBadge}
+            ${depBadge}
             <span class="ti-kcard-foot-right">
               ${elapsedBadge}
               ${quickAction}
