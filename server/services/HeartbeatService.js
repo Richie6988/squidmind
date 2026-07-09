@@ -223,6 +223,10 @@ class HeartbeatService {
     if (!broker?.isDreamAllowed()) return;
     const entry = this.modelService.loaded.get(this.modelService.poseidonModelId);
     if (!entry || entry.generating || entry.dreaming) return;
+    // Respect the chat-active window — don't swap Poseidon into an auto-review
+    // while the user is (or was just) chatting.
+    const tr = this.taskRunner || this.modelService.taskRunner;
+    if (tr && Date.now() < (tr._chatOpenUntil || 0)) return;
 
     try {
       this.rm.invalidateCache();

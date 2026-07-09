@@ -19,6 +19,9 @@ if [[ -x "$BIN" ]]; then
 fi
 
 # Pick the release asset for this OS
+# Pick the release asset for this OS. The prebuilt ncnn-vulkan binaries
+# are published on the main Real-ESRGAN repo's releases (not a separate
+# ncnn-vulkan repo, which 404s).
 UNAME="$(uname -s)"
 case "$UNAME" in
   Linux)  ASSET="realesrgan-ncnn-vulkan-20220424-ubuntu.zip" ;;
@@ -26,7 +29,7 @@ case "$UNAME" in
   *)      echo "Unsupported OS: $UNAME. Download manually from the releases page." ; exit 1 ;;
 esac
 
-URL="https://github.com/xinntao/Real-ESRGAN-ncnn-vulkan/releases/download/v0.2.0/$ASSET"
+URL="https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.5.0/$ASSET"
 
 echo "Downloading Real-ESRGAN ($ASSET)…"
 mkdir -p "$DEST"

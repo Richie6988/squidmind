@@ -674,6 +674,10 @@ function buildPoseidonChatRoute(v2ModelService) {
     let chunkCount = 0;
     let toolCallCount = 0;
     const bus = global.ReasoningBus;
+    // Hold off BG tasks / auto-review while this chat turn runs, so the
+    // heartbeat doesn't swap Poseidon into a background task between the
+    // user's messages. Refreshed at the end for a post-reply grace window.
+    try { v2ModelService.taskRunner?.setChatActive?.(true); } catch {}
     if (bus) bus.push({ type: 'task_start', task_id: 'poseidon_chat', title: message.slice(0, 80), agent: 'poseidon' });
     try {
       for await (const ev of v2ModelService.chatWithPoseidon(message, history || [])) {
@@ -715,6 +719,10 @@ function buildPoseidonChatRoute(v2ModelService) {
       if (bus) bus.push({ type: 'task_end', task_id: 'poseidon_chat' });
       res.write(`event: error\ndata: ${JSON.stringify({ error: err.message })}\n\n`);
     } finally {
+      // Post-reply grace: keep BG paused a bit longer so the user can read
+      // and start typing their next message before the heartbeat resumes
+      // background work.
+      try { v2ModelService.taskRunner?.setChatActive?.(false); } catch {}
       res.end();
     }
   };

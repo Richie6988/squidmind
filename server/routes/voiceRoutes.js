@@ -14,6 +14,10 @@
 function buildVoiceRoutes({ rm, fetchWithRetry }) {
   const express = require('express');
   const router  = express.Router();
+  const log = {
+    info: (...a) => console.log('[Voice]', ...a),
+    warn: (...a) => console.warn('[Voice]', ...a),
+  };
 
   // Voice can be enabled two ways:
   //  1. voice.enabled=true in aquarium/CHANNELS/comms_config.json

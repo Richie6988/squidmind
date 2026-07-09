@@ -177,6 +177,7 @@ heartbeat.setModelService(v2ModelService);
 const TaskRunner = require('./services/TaskRunner');
 const taskRunner = new TaskRunner(sharedRm, v2ModelService, agentWorkerPool, botService);
 servicesRef.taskRunner = taskRunner;
+v2ModelService.taskRunner = taskRunner;   // let chat route refresh the BG-pause window
 heartbeat.setTaskRunner(taskRunner);
 taskRunner.loadDone().catch(e => console.warn('[TaskRunner] loadDone error:', e.message));
 
