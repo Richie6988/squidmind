@@ -90,6 +90,31 @@ function buildProjectFileRoutes({ rm }) {
     } catch (e) { res.status(500).json({ success: false, error: e.message }); }
   });
 
+  // ── POST /:projectId/outputs — write/overwrite an output file ─────────────
+  // Symmetric to POST /inputs. The temple IDE edits output files (generated
+  // artifacts) far more often than inputs, and without this route those
+  // saves 404'd silently — the editor showed "Saved" but nothing was
+  // written. Writes into PROJECTS/<folder>/output/.
+  router.post('/:projectId/outputs', express.json({ limit: '50mb' }), async (req, res) => {
+    const { fileName, content, encoding = 'utf8' } = req.body || {};
+    if (!fileName || content === undefined) {
+      return res.status(400).json({ success: false, error: 'fileName and content required' });
+    }
+    const safeName = sanitize(fileName);
+    try {
+      const folder = await resolveFolder(req.params.projectId);
+      const outputDir = path.join(AQUARIUM.PROJECTS, folder, 'output');
+      await fsp.mkdir(outputDir, { recursive: true });
+      const dest = path.join(outputDir, safeName);
+      if (!dest.startsWith(outputDir)) {
+        return res.status(403).json({ success: false, error: 'path traversal' });
+      }
+      const buf = encoding === 'base64' ? Buffer.from(content, 'base64') : Buffer.from(content, 'utf8');
+      await fsp.writeFile(dest, buf);
+      res.json({ success: true, fileName: safeName, size: buf.length });
+    } catch (e) { res.status(500).json({ success: false, error: e.message }); }
+  });
+
   // ── DELETE /:projectId/inputs/:filename ───────────────────────────────────
   router.delete('/:projectId/inputs/:filename', async (req, res) => {
     const safeName = sanitize(req.params.filename);

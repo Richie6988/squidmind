@@ -2390,13 +2390,20 @@ const TempleInterior = {
     const ep = f.type === 'output' ? 'outputs' : 'inputs';
     this._setStatus('Saving...');
     try {
-      await fetch(`/api/v2/projects/${folder}/${ep}`, {
+      const r = await fetch(`/api/v2/projects/${folder}/${ep}`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ fileName: f.name, content: f.content, encoding: 'utf8' })
       });
+      let j = {};
+      try { j = await r.json(); } catch {}
+      if (!r.ok || j.success === false) {
+        // Don't clear the dirty flag — the save did NOT happen.
+        this._setStatus(`Save failed (${r.status}): ${j.error || 'endpoint error'}`);
+        return;
+      }
       f.dirty = false;
       this._renderIdeTabs();
-      this._setStatus(`Saved ${f.name}`);
+      this._setStatus(`Saved ${f.name} (${j.size ?? f.content.length} bytes)`);
     } catch (e) { this._setStatus(`Save failed: ${e.message}`); }
   },
 
