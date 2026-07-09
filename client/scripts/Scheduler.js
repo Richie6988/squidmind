@@ -176,7 +176,7 @@ const Scheduler = {
         await window.api._fetch('/field', {
           method: 'PATCH',
           body: JSON.stringify({
-            filePath: 'tasks/tasks_registry.json',
+            filePath: 'TASKS/tasks_registry.json',
             fieldPath: `tasks.${res.task.task_id}.schedule`,
             newValue: schedule,
             reason: 'scheduler UI'
@@ -200,7 +200,7 @@ const Scheduler = {
       await window.api._fetch('/field', {
         method: 'PATCH',
         body: JSON.stringify({
-          filePath: 'tasks/tasks_registry.json',
+          filePath: 'TASKS/tasks_registry.json',
           fieldPath: `tasks.${taskId}.lifecycle.status`,
           newValue: 'cancelled',
           reason: 'cancelled scheduled task'

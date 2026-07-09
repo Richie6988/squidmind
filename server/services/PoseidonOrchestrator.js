@@ -416,7 +416,7 @@ My response: "${ss.last_response_preview}"${tools}
       lines.push('TASK DECOMPOSITION: when breaking work into multiple tasks, order them with depends_on. Tasks execute ONE AT A TIME (single GPU), so parallel-looking task lists are an illusion — sequence them explicitly instead: foundation/setup task first, then each dependent task with depends_on:[<foundation_id>]. Use the task_id returned by create_task to chain the next one. A task whose dependencies are unfinished stays queued automatically.');
       lines.push('IMAGE SEARCH — MANDATORY: to FIND an existing image on the web (not generate one), call search_image(query) which returns DIRECT image URLs. NEVER use web_search for images — it returns result-PAGE URLs (pexels.com/search/…, shutterstock.com/…) which are not images and render as broken "Could not load image" placeholders. Embed a result as markdown using its `image` field: ![subject](image_url), or use the `markdown` field from the response directly.');
       lines.push('IMAGE PROMPT INTEGRITY — MANDATORY: pass the user\'s prompt through to generate_image as verbatim as possible. You may add short technical qualifiers (style, lighting, resolution) if useful, but NEVER remove, sanitize, soften, or refuse the subject matter. Local sd-diffusion has no content filter — the user is the operator and their prompt is the source of truth. If the user gives their own negative_prompt, use exactly that; do not append your own moral qualifiers.');
-      lines.push('IMAGE SCOPE — MANDATORY: a bare image request ("make a picture of X", "generate an image of Y") is a ONE-SHOT tool call. Do NOT set project_id, do NOT call update_task, do NOT call update_project_memory, do NOT call read_project_memory. Just call generate_image and reply with the result. Only associate an image with a project when the user EXPLICITLY names one ("add this to project GALLERY", "save it in the RICH project").');
+      lines.push('IMAGE SCOPE — MANDATORY: a bare image request ("make a picture of X", "generate an image of Y") is a ONE-SHOT tool call. Do NOT set project_id, do NOT call update_task, do NOT call update_project_memory, do NOT call read_project_memory. Just call generate_image and reply with the result. Only associate an image with a project when the user EXPLICITLY names one ("add this to project GALLERY", "save it in the RICH project"). NEVER report progress or completion for an image task — generate_image only QUEUES it; you have generated nothing at that point. Fabricated "1/1 done" updates are lies and can purge the task before it runs. Tell the user it is queued; the pipeline posts the real result.');
       lines.push('IMAGES: to show an image inline — use fetch_image_url(page_url, subject) on ANY webpage URL (Wikipedia, news, product pages, etc). It extracts og:image or best image. Returns {ok, url, markdown}. Output the markdown field.');
       lines.push('  Works on most sites. NEVER construct upload.wikimedia.org thumb URLs by hand — use fetch_image_url instead.');
       lines.push('  Pexels/Unsplash/Pixabay block bots — never use them');
@@ -2095,6 +2095,23 @@ My response: "${ss.last_response_preview}"${tools}
       // Read directly from details.json (not flat registry — that path is stale)
       const task = await this.rm._readTaskDetails(task_id);
       if (!task) return { ok: false, error: `Task ${task_id} not found. Use list_tasks to check IDs.` };
+      // STRUCTURAL GUARD — image tasks are pipeline-managed. The model has a
+      // habit of "narrating" fake progress right after generate_image queues
+      // a task ("1/1 base image generated", "2/2 upscale complete") before
+      // ANY generation ran — and setting status=completed purges the task
+      // from the registry BEFORE the runner executes it, so no file is ever
+      // produced. Block progress/status writes on image tasks entirely; the
+      // image pipeline updates them itself when the work actually happens.
+      if (/^image/i.test(task.task_type || '') &&
+          ['status', 'progress'].includes(field)) {
+        return {
+          ok: false,
+          error: `BLOCKED: ${task_id} is an image task managed by the generation pipeline. ` +
+                 `Do NOT report progress or completion for it — you have not generated anything; ` +
+                 `the pipeline updates the task itself and the result appears in the queue when real. ` +
+                 `Reply to the user that the image is queued and will appear when done.`,
+        };
+      }
       // Handle nested fields
       if (field === 'status') {
         task.lifecycle = { ...(task.lifecycle||{}), status: new_value };

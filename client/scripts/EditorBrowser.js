@@ -24,7 +24,7 @@ const EditorBrowser = {
       { path: 'projects/PROJECT_004/project_memory.json', label: 'PROJECT_004 (NEWSROOM)' }
     ],
     'Tasks': [
-      { path: 'tasks/tasks_registry.json', label: 'Task Registry' }
+      { path: 'TASKS/tasks_registry.json', label: 'Task Registry' }
     ],
     'Models': [
       { path: 'models/model_registry.json', label: 'Model Registry' }

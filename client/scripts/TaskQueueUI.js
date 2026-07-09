@@ -362,7 +362,7 @@ const TaskQueueUI = {
       window.api._fetch('/field', {
         method: 'PATCH',
         body: JSON.stringify({
-          filePath: 'tasks/tasks_registry.json',
+          filePath: 'TASKS/tasks_registry.json',
           fieldPath: `tasks.${taskId}.sort_order`,
           newValue: score,
           reason: 'reordered via drag-drop'
@@ -418,7 +418,7 @@ const TaskQueueUI = {
       await window.api._fetch('/field', {
         method: 'PATCH',
         body: JSON.stringify({
-          filePath: 'tasks/tasks_registry.json',
+          filePath: 'TASKS/tasks_registry.json',
           fieldPath: `tasks.${taskId}.assigned_to`,
           newValue: agentId,
           reason: 'assigned via task queue UI'
@@ -450,7 +450,7 @@ ${task.description}`
       await window.api._fetch('/field', {
         method: 'PATCH',
         body: JSON.stringify({
-          filePath: 'tasks/tasks_registry.json',
+          filePath: 'TASKS/tasks_registry.json',
           fieldPath: `tasks.${taskId}.lifecycle.status`,
           newValue: 'in_progress',
           reason: 'manually started from task queue'
@@ -459,7 +459,7 @@ ${task.description}`
       await window.api._fetch('/field', {
         method: 'PATCH',
         body: JSON.stringify({
-          filePath: 'tasks/tasks_registry.json',
+          filePath: 'TASKS/tasks_registry.json',
           fieldPath: `tasks.${taskId}.lifecycle.started_at`,
           newValue: new Date().toISOString(),
           reason: 'task started'
@@ -807,7 +807,7 @@ ${task.description}`
         try {
           await window.api._fetch('/field', {
             method: 'PATCH',
-            body: JSON.stringify({ filePath: 'tasks/tasks_registry.json', ...p, reason: 'manual edit' })
+            body: JSON.stringify({ filePath: 'TASKS/tasks_registry.json', ...p, reason: 'manual edit' })
           });
         } catch { failed++; }
       }
@@ -1003,7 +1003,7 @@ ${task.description}`
         await window.api._fetch('/field', {
           method: 'PATCH',
           body: JSON.stringify({
-            filePath: 'tasks/tasks_registry.json',
+            filePath: 'TASKS/tasks_registry.json',
             fieldPath: `tasks.${taskId}.lifecycle.status`,
             newValue: 'cancelled',
             reason: 'cancelled by user'
