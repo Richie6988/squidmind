@@ -14,7 +14,12 @@ const api = {
       ...options
     });
     const data = await res.json();
-    if (!data.success) throw new Error(data.error || 'API error');
+    // Routes use two conventions: { success: true } (registry/tasks) and
+    // { ok: true } (voice, upscale, recommendations). Treating "ok" routes
+    // as failures made the voice-settings save show "✗ API error" even
+    // though the server had persisted the config fine.
+    const succeeded = data.success === true || data.ok === true;
+    if (!succeeded) throw new Error(data.error || 'API error');
     return data;
   },
 

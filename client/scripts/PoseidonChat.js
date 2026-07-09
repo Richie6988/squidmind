@@ -472,6 +472,9 @@ const PoseidonChat = {
     if (type === 'end') {
       if (p.turn !== undefined) this._updateTurnCounter();
       this._updateTtsButton();  // show 🔊 button after response
+      // Auto-speak: when voice is enabled in settings, read the reply aloud
+      // automatically (same pipeline as the manual 🔊 button).
+      this._maybeAutoSpeak();
       // Inject copy button — read accumulated text from contentEl's text nodes
       const lastAiMsg = this.modal?.querySelectorAll('.pc-msg-ai');
       const lastMsg = lastAiMsg?.[lastAiMsg.length - 1];
@@ -1033,6 +1036,26 @@ const PoseidonChat = {
     setTimeout(() => div.remove(), 5000);
   },
 
+  /**
+   * Auto-speak the reply when voice is enabled. Config is cached for 60s so
+   * we don't hit /voice/config on every message; toggling the setting in the
+   * voice panel updates within a minute (or immediately after reload).
+   */
+  async _maybeAutoSpeak() {
+    try {
+      const now = Date.now();
+      if (!this._voiceCfgCache || (now - this._voiceCfgCacheAt) > 60_000) {
+        const r = await window.api._fetch('/voice/config').catch(() => null);
+        this._voiceCfgCache  = r?.config || null;
+        this._voiceCfgCacheAt = now;
+      }
+      if (!this._voiceCfgCache?.enabled) return;
+      // Don't overlap with something already playing (manual or previous turn)
+      if (this._ttsAudio && !this._ttsAudio.paused) return;
+      await this._speakLastResponse();
+    } catch { /* auto-speak is best-effort */ }
+  },
+
   /** Speak the last Poseidon response using Speaches TTS */
   async _speakLastResponse() {
     const btn = document.getElementById('pc-tts');
@@ -1167,6 +1190,9 @@ const PoseidonChat = {
           language:   panel.querySelector('#pv-lang').value,
         })});
         status.textContent = '✓ Saved';
+        // Invalidate the auto-speak config cache so the toggle applies to the
+        // very next reply, not after the 60s cache window.
+        PoseidonChat._voiceCfgCache = null;
         setTimeout(() => { status.textContent = ''; }, 2000);
       } catch (e) { status.textContent = '✗ ' + e.message; }
     };

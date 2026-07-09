@@ -64,7 +64,8 @@ class EmailService {
   async _getTransport() {
     const cfg = await this._resolveConfig();
     if (!cfg) throw new Error(
-      'Email not configured. Set SMTP_URL env or add email.{host,port,user,pass,from} to aquarium/CHANNELS/comms_config.json.'
+      'Email not configured. Open COMMS → SMTP tab to set it up (Gmail: app password required), ' +
+      'or set the SMTP_URL env var.'
     );
     // Hash to detect config drift so we don't hold a stale transport
     const hash = JSON.stringify(cfg);
