@@ -709,16 +709,55 @@ function buildPoseidonChatRoute(v2ModelService) {
       return res.status(400).json({ success: false, error: 'message required' });
     }
     // Project-scoped instruction (temple chatbox): don't just prefix a label
-    // the model can ignore — attach an explicit, actionable directive so
-    // task creation / memory updates land on THIS project.
+    // the model can ignore — inject the FULL working context (memory + files)
+    // and an actionable directive, so the model never has to ask what the
+    // project is, what its goal is, or what files exist.
     let effectiveMessage = message;
     if (project && (project.name || project.id)) {
       const pname = project.name || project.id;
-      effectiveMessage =
-        `[PROJECT INSTRUCTION — ${pname}${project.id ? ` (${project.id})` : ''}]\n` +
-        `${message}\n` +
-        `(Directive: this instruction applies to project "${pname}". When creating tasks for it, set project: "${pname}". ` +
-        `When reading or updating memory, use THIS project. Do not ask which project — it is "${pname}".)`;
+      const ctxLines = [`[PROJECT INSTRUCTION — ${pname}${project.id ? ` (${project.id})` : ''}]`];
+      try {
+        const rm = v2ModelService.rm;
+        // Resolve id + folder
+        let pid = project.id, folder = null;
+        const resolved = await rm.resolveProjectByNameOrId(project.id || project.name).catch(() => null);
+        if (resolved) { pid = resolved.id || pid; folder = resolved.entry?.folder || null; }
+        // 1. Project memory (vision, progress, blockers, next steps)
+        if (pid && rm.getProjectMemory) {
+          const mem = await rm.getProjectMemory(pid).catch(() => null);
+          if (mem) {
+            ctxLines.push('[PROJECT MEMORY]');
+            if (mem.vision) ctxLines.push(`Vision: ${String(mem.vision).slice(0, 300)}`);
+            if (mem.progress?.completion) ctxLines.push(`Progress: ${mem.progress.completion}`);
+            if (mem.progress?.blockers?.length) ctxLines.push(`Blockers: ${mem.progress.blockers.slice(0, 3).map(b => b.text || b).join('; ').slice(0, 300)}`);
+            if (mem.progress?.next_steps?.length) ctxLines.push(`Next steps: ${mem.progress.next_steps.slice(0, 5).join('; ').slice(0, 400)}`);
+            if (mem.progress?.recent_achievements?.length) ctxLines.push(`Recently done: ${mem.progress.recent_achievements.slice(0, 3).map(a => a.text || a).join('; ').slice(0, 300)}`);
+          }
+        }
+        // 2. Input + output file listings (names only, capped)
+        if (folder) {
+          const fsp = require('fs').promises;
+          const path = require('path');
+          const AQUARIUM = require('../aquarium');
+          const listDir = async (sub) => {
+            try {
+              const files = await fsp.readdir(path.join(AQUARIUM.PROJECTS, folder, sub));
+              return files.filter(f => !f.startsWith('.')).slice(0, 40);
+            } catch { return []; }
+          };
+          const [inputs, outputs] = await Promise.all([listDir('input'), listDir('output')]);
+          ctxLines.push(`Input files (${inputs.length}): ${inputs.join(', ') || '(none)'}`);
+          ctxLines.push(`Output files (${outputs.length}): ${outputs.join(', ') || '(none)'}`);
+          ctxLines.push(`(Read any of them with read_file("PROJECTS/${folder}/input/<name>" or ".../output/<name>").)`);
+        }
+      } catch { /* context enrichment is best-effort — instruction still goes through */ }
+      ctxLines.push('');
+      ctxLines.push(`Instruction: ${message}`);
+      ctxLines.push(
+        `(Directive: this instruction applies to project "${pname}". Everything you need is above — ` +
+        `do NOT ask who you are, what the project is, or what its purpose is. When creating tasks, set project: "${pname}". ` +
+        `Use THIS project's memory and files.)`);
+      effectiveMessage = ctxLines.join('\n');
     }
 
     res.setHeader('Content-Type', 'text/event-stream');
