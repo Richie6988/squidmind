@@ -1166,6 +1166,23 @@ All canvas graphics use `ctx.imageSmoothingEnabled = false` for crisp pixel art.
 ```bash
 git clone https://github.com/Richie6988/squidmind
 cd squidmind
+./start.sh            # seamless: checks deps, GPU, voice, upscaler, then launches
+# → http://localhost:3000
+```
+
+`start.sh` sets up whatever is already available and prints a one-line hint
+for anything optional that isn't. To force the heavier optional setup:
+
+```bash
+./start.sh --all           # NVIDIA Container Toolkit + Speaches voice + Real-ESRGAN
+./start.sh --with-voice     # just auto-start the Speaches (voice) container
+./start.sh --with-upscaler  # just download Real-ESRGAN for true super-resolution
+./start.sh --setup-gpu      # just install the NVIDIA Container Toolkit (GPU-in-Docker)
+```
+
+Prefer plain node? `npm start` still works (skips all the optional setup):
+
+```bash
 npm install
 npm start
 # → http://localhost:3000

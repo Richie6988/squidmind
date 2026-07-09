@@ -5,6 +5,8 @@
   "main": "server/index.js",
   "scripts": {
     "start": "node server/index.js",
+    "go": "bash start.sh",
+    "go:all": "bash start.sh --all",
     "dev": "node --watch server/index.js",
     "setup": "npm install && node scripts/doctor.js",
     "doctor": "node scripts/doctor.js",
