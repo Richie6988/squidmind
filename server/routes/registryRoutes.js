@@ -217,6 +217,59 @@ router.get('/tasks', async (req, res) => {
 });
 
 // GET /tasks/results — completed/cancelled task log (slim, for UI Results pane)
+// GET /agents/stats — per-agent telemetry aggregated from results_log.
+// Answers "which agent actually delivers": completed/failed counts, success
+// rate, average duration, last activity. Cheap to compute (results_log is
+// small), computed on demand — no background job needed.
+router.get('/agents/stats', async (req, res) => {
+  try {
+    const AQUARIUM = require('../aquarium');
+    const fsp = require('fs').promises;
+    const path = require('path');
+    let rlog = { results: {} };
+    try { rlog = JSON.parse(await fsp.readFile(path.join(AQUARIUM.TASKS, 'results_log.json'), 'utf8')); } catch {}
+    const entries = Array.isArray(rlog.results) ? rlog.results : Object.values(rlog.results || {});
+
+    // Resolve agent display names
+    let agentNames = {};
+    try {
+      const areg = await rm.read('AGENTS/agent_registry.json');
+      for (const [id, a] of Object.entries(areg.agents || {})) agentNames[id] = a.display_name || id;
+    } catch {}
+
+    const byAgent = {};
+    for (const r of entries) {
+      const id = r.assigned_name || 'poseidon';
+      const a = byAgent[id] = byAgent[id] || {
+        agent_id: id, name: agentNames[id] || id,
+        completed: 0, failed: 0, cancelled: 0,
+        total_duration_ms: 0, timed: 0, last_at: null,
+      };
+      if (r.status === 'completed') a.completed++;
+      else if (r.status === 'failed') a.failed++;
+      else if (r.status === 'cancelled') a.cancelled++;
+      if (typeof r.duration_ms === 'number' && r.duration_ms > 0 && r.duration_ms < 86_400_000) {
+        a.total_duration_ms += r.duration_ms; a.timed++;
+      }
+      const at = r.completed_at ? Date.parse(r.completed_at) : 0;
+      if (at && (!a.last_at || at > a.last_at)) a.last_at = at;
+    }
+
+    const stats = Object.values(byAgent).map(a => {
+      const attempts = a.completed + a.failed;
+      return {
+        agent_id: a.agent_id, name: a.name,
+        completed: a.completed, failed: a.failed, cancelled: a.cancelled,
+        success_rate: attempts ? Math.round((a.completed / attempts) * 100) : null,
+        avg_duration_s: a.timed ? Math.round(a.total_duration_ms / a.timed / 1000) : null,
+        last_at: a.last_at ? new Date(a.last_at).toISOString() : null,
+      };
+    }).sort((x, y) => (y.completed + y.failed) - (x.completed + x.failed));
+
+    res.json({ success: true, ok: true, total_results: entries.length, agents: stats });
+  } catch (err) { res.status(500).json({ success: false, error: err.message }); }
+});
+
 router.get('/tasks/results', async (req, res) => {
   try {
     const fsp      = require('fs').promises;

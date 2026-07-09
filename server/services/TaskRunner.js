@@ -795,7 +795,11 @@ class TaskRunner {
             result_summary: task.result_summary || extra.result_summary || null,
             result_file:    task.result_file    || extra.result_file    || null,
             output_preview: task.output_preview  || extra.output_preview || null,
+            started_at:     task.lifecycle?.started_at || null,
             completed_at:   task.completed_at   || extra.completed_at   || new Date().toISOString(),
+            duration_ms:    task.lifecycle?.started_at
+              ? (Date.parse(task.completed_at || extra.completed_at || Date.now()) - Date.parse(task.lifecycle.started_at)) || null
+              : null,
             assigned_name:  task.assigned_to    || task.assigned_to || null,
             project_name:   task.project_name   || task.context?.project_name   || null,
             project_id:     task.project_id     || task.context?.project_id     || null,

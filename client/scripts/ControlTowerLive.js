@@ -89,6 +89,44 @@ const ControlTowerLive = {
         `<span style="font-size:7px;font-family:'Courier New',monospace;color:#4facfe;letter-spacing:.08em;opacity:.8;">ZZZ</span>` +
         `<span id="monitor-sleeping-squids" style="font-size:13px;font-weight:700;color:#4facfe;font-family:'Courier New',monospace;">${sleeping}</span>`;
     }
+    // Per-agent telemetry (success rate, avg duration) — throttled fetch.
+    this._maybeRenderAgentStats();
+  },
+
+  _agentStatsLastFetch: 0,
+  async _maybeRenderAgentStats() {
+    // Refresh at most every 30s; the squad section re-renders more often.
+    if (Date.now() - this._agentStatsLastFetch < 30_000) return;
+    this._agentStatsLastFetch = Date.now();
+    try {
+      const r = await fetch('/api/v2/agents/stats');
+      const d = await r.json();
+      if (!d.ok || !d.agents) return;
+      const host = document.getElementById('monitor-squad-stats');
+      if (!host) return;
+      let box = document.getElementById('squad-telemetry');
+      if (!box) {
+        box = document.createElement('div');
+        box.id = 'squad-telemetry';
+        host.appendChild(box);
+      }
+      const rows = d.agents.slice(0, 6).map(a => {
+        const rate = a.success_rate === null ? '—' : a.success_rate + '%';
+        const rateColor = a.success_rate === null ? '#475569'
+          : a.success_rate >= 80 ? '#06ffa5'
+          : a.success_rate >= 50 ? '#fbbf24' : '#f87171';
+        const dur = a.avg_duration_s === null ? '' :
+          ` · ${a.avg_duration_s >= 60 ? Math.round(a.avg_duration_s / 60) + 'm' : a.avg_duration_s + 's'} avg`;
+        return `<div class="squad-tele-row" title="${a.completed} completed, ${a.failed} failed${dur ? ', avg duration' + dur : ''}">
+          <span class="squad-tele-name">${(a.name || a.agent_id).slice(0, 14)}</span>
+          <span class="squad-tele-nums">${a.completed}✓ ${a.failed}✗</span>
+          <span class="squad-tele-rate" style="color:${rateColor};">${rate}</span>
+        </div>`;
+      }).join('');
+      box.innerHTML = rows
+        ? `<div class="squad-tele-head">AGENT PERFORMANCE</div>${rows}`
+        : '';
+    } catch { /* non-fatal — telemetry is best-effort */ }
   },
   
   /**

@@ -8714,3 +8714,20 @@ h4.pc-md-h { font-size: 8px; color: #94a3b8; }
 .ml-wizard-rec-why { font-size: 9px; color: #64748b; margin-top: 2px; }
 .ml-wizard-dl { font-size: 9px; padding: 6px 12px; white-space: nowrap; flex-shrink: 0; }
 .ml-wizard-note { font-size: 9px; color: #475569; margin-top: 10px; text-align: center; }
+
+/* ═══ Squad telemetry (per-agent success rate + counts) ═══════════════ */
+#squad-telemetry { margin-top: 8px; }
+.squad-tele-head {
+  font-family: var(--panel-font), sans-serif;
+  font-size: 6px; letter-spacing: 0.1em; color: #475569;
+  margin-bottom: 4px;
+}
+.squad-tele-row {
+  display: flex; align-items: center; gap: 8px;
+  font-family: 'Courier New', monospace; font-size: 9px;
+  padding: 2px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.03);
+}
+.squad-tele-name { color: #94a3b8; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.squad-tele-nums { color: #64748b; flex-shrink: 0; }
+.squad-tele-rate { font-weight: 700; flex-shrink: 0; min-width: 34px; text-align: right; }

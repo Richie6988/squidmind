@@ -1,0 +1,60 @@
+# ═══════════════════════════════════════════════════════════════════════════
+#  SquidMind — docker-compose
+# ═══════════════════════════════════════════════════════════════════════════
+#  One-liner full stack:
+#     docker compose up -d
+#  → SquidMind on http://localhost:3000, Speaches voice on :8000.
+#
+#  GPU: uncomment the `deploy` blocks if you have the NVIDIA Container
+#  Toolkit installed (start.sh --setup-gpu installs it). Without them,
+#  both services run CPU-only, which works — just slower for inference.
+#
+#  Models live in ./data/models on the host (mounted in), so downloads
+#  persist across container rebuilds. The aquarium state persists in
+#  ./aquarium the same way.
+# ═══════════════════════════════════════════════════════════════════════════
+
+services:
+  squidmind:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./aquarium:/app/aquarium
+      - ./data:/app/data
+    environment:
+      # Voice: reach the sibling container by service name — NOT localhost,
+      # which inside this container refers to itself.
+      - SPEACHES_URL=http://speaches:8000
+    depends_on:
+      - speaches
+    restart: unless-stopped
+    # Uncomment for GPU inference (requires nvidia-container-toolkit):
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+
+  speaches:
+    image: ghcr.io/speaches-ai/speaches:latest-cuda
+    ports:
+      - "8000:8000"
+    volumes:
+      - speaches-models:/root/.cache
+    restart: unless-stopped
+    # Uncomment for GPU voice (requires nvidia-container-toolkit):
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+
+volumes:
+  speaches-models:
