@@ -1179,6 +1179,13 @@ const PoseidonChat = {
       st.style.color = '#fbbf24';
       try {
         const r = await fetch('/api/v2/voice/autostart', { method: 'POST' });
+        const ct = r.headers.get('content-type') || '';
+        if (!ct.includes('application/json')) {
+          const txt = await r.text();
+          throw new Error(txt.trim().startsWith('<')
+            ? 'Server returned HTML, not JSON — the /autostart route is not loaded. Restart the SquidMind server (voiceRoutes changed).'
+            : ('Unexpected response: ' + txt.slice(0, 120)));
+        }
         const d = await r.json();
         if (d.ok) {
           st.textContent = d.already_running ? '\u2713 Already running at ' + d.url : '\u2713 Speaches started at ' + d.url;

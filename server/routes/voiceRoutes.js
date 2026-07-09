@@ -37,6 +37,7 @@ function buildVoiceRoutes({ rm, fetchWithRetry }) {
   // Speaches already answers; if not, spawns the container detached and
   // polls until /v1/models responds (or times out).
   router.post('/autostart', async (req, res) => {
+   try {
     const { spawn, exec } = require('child_process');
     const cfg  = (await rm.read('CHANNELS/comms_config.json').catch(() => ({}))).voice || {};
     const base = speachesBase(cfg);
@@ -149,6 +150,11 @@ function buildVoiceRoutes({ rm, fetchWithRetry }) {
       error: `Started the Speaches container but it did not become ready within 90s at ${base}. ` +
              `First run downloads models — it may still be pulling. Try again in a minute, or check: docker logs ${name}`,
     });
+   } catch (e) {
+     if (!res.headersSent) {
+       return res.status(500).json({ ok: false, error: 'autostart failed: ' + e.message });
+     }
+   }
   });
 
   // ── GET /ping — diagnostic: can the SERVER reach Speaches? ──────────────────
