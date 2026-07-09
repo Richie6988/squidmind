@@ -40,7 +40,7 @@ const CommsPanel = {
             <span class="comms-dot" id="dot-discord"></span>
           </button>
           <button class="comms-tab" data-tab="email" onclick="CommsPanel._switchTab('email')">
-            <span class="comms-tab-icon">✉️</span> Email
+            <span class="comms-tab-icon">🔧</span> SMTP
             <span class="comms-dot" id="dot-email"></span>
           </button>
         </div>
@@ -185,6 +185,7 @@ const CommsPanel = {
   _renderEmailTab() {
     return `
       <div class="comms-setup-guide">
+        <div class="comms-tool-banner">Configures the <b>send_email</b> tool — Poseidon and agents use this SMTP server to send mail from tasks and chat.</div>
         <div class="comms-guide-steps">
           <div class="comms-step"><span class="comms-step-num">1</span>
             <span><b>Gmail:</b> enable 2-Step Verification, then create an <b>App Password</b> at <code>myaccount.google.com/apppasswords</code></span></div>

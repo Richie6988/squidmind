@@ -123,7 +123,27 @@ class HeartbeatService {
         if (!brokerState || brokerState.state !== 'IDLE' || brokerState.queue.length > 0) {
           skipReason = `broker busy (state=${brokerState?.state}, queue=${brokerState?.queue?.length})`;
         } else if (!pm) {
-          skipReason = 'poseidon model not loaded';
+          // Model not loaded. Historically this skipped forever, so temp.md
+          // accumulated and consolidation NEVER ran when Poseidon had been
+          // evicted (image gen) or was simply not loaded since boot. Fix:
+          // if there is meaningful interaction log to consolidate and the
+          // cooldown has passed, auto-load Poseidon and dream directly.
+          const dreamWorthy = this._tempLogHasContent();
+          const cooledDown  = (Date.now() - this._lastDreamAt) > this.dreamCooldownMinutes * 60 * 1000;
+          if (dreamWorthy && cooledDown && this.modelService.poseidonModelId && !this._dreamAutoloading) {
+            this._dreamAutoloading = true;
+            this._lastDreamAt = Date.now();   // set now to avoid re-entry while loading
+            log.info('[Heartbeat] 💤 temp.md has content but Poseidon not loaded — auto-loading for dream consolidation');
+            this.modelService.ensureLoaded(this.modelService.poseidonModelId)
+              .then(() => this.modelService.triggerDream())
+              .catch(e => log.warn('[Heartbeat] Dream autoload failed:', e.message))
+              .finally(() => { this._dreamAutoloading = false; });
+            skipReason = 'autoload + dream launched in background';
+          } else {
+            skipReason = dreamWorthy
+              ? 'poseidon model not loaded (autoload waiting: cooldown or already in progress)'
+              : 'poseidon model not loaded (temp.md empty — nothing to consolidate)';
+          }
         } else if (pm.generating) {
           skipReason = 'model generating';
         } else if (pm.dreaming) {
@@ -146,8 +166,8 @@ class HeartbeatService {
           skipReason = `cooldown ${cooldownRemainingMin}min remaining`;
         }
         if (skipReason) {
-          // Rate-limit these to once/60s so the log isn't spammed
-          if ((Date.now() - this._lastDreamSkipLogAt) > 60_000) {
+          // Rate-limit these to once/5min so the log isn't spammed
+          if ((Date.now() - this._lastDreamSkipLogAt) > 300_000) {
             this._lastDreamSkipLogAt = Date.now();
             log.info(`[Heartbeat] 💤 dream skipped — ${skipReason}`);
           }
@@ -172,6 +192,27 @@ class HeartbeatService {
         log.warn('[Heartbeat] Project audit tick error:', e.message)
       );
     }
+  }
+
+  /**
+   * _tempLogHasContent — does temp.md contain real interaction lines below
+   * the seeded header comments? Mirrors triggerDream's own check so the
+   * heartbeat never auto-loads a multi-GB model just to find an empty log.
+   */
+  _tempLogHasContent() {
+    try {
+      const fsSync   = require('fs');
+      const AQUARIUM = require('../aquarium');
+      const raw = fsSync.readFileSync(AQUARIUM.TEMP_LOG, 'utf8').trim();
+      const contentBelowHeader = raw
+        .split('\n')
+        .filter(line => !line.trim().startsWith('<!--'))
+        .join('\n')
+        .trim();
+      // Require a bit of substance (> 200 chars) — a stray blank line isn't
+      // worth a model load.
+      return contentBelowHeader.length > 200;
+    } catch { return false; }
   }
 
   async _plannerTick() {

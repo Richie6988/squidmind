@@ -8731,3 +8731,14 @@ h4.pc-md-h { font-size: 8px; color: #94a3b8; }
 .squad-tele-name { color: #94a3b8; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .squad-tele-nums { color: #64748b; flex-shrink: 0; }
 .squad-tele-rate { font-weight: 700; flex-shrink: 0; min-width: 34px; text-align: right; }
+
+/* ═══ SMTP tool banner in COMMS ═══════════════════════════════════════ */
+.comms-tool-banner {
+  font-size: 10px; color: #4facfe;
+  background: rgba(79,172,254,0.06);
+  border: 1px solid rgba(79,172,254,0.2);
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin-bottom: 10px;
+  line-height: 1.5;
+}
