@@ -8590,3 +8590,42 @@ h4.pc-md-h { font-size: 8px; color: #94a3b8; }
 .tq-img-carousel .tq-img-thumb-wrap {
   aspect-ratio: 16 / 10;   /* landscape strip reads better than square here */
 }
+
+/* ═══ Task-detail generated image preview ═════════════════════════════ */
+.tq-detail-imgwrap {
+  width: 100%;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid rgba(255,255,255,0.08);
+  background: #020810;
+  display: flex; align-items: center; justify-content: center;
+  max-height: 340px;
+}
+.tq-detail-img {
+  max-width: 100%;
+  max-height: 340px;
+  object-fit: contain;
+  cursor: zoom-in;
+  display: block;
+}
+.tq-detail-imgactions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+/* ═══ Compact scheduler entry (bottom of right panel) ═════════════════ */
+.scheduler-compact {
+  padding: 8px 10px;
+  border-top: 1px solid rgba(255,255,255,0.05);
+  margin-top: auto;   /* push to the bottom of the flex column */
+}
+.scheduler-compact-btn {
+  width: 100%;
+  font-size: 9px;
+  padding: 7px 10px;
+  opacity: 0.75;
+  transition: opacity 0.15s;
+}
+.scheduler-compact-btn:hover { opacity: 1; }

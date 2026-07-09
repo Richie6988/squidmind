@@ -141,14 +141,11 @@
           </div>
         </div>
         
-        <!-- Scheduler (create recurring tasks without Poseidon) -->
-        <div class="monitor-section">
-          <h3>Scheduler</h3>
-          <div id="scheduler-stats" style="font-size:9px; color:var(--text-secondary); margin-bottom:6px;">
-            <span id="scheduler-count">0</span> scheduled
-          </div>
-          <button class="btn-secondary" onclick="Scheduler.open()" style="width: 100%; font-size: 9px;">
-            + Schedule Task
+        <!-- Scheduler: compact — scheduled/cron tasks appear in the QUEUE
+             like any other task. This is just the entry point to create one. -->
+        <div class="scheduler-compact">
+          <button class="btn-secondary scheduler-compact-btn" onclick="Scheduler.open()" title="Create a recurring/scheduled task">
+            + Schedule Task<span id="scheduler-count-wrap" style="opacity:.6;"> · <span id="scheduler-count">0</span> scheduled</span>
           </button>
         </div>
       </div>

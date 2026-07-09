@@ -719,6 +719,20 @@ ${task.description}`
             </div>
           </div>
           ${task.lifecycle?.started_at ? `<div class="tq-detail-meta">Started: ${new Date(task.lifecycle.started_at).toLocaleString()}</div>` : ''}
+          ${task.output_preview && /\.(png|jpe?g|webp|gif)(\?|$)/i.test(task.output_preview) ? `
+          <div class="tq-detail-field">
+            <label>Generated image</label>
+            <div class="tq-detail-imgwrap">
+              <img src="${task.output_preview}" class="tq-detail-img" loading="lazy" onclick="window.open('${task.output_preview}','_blank')" title="Click to open full size">
+            </div>
+            <div class="tq-detail-imgactions">
+              <a href="${task.output_preview}" target="_blank" rel="noopener" class="tq-img-bigview-link">Open native →</a>
+              <a href="${task.output_preview}" download class="tq-img-bigview-link">Download</a>
+              <button class="tq-img-bigview-link tq-up" onclick="TaskQueueUI.upscaleResult('${taskId}',2)">↑ Upscale 2×</button>
+              <button class="tq-img-bigview-link tq-up" onclick="TaskQueueUI.upscaleResult('${taskId}',4)">↑ Upscale 4×</button>
+              <button class="tq-img-bigview-link tq-editbtn" onclick="TaskQueueUI.editResult('${taskId}')">✎ Edit</button>
+            </div>
+          </div>` : ''}
           ${task.result_summary || task.result_file ? `
           <div class="tq-detail-field">
             <div class="tq-detail-result-header">
