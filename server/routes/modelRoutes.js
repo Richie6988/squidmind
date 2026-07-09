@@ -469,17 +469,14 @@ function buildRouter(v2ModelService) {
   });
 
   // POST /api/v2/models/upscale-image
-  // REAL upscaling via jimp (pure-JS bicubic resampling) — NOT a diffusion
-  // regen. jimp has no native build step so it always installs cleanly.
+  // REAL super-resolution via Real-ESRGAN (GPU, reconstructs detail) when
+  // the binary is available, else pure-JS jimp bicubic fallback. Never a
+  // diffusion regen. Response `backend` says which was used.
   router.post('/upscale-image', async (req, res) => {
     try {
       const { source_image, scale = 2 } = req.body;
       if (!source_image) return res.status(400).json({ ok: false, error: 'source_image is required' });
-      const factor = (Number(scale) === 4) ? 4 : 2;
-
-      let Jimp;
-      try { Jimp = require('jimp'); }
-      catch { return res.status(501).json({ ok: false, error: 'jimp not installed. Run: npm install (jimp is in package.json).' }); }
+      const factor = [2, 3, 4].includes(Number(scale)) ? Number(scale) : 2;
 
       const path = require('path');
       const fs   = require('fs');
@@ -488,31 +485,40 @@ function buildRouter(v2ModelService) {
       if (!path.isAbsolute(src)) src = path.join(AQUARIUM.ROOT, src);
       if (!fs.existsSync(src)) return res.status(404).json({ ok: false, error: `Source image not found: ${src}` });
 
-      const img  = await Jimp.read(src);
-      const fromW = img.bitmap.width, fromH = img.bitmap.height;
-      const newW = fromW * factor, newH = fromH * factor;
-      // Bicubic resize + a light sharpen convolution to recover edge detail
-      img.resize(newW, newH, Jimp.RESIZE_BICUBIC);
-      img.convolute([
-        [ 0,   -0.15,  0   ],
-        [-0.15, 1.6,  -0.15],
-        [ 0,   -0.15,  0   ],
-      ]);
-
       const ext = path.extname(src) || '.png';
       const out = src.replace(new RegExp(`\\${ext}$`, 'i'), `_upscaled${factor}x${ext}`);
-      await img.writeAsync(out);
 
-      const serveUrl = `/api/files/read?path=${encodeURIComponent(out)}`;
-      log.info?.(`[upscale-image] ${factor}x ${fromW}x${fromH} → ${newW}x${newH}: ${path.basename(out)}`);
+      const { upscaleService } = require('../services/UpscaleService');
+      const result = await upscaleService.upscale(src, factor, out);
+
+      const serveUrl = `/api/files/read?path=${encodeURIComponent(result.outputPath)}`;
+      log.info?.(`[upscale-image] ${factor}x via ${result.backend}: ${result.from} → ${result.to} (${path.basename(result.outputPath)})`);
       res.json({
         ok: true, success: true,
-        outputPath: out, url: serveUrl,
-        from: `${fromW}x${fromH}`, to: `${newW}x${newH}`, scale: factor,
+        outputPath: result.outputPath, url: serveUrl,
+        from: result.from, to: result.to, scale: factor,
+        backend: result.backend,
       });
     } catch (err) {
       res.status(500).json({ ok: false, success: false, error: err.message });
     }
+  });
+
+  // GET /api/v2/models/upscale-info — which upscale backend is available
+  router.get('/upscale-info', async (req, res) => {
+    try {
+      const { upscaleService } = require('../services/UpscaleService');
+      const hasReal = await upscaleService.hasRealEsrgan();
+      res.json({
+        ok: true,
+        realesrgan: hasReal,
+        backend: hasReal ? 'real-esrgan' : 'jimp-bicubic',
+        install_hint: hasReal ? null :
+          'For true super-resolution, download realesrgan-ncnn-vulkan from ' +
+          'https://github.com/xinntao/Real-ESRGAN-ncnn-vulkan/releases, unzip into ' +
+          'aquarium/TOOLS/realesrgan/, and chmod +x the binary. Falling back to bicubic for now.',
+      });
+    } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
   });
 
   // POST /api/v2/models/generate-image

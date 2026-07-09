@@ -518,7 +518,10 @@ ${task.description}`
       if (!r.ok || j.ok === false) {
         return SquidModal.alert('Upscale failed: ' + (j.error || r.status));
       }
-      SquidModal.alert(`Upscaled ${j.from} → ${j.to}. Saved as ${j.outputPath?.split('/').pop() || 'upscaled file'}.`);
+      const backendLabel = j.backend === 'real-esrgan'
+        ? 'Real-ESRGAN (super-resolution)'
+        : 'bicubic (install Real-ESRGAN for true detail — see aquarium/TOOLS/realesrgan)';
+      SquidModal.alert(`Upscaled ${j.from} → ${j.to} via ${backendLabel}.\nSaved as ${j.outputPath?.split('/').pop() || 'upscaled file'}.`);
     } catch (e) { SquidModal.alert('Upscale failed: ' + e.message); }
   },
 

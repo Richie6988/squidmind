@@ -8,6 +8,7 @@
     "dev": "node --watch server/index.js",
     "setup": "npm install && node scripts/doctor.js",
     "doctor": "node scripts/doctor.js",
+    "install-upscaler": "bash scripts/install-upscaler.sh",
     "test": "npm run test:smoke && npm run test:integration && npm run test:stream && npm run test:orchestrator",
     "rebuild-llama": "bash scripts/rebuild-llama.sh",
     "test:smoke": "node tests/smoke.test.js",

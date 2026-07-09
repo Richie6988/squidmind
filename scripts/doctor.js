@@ -60,5 +60,28 @@ try {
   warn('No NVIDIA GPU detected (CPU inference will work but be slower).');
 }
 
+// Real-ESRGAN (optional, for true super-resolution upscaling)
+console.log('\nImage upscaling:');
+(() => {
+  const fs = require('fs'), path = require('path'), os = require('os');
+  const BIN = 'realesrgan-ncnn-vulkan';
+  const cands = [
+    process.env.REALESRGAN_BIN,
+    path.join(__dirname, '..', 'aquarium', 'TOOLS', 'realesrgan', BIN),
+    `/usr/local/bin/${BIN}`, `/usr/bin/${BIN}`,
+    path.join(os.homedir(), '.local', 'bin', BIN),
+  ].filter(Boolean);
+  let found = null;
+  for (const c of cands) { try { fs.accessSync(c, fs.constants.X_OK); found = c; break; } catch {} }
+  if (!found) {
+    try { found = execSync(`bash -lc 'command -v ${BIN}'`, { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim() || null; } catch {}
+  }
+  if (found) ok(`Real-ESRGAN found (${found}) — true super-resolution available`);
+  else {
+    warn('Real-ESRGAN not found — upscale falls back to bicubic (adds pixels, no new detail).');
+    console.log(`${DIM}     For true super-resolution: npm run install-upscaler${RST}`);
+  }
+})();
+
 console.log('\n' + '─'.repeat(40));
 console.log('Done. Warnings above are optional features; none block startup.\n');
