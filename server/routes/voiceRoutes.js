@@ -21,29 +21,40 @@ function buildVoiceRoutes({ rm, fetchWithRetry }) {
 
   // Pull a single model into Speaches via POST /v1/models/{id}. Speaches
   // downloads it inside the container. Returns true on success.
+  // Legacy alias map: configs saved before we used full Speaches ids may
+  // contain short names like "kokoro" — normalise them so both the TTS
+  // request and the model pull hit real registry ids.
+  const MODEL_ALIASES = {
+    'kokoro':      'speaches-ai/Kokoro-82M-v1.0-ONNX',
+    'kokoro-int8': 'speaches-ai/Kokoro-82M-v1.0-ONNX-int8',
+    'whisper':     'Systran/faster-whisper-small',
+  };
+  const resolveModelId = (id) => MODEL_ALIASES[(id || '').toLowerCase()] || id;
+
   async function pullModel(baseUrl, modelId) {
+    modelId = resolveModelId(modelId);
     try {
-      const r = await fetch(`${baseUrl}/v1/models/${encodeURIComponent(modelId)}`, {
+      // Canonical Speaches endpoint: POST /v1/models/{repo}/{name} — the id
+      // contains a slash and must NOT be URL-encoded (it's a path).
+      const r = await fetch(`${baseUrl}/v1/models/${modelId}`, {
         method: 'POST',
         signal: AbortSignal.timeout(300_000),  // model download can be large
       });
       if (r.ok) { log.info(`pulled model "${modelId}"`); return true; }
-      // Some Speaches versions use a body-based endpoint
-      const r2 = await fetch(`${baseUrl}/v1/models`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model: modelId }),
-        signal: AbortSignal.timeout(300_000),
-      });
-      if (r2.ok) { log.info(`pulled model "${modelId}" (body form)`); return true; }
-      log.warn(`pull model "${modelId}" failed: ${r.status}/${r2.status}`);
+      // 409/conflict-style responses mean it's already installed — success.
+      const body = await r.text().catch(() => '');
+      if (r.status === 409 || /already/i.test(body)) {
+        log.info(`model "${modelId}" already installed`);
+        return true;
+      }
+      log.warn(`pull model "${modelId}" failed: ${r.status} — ${body.slice(0, 200)}`);
       return false;
     } catch (e) { log.warn(`pull model "${modelId}" error:`, e.message); return false; }
   }
 
   // Pull both the TTS and STT models a fresh Speaches container needs.
   async function pullVoiceModels(baseUrl, cfg) {
-    const tts = cfg?.tts_model || 'kokoro';
+    const tts = cfg?.tts_model || 'speaches-ai/Kokoro-82M-v1.0-ONNX';
     const stt = cfg?.stt_model || 'Systran/faster-whisper-small';
     await pullModel(baseUrl, tts);
     await pullModel(baseUrl, stt);
@@ -231,7 +242,7 @@ function buildVoiceRoutes({ rm, fetchWithRetry }) {
         tts_speed:     v.tts_speed ?? 1.0,
         language:      v.language || 'fr',
         stt_model:     v.stt_model || 'Systran/faster-whisper-small',
-        tts_model:     v.tts_model || 'kokoro',
+        tts_model:     v.tts_model || 'speaches-ai/Kokoro-82M-v1.0-ONNX',
       }});
     } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
   });
@@ -317,7 +328,7 @@ function buildVoiceRoutes({ rm, fetchWithRetry }) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          model:  cfg.tts_model  || 'kokoro',
+          model:  resolveModelId(cfg.tts_model) || 'speaches-ai/Kokoro-82M-v1.0-ONNX',
           input:  text.slice(0, 4000),  // Speaches limit
           voice:  voice || cfg.tts_voice || 'af_heart',
           speed:  speed || cfg.tts_speed || 1.0,
@@ -332,19 +343,19 @@ function buildVoiceRoutes({ rm, fetchWithRetry }) {
         // first time — the model has to be pulled into the container. Do that
         // now and retry once, so the user doesn't have to run a curl by hand.
         if (response.status === 404 && /not installed/i.test(errText)) {
-          const modelId = cfg.tts_model || 'kokoro';
+          const modelId = resolveModelId(cfg.tts_model) || 'speaches-ai/Kokoro-82M-v1.0-ONNX';
           log.info(`TTS model "${modelId}" missing — pulling into Speaches…`);
           const pulled = await pullModel(baseUrl, modelId).catch(() => false);
           if (pulled) {
             const retry = await fetchWithRetry(`${baseUrl}/v1/audio/speech`, {
-              retries: 1, baseDelayMs: 500, timeoutMs: 60_000,
+              retries: 1, baseDelayMs: 500, timeoutMs: 120_000,
               method: 'POST', headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
                 model: modelId, input: text.slice(0, 4000),
                 voice: voice || cfg.tts_voice || 'af_heart',
                 speed: speed || cfg.tts_speed || 1.0, response_format: 'wav',
               }),
-              signal: AbortSignal.timeout(60_000),
+              signal: AbortSignal.timeout(120_000),
             });
             if (retry.ok) {
               res.setHeader('Content-Type', 'audio/wav');
