@@ -162,7 +162,7 @@ poseidonOrchestrator.setAgentWorkerPool(agentWorkerPool);
 const BotService = require('./services/BotService');
 const { buildCommsRoutes } = require('./routes/commsRoutes');
 const botService = new BotService(sharedRm, v2ModelService);
-app.use('/api/v2/comms', buildCommsRoutes(botService));
+app.use('/api/v2/comms', buildCommsRoutes(botService, sharedRm));
 // Start bots after server is listening (wired below in app.listen callback)
 
 app.use('/api/v2/models', buildModelRouter(v2ModelService));

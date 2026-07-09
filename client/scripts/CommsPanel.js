@@ -39,6 +39,10 @@ const CommsPanel = {
             <span class="comms-tab-icon">🎮</span> Discord
             <span class="comms-dot" id="dot-discord"></span>
           </button>
+          <button class="comms-tab" data-tab="email" onclick="CommsPanel._switchTab('email')">
+            <span class="comms-tab-icon">✉️</span> Email
+            <span class="comms-dot" id="dot-email"></span>
+          </button>
         </div>
         <div class="comms-body">
           <div id="comms-tab-telegram" class="comms-tab-pane active">
@@ -46,6 +50,9 @@ const CommsPanel = {
           </div>
           <div id="comms-tab-discord" class="comms-tab-pane" style="display:none">
             ${this._renderDiscordTab()}
+          </div>
+          <div id="comms-tab-email" class="comms-tab-pane" style="display:none">
+            ${this._renderEmailTab()}
           </div>
         </div>
         <div class="comms-history-section">
@@ -175,6 +182,119 @@ const CommsPanel = {
     `;
   },
 
+  _renderEmailTab() {
+    return `
+      <div class="comms-setup-guide">
+        <div class="comms-guide-steps">
+          <div class="comms-step"><span class="comms-step-num">1</span>
+            <span><b>Gmail:</b> enable 2-Step Verification, then create an <b>App Password</b> at <code>myaccount.google.com/apppasswords</code></span></div>
+          <div class="comms-step"><span class="comms-step-num">2</span>
+            <span>Host <code>smtp.gmail.com</code>, port <code>465</code>, secure ON — user is your full address, pass is the 16-char app password</span></div>
+          <div class="comms-step"><span class="comms-step-num">3</span>
+            <span>Other providers: use their SMTP host/port (Outlook: <code>smtp.office365.com:587</code>, secure OFF)</span></div>
+        </div>
+      </div>
+      <div class="comms-field-group">
+        <label class="comms-label">SMTP Host</label>
+        <input id="em-host" type="text" class="comms-input" placeholder="smtp.gmail.com" autocomplete="off">
+      </div>
+      <div class="comms-field-group" style="display:flex;gap:10px;">
+        <div style="flex:1;">
+          <label class="comms-label">Port</label>
+          <input id="em-port" type="text" class="comms-input" placeholder="465">
+        </div>
+        <div style="flex:1;">
+          <label class="comms-label">Secure (SSL)</label>
+          <select id="em-secure" class="comms-input">
+            <option value="true">Yes (port 465)</option>
+            <option value="false">No / STARTTLS (port 587)</option>
+          </select>
+        </div>
+      </div>
+      <div class="comms-field-group">
+        <label class="comms-label">User (email address)</label>
+        <input id="em-user" type="text" class="comms-input" placeholder="you@gmail.com" autocomplete="off">
+      </div>
+      <div class="comms-field-group">
+        <label class="comms-label">Password / App Password</label>
+        <div class="comms-token-row">
+          <input id="em-pass" type="password" class="comms-input" placeholder="16-char app password for Gmail" autocomplete="off">
+          <button class="comms-eye-btn" onclick="CommsPanel._toggleVisible('em-pass')">👁</button>
+        </div>
+      </div>
+      <div class="comms-field-group">
+        <label class="comms-label">From <span class="comms-hint-inline">(optional — defaults to user)</span></label>
+        <input id="em-from" type="text" class="comms-input" placeholder="Poseidon <you@gmail.com>">
+      </div>
+      <div class="comms-field-group">
+        <label class="comms-label">Send test to</label>
+        <div class="comms-token-row">
+          <input id="em-test-to" type="text" class="comms-input" placeholder="you@gmail.com">
+          <button class="btn-secondary" style="font-size:9px;" onclick="CommsPanel._testEmail()">Send test</button>
+        </div>
+      </div>
+      <div class="comms-status-bar" id="em-status-bar">
+        <span id="em-status-dot" class="comms-status-dot comms-status-off"></span>
+        <span id="em-status-text">Not configured</span>
+      </div>
+      <div class="comms-actions">
+        <button class="btn-primary" id="em-save-btn" onclick="CommsPanel._saveEmail()">Save</button>
+      </div>
+      <p id="em-error" class="comms-error" style="display:none"></p>
+    `;
+  },
+
+  async _saveEmail() {
+    const err = this.modal.querySelector('#em-error');
+    err.style.display = 'none';
+    const email = {
+      host:   this.modal.querySelector('#em-host').value.trim(),
+      port:   Number(this.modal.querySelector('#em-port').value.trim() || 587),
+      secure: this.modal.querySelector('#em-secure').value === 'true',
+      user:   this.modal.querySelector('#em-user').value.trim(),
+      pass:   this.modal.querySelector('#em-pass').value,
+      from:   this.modal.querySelector('#em-from').value.trim() || undefined,
+    };
+    if (!email.host || !email.user || !email.pass) {
+      err.textContent = 'Host, user and password are required.';
+      err.style.display = 'block';
+      return;
+    }
+    try {
+      await window.api._fetch('/comms/email', {
+        method: 'POST',
+        body: JSON.stringify({ email }),
+      });
+      const dot = this.modal.querySelector('#em-status-dot');
+      const txt = this.modal.querySelector('#em-status-text');
+      if (dot) dot.className = 'comms-status-dot comms-status-on';
+      if (txt) txt.textContent = `Configured (${email.user})`;
+    } catch (e) {
+      err.textContent = 'Save failed: ' + e.message;
+      err.style.display = 'block';
+    }
+  },
+
+  async _testEmail() {
+    const err = this.modal.querySelector('#em-error');
+    err.style.display = 'none';
+    const to = this.modal.querySelector('#em-test-to').value.trim();
+    if (!to) { err.textContent = 'Enter a recipient for the test.'; err.style.display = 'block'; return; }
+    try {
+      // Save first so the test uses what's on screen
+      await this._saveEmail();
+      await window.api._fetch('/comms/email/test', {
+        method: 'POST',
+        body: JSON.stringify({ to }),
+      });
+      const txt = this.modal.querySelector('#em-status-text');
+      if (txt) txt.textContent = `✓ Test sent to ${to}`;
+    } catch (e) {
+      err.textContent = 'Test failed: ' + e.message;
+      err.style.display = 'block';
+    }
+  },
+
   // ── Tab switching ───────────────────────────────────────────────────────────
 
   _switchTab(name) {
@@ -195,6 +315,25 @@ const CommsPanel = {
     } catch (err) {
       console.warn('[CommsPanel] status load failed:', err.message);
     }
+    // Email config prefill (independent of bot status)
+    try {
+      const em = await window.api._fetch('/comms/email');
+      if (em?.configured && em.email) {
+        const set = (id, v) => { const el = this.modal.querySelector(id); if (el && v != null) el.value = v; };
+        set('#em-host', em.email.host);
+        set('#em-port', em.email.port);
+        set('#em-user', em.email.user);
+        set('#em-from', em.email.from || '');
+        const sec = this.modal.querySelector('#em-secure');
+        if (sec) sec.value = String(!!em.email.secure);
+        const dot = this.modal.querySelector('#em-status-dot');
+        const txt = this.modal.querySelector('#em-status-text');
+        const tabDot = this.modal.querySelector('#dot-email');
+        if (dot) dot.className = 'comms-status-dot comms-status-on';
+        if (txt) txt.textContent = `Configured (${em.email.user})${em.email.pass_set ? '' : ' — password missing'}`;
+        if (tabDot) tabDot.classList.add('on');
+      }
+    } catch { /* email prefill is best-effort */ }
   },
 
   _applyStatus(data) {

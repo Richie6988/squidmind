@@ -11,13 +11,72 @@
  * DELETE /api/v2/comms/history           — clear message history
  */
 
-function buildCommsRoutes(botService) {
+function buildCommsRoutes(botService, rm = null) {
   const express = require('express');
   const router  = express.Router();
 
   // GET /status
   router.get('/status', (req, res) => {
     res.json({ success: true, ...botService.getStatus() });
+  });
+
+  // ── Email (SMTP) ────────────────────────────────────────────────────────
+  // Registered BEFORE the /:platform routes so /email/test doesn't fall into
+  // the platform whitelist. Email is stateless SMTP (no long-lived bot), so
+  // it doesn't go through botService — config lives in comms_config.json
+  // under `email`, exactly the shape EmailService._resolveConfig expects.
+
+  // GET /email — current config with the password masked (for UI prefill)
+  router.get('/email', async (req, res) => {
+    if (!rm) return res.status(501).json({ success: false, error: 'rm not wired' });
+    try {
+      const cfg = await rm.read('CHANNELS/comms_config.json').catch(() => ({}));
+      const e = cfg.email || null;
+      res.json({
+        success: true,
+        configured: !!(e && e.host && e.user),
+        email: e ? { host: e.host, port: e.port, secure: !!e.secure, user: e.user, from: e.from || null, pass_set: !!e.pass } : null,
+      });
+    } catch (err) { res.status(500).json({ success: false, error: err.message }); }
+  });
+
+  // POST /email — save { email: { host, port, secure, user, pass, from } }
+  router.post('/email', express.json(), async (req, res) => {
+    if (!rm) return res.status(501).json({ success: false, error: 'rm not wired' });
+    try {
+      const e = req.body?.email || {};
+      if (!e.host || !e.user || !e.pass) {
+        return res.status(400).json({ success: false, error: 'host, user and pass are required' });
+      }
+      const cfg = await rm.read('CHANNELS/comms_config.json').catch(() => ({}));
+      cfg.email = {
+        host: String(e.host), port: Number(e.port || 587), secure: !!e.secure,
+        user: String(e.user), pass: String(e.pass),
+        ...(e.from ? { from: String(e.from) } : {}),
+      };
+      await rm.write('CHANNELS/comms_config.json', cfg);
+      rm.invalidateCache();
+      res.json({ success: true, user: cfg.email.user });
+    } catch (err) { res.status(500).json({ success: false, error: err.message }); }
+  });
+
+  // POST /email/test — save must have happened; sends a real test email
+  router.post('/email/test', express.json(), async (req, res) => {
+    if (!rm) return res.status(501).json({ success: false, error: 'rm not wired' });
+    const to = req.body?.to;
+    if (!to) return res.status(400).json({ success: false, error: 'to is required' });
+    try {
+      const { EmailService } = require('../services/EmailService');
+      const svc = new EmailService(rm);
+      const result = await svc.send({
+        to, subject: 'SquidMind test email',
+        body: 'This is a test email from your SquidMind instance. SMTP is configured correctly. 🦑',
+      });
+      if (result && result.ok === false) {
+        return res.status(502).json({ success: false, error: result.error || 'send failed' });
+      }
+      res.json({ success: true, ...result });
+    } catch (err) { res.status(500).json({ success: false, error: err.message }); }
   });
 
   // POST /:platform/config
