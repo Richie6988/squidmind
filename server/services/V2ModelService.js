@@ -623,6 +623,23 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
       // ── Step 5: CREATE CONTEXT — retry DOWN without reloading the model ───
       // The [auto] calculation already computed the max ctx that fits in VRAM.
       // Only step DOWN on OOM — never up (trying larger first fragments VRAM).
+      //
+      // VRAM-adaptive sequences: on 8GB every token of KV is precious, so we
+      // run a single sequence (chat/BG/dream serialize through the broker and
+      // the dream has to dispose the warm chat session to borrow the slot).
+      // With 16/32GB there is KV headroom for parallel slots:
+      //   ≥ 18GB free before load → 3 sequences (chat + dream + BG utility)
+      //   ≥ 10GB free before load → 2 sequences (chat + dream/BG)
+      //   otherwise               → 1 (current 8GB behaviour, unchanged)
+      // The per-sequence context budget is divided accordingly, and the OOM
+      // ladder below still protects us if the estimate is optimistic.
+      const seqCount = freeBeforeGb >= 18 ? 3 : freeBeforeGb >= 10 ? 2 : 1;
+      if (seqCount > 1) {
+        const perSeq = Math.max(V2ModelService.MIN_VIABLE_CTX,
+          Math.floor(config.contextLength / seqCount / 1024) * 1024);
+        log.info(`  [auto] sequences: ${seqCount} (${freeBeforeGb.toFixed(1)}GB free) — ctx ${config.contextLength} → ${perSeq}/sequence`);
+        config.contextLength = perSeq;
+      }
       const ctxLadder = (() => {
         const target = config.contextLength;
         const steps  = [target, Math.floor(target * 0.75), Math.floor(target / 2), V2ModelService.MIN_VIABLE_CTX, 2048];
@@ -639,7 +656,7 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
             contextSize:    tryCtx,
             batchSize:      config.batchSize,
             threads:        config.cpuThreads,
-            sequences:      1,   // single sequence — chat and BG never run simultaneously (broker serializes)
+            sequences:      seqCount,
             flashAttention: config.flashAttention
           });
           config.contextLength = context.contextSize;
@@ -670,6 +687,7 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
       this.loaded.set(modelId, {
         model_id: modelId, file_name: fileName, file_path: fullPath,
         model, context, session: null, config,
+        _sequences: seqCount,
         loadedAt: Date.now(), lastUsedAt: Date.now(),
         generating: false, totalTokensGenerated: 0, totalRequests: 0
       });
@@ -1794,8 +1812,13 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
       ].join('\n');
 
       // ── 5. Get a dream sequence ───────────────────────────────────────────
-      // Dispose the chat session first to free the sequence slot
-      if (entry.session) {
+      // With a single sequence (8GB tier), we must dispose the warm chat
+      // session to free the slot — the historical, expensive behaviour that
+      // forces a full system-prompt reprocess on the next chat turn.
+      // With 2+ sequences (16/32GB tiers), the dream takes a FREE slot and
+      // the chat session survives untouched.
+      const multiSeq = (entry._sequences || 1) > 1;
+      if (!multiSeq && entry.session) {
         try { await entry.session.dispose(); } catch {}
         entry.session = null;
         entry._currentSequence = null;
@@ -1808,7 +1831,10 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
         try { dreamSeq = entry.context.getSequence(); break; } catch {}
         await new Promise(r => setTimeout(r, 1000));
       }
-      if (!dreamSeq) { log.warn('[Dream] Could not get sequence — skipping'); return; }
+      if (!dreamSeq) {
+        if (multiSeq) { log.warn('[Dream] No free sequence despite multi-seq — skipping (chat session preserved)'); return; }
+        log.warn('[Dream] Could not get sequence — skipping'); return;
+      }
 
       const dreamSession = new llamaCpp.LlamaChatSession({
         contextSequence: dreamSeq,

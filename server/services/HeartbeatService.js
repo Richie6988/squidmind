@@ -130,12 +130,16 @@ class HeartbeatService {
           skipReason = 'already dreaming';
         } else if (pm.idle_minutes < this.dreamIdleMinutes) {
           skipReason = `idle ${pm.idle_minutes.toFixed(1)}min < threshold ${this.dreamIdleMinutes}min`;
-        } else if (this.dreamRequiresIdleSession && this.modelService.hasActiveChatSession?.() && pm.idle_minutes < 45) {
-          // triggerDream disposes the chat session (sequences:1 requires the
-          // slot to be freed). If the user has an active conversation with
-          // meaningful KV cache, forcing a dispose now costs a 20-25s prompt
-          // reprocess on their next message. Wait until they've been away
-          // 45+ minutes before we sacrifice their session for a dream.
+        } else if (this.dreamRequiresIdleSession
+                   && this.modelService.hasActiveChatSession?.()
+                   && pm.idle_minutes < 45
+                   && (this.modelService.loaded.get(this.modelService.poseidonModelId)?._sequences || 1) <= 1) {
+          // On the single-sequence tier (8GB), triggerDream disposes the chat
+          // session to free the slot. If the user has an active conversation
+          // with meaningful KV cache, forcing a dispose now costs a 20-25s
+          // prompt reprocess on their next message — wait 45min idle first.
+          // On multi-sequence tiers (16/32GB) the dream uses a FREE slot and
+          // the chat session survives, so this deferral doesn't apply.
           skipReason = `chat session active — will wait 45min idle before disposing (currently ${pm.idle_minutes.toFixed(1)}min)`;
         } else if ((Date.now() - this._lastDreamAt) <= this.dreamCooldownMinutes * 60 * 1000) {
           const cooldownRemainingMin = Math.round((this.dreamCooldownMinutes * 60 * 1000 - (Date.now() - this._lastDreamAt)) / 60000);
