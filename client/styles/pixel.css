@@ -8629,3 +8629,29 @@ h4.pc-md-h { font-size: 8px; color: #94a3b8; }
   transition: opacity 0.15s;
 }
 .scheduler-compact-btn:hover { opacity: 1; }
+
+/* ═══ Loading toast + spinner (upscale, edit, long ops) ═══════════════ */
+.sq-loading-toast {
+  position: fixed;
+  bottom: 20px; left: 50%;
+  transform: translateX(-50%);
+  z-index: 100000;
+  display: flex; align-items: center; gap: 10px;
+  background: rgba(10, 22, 40, 0.95);
+  border: 1px solid rgba(79,172,254,0.4);
+  border-radius: 10px;
+  padding: 12px 18px;
+  color: #e2e8f0;
+  font-family: system-ui, sans-serif; font-size: 13px;
+  box-shadow: 0 6px 24px rgba(0,0,0,0.5);
+  backdrop-filter: blur(8px);
+}
+.sq-loading-spinner {
+  width: 16px; height: 16px;
+  border: 2px solid rgba(79,172,254,0.25);
+  border-top-color: #4facfe;
+  border-radius: 50%;
+  animation: sqSpin 0.7s linear infinite;
+  flex-shrink: 0;
+}
+@keyframes sqSpin { to { transform: rotate(360deg); } }

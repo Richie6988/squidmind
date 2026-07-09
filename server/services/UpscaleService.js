@@ -106,11 +106,16 @@ class UpscaleService {
 
   _realEsrgan(bin, src, factor, outputPath) {
     return new Promise((resolve, reject) => {
-      // realesrgan-x4plus is the general-purpose 4x model shipped with the
-      // release. -s sets the scale (the model is 4x; -s downsamples the
-      // result to the requested factor when < 4). -n picks the model.
+      const path = require('path');
+      const fs   = require('fs');
       const modelDir = path.join(path.dirname(bin), 'models');
-      const args = ['-i', src, '-o', outputPath, '-s', String(factor), '-n', 'realesrgan-x4plus'];
+      // realesrgan-x4plus is a NATIVE 4x model. Passing -s 2 with a 4x model
+      // makes some builds tile incorrectly and produce a checkerboard of
+      // sharp/blurred blocks. Safest path: always run the model at its native
+      // 4x into a temp file, then (if the user asked for 2x/3x) downscale the
+      // clean 4x result to the requested factor with jimp.
+      const tmpOut = factor === 4 ? outputPath : outputPath.replace(/(\.\w+)$/, '_native4x$1');
+      const args = ['-i', src, '-o', tmpOut, '-s', '4', '-n', 'realesrgan-x4plus'];
       if (fs.existsSync(modelDir)) args.push('-m', modelDir);
 
       const child = spawn(bin, args, { stdio: ['ignore', 'ignore', 'pipe'] });
@@ -118,18 +123,31 @@ class UpscaleService {
       child.stderr.on('data', d => { stderr += d.toString(); });
       child.on('error', reject);
       child.on('close', async (code) => {
-        if (code !== 0 || !fs.existsSync(outputPath)) {
+        if (code !== 0 || !fs.existsSync(tmpOut)) {
           return reject(new Error(`realesrgan exit ${code}: ${stderr.slice(0, 300)}`));
         }
-        // Read back dimensions for the response
-        let from = '?', to = '?';
         try {
           const Jimp = require('jimp');
-          const [a, b] = await Promise.all([Jimp.read(src), Jimp.read(outputPath)]);
-          from = `${a.bitmap.width}x${a.bitmap.height}`;
-          to   = `${b.bitmap.width}x${b.bitmap.height}`;
-        } catch { /* dimensions are best-effort */ }
-        resolve({ ok: true, outputPath, from, to, scale: factor, backend: 'real-esrgan' });
+          const srcImg = await Jimp.read(src);
+          const fromW = srcImg.bitmap.width, fromH = srcImg.bitmap.height;
+          if (factor !== 4) {
+            // Downscale the native-4x result to the requested factor
+            const out = await Jimp.read(tmpOut);
+            out.resize(fromW * factor, fromH * factor, Jimp.RESIZE_BICUBIC);
+            await out.writeAsync(outputPath);
+            try { fs.unlinkSync(tmpOut); } catch {}
+          }
+          const finalImg = await Jimp.read(outputPath);
+          resolve({
+            ok: true, outputPath,
+            from: `${fromW}x${fromH}`,
+            to: `${finalImg.bitmap.width}x${finalImg.bitmap.height}`,
+            scale: factor, backend: 'real-esrgan',
+          });
+        } catch (e) {
+          // Result exists but we couldn't post-process — still return it
+          resolve({ ok: true, outputPath: tmpOut, from: '?', to: '?', scale: factor, backend: 'real-esrgan' });
+        }
       });
     });
   }
@@ -138,8 +156,13 @@ class UpscaleService {
     const Jimp = require('jimp');
     const img  = await Jimp.read(src);
     const fromW = img.bitmap.width, fromH = img.bitmap.height;
+    // Plain high-quality resize. The previous version applied a sharpen
+    // convolution AFTER resize which, combined with Jimp's tiled processing,
+    // produced a checkerboard of sharp/blurred blocks on large images. A
+    // clean Bicubic resize is the safe, predictable result.
     img.resize(fromW * factor, fromH * factor, Jimp.RESIZE_BICUBIC);
-    img.convolute([[0, -0.15, 0], [-0.15, 1.6, -0.15], [0, -0.15, 0]]);
+    // Normalise to a plain RGB(A) PNG to avoid palette/format edge cases.
+    img.quality(100);
     await img.writeAsync(outputPath);
     return {
       ok: true, outputPath,

@@ -506,15 +506,17 @@ ${task.description}`
   async upscaleResult(taskId, scale = 2) {
     const src = await this._resolveImagePath(taskId);
     if (!src) return SquidModal.alert('Could not resolve the source image path.');
+    // Show a non-blocking loading toast while the upscale runs (Real-ESRGAN
+    // on GPU can take several seconds; the user needs to know it's working).
+    const toast = this._showLoadingToast(`Upscaling ${scale}×… this can take a few seconds`);
     try {
-      // Real Lanczos upscale — enlarges the existing pixels, does NOT
-      // regenerate the image through the diffusion model.
       const r = await fetch('/api/v2/models/upscale-image', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ source_image: src, scale }),
       });
       const j = await r.json().catch(() => ({}));
+      this._hideLoadingToast(toast);
       if (!r.ok || j.ok === false) {
         return SquidModal.alert('Upscale failed: ' + (j.error || r.status));
       }
@@ -522,14 +524,27 @@ ${task.description}`
         ? 'Real-ESRGAN (super-resolution)'
         : 'bicubic (install Real-ESRGAN for true detail — see aquarium/TOOLS/realesrgan)';
       SquidModal.alert(`Upscaled ${j.from} → ${j.to} via ${backendLabel}.\nSaved as ${j.outputPath?.split('/').pop() || 'upscaled file'}.`);
-    } catch (e) { SquidModal.alert('Upscale failed: ' + e.message); }
+    } catch (e) {
+      this._hideLoadingToast(toast);
+      SquidModal.alert('Upscale failed: ' + e.message);
+    }
   },
+
+  _showLoadingToast(msg) {
+    const el = document.createElement('div');
+    el.className = 'sq-loading-toast';
+    el.innerHTML = `<span class="sq-loading-spinner"></span><span>${msg}</span>`;
+    document.body.appendChild(el);
+    return el;
+  },
+  _hideLoadingToast(el) { try { el?.remove(); } catch {} },
 
   async editResult(taskId) {
     const src = await this._resolveImagePath(taskId);
     if (!src) return SquidModal.alert('Could not resolve the source image path.');
     const prompt = window.prompt('Edit this image — describe the change (strength 0.6):', '');
     if (!prompt || !prompt.trim()) return;
+    const toast = this._showLoadingToast('Editing image… generating');
     try {
       const r = await fetch('/api/v2/models/generate-image', {
         method:  'POST',
@@ -537,11 +552,15 @@ ${task.description}`
         body: JSON.stringify({ prompt, source_image: src, strength: 0.6 }),
       });
       const j = await r.json().catch(() => ({}));
+      this._hideLoadingToast(toast);
       if (!r.ok || j.ok === false || j.success === false) {
         return SquidModal.alert('Edit failed: ' + (j.error || r.status));
       }
       SquidModal.alert('Edit queued. Watch the results panel — it appears when done.');
-    } catch (e) { SquidModal.alert('Edit failed: ' + e.message); }
+    } catch (e) {
+      this._hideLoadingToast(toast);
+      SquidModal.alert('Edit failed: ' + e.message);
+    }
   },
 
   async openTaskResult(taskId) {

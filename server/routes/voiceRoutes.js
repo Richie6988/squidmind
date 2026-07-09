@@ -19,6 +19,36 @@ function buildVoiceRoutes({ rm, fetchWithRetry }) {
     warn: (...a) => console.warn('[Voice]', ...a),
   };
 
+  // Pull a single model into Speaches via POST /v1/models/{id}. Speaches
+  // downloads it inside the container. Returns true on success.
+  async function pullModel(baseUrl, modelId) {
+    try {
+      const r = await fetch(`${baseUrl}/v1/models/${encodeURIComponent(modelId)}`, {
+        method: 'POST',
+        signal: AbortSignal.timeout(300_000),  // model download can be large
+      });
+      if (r.ok) { log.info(`pulled model "${modelId}"`); return true; }
+      // Some Speaches versions use a body-based endpoint
+      const r2 = await fetch(`${baseUrl}/v1/models`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model: modelId }),
+        signal: AbortSignal.timeout(300_000),
+      });
+      if (r2.ok) { log.info(`pulled model "${modelId}" (body form)`); return true; }
+      log.warn(`pull model "${modelId}" failed: ${r.status}/${r2.status}`);
+      return false;
+    } catch (e) { log.warn(`pull model "${modelId}" error:`, e.message); return false; }
+  }
+
+  // Pull both the TTS and STT models a fresh Speaches container needs.
+  async function pullVoiceModels(baseUrl, cfg) {
+    const tts = cfg?.tts_model || 'kokoro';
+    const stt = cfg?.stt_model || 'Systran/faster-whisper-small';
+    await pullModel(baseUrl, tts);
+    await pullModel(baseUrl, stt);
+  }
+
   // Voice can be enabled two ways:
   //  1. voice.enabled=true in aquarium/CHANNELS/comms_config.json
   //  2. SPEACHES_URL env var is set (means an operator opted in at startup)
@@ -150,7 +180,11 @@ function buildVoiceRoutes({ rm, fetchWithRetry }) {
     while (Date.now() < shortDeadline) {
       await new Promise(r => setTimeout(r, 2000));
       if (await ping()) {
-        return res.json({ ok: true, started: true, ready: true, url: base });
+        // Container is up — but the TTS/STT models aren't installed inside it
+        // yet (that's the "Model 'kokoro' is not installed locally" 404).
+        // Kick off the model pulls; don't block the response on them.
+        pullVoiceModels(base, cfg).catch(() => {});
+        return res.json({ ok: true, started: true, ready: true, url: base, pulling_models: true });
       }
     }
     return res.json({
@@ -294,6 +328,39 @@ function buildVoiceRoutes({ rm, fetchWithRetry }) {
 
       if (!response.ok) {
         const errText = await response.text();
+        // Speaches returns 404 "Model 'kokoro' is not installed locally" the
+        // first time — the model has to be pulled into the container. Do that
+        // now and retry once, so the user doesn't have to run a curl by hand.
+        if (response.status === 404 && /not installed/i.test(errText)) {
+          const modelId = cfg.tts_model || 'kokoro';
+          log.info(`TTS model "${modelId}" missing — pulling into Speaches…`);
+          const pulled = await pullModel(baseUrl, modelId).catch(() => false);
+          if (pulled) {
+            const retry = await fetchWithRetry(`${baseUrl}/v1/audio/speech`, {
+              retries: 1, baseDelayMs: 500, timeoutMs: 60_000,
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                model: modelId, input: text.slice(0, 4000),
+                voice: voice || cfg.tts_voice || 'af_heart',
+                speed: speed || cfg.tts_speed || 1.0, response_format: 'wav',
+              }),
+              signal: AbortSignal.timeout(60_000),
+            });
+            if (retry.ok) {
+              res.setHeader('Content-Type', 'audio/wav');
+              const { Readable } = require('stream');
+              if (retry.body && typeof retry.body.pipe === 'function') retry.body.pipe(res);
+              else if (retry.body) Readable.fromWeb(retry.body).pipe(res);
+              else res.end(Buffer.from(await retry.arrayBuffer()));
+              return;
+            }
+          }
+          return res.status(502).json({
+            ok: false,
+            error: `TTS model "${modelId}" isn't installed in Speaches and the auto-pull didn't finish. ` +
+                   `It may still be downloading — try again in a moment.`,
+          });
+        }
         return res.status(502).json({ ok: false, error: `Speaches TTS error: ${response.status} — ${errText.slice(0, 200)}` });
       }
 
