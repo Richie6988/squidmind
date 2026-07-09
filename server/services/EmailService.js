@@ -49,13 +49,20 @@ class EmailService {
       this.rm.invalidateCache();
       const cfg = await this.rm.read('CHANNELS/comms_config.json').catch(() => ({}));
       const e = cfg.email || {};
-      if (!e.host || !e.user) return null;
+      // Mode 1: local sendmail binary (Postfix/Exim installed on this machine)
+      //   { "transport": "sendmail", "from": "poseidon@yourhost" }
+      if (e.transport === 'sendmail') {
+        return { sendmail: true, from: e.from || 'squidmind@localhost', source: 'comms_config.json (sendmail)' };
+      }
+      if (!e.host) return null;
+      // Mode 2: SMTP. Auth is OPTIONAL — a local open-source MTA (Postfix on
+      // 127.0.0.1:25) accepts mail from localhost without credentials.
       return {
         host:   e.host,
         port:   Number(e.port || 587),
         secure: !!e.secure,
-        auth:   { user: e.user, pass: e.pass || '' },
-        from:   e.from || e.user,
+        ...(e.user ? { auth: { user: e.user, pass: e.pass || '' } } : {}),
+        from:   e.from || e.user || 'squidmind@localhost',
         source: 'comms_config.json',
       };
     } catch { return null; }
@@ -75,11 +82,14 @@ class EmailService {
     try { nodemailer = require('nodemailer'); }
     catch { throw new Error('nodemailer not installed. Run: npm install nodemailer'); }
 
-    const transport = cfg.url
-      ? nodemailer.createTransport(cfg.url)
-      : nodemailer.createTransport({
-          host: cfg.host, port: cfg.port, secure: cfg.secure, auth: cfg.auth,
-        });
+    const transport = cfg.sendmail
+      ? nodemailer.createTransport({ sendmail: true, newline: 'unix', path: '/usr/sbin/sendmail' })
+      : cfg.url
+        ? nodemailer.createTransport(cfg.url)
+        : nodemailer.createTransport({
+            host: cfg.host, port: cfg.port, secure: cfg.secure,
+            ...(cfg.auth ? { auth: cfg.auth } : {}),
+          });
     this._transport  = transport;
     this._configHash = hash;
     this._fromCache  = cfg.from;

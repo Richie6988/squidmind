@@ -193,6 +193,10 @@ const CommsPanel = {
             <span>Host <code>smtp.gmail.com</code>, port <code>465</code>, secure ON — user is your full address, pass is the 16-char app password</span></div>
           <div class="comms-step"><span class="comms-step-num">3</span>
             <span>Other providers: use their SMTP host/port (Outlook: <code>smtp.office365.com:587</code>, secure OFF)</span></div>
+          <div class="comms-step"><span class="comms-step-num">4</span>
+            <span><b>Open-source / no Google:</b> run a local Postfix (<code>sudo apt install postfix</code>, "Internet Site") and
+            <button class="btn-secondary" style="font-size:9px;padding:2px 8px;" onclick="CommsPanel._presetLocalMta()">Use local MTA preset</button>
+            — host 127.0.0.1:25, no credentials. ⚠ Direct sending from a home IP often lands in spam (no reverse DNS/SPF); fine for LAN &amp; self-hosted domains.</span></div>
         </div>
       </div>
       <div class="comms-field-group">
@@ -245,6 +249,16 @@ const CommsPanel = {
     `;
   },
 
+  _presetLocalMta() {
+    const set = (id, v) => { const el = this.modal.querySelector(id); if (el) el.value = v; };
+    set('#em-host', '127.0.0.1');
+    set('#em-port', '25');
+    const sec = this.modal.querySelector('#em-secure'); if (sec) sec.value = 'false';
+    set('#em-user', '');
+    set('#em-pass', '');
+    set('#em-from', 'poseidon@' + (location.hostname || 'localhost'));
+  },
+
   async _saveEmail() {
     const err = this.modal.querySelector('#em-error');
     err.style.display = 'none';
@@ -256,8 +270,14 @@ const CommsPanel = {
       pass:   this.modal.querySelector('#em-pass').value,
       from:   this.modal.querySelector('#em-from').value.trim() || undefined,
     };
-    if (!email.host || !email.user || !email.pass) {
-      err.textContent = 'Host, user and password are required.';
+    const isLocal = /^(127\.0\.0\.1|localhost)$/i.test(email.host);
+    if (!email.host) {
+      err.textContent = 'Host is required.';
+      err.style.display = 'block';
+      return;
+    }
+    if (!isLocal && (!email.user || !email.pass)) {
+      err.textContent = 'User and password are required for remote SMTP (not for a local MTA on 127.0.0.1).';
       err.style.display = 'block';
       return;
     }
@@ -269,7 +289,7 @@ const CommsPanel = {
       const dot = this.modal.querySelector('#em-status-dot');
       const txt = this.modal.querySelector('#em-status-text');
       if (dot) dot.className = 'comms-status-dot comms-status-on';
-      if (txt) txt.textContent = `Configured (${email.user})`;
+      if (txt) txt.textContent = `Configured (${email.user || email.host})`;
     } catch (e) {
       err.textContent = 'Save failed: ' + e.message;
       err.style.display = 'block';

@@ -704,9 +704,21 @@ function buildRouter(v2ModelService) {
  */
 function buildPoseidonChatRoute(v2ModelService) {
   return async (req, res) => {
-    const { message, history } = req.body;
+    const { message, history, project } = req.body;
     if (!message) {
       return res.status(400).json({ success: false, error: 'message required' });
+    }
+    // Project-scoped instruction (temple chatbox): don't just prefix a label
+    // the model can ignore — attach an explicit, actionable directive so
+    // task creation / memory updates land on THIS project.
+    let effectiveMessage = message;
+    if (project && (project.name || project.id)) {
+      const pname = project.name || project.id;
+      effectiveMessage =
+        `[PROJECT INSTRUCTION — ${pname}${project.id ? ` (${project.id})` : ''}]\n` +
+        `${message}\n` +
+        `(Directive: this instruction applies to project "${pname}". When creating tasks for it, set project: "${pname}". ` +
+        `When reading or updating memory, use THIS project. Do not ask which project — it is "${pname}".)`;
     }
 
     res.setHeader('Content-Type', 'text/event-stream');
@@ -726,7 +738,7 @@ function buildPoseidonChatRoute(v2ModelService) {
     try { v2ModelService.taskRunner?.setChatActive?.(true); } catch {}
     if (bus) bus.push({ type: 'task_start', task_id: 'poseidon_chat', title: message.slice(0, 80), agent: 'poseidon' });
     try {
-      for await (const ev of v2ModelService.chatWithPoseidon(message, history || [])) {
+      for await (const ev of v2ModelService.chatWithPoseidon(effectiveMessage, history || [])) {
         if (ev.type === 'text') {
           chunkCount++;
           res.write(`data: ${JSON.stringify({ text: ev.chunk })}\n\n`);

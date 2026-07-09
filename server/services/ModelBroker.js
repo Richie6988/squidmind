@@ -103,7 +103,10 @@ class ModelBroker extends EventEmitter {
 
       // Image: refused if AGENT or BG tasks are queued (but not other IMAGE requests)
       // IMAGE has higher priority than AGENT/BG so it will be served first once slot free.
-      if (priority === PRIORITY.IMAGE) {
+      // EXCEPTION: user-initiated image requests are never refused — the human
+      // asked for it NOW; queued background work waits (and the caller may
+      // preempt the current holder via abortGeneration()).
+      if (priority === PRIORITY.IMAGE && !opts.userInitiated) {
         const llmQueued = this._queue.some(e => e.priority >= PRIORITY.AGENT && e.priority <= PRIORITY.POSEIDON_BG);
         if (llmQueued) {
           reject(new Error('BROKER_IMAGE_REFUSED: LLM tasks queued'));
@@ -221,6 +224,7 @@ class ModelBroker extends EventEmitter {
       state:     this._token ? 'BUSY' : 'IDLE',
       owner:     this._token?.ownerId ?? null,
       priority:  this._token ? PRIORITY_NAMES[this._token.priority] ?? this._token.priority : null,
+      priority_num: this._token?.priority ?? null,
       held_sec:  this._token ? Math.round((Date.now() - this._token.acquiredAt) / 1000) : 0,
       queue:     this._queue.map(e => ({ id: e.id, priority: PRIORITY_NAMES[e.priority] ?? e.priority, wait_sec: Math.round((Date.now() - e.queuedAt) / 1000) })),
       idle_sec:  Math.round((Date.now() - this._lastReleasedAt) / 1000),

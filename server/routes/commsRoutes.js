@@ -45,15 +45,23 @@ function buildCommsRoutes(botService, rm = null) {
     if (!rm) return res.status(501).json({ success: false, error: 'rm not wired' });
     try {
       const e = req.body?.email || {};
-      if (!e.host || !e.user || !e.pass) {
-        return res.status(400).json({ success: false, error: 'host, user and pass are required' });
+      // Local open-source MTA (Postfix/Exim on this machine) needs no auth —
+      // only host is mandatory. Remote providers still need user+pass.
+      if (!e.host && e.transport !== 'sendmail') {
+        return res.status(400).json({ success: false, error: 'host is required (or transport:"sendmail")' });
+      }
+      const isLocal = e.transport === 'sendmail' || /^(127\.0\.0\.1|localhost)$/i.test(e.host || '');
+      if (!isLocal && (!e.user || !e.pass)) {
+        return res.status(400).json({ success: false, error: 'user and pass are required for remote SMTP (not needed for a local MTA on 127.0.0.1)' });
       }
       const cfg = await rm.read('CHANNELS/comms_config.json').catch(() => ({}));
-      cfg.email = {
-        host: String(e.host), port: Number(e.port || 587), secure: !!e.secure,
-        user: String(e.user), pass: String(e.pass),
-        ...(e.from ? { from: String(e.from) } : {}),
-      };
+      cfg.email = e.transport === 'sendmail'
+        ? { transport: 'sendmail', ...(e.from ? { from: String(e.from) } : {}) }
+        : {
+            host: String(e.host), port: Number(e.port || 587), secure: !!e.secure,
+            ...(e.user ? { user: String(e.user), pass: String(e.pass || '') } : {}),
+            ...(e.from ? { from: String(e.from) } : {}),
+          };
       await rm.write('CHANNELS/comms_config.json', cfg);
       rm.invalidateCache();
       res.json({ success: true, user: cfg.email.user });

@@ -1951,7 +1951,7 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
    * Generate an image using an image-type GGUF model.
    * Returns { ok, outputPath, bytes, url } or { ok:false, error }.
    */
-  async generateImage({ modelId, model_id, prompt, outputPath, task_id, width, height, steps, cfg, seed, negativePrompt, initImage, strength }) {
+  async generateImage({ modelId, model_id, prompt, outputPath, task_id, width, height, steps, cfg, seed, negativePrompt, initImage, strength, user_initiated }) {
     // Support both camelCase and snake_case model id
     modelId = modelId || model_id;
 
@@ -1993,11 +1993,26 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
     // Acquire IMAGE slot — waits for any LLM work to finish first
     // Wait until no LLM tasks are queued, then acquire IMAGE slot
     // Retries every 30s — image gen should not starve the LLM task queue
+    //
+    // USER-INITIATED requests are different: the human asked for this image
+    // NOW. If the slot is held by lower-priority work (AGENT / POSEIDON_BG /
+    // DREAM — anything numerically above IMAGE), abort that generation so the
+    // slot frees immediately. Interactive CHAT is never preempted. The
+    // aborted agent task fails cleanly and the TaskRunner's retry logic
+    // reschedules it.
+    if (user_initiated) {
+      const st = this.broker.getState();
+      const PRIORITY_IMAGE = 1;
+      if (st.state === 'BUSY' && typeof st.priority_num === 'number' && st.priority_num > PRIORITY_IMAGE) {
+        log.info(` 🖼 User image request preempting ${st.priority} work held by ${st.owner} (${st.held_sec}s)`);
+        try { this.abortGeneration(); } catch (e) { log.warn(' preempt abort failed:', e.message); }
+      }
+    }
     let imgToken = null;
     const imgDeadline = Date.now() + 60 * 60 * 1000; // 1h max wait
     while (!imgToken) {
       try {
-        imgToken = await this.broker.acquire(PRIORITY.IMAGE, 'image_gen', { timeoutMs: 5 * 60_000 });
+        imgToken = await this.broker.acquire(PRIORITY.IMAGE, 'image_gen', { timeoutMs: 5 * 60_000, userInitiated: !!user_initiated });
       } catch (e) {
         if (e.message.includes('BROKER_IMAGE_REFUSED')) {
           // LLM tasks still queued — wait for them to drain

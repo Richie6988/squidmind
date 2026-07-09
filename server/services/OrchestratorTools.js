@@ -592,6 +592,7 @@ class OrchestratorTools {
         width: width || 512, height: height || 512,
         steps: steps || 20, cfg: cfg_scale || 7,
         seed: seed ?? -1, negativePrompt: negative_prompt || '',
+        user_initiated: true,   // chat tool + UI route both land here — the human asked
         initImage: source_image || null,
         strength: strength != null ? strength : 0.75,
       });

@@ -35,15 +35,16 @@ err()  { echo "${R}  ✗${N} $*"; }
 step() { echo "${B}▸${N} $*"; }
 
 # ── args ────────────────────────────────────────────────────────────────────
-SETUP_GPU=0; WITH_VOICE=0; WITH_UPSCALER=0; DO_PULL=1; DO_INSTALL=1
+SETUP_GPU=0; WITH_VOICE=0; WITH_UPSCALER=0; WITH_MAIL=0; DO_PULL=1; DO_INSTALL=1
 for a in "$@"; do
   case "$a" in
     --setup-gpu)     SETUP_GPU=1 ;;
     --with-voice)    WITH_VOICE=1 ;;
+    --with-mail)     WITH_MAIL=1 ;;
     --with-upscaler) WITH_UPSCALER=1 ;;
     --no-pull)       DO_PULL=0 ;;
     --no-install)    DO_INSTALL=0 ;;
-    --all)           SETUP_GPU=1; WITH_VOICE=1; WITH_UPSCALER=1 ;;
+    --all)           SETUP_GPU=1; WITH_VOICE=1; WITH_UPSCALER=1; WITH_MAIL=1 ;;
     -h|--help) grep '^#' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) warn "unknown flag: $a" ;;
   esac
@@ -167,6 +168,21 @@ if [[ -n "$RUNTIME" ]]; then
 else
   warn "No Docker/Podman — voice disabled."
   echo "${D}     Install Docker for voice, or set SPEACHES_URL to an external Speaches.${N}"
+fi
+
+# ── 6b. Local mail (Postfix, open-source MTA) ──────────────────────────────
+if [[ "${WITH_MAIL:-0}" == "1" ]]; then
+  if command -v sendmail >/dev/null 2>&1 || [[ -x /usr/sbin/sendmail ]]; then
+    ok "Local MTA present (sendmail found) — SMTP tab: host 127.0.0.1:25, no auth"
+  else
+    step "Installing Postfix send-only MTA (needs sudo)…"
+    if sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq postfix; then
+      ok "Postfix installed — in COMMS → SMTP use host 127.0.0.1, port 25, no credentials"
+      echo "${D}     Note: mail sent from a home IP often lands in spam (no reverse DNS/SPF).${N}"
+    else
+      warn "Postfix install failed — configure a remote SMTP in COMMS → SMTP instead."
+    fi
+  fi
 fi
 
 # ── 7. Launch ───────────────────────────────────────────────────────────────

@@ -2093,19 +2093,23 @@ const TempleInterior = {
     log.appendChild(replyEl);
     log.scrollTop = log.scrollHeight;
 
-    const ctxMsg = proj ? `[Project: ${proj}] ${text}` : text;
+    const ctxMsg = text;
 
     try {
       const res = await fetch('/api/v2/poseidon/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: ctxMsg, history: [] })
+        body: JSON.stringify({
+          message: ctxMsg,
+          history: [],
+          project: proj ? { name: proj, id: this.currentTemple?.project_id || null } : null,
+        })
       });
       if (!res.ok || !res.body) throw new Error('HTTP ' + res.status);
 
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
-      let buf = '', reply = '';
+      let buf = '', reply = '', evName = null;
       replyEl.textContent = '⬡ ';
 
       while (true) {
@@ -2115,7 +2119,19 @@ const TempleInterior = {
         const lines = buf.split('\n');
         buf = lines.pop();
         for (const line of lines) {
+          // SSE: an `event:` line names the NEXT data payload. Default
+          // (unnamed) events are the actual reply text; `thinking` events
+          // also carry {text} and previously leaked into this log.
+          if (line.startsWith('event:')) { evName = line.slice(6).trim(); continue; }
           if (!line.startsWith('data:')) continue;
+          const isDefault = !evName || evName === 'message';
+          const currentEv = evName; evName = null;   // event applies to this data only
+          if (!isDefault) {
+            if (currentEv === 'error') {
+              try { const d = JSON.parse(line.slice(5).trim()); replyEl.textContent = '⬡ ✗ ' + (d.error || 'error'); } catch {}
+            }
+            continue;
+          }
           try {
             const d = JSON.parse(line.slice(5).trim());
             if (d.text) { reply += d.text; replyEl.textContent = '⬡ ' + reply; log.scrollTop = log.scrollHeight; }
