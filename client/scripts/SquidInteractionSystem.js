@@ -453,23 +453,6 @@ class SquidInteractionSystem {
   /**
    * Handle context menu (right click)
    */
-  handleContextMenu(e) {
-    e.preventDefault();
-    
-    const pos = this.getMousePos(e);
-    const result = this.findEntityAt(pos.x, pos.y);
-    
-    if (result && result.type === 'squid') {
-      const squid = result.entity;
-      
-      // Show context menu
-      if (typeof ui !== 'undefined') {
-        ui.selectedSquid = squid;
-        ui.showSquidContextMenu(squid, e.clientX, e.clientY);
-      }
-    }
-  }
-
   /**
    * Handle mouse leave
    */
@@ -584,11 +567,26 @@ class SquidInteractionSystem {
    */
   handleContextMenu(e) {
     e.preventDefault();
-    
+
     const pos = this.getMousePos(e);
     const result = this.findEntityAt(pos.x, pos.y);
-    
-    if (result && result.type === 'temple') {
+    if (!result) return;
+
+    // Squid right-click → squid context menu.
+    // (This branch used to live in a FIRST handleContextMenu definition
+    // that a second definition below silently overrode — classic duplicate
+    // object-key bug: right-clicking a squid did nothing. Merged here.)
+    if (result.type === 'squid') {
+      const squid = result.entity;
+      if (typeof ui !== 'undefined') {
+        ui.selectedSquid = squid;
+        ui.showSquidContextMenu(squid, e.clientX, e.clientY);
+      }
+      return;
+    }
+
+    // Temple right-click → temple context menu.
+    if (result.type === 'temple') {
       const temple = result.entity;
       this.showTempleContextMenu(temple, pos.x, pos.y);
     }

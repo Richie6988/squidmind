@@ -8685,3 +8685,32 @@ h4.pc-md-h { font-size: 8px; color: #94a3b8; }
   border: 1px solid rgba(251,191,36,0.30);
   margin-left: 4px;
 }
+
+/* ═══ First-run model wizard ══════════════════════════════════════════ */
+.ml-wizard { padding: 20px 16px; }
+.ml-wizard-title {
+  font-family: var(--panel-font), sans-serif;
+  font-size: 13px; font-weight: 700; color: #e2e8f0;
+  margin-bottom: 6px;
+}
+.ml-wizard-sub { font-size: 10px; color: #64748b; margin-bottom: 14px; line-height: 1.5; }
+.ml-wizard-hw {
+  font-size: 10px; color: #4facfe; margin-bottom: 10px;
+  padding: 6px 10px; background: rgba(79,172,254,0.06);
+  border: 1px solid rgba(79,172,254,0.2); border-radius: 6px;
+}
+.ml-wizard-rec {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 10px 12px; margin-bottom: 8px;
+  background: rgba(255,255,255,0.02);
+  border: 1px solid rgba(255,255,255,0.08); border-radius: 8px;
+}
+.ml-wizard-rec.recommended {
+  border-color: rgba(6,255,165,0.4);
+  background: rgba(6,255,165,0.05);
+}
+.ml-wizard-rec-name { font-size: 11px; font-weight: 700; color: #e2e8f0; }
+.ml-wizard-rec.recommended .ml-wizard-rec-name { color: #06ffa5; }
+.ml-wizard-rec-why { font-size: 9px; color: #64748b; margin-top: 2px; }
+.ml-wizard-dl { font-size: 9px; padding: 6px 12px; white-space: nowrap; flex-shrink: 0; }
+.ml-wizard-note { font-size: 9px; color: #475569; margin-top: 10px; text-align: center; }

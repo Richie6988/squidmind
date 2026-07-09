@@ -2,6 +2,7 @@ const fs = require('fs').promises;
 const path = require('path');
 const log = require('../utils/logger').createLogger('FilesystemTools');
 const { execSync } = require('child_process');
+const AQUARIUM = require('../aquarium');
 
 /**
  * Filesystem Tools for Agents

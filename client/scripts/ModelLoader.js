@@ -309,6 +309,57 @@ const ModelLoader = {
     }
   },
   
+  async _loadWizardRecs() {
+    const box = this.modal.querySelector('#ml-wizard-recs');
+    if (!box) return;
+    try {
+      const r = await fetch('/api/v2/models/recommendations');
+      const d = await r.json();
+      if (!d.ok || !d.recommendations?.length) throw new Error(d.error || 'no recommendations');
+      const esc = (s) => String(s).replace(/</g, '&lt;');
+      const gpuLine = d.gpu
+        ? `Detected GPU with ${(d.vram_mb / 1024).toFixed(1)} GB VRAM`
+        : 'No GPU detected — CPU-friendly picks below';
+      box.innerHTML = `
+        <div class="ml-wizard-hw">${gpuLine}</div>
+        ${d.recommendations.map(m => `
+          <div class="ml-wizard-rec${m.recommended ? ' recommended' : ''}">
+            <div class="ml-wizard-rec-info">
+              <div class="ml-wizard-rec-name">${m.recommended ? '★ ' : ''}${esc(m.name)}</div>
+              <div class="ml-wizard-rec-why">${esc(m.why)} · ${m.size_gb} GB download</div>
+            </div>
+            <button class="btn-primary ml-wizard-dl" data-url="${m.url}" data-name="${esc(m.name)}">
+              ${m.recommended ? 'Download & use' : 'Download'}
+            </button>
+          </div>`).join('')}
+        <div class="ml-wizard-note">Or drop any .gguf file into data/models/ and hit Refresh.</div>`;
+      box.querySelectorAll('.ml-wizard-dl').forEach(btn => {
+        btn.onclick = async () => {
+          btn.disabled = true;
+          btn.textContent = 'Starting…';
+          try {
+            await window.api._fetch('/models/download', {
+              method: 'POST',
+              body: JSON.stringify({ url: btn.dataset.url }),
+            });
+            btn.textContent = 'Downloading — see progress below';
+            // The existing download poller takes over from here
+            if (!this._downloadPollInterval) {
+              this._downloadPollInterval = setInterval(() => this._refreshDownloads(), 1500);
+            }
+          } catch (e) {
+            btn.disabled = false;
+            btn.textContent = 'Retry download';
+            SquidModal.alert('Download failed: ' + e.message);
+          }
+        };
+      });
+    } catch (e) {
+      box.innerHTML = `<div class="ml-wizard-hw">Could not load recommendations (${e.message}).<br>
+        Drop a .gguf into data/models/ or use Download HF above.</div>`;
+    }
+  },
+
   async _refresh() {
     const container = this.modal.querySelector('#ml-library');
     container.innerHTML = '<div style="padding:16px;">' + ['<div class="iaqua-skel iaqua-skel-card"></div>', '<div class="iaqua-skel iaqua-skel-card"></div>', '<div class="iaqua-skel iaqua-skel-card"></div>'].join('') + '</div>';
@@ -324,11 +375,16 @@ const ModelLoader = {
   _render() {
     const container = this.modal.querySelector('#ml-library');
     if (!this.library.models.length) {
+      // ── First-run wizard ── no models yet: recommend starters sized to
+      // this machine's VRAM, with one-click download. This is what makes a
+      // fresh install usable without knowing what a GGUF quant is.
       container.innerHTML = `
-        <p style="color:var(--text-secondary); font-size:10px; padding:20px; text-align:center;">
-          No .gguf files found in data/models/.<br>
-          Drop a .gguf file there and click Refresh.
-        </p>`;
+        <div class="ml-wizard">
+          <div class="ml-wizard-title">👋 Welcome — let's get you a brain</div>
+          <div class="ml-wizard-sub">No models installed yet. Checking your hardware for the best fit…</div>
+          <div id="ml-wizard-recs"><div class="iaqua-skel iaqua-skel-card"></div></div>
+        </div>`;
+      this._loadWizardRecs();
       return;
     }
 
@@ -1181,8 +1237,6 @@ const ModelLoader = {
     } catch(e) { await SquidModal.alert('Download failed: ' + e.message); }
   },
 
-  _downloadPollInterval: null,
-  _downloadPollInterval: null,
   _downloadPollInterval: null,
   
   async _startDownload() {

@@ -73,6 +73,11 @@ if [[ "$DO_PULL" == "1" ]] && [[ -d .git ]]; then
   else warn "git pull skipped (local changes or offline) — continuing with current code"; fi
 fi
 
+# Enable the committed pre-commit hooks (lint + syntax) — idempotent, silent.
+if [[ -d .git ]] && [[ -d .githooks ]]; then
+  git config core.hooksPath .githooks 2>/dev/null && ok "git hooks enabled (.githooks)"
+fi
+
 # ── 3. Dependencies ─────────────────────────────────────────────────────────
 if [[ "$DO_INSTALL" == "1" ]]; then
   step "Installing npm dependencies…"

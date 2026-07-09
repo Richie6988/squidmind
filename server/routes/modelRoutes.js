@@ -504,6 +504,52 @@ function buildRouter(v2ModelService) {
     }
   });
 
+  // GET /api/v2/models/recommendations — VRAM-aware starter models.
+  // Powers the first-run wizard: fresh installs have zero models and users
+  // shouldn't need to know what a GGUF quant is to get going. Detects free
+  // VRAM and returns a curated shortlist with direct download URLs the
+  // existing /download endpoint accepts.
+  router.get('/recommendations', async (req, res) => {
+    try {
+      const { exec } = require('child_process');
+      const vramMb = await new Promise(r =>
+        exec('nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits',
+          { timeout: 4000 }, (e, out) => r(e ? 0 : parseInt(out, 10) || 0)));
+
+      // Curated list: proven chat models with tool-calling ability, one per
+      // size band, direct HF GGUF URLs. Sizes are approximate on-disk.
+      const CATALOG = [
+        {
+          min_vram_mb: 10_000, name: 'Qwen2.5 14B Instruct Q4_K_M', size_gb: 9.0,
+          why: 'Best quality if you have 12GB+ VRAM',
+          url: 'https://huggingface.co/bartowski/Qwen2.5-14B-Instruct-GGUF/resolve/main/Qwen2.5-14B-Instruct-Q4_K_M.gguf',
+        },
+        {
+          min_vram_mb: 6_500, name: 'Qwen2.5 7B Instruct Q4_K_M', size_gb: 4.7,
+          why: 'Great balance for 8GB cards — recommended default',
+          url: 'https://huggingface.co/bartowski/Qwen2.5-7B-Instruct-GGUF/resolve/main/Qwen2.5-7B-Instruct-Q4_K_M.gguf',
+        },
+        {
+          min_vram_mb: 3_500, name: 'Llama 3.2 3B Instruct Q4_K_M', size_gb: 2.0,
+          why: 'Light + fast for 4GB cards or shared VRAM',
+          url: 'https://huggingface.co/bartowski/Llama-3.2-3B-Instruct-GGUF/resolve/main/Llama-3.2-3B-Instruct-Q4_K_M.gguf',
+        },
+        {
+          min_vram_mb: 0, name: 'Qwen2.5 1.5B Instruct Q4_K_M', size_gb: 1.0,
+          why: 'CPU-friendly starter — works everywhere',
+          url: 'https://huggingface.co/bartowski/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/Qwen2.5-1.5B-Instruct-Q4_K_M.gguf',
+        },
+      ];
+
+      // Everything that fits, best first; flag the top fit as recommended.
+      const fits = CATALOG.filter(m => vramMb >= m.min_vram_mb || m.min_vram_mb === 0);
+      const list = fits.map((m, i) => ({ ...m, recommended: i === 0 }));
+      res.json({ ok: true, vram_mb: vramMb, gpu: vramMb > 0, recommendations: list });
+    } catch (e) {
+      res.status(500).json({ ok: false, error: e.message });
+    }
+  });
+
   // GET /api/v2/models/upscale-info — which upscale backend is available
   router.get('/upscale-info', async (req, res) => {
     try {

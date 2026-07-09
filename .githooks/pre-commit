@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+#
+# Pre-commit hook — catches the bug classes that cost us whole debugging
+# sessions (duplicate methods, undefined identifiers, syntax errors) BEFORE
+# they land. Enabled automatically by start.sh via:
+#     git config core.hooksPath .githooks
+#
+# Checks only STAGED .js files, so it's fast.
+#
+set -uo pipefail
+
+STAGED_JS="$(git diff --cached --name-only --diff-filter=ACM | grep -E '\.js$' || true)"
+[[ -z "$STAGED_JS" ]] && exit 0
+
+FAIL=0
+
+# 1. Syntax check every staged JS file
+while IFS= read -r f; do
+  [[ -f "$f" ]] || continue
+  if ! node --check "$f" >/dev/null 2>&1; then
+    echo "✗ syntax error: $f"
+    node --check "$f" 2>&1 | head -5
+    FAIL=1
+  fi
+done <<< "$STAGED_JS"
+
+# 2. ESLint (structural rules only — no style noise)
+if command -v npx >/dev/null 2>&1 && [[ -f eslint.config.js ]]; then
+  # shellcheck disable=SC2086
+  if ! npx eslint $STAGED_JS 2>/dev/null; then
+    echo "✗ eslint found structural problems (duplicate keys / undefined vars / dead code)"
+    FAIL=1
+  fi
+fi
+
+if [[ "$FAIL" == "1" ]]; then
+  echo
+  echo "Commit blocked. Fix the issues above (or bypass with git commit --no-verify if you must)."
+  exit 1
+fi
+exit 0

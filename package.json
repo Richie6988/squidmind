@@ -1,7 +1,7 @@
 {
   "name": "squidmind",
   "version": "1.0.0",
-  "description": "\ud83e\udd91 Multi-Agent Aquarium Orchestration System - Manage AI agents through a playful pixel art interface",
+  "description": "🦑 Multi-Agent Aquarium Orchestration System - Manage AI agents through a playful pixel art interface",
   "main": "server/index.js",
   "scripts": {
     "start": "node server/index.js",
@@ -17,7 +17,8 @@
     "test:integration": "node tests/integration.test.js",
     "test:stream": "node tests/stream.test.js",
     "test:orchestrator": "node tests/orchestrator.test.js",
-    "fresh": "bash scripts/fresh-start.sh"
+    "fresh": "bash scripts/fresh-start.sh",
+    "lint": "eslint server/ client/scripts/ scripts/"
   },
   "keywords": [
     "ai",
@@ -37,8 +38,10 @@
     "body-parser": "^2.2.2",
     "cheerio": "^1.2.0",
     "cors": "^2.8.6",
+    "docx": "^9.0.0",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
+    "jimp": "^0.22.12",
     "mathjs": "^15.2.0",
     "node-cron": "^4.2.1",
     "node-fetch": "^2.7.0",
@@ -46,8 +49,9 @@
     "node-telegram-bot-api": "^0.67.0",
     "nodemailer": "^6.9.16",
     "pptxgenjs": "^3.12.0",
-    "docx": "^9.0.0",
-    "jimp": "^0.22.12",
     "ws": "^8.21.0"
+  },
+  "devDependencies": {
+    "eslint": "^9.39.4"
   }
 }
