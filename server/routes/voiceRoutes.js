@@ -135,24 +135,28 @@ function buildVoiceRoutes({ rm, fetchWithRetry }) {
       });
     }
 
-    // Poll for readiness — model download on first run can take a while.
-    const deadline = Date.now() + 90_000;
-    while (Date.now() < deadline) {
-      await new Promise(r => setTimeout(r, 3000));
+    // Persist enabled=true + url now that the container is launching.
+    try {
+      const full = await rm.read('CHANNELS/comms_config.json').catch(() => ({}));
+      full.voice = { ...(full.voice || {}), enabled: true, speaches_url: base };
+      await rm.write('CHANNELS/comms_config.json', full);
+      rm.invalidateCache();
+    } catch {}
+
+    // Short readiness poll (12s). The first run downloads models and can take
+    // minutes — we do NOT hold the HTTP request open that long (the browser
+    // aborts long fetches → "NetworkError when attempting to fetch resource").
+    const shortDeadline = Date.now() + 12_000;
+    while (Date.now() < shortDeadline) {
+      await new Promise(r => setTimeout(r, 2000));
       if (await ping()) {
-        try {
-          const full = await rm.read('CHANNELS/comms_config.json').catch(() => ({}));
-          full.voice = { ...(full.voice || {}), enabled: true, speaches_url: base };
-          await rm.write('CHANNELS/comms_config.json', full);
-          rm.invalidateCache();
-        } catch {}
-        return res.json({ ok: true, started: true, url: base });
+        return res.json({ ok: true, started: true, ready: true, url: base });
       }
     }
-    return res.status(504).json({
-      ok: false,
-      error: `Started the Speaches container but it did not become ready within 90s at ${base}. ` +
-             `First run downloads models — it may still be pulling. Try again in a minute, or check: docker logs ${name}`,
+    return res.json({
+      ok: true, started: true, ready: false, pending: true, url: base,
+      message: `Container launched at ${base}. First run is downloading models — this can take a few minutes. ` +
+               `The voice will work once ready; try Test TTS shortly.`,
     });
    } catch (e) {
      if (!res.headersSent) {

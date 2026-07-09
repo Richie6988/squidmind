@@ -36,6 +36,7 @@ class TaskRunner {
     this.agentPool    = agentPool;
     this.botService   = botService;   // BotService for Telegram/Discord notifications
     this._running       = new Set();
+    this._ticking       = false;
     this._done          = new Set();  // persistent: tasks completed (never re-run)
     this._lastCronRun   = new Map();
     this._failCounts    = new Map();
@@ -86,6 +87,7 @@ class TaskRunner {
   markDeleted(taskId) {
     this._done.add(taskId);
     this._running.delete(taskId);
+    this._runningMeta?.delete(taskId);
     this._failCounts.delete(taskId);
     this._retryAfter.delete(taskId);
     // Persist so it survives restart
@@ -119,6 +121,22 @@ class TaskRunner {
   }
 
   async tick() {
+    // Re-entrancy guard: tick() is async and has many awaits between the
+    // "is anything running?" check and the point where _runTask adds the
+    // task to _running. Without a synchronous lock, a second tick fired by
+    // the heartbeat could slip through that window and launch a SECOND task
+    // for the same (or another) agent — which is exactly the "concurrent
+    // tasks running" the user saw. Bail immediately if a tick is in flight.
+    if (this._ticking) return;
+    this._ticking = true;
+    try {
+      await this._tickInner();
+    } finally {
+      this._ticking = false;
+    }
+  }
+
+  async _tickInner() {
     if (this._running.size > 0) return;
     if (!this._doneLoaded) return;
     if (this.modelService.loaded.size === 0) return;
@@ -276,7 +294,21 @@ class TaskRunner {
   async _runTask(task) {
     const taskId  = task.task_id;
     const agentId = task.assigned_to || null;
+    // Hard guards against concurrency, checked synchronously right before we
+    // commit to running. Belt-and-braces with the tick lock: even if two
+    // code paths reach here, only the first wins.
+    if (this._running.has(taskId)) return;               // already running this task
+    if (this._running.size > 0) return;                  // single-flight: one task at a time (single llama.cpp sequence)
+    if (agentId && agentId !== 'poseidon_main') {
+      // Is this agent already busy with another running task?
+      for (const tid of this._running) {
+        const rt = this._runningMeta?.get(tid);
+        if (rt?.agentId === agentId) return;
+      }
+    }
     this._running.add(taskId);
+    this._runningMeta = this._runningMeta || new Map();
+    this._runningMeta.set(taskId, { agentId, startedAt: Date.now() });
 
     log.info(`▶ ${taskId}: "${task.title}"${agentId ? ' → ' + agentId : ' → poseidon'}`);
 
@@ -474,6 +506,7 @@ class TaskRunner {
           await this._notify(`[IAQUA] ${failed ? 'Image FAILED' : 'Image done'}: "${task.title.slice(0,60)}"\n${imageServeUrl ? imageServeUrl : output.slice(0,200)}`);
         }
         this._running.delete(taskId);
+        this._runningMeta?.delete(taskId);
         return;
       }
 
@@ -637,6 +670,7 @@ class TaskRunner {
         if (e.message === 'PREEMPTED_BY_CHAT') {
           // Not a real failure — task will retry next tick after CHAT finishes
           this._running.delete(taskId);
+          this._runningMeta?.delete(taskId);
           return;
         }
         output = `Execution error: ${e.message}`;
@@ -715,6 +749,7 @@ class TaskRunner {
         try { await this.rm.updateAgentStatus(agentId, 'sleeping'); } catch {}
       }
       this._running.delete(taskId);
+      this._runningMeta?.delete(taskId);
     }
   }
 

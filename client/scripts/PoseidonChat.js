@@ -1178,7 +1178,10 @@ const PoseidonChat = {
       st.textContent = 'Starting container (first run downloads models, up to 90s)...';
       st.style.color = '#fbbf24';
       try {
-        const r = await fetch('/api/v2/voice/autostart', { method: 'POST' });
+        const ac = new AbortController();
+        const to = setTimeout(() => ac.abort(), 20000);
+        const r = await fetch('/api/v2/voice/autostart', { method: 'POST', signal: ac.signal });
+        clearTimeout(to);
         const ct = r.headers.get('content-type') || '';
         if (!ct.includes('application/json')) {
           const txt = await r.text();
@@ -1188,9 +1191,17 @@ const PoseidonChat = {
         }
         const d = await r.json();
         if (d.ok) {
-          st.textContent = d.already_running ? '\u2713 Already running at ' + d.url : '\u2713 Speaches started at ' + d.url;
-          st.style.color = '#06ffa5';
           const en = panel.querySelector('#pv-enabled'); if (en) en.checked = true;
+          if (d.ready) {
+            st.textContent = '\u2713 Speaches ready at ' + d.url;
+            st.style.color = '#06ffa5';
+          } else if (d.pending) {
+            st.textContent = '\u23f3 ' + (d.message || 'Container starting, downloading models... try Test TTS in a minute.');
+            st.style.color = '#fbbf24';
+          } else {
+            st.textContent = d.already_running ? '\u2713 Already running at ' + d.url : '\u2713 Speaches started at ' + d.url;
+            st.style.color = '#06ffa5';
+          }
         } else {
           st.textContent = '\u2717 ' + (d.error || 'Failed to start');
           st.style.color = '#f87171';
