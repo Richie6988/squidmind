@@ -3994,6 +3994,9 @@ input[type="color"]::-webkit-color-swatch {
   flex: 1;
   padding: 12px;
   overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 .right-panel-content::-webkit-scrollbar { width: 3px; }
 .right-panel-content::-webkit-scrollbar-track { background: transparent; }
@@ -7626,11 +7629,19 @@ h4.pc-md-h { font-size: 8px; color: #94a3b8; }
   line-height: 1.6;
 }
 /* ── Task queue two-pane layout ── */
-.tq-two-pane-section { padding: 0 !important; }
+.tq-two-pane-section {
+  padding: 0 !important;
+  flex: 1 1 auto;        /* grow to fill the remaining panel height */
+  display: flex;
+  flex-direction: column;
+  min-height: 320px;     /* never collapse smaller than this */
+}
 .tq-two-pane-section h3 { display: none; }
 .tq-pane-wrap {
   display: flex; flex-direction: column;
-  height: 420px; overflow: hidden;
+  flex: 1;               /* fill the section (was a fixed height: 420px) */
+  min-height: 0;
+  overflow: hidden;
 }
 .tq-pane {
   display: flex; flex-direction: column;
@@ -8619,7 +8630,7 @@ h4.pc-md-h { font-size: 8px; color: #94a3b8; }
 .scheduler-compact {
   padding: 8px 10px;
   border-top: 1px solid rgba(255,255,255,0.05);
-  margin-top: auto;   /* push to the bottom of the flex column */
+  flex-shrink: 0;
 }
 .scheduler-compact-btn {
   width: 100%;
