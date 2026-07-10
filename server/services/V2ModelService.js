@@ -548,6 +548,7 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
       // fails.
       let estLayers = Math.max(20, Math.min(80, Math.round(fileSizeGb * 1024 / 160)));
       let isMoE = false;
+      let headerGQA = null;   // exact GQA from header (null = unknown, fall back to name regex)
       try {
         const { readGgufFileInfo } = await import('node-llama-cpp');
         const gguf = await readGgufFileInfo(fullPath, { readTensorInfo: false, logWarnings: false });
@@ -555,7 +556,10 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
         const am   = arch ? gguf.metadata[arch] : null;
         if (am?.block_count > 0) estLayers = Number(am.block_count) + 1; // +1 output layer
         isMoE = Number(am?.expert_count || 0) > 1;
-        log.info(`  GGUF header: arch=${arch}, layers=${estLayers}${isMoE ? `, MoE ${am.expert_count} experts (${am.expert_used_count || '?'} active) — ALL expert weights count for VRAM, only active ones for compute` : ''}`);
+        const hc  = Number(am?.attention?.head_count || 0);
+        const hck = Number(am?.attention?.head_count_kv || 0);
+        if (hc > 0 && hck > 0) headerGQA = hck < hc;
+        log.info(`  GGUF header: arch=${arch}, layers=${estLayers}${headerGQA !== null ? `, GQA=${headerGQA} (${hck}/${hc} kv heads)` : ''}${isMoE ? `, MoE ${am.expert_count} experts (${am.expert_used_count || '?'} active) — ALL expert weights count for VRAM, only active ones for compute` : ''}`);
       } catch (e) {
         log.warn(`  GGUF header read failed (${e.message}) — falling back to size heuristic (${estLayers} layers)`);
       }
@@ -567,27 +571,30 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
 
       if (config.gpuLayers === 'auto' || config.gpuLayers === 'max') {
         if (vramBefore && freeBeforeGb > 0.5) {
-          // MoE: slightly more conservative — expert routing needs larger
-          // compute buffers per GPU layer than a dense model of equal size.
-          const frac    = Math.min(1.0, (freeBeforeGb * (isMoE ? 0.62 : 0.72)) / fileSizeGb);
-          const computed = Math.round(estLayers * frac);
-          // Previously reserved 4 layers on CPU unconditionally to leave VRAM
-          // for KV cache. That's a false economy: those 4 CPU layers add
-          // 20-40% inference latency (the comment said "2-4%" but real
-          // measurements on RTX 5060 + Ryzen 5 5500 show much worse — the
-          // CPU-GPU sync per forward pass dominates).
-          //
-          // Only reserve when the model doesn't already fit fully. If frac==1
-          // we have headroom to spare — offload everything, KV cache still
-          // fits in the leftover VRAM.
+          const bytesPerLayerGb = fileSizeGb / estLayers;
+          const frac = Math.min(1.0, (freeBeforeGb * (isMoE ? 0.62 : 0.72)) / fileSizeGb);
           const canFitFully = frac >= 1.0;
-          const reserved = canFitFully ? 0 : 4;
-          const gpuTarget = config.gpuLayers === 'max' ? estLayers : Math.max(1, computed - reserved);
-          config.gpuLayers = gpuTarget;
-          if (reserved === 0) {
+          let gpuTarget;
+          if (config.gpuLayers === 'max' || canFitFully) {
+            // Fits with headroom — offload everything, KV still fits in the rest.
+            gpuTarget = estLayers;
+            config.gpuLayers = gpuTarget;
             log.info(`  [auto] gpuLayers: ${config.gpuLayers} / ${estLayers} (FULL GPU offload — fits with headroom)`);
           } else {
-            log.info(`  [auto] gpuLayers: ${config.gpuLayers} / ${estLayers} (${reserved} layers on CPU — model larger than VRAM)`);
+            // Model larger than VRAM: throughput is the binding constraint,
+            // not context. The old frac math put few layers on GPU and then
+            // handed ALL leftover VRAM to the KV cache (observed: 5/29
+            // layers + a 61k-token KV on the 8x3B MoE — a 4k prompt through
+            // 24 CPU MoE layers takes minutes). Budget explicitly instead:
+            // small fixed KV reserve (≈16-20k tokens, plenty — Step 5 caps
+            // ctx for offloaded models anyway), overhead for CUDA runtime +
+            // compute buffers, and EVERYTHING else goes to layers.
+            const kvReserveGb = 1.25;
+            const overheadGb  = isMoE ? 0.8 : 0.5;  // MoE routing needs bigger compute buffers
+            gpuTarget = Math.max(1, Math.floor((freeBeforeGb - kvReserveGb - overheadGb) / bytesPerLayerGb));
+            gpuTarget = Math.min(gpuTarget, estLayers - 1);
+            config.gpuLayers = gpuTarget;
+            log.info(`  [auto] gpuLayers: ${config.gpuLayers} / ${estLayers} (model larger than VRAM — layers first: ${(gpuTarget * bytesPerLayerGb).toFixed(1)}GB layers + ${kvReserveGb}GB KV reserve + ${overheadGb}GB overhead)`);
           }
         } else {
           config.gpuLayers = 0;
@@ -691,18 +698,28 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
       // Always recompute — never trust the stored value (stale, wrong GPU, etc.)
       {
         const modelName = (this.poseidonModelId || fileName.replace(/\.gguf$/i, '')).toLowerCase();
-        const isGQA = /qwen|llama[-_]?3|mistral|gemma/.test(modelName);
+        // Exact GQA from the GGUF header when available — the name regex
+        // missed e.g. 'l3-2-8x3b-…' (a GQA Llama-3.2) and budgeted 60KB/tok.
+        const isGQA = (headerGQA !== null) ? headerGQA : /qwen|llama[-_]?3|mistral|gemma/.test(modelName);
         const bytesPerTok = config.flashAttention
           ? (isGQA ? 38 * 1024 : 60 * 1024)
           : 100 * 1024;
         const margin = 0.65;  // 650MB: CUDA runtime + activations + cuBLAS + hybrid-arch overhead
 
+        // Cap ctx when a big share of layers runs on CPU: each prompt token
+        // crosses every CPU layer, so a 60k context on a mostly-CPU model
+        // means minutes of prefill. VRAM saved here was already spent on
+        // extra GPU layers in Step 1.
+        const gpuL = Number(config.gpuLayers) || 0;
+        const cpuShare = estLayers > 0 ? 1 - gpuL / estLayers : 0;
+        const offloadCap = cpuShare > 0.6 ? 12288 : cpuShare > 0.3 ? 16384 : Infinity;
+
         if (vramAfter && freeAfterGb > margin + 0.1) {
           const availKvGb = freeAfterGb - margin;
           const toksFit   = Math.floor(availKvGb * 1024 ** 3 / bytesPerTok);
           const computed  = Math.max(V2ModelService.MIN_VIABLE_CTX, Math.floor(toksFit / 1024) * 1024);
-          config.contextLength = Math.min(computed, trainCtx);
-          log.info(`  [auto] contextLength: ${config.contextLength} (availKv=${availKvGb.toFixed(2)}GB, ${bytesPerTok/1024}KB/tok, isGQA=${isGQA}, toksFit=${toksFit})`);
+          config.contextLength = Math.min(computed, trainCtx, offloadCap);
+          log.info(`  [auto] contextLength: ${config.contextLength} (availKv=${availKvGb.toFixed(2)}GB, ${bytesPerTok/1024}KB/tok, isGQA=${isGQA}, toksFit=${toksFit}${Number.isFinite(offloadCap) ? `, capped at ${offloadCap} — ${Math.round(cpuShare*100)}% of layers on CPU` : ''})`);
         } else if (!vramAfter) {
           // No VRAM info — use a conservative default
           config.contextLength = 8192;
