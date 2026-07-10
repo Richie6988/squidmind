@@ -98,6 +98,70 @@ class OrchestratorTools {
     }
   }
 
+  /**
+   * fetchUrl — read a web page's CONTENT (search gives snippets; this gives
+   * the substance). HTML is stripped to readable text, capped for small-model
+   * contexts, with a truncation notice. SSRF-guarded: private/loopback hosts
+   * are refused unless ALLOW_PRIVATE_FETCH=1.
+   */
+  async fetchUrl({ url, max_chars = 18_000 }) {
+    if (!url || !/^https?:\/\//i.test(url)) {
+      return { ok: false, error: 'A full http(s) URL is required.' };
+    }
+    try {
+      const u = new URL(url);
+      const host = u.hostname;
+      const isPrivate = /^(localhost|127\.|0\.0\.0\.0|10\.|192\.168\.|169\.254\.|\[::1\])/i.test(host)
+        || /^172\.(1[6-9]|2\d|3[01])\./.test(host);
+      if (isPrivate && process.env.ALLOW_PRIVATE_FETCH !== '1') {
+        return { ok: false, error: `Refusing to fetch private/loopback host "${host}" (set ALLOW_PRIVATE_FETCH=1 to allow).` };
+      }
+
+      const res = await fetch(url, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0',
+          'Accept': 'text/html,application/xhtml+xml,text/plain;q=0.9,*/*;q=0.5',
+        },
+        redirect: 'follow',
+        signal: AbortSignal.timeout(15_000),
+      });
+      if (!res.ok) return { ok: false, error: `HTTP ${res.status} for ${url}` };
+
+      const ctype = res.headers.get('content-type') || '';
+      // Hard size cap on the raw body (2MB) before we even parse
+      const raw = await res.text();
+      const body = raw.length > 2_000_000 ? raw.slice(0, 2_000_000) : raw;
+
+      let title = '';
+      let text = body;
+      if (/html/i.test(ctype) || /^\s*</.test(body)) {
+        title = (body.match(/<title[^>]*>([^<]*)<\/title>/i) || [])[1]?.trim() || '';
+        text = body
+          .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+          .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+          .replace(/<(nav|footer|header|aside)[\s\S]*?<\/\1>/gi, ' ')
+          .replace(/<br\s*\/?>/gi, '\n')
+          .replace(/<\/(p|div|li|h[1-6]|tr)>/gi, '\n')
+          .replace(/<[^>]+>/g, ' ')
+          .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<')
+          .replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'")
+          .replace(/[ \t]+/g, ' ')
+          .replace(/\n\s*\n\s*\n+/g, '\n\n')
+          .trim();
+      }
+
+      const cap = Math.min(Math.max(2_000, Number(max_chars) || 18_000), 40_000);
+      const truncated = text.length > cap;
+      if (truncated) {
+        text = text.slice(0, cap) +
+          `\n\n[... TRUNCATED: page is ${text.length} chars. Re-call fetch_url with a larger max_chars for more, or target a more specific URL. ...]`;
+      }
+      return { ok: true, url, title, content_type: ctype.split(';')[0], chars: text.length, truncated, text };
+    } catch (e) {
+      return { ok: false, error: `fetch failed: ${e.message}` };
+    }
+  }
+
   async webSearch({ query, num_results = 5 }) {
     if (!query || typeof query !== 'string') {
       return { ok: false, error: 'query is required' };

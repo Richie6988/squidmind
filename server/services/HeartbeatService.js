@@ -192,6 +192,22 @@ class HeartbeatService {
         log.warn('[Heartbeat] Project audit tick error:', e.message)
       );
     }
+
+    // Daily state backup — aquarium registries/memories/projects snapshot
+    // (models excluded). Fire-and-forget; a failed backup never disturbs
+    // the heartbeat. Rotation (keep 10) is handled by the script.
+    if (!this._lastBackupAt || (Date.now() - this._lastBackupAt) > 24 * 60 * 60 * 1000) {
+      this._lastBackupAt = Date.now();
+      try {
+        const { exec } = require('child_process');
+        const path = require('path');
+        const script = path.join(__dirname, '..', '..', 'scripts', 'backup.sh');
+        exec(`bash "${script}"`, { timeout: 120_000 }, (err, out) => {
+          if (err) log.warn('[Heartbeat] daily backup failed:', err.message);
+          else log.info('[Heartbeat] 💾 daily aquarium backup done');
+        });
+      } catch (e) { log.warn('[Heartbeat] backup spawn error:', e.message); }
+    }
   }
 
   /**

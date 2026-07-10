@@ -18,7 +18,8 @@
     "test:stream": "node tests/stream.test.js",
     "test:orchestrator": "node tests/orchestrator.test.js",
     "fresh": "bash scripts/fresh-start.sh",
-    "lint": "eslint server/ client/scripts/ scripts/"
+    "lint": "eslint server/ client/scripts/ scripts/",
+    "backup": "bash scripts/backup.sh"
   },
   "keywords": [
     "ai",

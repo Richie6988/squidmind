@@ -972,7 +972,7 @@ My response: "${ss.last_response_preview}"${tools}
       // ============ WEB ============
       
       web_search: defineChatSessionFunction({
-        description: 'Search the web via DuckDuckGo. Returns top results with title, URL, and snippet. Use for current events, documentation lookups, troubleshooting unknown errors, finding the right library.',
+        description: 'Search the web via DuckDuckGo. Returns top results with title, URL, and snippet. Use for current events, documentation lookups, troubleshooting unknown errors, finding the right library. To READ a result page, follow up with fetch_url.',
         params: {
           type: 'object',
           properties: {
@@ -982,6 +982,21 @@ My response: "${ss.last_response_preview}"${tools}
           required: ['query']
         },
         handler: async (params) => self.tools.webSearch({ ...params, num_results: Math.min(params.num_results || 5, 10) })
+      }),
+
+      fetch_url: defineChatSessionFunction({
+        description: 'Fetch and READ a web page: returns the page text (HTML stripped, capped for context). ' +
+          'Use after web_search to actually read a promising result — search gives snippets, this gives substance. ' +
+          'Typical research flow: web_search(query) → pick the best URL → fetch_url(url) → synthesize.',
+        params: {
+          type: 'object',
+          properties: {
+            url: { type: 'string', description: 'Full http(s) URL to fetch' },
+            max_chars: { type: 'number', description: 'Text cap (default 18000, max 40000)' }
+          },
+          required: ['url']
+        },
+        handler: async (params) => self.tools.fetchUrl(params)
       }),
 
       search_image: defineChatSessionFunction({
