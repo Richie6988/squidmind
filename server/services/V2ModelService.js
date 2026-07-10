@@ -198,10 +198,24 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
         let stat;
         try { stat = await fs.stat(fullPath); }
         catch (e) {
+          // Broken symlink: lstat reads the link ITSELF and succeeds even
+          // when the target is gone — auto-remove it instead of nagging
+          // the user with a manual `rm` on every restart. A file deleted
+          // mid-scan (race) fails lstat too and just gets skipped.
+          if (e.code === 'ENOENT') {
+            try {
+              const l = await fs.lstat(fullPath);
+              if (l.isSymbolicLink()) {
+                await fs.unlink(fullPath);
+                log.warn(` scanLocalModels: removed broken symlink ${file} (target no longer exists)`);
+                continue;
+              }
+            } catch {}
+          }
           this._scanWarned = this._scanWarned || new Set();
           if (!this._scanWarned.has(file)) {
             this._scanWarned.add(file);
-            log.warn(` scanLocalModels: skipping ${file} (${e.code || e.message}) — likely a broken symlink; clean it with: rm "aquarium/MODELS/${file}"`);
+            log.warn(` scanLocalModels: skipping ${file} (${e.code || e.message})`);
           }
           continue;
         }
@@ -600,6 +614,7 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
       let loadErrFinal = null;
       for (let li = 0; li < layerLadder.length; li++) {
         const tryLayers = layerLadder[li];
+        const lastRung  = li === layerLadder.length - 1;
         try {
           if (li > 0) log.info(`  [load retry ${li}] gpuLayers ${config.gpuLayers} → ${tryLayers} (VRAM/alloc failure on previous attempt)`);
           config.gpuLayers = tryLayers;
@@ -608,7 +623,13 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
             gpuLayers:  tryLayers,
             useMmap:    config.useMmap,
             useMlock:   config.useMlock,
-            defaultContextFlashAttention: config.flashAttention
+            defaultContextFlashAttention: config.flashAttention,
+            // Last rung (gpuLayers 0 = pure CPU + mmap): node-llama-cpp's
+            // pre-load memory estimator can VETO the load with a
+            // "not enough VRAM/memory" error before even trying — and it
+            // is pessimistic for MoE + mmap (pages stream from disk on
+            // demand). Never let the estimator kill the fallback rung.
+            ignoreMemorySafetyChecks: lastRung
           });
           loadErrFinal = null;
           break;
@@ -631,7 +652,19 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
           }
           const isVramErr = /out of memory|vram|cuda|alloc|failed to load|insufficient|not enough/i.test(msg);
           loadErrFinal = loadErr;
-          if (!isVramErr || li === layerLadder.length - 1) throw loadErr;
+          if (!isVramErr || lastRung) {
+            if (isMoE && lastRung) {
+              throw new Error(
+                `${msg}\n\n` +
+                `This is a Mixture-of-Experts model: ALL expert weights must fit in ` +
+                `memory even though only a few experts run per token — MoE saves ` +
+                `compute, not RAM/VRAM. Even the CPU-only fallback failed, so the ` +
+                `machine is short on system RAM for this file. Try a smaller quant ` +
+                `(Q4_K_M / Q3_K_M) or a smaller expert count.\nFile: ${fileName}`
+              );
+            }
+            throw loadErr;
+          }
           // else: fall through to the next, smaller gpuLayers attempt
         }
       }
