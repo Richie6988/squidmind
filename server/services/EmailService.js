@@ -127,6 +127,20 @@ class EmailService {
         response:  info.response,
       };
     } catch (e) {
+      // Auth failures need explicit guidance: without it the model tries to
+      // "fix" credentials itself (inventing users/passwords via execute_bash,
+      // exporting fake SMTP_* env vars) — none of which can ever work.
+      if (/535|BadCredentials|Username and Password not accepted|Invalid login|auth/i.test(e.message)) {
+        return {
+          ok: false,
+          error: `SMTP AUTHENTICATION FAILED: ${e.message.slice(0, 160)}. ` +
+                 `DO NOT attempt to fix this yourself — do not invent credentials, do not set SMTP_* env vars, ` +
+                 `do not retry with different usernames. The saved SMTP config is wrong and only the USER can fix it: ` +
+                 `tell them to open COMMS → SMTP and either (a) for Gmail, use an App Password from ` +
+                 `myaccount.google.com/apppasswords (normal passwords are rejected), or (b) click "Use local MTA preset" ` +
+                 `if they run Postfix locally. Then stop.`,
+        };
+      }
       return { ok: false, error: e.message };
     }
   }

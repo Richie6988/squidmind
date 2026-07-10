@@ -92,7 +92,20 @@ class BashExecutor {
       return { ok: false, error: '"command" must be a non-empty string' };
     }
     const AQUARIUM = require('../aquarium');
-    const workDir = cwd || AQUARIUM.ROOT;
+    // Normalise cwd. Models often pass "aquarium/" or "aquarium/PROJECTS/X"
+    // even though relative paths are ALREADY anchored to the aquarium root —
+    // which produced .../aquarium/aquarium/ ("cwd does not exist"). Strip the
+    // redundant prefix, anchor relatives to AQUARIUM.ROOT, keep absolutes.
+    let workDir = AQUARIUM.ROOT;
+    if (cwd && typeof cwd === 'string' && cwd.trim()) {
+      let c = cwd.trim();
+      if (!path.isAbsolute(c)) {
+        c = c.replace(/^\.?\/*/, '').replace(/^aquarium\/?/i, '');
+        workDir = c ? path.join(AQUARIUM.ROOT, c) : AQUARIUM.ROOT;
+      } else {
+        workDir = c;
+      }
+    }
     // Timeout clamp
     timeout_ms = Math.max(500, Math.min(600_000, Number(timeout_ms) || 30_000));
 

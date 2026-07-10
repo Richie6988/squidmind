@@ -8853,3 +8853,9 @@ h4.pc-md-h { font-size: 8px; color: #94a3b8; }
   transition: background 0.15s;
 }
 .ti-kcol-clear:hover { background: rgba(239,68,68,0.18); }
+
+/* ═══ Global default zoom ═════════════════════════════════════════════ */
+/* 130% base zoom for the whole app (user preference — the pixel-art UI
+   uses small font sizes tuned for density; this scales everything up).
+   CSS zoom is supported in Chromium and Firefox 126+. */
+html { zoom: 130%; }
