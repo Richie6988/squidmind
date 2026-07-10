@@ -631,6 +631,15 @@ const PoseidonChat = {
 
   _syncOverlayBounds() {
     if (!this.modal) return;
+    // html { zoom: 130% } (pixel.css): getBoundingClientRect() returns
+    // VISUAL viewport px, but top/left/width set on an element inside the
+    // zoomed root are multiplied by the zoom again at paint time — so every
+    // coordinate landed 1.3× too far and the overlay overflowed the window.
+    // Divide by the effective zoom to convert visual px → layout px.
+    const zEl = document.documentElement;
+    const z = (typeof zEl.currentCSSZoom === 'number' && zEl.currentCSSZoom > 0)
+      ? zEl.currentCSSZoom
+      : (parseFloat(getComputedStyle(zEl).zoom) || 1);
     // Use aquarium bounding box as the exact target area
     const aq  = document.querySelector('.aquarium-wrapper');
     const hdr = document.querySelector('header');
@@ -644,9 +653,9 @@ const PoseidonChat = {
       const rpLeft = rp ? rp.getBoundingClientRect().left : window.innerWidth;
       const w      = Math.min(r.width, rpLeft - r.left);
       const top    = hdr ? hdr.getBoundingClientRect().bottom : r.top;
-      this.modal.style.setProperty('left',   r.left + 'px', 'important');
-      this.modal.style.setProperty('top',    top + 'px',    'important');
-      this.modal.style.setProperty('width',  w + 'px',      'important');
+      this.modal.style.setProperty('left',   (r.left / z) + 'px', 'important');
+      this.modal.style.setProperty('top',    (top / z) + 'px',    'important');
+      this.modal.style.setProperty('width',  (w / z) + 'px',      'important');
       this.modal.style.setProperty('right',  'auto',        'important');
       this.modal.style.setProperty('bottom', '0px',         'important');
     } else {
@@ -657,8 +666,8 @@ const PoseidonChat = {
       const t    = hdr ? hdr.getBoundingClientRect().bottom : 70;
       const rightPx = cutEl ? (window.innerWidth - cutEl.getBoundingClientRect().left) : 480;
       this.modal.style.setProperty('left',   '0px',        'important');
-      this.modal.style.setProperty('top',    t + 'px',     'important');
-      this.modal.style.setProperty('right',  rightPx + 'px', 'important');
+      this.modal.style.setProperty('top',    (t / z) + 'px',     'important');
+      this.modal.style.setProperty('right',  (rightPx / z) + 'px', 'important');
       this.modal.style.setProperty('width',  'auto',       'important');
       this.modal.style.setProperty('bottom', '0px',        'important');
     }
