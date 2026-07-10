@@ -183,6 +183,7 @@ const CommsPanel = {
   },
 
   _renderEmailTab() {
+    this._emTouched = false;   // fresh render → prefill allowed until the user types
     return `
       <div class="comms-setup-guide">
         <div class="comms-tool-banner">Configures the <b>send_email</b> tool — Poseidon and agents use this SMTP server to send mail from tasks and chat.</div>
@@ -201,16 +202,16 @@ const CommsPanel = {
       </div>
       <div class="comms-field-group">
         <label class="comms-label">SMTP Host</label>
-        <input id="em-host" type="text" class="comms-input" placeholder="smtp.gmail.com" autocomplete="off">
+        <input id="em-host" oninput="CommsPanel._emTouched=true" type="text" class="comms-input" placeholder="smtp.gmail.com" autocomplete="off">
       </div>
       <div class="comms-field-group" style="display:flex;gap:10px;">
         <div style="flex:1;">
           <label class="comms-label">Port</label>
-          <input id="em-port" type="text" class="comms-input" placeholder="465">
+          <input id="em-port" oninput="CommsPanel._emTouched=true" type="text" class="comms-input" placeholder="465">
         </div>
         <div style="flex:1;">
           <label class="comms-label">Secure (SSL)</label>
-          <select id="em-secure" class="comms-input">
+          <select id="em-secure" class="comms-input" onchange="CommsPanel._emTouched=true">
             <option value="true">Yes (port 465)</option>
             <option value="false">No / STARTTLS (port 587)</option>
           </select>
@@ -218,18 +219,18 @@ const CommsPanel = {
       </div>
       <div class="comms-field-group">
         <label class="comms-label">User (email address)</label>
-        <input id="em-user" type="text" class="comms-input" placeholder="you@gmail.com" autocomplete="off">
+        <input id="em-user" oninput="CommsPanel._emTouched=true" type="text" class="comms-input" placeholder="you@gmail.com" autocomplete="off">
       </div>
       <div class="comms-field-group">
         <label class="comms-label">Password / App Password</label>
         <div class="comms-token-row">
-          <input id="em-pass" type="password" class="comms-input" placeholder="16-char app password for Gmail" autocomplete="off">
+          <input id="em-pass" oninput="CommsPanel._emTouched=true" type="password" class="comms-input" placeholder="16-char app password for Gmail" autocomplete="off">
           <button class="comms-eye-btn" onclick="CommsPanel._toggleVisible('em-pass')">👁</button>
         </div>
       </div>
       <div class="comms-field-group">
         <label class="comms-label">From <span class="comms-hint-inline">(optional — defaults to user)</span></label>
-        <input id="em-from" type="text" class="comms-input" placeholder="Poseidon <you@gmail.com>">
+        <input id="em-from" oninput="CommsPanel._emTouched=true" type="text" class="comms-input" placeholder="Poseidon <you@gmail.com>">
       </div>
       <div class="comms-field-group">
         <label class="comms-label">Send test to</label>
@@ -250,6 +251,9 @@ const CommsPanel = {
   },
 
   _presetLocalMta() {
+    // Preset counts as user input — the async status prefill must NOT
+    // overwrite it with the previously saved (e.g. Gmail) config.
+    this._emTouched = true;
     const set = (id, v) => { const el = this.modal.querySelector(id); if (el) el.value = v; };
     set('#em-host', '127.0.0.1');
     set('#em-port', '25');
@@ -339,7 +343,11 @@ const CommsPanel = {
     // Email config prefill (independent of bot status)
     try {
       const em = await window.api._fetch('/comms/email');
-      if (em?.configured && em.email) {
+      // RACE GUARD: if the user already clicked the local-MTA preset or
+      // typed into the form, do NOT overwrite their input with the saved
+      // config (this is exactly how "I clicked the preset but Save saw
+      // smtp.gmail.com" happened — the prefill landed after the click).
+      if (!this._emTouched && em?.configured && em.email) {
         const set = (id, v) => { const el = this.modal.querySelector(id); if (el && v != null) el.value = v; };
         set('#em-host', em.email.host);
         set('#em-port', em.email.port);

@@ -561,34 +561,61 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
         }
       }
 
-      // ── Step 2: LOAD WEIGHTS ONCE ────────────────────────────────────────
-      try {
-        model = await llama.loadModel({
-          modelPath:  fullPath,
-          gpuLayers:  config.gpuLayers,
-          useMmap:    config.useMmap,
-          useMlock:   config.useMlock,
-          defaultContextFlashAttention: config.flashAttention
-        });
-      } catch (loadErr) {
-        const msg = loadErr.message || '';
-        // llama.cpp tensor-shape errors surface as "missing blk.X.<tensor>.weight"
-        // when the GGUF file's architecture doesn't match what the loader
-        // expects (e.g. a text-encoder GGUF loaded as a chat model, an SSM
-        // file loaded by a non-mamba build, or a corrupt / truncated file).
-        if (/missing blk\.\d+\.[a-z_]+\.weight/i.test(msg)) {
-          throw new Error(
-            `${msg}\n\n` +
-            `This usually means the GGUF file is NOT a chat LLM your llama.cpp build ` +
-            `supports:\n` +
-            `  • Diffusion companion (T5/CLIP/VAE text-encoder) — cannot run as chat model.\n` +
-            `  • SSM / hybrid architecture (Mamba, Jamba) — needs a llama.cpp built with SSM support.\n` +
-            `  • Truncated / corrupt download — retry or verify the sha256.\n\n` +
-            `File: ${fileName}`
-          );
+      // ── Step 2: LOAD WEIGHTS — with an OOM step-down ladder ──────────────
+      // The gpuLayers estimate assumes ~160MB/layer (dense Q4). MoE models
+      // break that badly: an 8x3B MoE has ~28 layers of ~450MB each, so the
+      // heuristic offloads far too many → instant CUDA OOM with NO retry,
+      // surfacing as "not enough VRAM". The ladder steps the GPU share down
+      // (60% → 35% → 15% → CPU-only); combined with useMmap the CPU share
+      // streams from disk cache, so big models load slower instead of
+      // failing.
+      const baseLayers = typeof config.gpuLayers === 'number' ? config.gpuLayers : 0;
+      const layerLadder = [...new Set([
+        baseLayers,
+        Math.floor(baseLayers * 0.6),
+        Math.floor(baseLayers * 0.35),
+        Math.floor(baseLayers * 0.15),
+        0,
+      ])].filter(n => n >= 0);
+      let loadErrFinal = null;
+      for (let li = 0; li < layerLadder.length; li++) {
+        const tryLayers = layerLadder[li];
+        try {
+          if (li > 0) log.info(`  [load retry ${li}] gpuLayers ${config.gpuLayers} → ${tryLayers} (VRAM/alloc failure on previous attempt)`);
+          config.gpuLayers = tryLayers;
+          model = await llama.loadModel({
+            modelPath:  fullPath,
+            gpuLayers:  tryLayers,
+            useMmap:    config.useMmap,
+            useMlock:   config.useMlock,
+            defaultContextFlashAttention: config.flashAttention
+          });
+          loadErrFinal = null;
+          break;
+        } catch (loadErr) {
+          const msg = loadErr.message || '';
+          // llama.cpp tensor-shape errors surface as "missing blk.X.<tensor>.weight"
+          // when the GGUF file's architecture doesn't match what the loader
+          // expects (e.g. a text-encoder GGUF loaded as a chat model, an SSM
+          // file loaded by a non-mamba build, or a corrupt / truncated file).
+          if (/missing blk\.\d+\.[a-z_]+\.weight/i.test(msg)) {
+            throw new Error(
+              `${msg}\n\n` +
+              `This usually means the GGUF file is NOT a chat LLM your llama.cpp build ` +
+              `supports:\n` +
+              `  • Diffusion companion (T5/CLIP/VAE text-encoder) — cannot run as chat model.\n` +
+              `  • SSM / hybrid architecture (Mamba, Jamba) — needs a llama.cpp built with SSM support.\n` +
+              `  • Truncated / corrupt download — retry or verify the sha256.\n\n` +
+              `File: ${fileName}`
+            );
+          }
+          const isVramErr = /out of memory|vram|cuda|alloc|failed to load|insufficient|not enough/i.test(msg);
+          loadErrFinal = loadErr;
+          if (!isVramErr || li === layerLadder.length - 1) throw loadErr;
+          // else: fall through to the next, smaller gpuLayers attempt
         }
-        throw loadErr;
       }
+      if (!model) throw loadErrFinal || new Error('model load failed');
 
       const trainCtx = model.trainContextSize;
       log.info(`  Weights loaded. trainCtx=${trainCtx}, gpuLayers=${config.gpuLayers}`);
