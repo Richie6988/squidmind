@@ -159,43 +159,68 @@ class TaskRunner {
 
     // ── Cron tasks: check if any scheduled task is due ─────────────────────
     for (const task of allTasks) {
-      if (!task.cron_schedule) continue;
-      const cronStr = task.cron_schedule;
-      const lastRun = this._lastCronRun.get(task.task_id) || 0;
-      if (this._isCronDue(cronStr, lastRun, now)) {
-        this._lastCronRun.set(task.task_id, now);
-        log.info(`Cron task due: ${task.task_id} "${task.title}"`);
-        // Spawn a FRESH task so each cron run is independently tracked.
-        // The original task stays in registry as the cron template.
-        try {
-          const reg = await this.rm.read('TASKS/tasks_registry.json');
-          const nextId = reg.metadata?.next_id || 1;
-          const cronTaskId = `task_${String(nextId).padStart(4, '0')}_cron_${Date.now()}`;
-          reg.tasks = reg.tasks || {};
-          reg.tasks[cronTaskId] = {
-            ...task,
-            task_id: cronTaskId,
-            title: task.title,
-            description: task.description || '',
-            status: 'open',
-            lifecycle: { status: 'open' },
-            created_at: new Date().toISOString(),
-            cron_schedule: null, // fresh run — no re-cron
-            cron_parent: task.task_id,
-          };
-          reg.metadata = reg.metadata || {};
-          reg.metadata.next_id = nextId + 1;
-          await this.rm.write('TASKS/tasks_registry.json', reg);
-          // Run the fresh task
-          const freshTask = reg.tasks[cronTaskId];
-          this._runTask(freshTask).catch(e =>
-            log.error(`Cron task ${cronTaskId} error:`, e.message)
-          );
-        } catch (e) {
-          log.error(`Failed to create cron instance for ${task.task_id}:`, e.message);
-        }
-        return; // one task per tick
+      // Two schedule syntaxes coexist:
+      //  - task.cron_schedule: crontab string (created by Poseidon/tools)
+      //  - task.schedule: object from the Scheduler UI
+      //    { type: 'once'|'interval'|'daily'|'weekly', run_at?, minutes?, time?, day?, last_run_at? }
+      // Historically only cron_schedule was honoured, so UI-scheduled tasks
+      // ran ONCE (picked up as plain open tasks) and never recurred.
+      const hasCron = !!task.cron_schedule;
+      const hasSched = !!(task.schedule && task.schedule.type);
+      if (!hasCron && !hasSched) continue;
+
+      let due = false;
+      if (hasCron) {
+        const lastRun = this._lastCronRun.get(task.task_id) || 0;
+        due = this._isCronDue(task.cron_schedule, lastRun, now);
+        if (due) this._lastCronRun.set(task.task_id, now);
+      } else {
+        due = this._isScheduleDue(task.schedule, now);
       }
+      if (!due) continue;
+
+      log.info(`Scheduled task due: ${task.task_id} "${task.title}"`);
+      // Spawn a FRESH task so each run is independently tracked.
+      // The original task stays in registry as the template.
+      try {
+        const reg = await this.rm.read('TASKS/tasks_registry.json');
+        const nextId = reg.metadata?.next_id || 1;
+        const cronTaskId = `task_${String(nextId).padStart(4, '0')}_cron_${Date.now()}`;
+        reg.tasks = reg.tasks || {};
+        reg.tasks[cronTaskId] = {
+          ...task,
+          task_id: cronTaskId,
+          title: task.title,
+          description: task.description || '',
+          status: 'open',
+          lifecycle: { status: 'open' },
+          created_at: new Date().toISOString(),
+          cron_schedule: null,   // fresh run — no re-cron
+          schedule: null,        // fresh run — instance, not template
+          cron_parent: task.task_id,
+        };
+        // Persist last_run_at ON THE TEMPLATE (survives restarts — the old
+        // in-memory-only tracking re-fired interval tasks on every reboot).
+        if (hasSched && reg.tasks[task.task_id]) {
+          reg.tasks[task.task_id].schedule = { ...task.schedule, last_run_at: new Date().toISOString() };
+          // 'once' templates are consumed after their single spawn
+          if (task.schedule.type === 'once') {
+            reg.tasks[task.task_id].lifecycle = { ...(reg.tasks[task.task_id].lifecycle || {}), status: 'completed' };
+            reg.tasks[task.task_id].status = 'completed';
+          }
+        }
+        reg.metadata = reg.metadata || {};
+        reg.metadata.next_id = nextId + 1;
+        await this.rm.write('TASKS/tasks_registry.json', reg);
+        // Run the fresh task
+        const freshTask = reg.tasks[cronTaskId];
+        this._runTask(freshTask).catch(e =>
+          log.error(`Scheduled task ${cronTaskId} error:`, e.message)
+        );
+      } catch (e) {
+        log.error(`Failed to create scheduled instance for ${task.task_id}:`, e.message);
+      }
+      return; // one task per tick
     }
 
     // ── One-shot tasks: pick highest priority open/planned task ───────────
@@ -256,7 +281,13 @@ class TaskRunner {
           ? (Array.isArray(t.depends_on) ? t.depends_on : [t.depends_on])
           : [];
         const depsPending = deps.some(d => d && d !== t.task_id && liveIds.has(d));
+        // Schedule TEMPLATES never run directly — instances are spawned by
+        // the due-check above. Without this, a template with status 'open'
+        // was picked up as a plain task, ran once, completed → purged, and
+        // the recurrence was lost ("repetitive tasks only run once").
+        const isScheduleTemplate = !!(t.schedule && t.schedule.type) || !!t.cron_schedule;
         return !TERMINAL.has(s)
+          && !isScheduleTemplate
           && !this._running.has(t.task_id)
           && !this._done.has(t.task_id)
           && !tooManyFails
@@ -282,6 +313,47 @@ class TaskRunner {
    * Very simple cron check: parse '* * * * *' and see if it's due.
    * Checks against last-run timestamp to avoid double-firing.
    */
+  /**
+   * _isScheduleDue — evaluates the Scheduler-UI schedule object.
+   * last_run_at is persisted on the template, so recurrence survives
+   * restarts (the in-memory cron map does not).
+   */
+  _isScheduleDue(schedule, nowMs) {
+    try {
+      const lastRun = schedule.last_run_at ? Date.parse(schedule.last_run_at) : 0;
+      switch (schedule.type) {
+        case 'once': {
+          if (lastRun) return false;                    // already consumed
+          const at = Date.parse(schedule.run_at || '');
+          return Number.isFinite(at) && nowMs >= at;
+        }
+        case 'interval': {
+          const mins = Number(schedule.minutes) || 0;
+          if (mins <= 0) return false;
+          return (nowMs - lastRun) >= mins * 60_000;
+        }
+        case 'daily':
+        case 'weekly': {
+          const [hh, mm] = String(schedule.time || '09:00').split(':').map(n => parseInt(n, 10) || 0);
+          const occ = new Date(nowMs);
+          occ.setHours(hh, mm, 0, 0);
+          if (schedule.type === 'weekly') {
+            const targetDay = Number(schedule.day) || 0;   // 0=Sunday
+            // Walk back to the most recent occurrence on the target weekday
+            while (occ.getDay() !== targetDay || occ.getTime() > nowMs) {
+              occ.setDate(occ.getDate() - 1);
+              occ.setHours(hh, mm, 0, 0);
+            }
+          } else if (occ.getTime() > nowMs) {
+            occ.setDate(occ.getDate() - 1);               // today's slot not reached → yesterday's
+          }
+          return nowMs >= occ.getTime() && lastRun < occ.getTime();
+        }
+        default: return false;
+      }
+    } catch { return false; }
+  }
+
   _isCronDue(cronExpr, lastRunMs, nowMs) {
     try {
       const parts = cronExpr.trim().split(/\s+/);

@@ -314,25 +314,47 @@ class HeartbeatService {
           ? recentlyDone.map(t => `  [${t.task_id}] ${t.title} → ${(t.result_summary || '(no summary)').slice(0, 120)}`).join('\n')
           : '  (none)';
 
-        // Build the BG review message for Poseidon
+        // Pull the project's goal so the review is anchored to the VISION,
+        // not just per-task quality. Without this anchor Poseidon judged
+        // tasks in isolation and kept spawning file-producing busywork that
+        // never advanced (or concluded) the project.
+        let visionLine = '', completionLine = '', nextStepsLine = '';
+        try {
+          const mem = await this.rm.getProjectMemory(projId).catch(() => null);
+          if (mem) {
+            if (mem.vision) visionLine = `GOAL / VISION: ${String(mem.vision).slice(0, 300)}`;
+            if (mem.progress?.completion) completionLine = `Current completion: ${mem.progress.completion}`;
+            if (mem.progress?.next_steps?.length) nextStepsLine = `Declared next steps: ${mem.progress.next_steps.slice(0, 4).join('; ').slice(0, 300)}`;
+          }
+        } catch {}
+
+        // Build the BG review message — a GOAL-PROGRESS DRIVER, not a
+        // generic quality pass.
         const msg = [
-          `PROACTIVE PROJECT REVIEW: "${proj.name}"`,
-          `No user is waiting. Review this project's health and the QUALITY of completed work.`,
+          `PROJECT GOAL REVIEW: "${proj.name}"`,
+          `No user is waiting. Your job: move this project TOWARD ITS GOAL — or conclude it.`,
+          visionLine, completionLine, nextStepsLine,
           ``,
           `Active/planned tasks: ${active.length}`,
           `Recently completed tasks to evaluate:`,
           doneList,
           ``,
-          `Do the following:`,
+          `Do the following, in order:`,
           `1. Call audit_project("${proj.name}") for full status.`,
-          `2. For each completed task above: judge whether its result actually satisfies the task's intent.`,
-          `   - If a result is INCOMPLETE, WRONG, or LOW-QUALITY: create a NEW follow-up task that redoes or improves it (reference the original task_id in the description), and assign it to a capable agent.`,
-          `   - If a result is GOOD: leave it. Do not create busywork.`,
-          `3. If active tasks look blocked or redundant, adjust them (reassign, or create clearer replacements).`,
-          `4. Update project memory (next_steps) with the roadmap.`,
-          `5. If everything is done and good: summarise completion.`,
-          `Be decisive and concise. Only create tasks that genuinely improve the outcome.`
-        ].join('\n');
+          `2. For each completed task: judge it AGAINST THE GOAL above, not in isolation.`,
+          `   - Result advances the goal: good, note what it unlocked.`,
+          `   - Result is incomplete/wrong: create ONE follow-up that fixes it (reference the task_id).`,
+          `   - Result is scaffolding nobody integrates: do NOT extend it; plan the INTEGRATION step instead.`,
+          `3. Update project memory honestly: progress.completion (a % — be realistic), and next_steps as the`,
+          `   SHORTEST path to the goal (3 items max). Delete stale next_steps.`,
+          `4. Decide ONE of:`,
+          `   a) GOAL REACHED: set completion to 100%, log the final achievement, create NO tasks.`,
+          `   b) One clear next step exists AND active tasks < 2: create exactly ONE task for it`,
+          `      (chain with depends_on if it needs a prior task's output).`,
+          `   c) Active tasks >= 2: create NOTHING; the pipeline must drain first.`,
+          `RULES: never create more than ONE task in this review. Files are not progress — integration and`,
+          `goal advancement are. If you notice repeated file creation without integration, say so in next_steps.`
+        ].filter(Boolean).join('\n');
 
         this.modelService.queueBgMessage?.(msg, `review_${projId}`);
 

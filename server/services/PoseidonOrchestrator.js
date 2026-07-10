@@ -2004,6 +2004,31 @@ My response: "${ss.last_response_preview}"${tools}
 
   async _createTask({ title, description, project, assigned_agent_id, priority, depends_on }) {
     try {
+      // WIP LIMIT (structural) — a project with a pile of open tasks doesn't
+      // need MORE tasks, it needs the existing ones finished and integrated.
+      // Unbounded task creation is exactly how projects devolve into "lots of
+      // files, no progress toward the goal". Cap live tasks per project.
+      if (project) {
+        try {
+          const reg = await this.rm.getTasksRegistry();
+          const live = Object.values(reg.tasks || {}).filter(t =>
+            (t.project_name === project || t.project_id === project) &&
+            !['completed', 'failed', 'cancelled'].includes(t.lifecycle?.status || t.status || 'open') &&
+            !(t.schedule && t.schedule.type) && !t.cron_schedule   // templates don't count
+          );
+          const WIP_LIMIT = 4;
+          if (live.length >= WIP_LIMIT) {
+            return {
+              ok: false,
+              error: `WIP LIMIT: project "${project}" already has ${live.length} unfinished tasks (limit ${WIP_LIMIT}). ` +
+                     `Do NOT create more. Instead: review the existing tasks (${live.map(t => t.task_id).join(', ')}), ` +
+                     `finish or cancel them, integrate their outputs toward the project goal, and update ` +
+                     `project memory (completion %, next_steps). Create new tasks only once the backlog shrinks.`,
+            };
+          }
+        } catch { /* limit is best-effort — never block on a read error */ }
+      }
+
       // Use the serialized generateNextId — prevents duplicate IDs on concurrent calls
       const taskId = await this.rm.generateNextId('TASKS/tasks_registry.json');
 
