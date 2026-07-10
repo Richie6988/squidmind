@@ -184,6 +184,7 @@ const CommsPanel = {
 
   _renderEmailTab() {
     this._emTouched = false;   // fresh render → prefill allowed until the user types
+    this._emPassSet = false;   // set by prefill when a password is already stored server-side
     return `
       <div class="comms-setup-guide">
         <div class="comms-tool-banner">Configures the <b>send_email</b> tool — Poseidon and agents use this SMTP server to send mail from tasks and chat.</div>
@@ -280,11 +281,14 @@ const CommsPanel = {
       err.style.display = 'block';
       return;
     }
-    if (!isLocal && (!email.user || !email.pass)) {
+    if (!isLocal && (!email.user || (!email.pass && !this._emPassSet))) {
       err.textContent = 'User and password are required for remote SMTP (not for a local MTA on 127.0.0.1).';
       err.style.display = 'block';
       return;
     }
+    // Masked re-save: a password is stored server-side but never sent back
+    // to the form. Omit the empty field so the server keeps the stored one.
+    if (!email.pass && this._emPassSet) delete email.pass;
     try {
       await window.api._fetch('/comms/email', {
         method: 'POST',
@@ -353,6 +357,14 @@ const CommsPanel = {
         set('#em-port', em.email.port);
         set('#em-user', em.email.user);
         set('#em-from', em.email.from || '');
+        // The API never returns the password (pass_set only) — remember that
+        // one exists so Save doesn't reject the masked/empty field, and make
+        // the field say so instead of looking forgotten.
+        this._emPassSet = !!em.email.pass_set;
+        if (this._emPassSet) {
+          const p = this.modal.querySelector('#em-pass');
+          if (p) p.placeholder = '•••••• saved — leave blank to keep';
+        }
         const sec = this.modal.querySelector('#em-secure');
         if (sec) sec.value = String(!!em.email.secure);
         const dot = this.modal.querySelector('#em-status-dot');

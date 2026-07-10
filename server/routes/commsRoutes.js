@@ -51,10 +51,17 @@ function buildCommsRoutes(botService, rm = null) {
         return res.status(400).json({ success: false, error: 'host is required (or transport:"sendmail")' });
       }
       const isLocal = e.transport === 'sendmail' || /^(127\.0\.0\.1|localhost)$/i.test(e.host || '');
+      const cfg = await rm.read('CHANNELS/comms_config.json').catch(() => ({}));
+      // Masked-password re-save: GET /email never returns the pass (only
+      // pass_set), so the UI form posts an empty pass on any re-save. Keep
+      // the stored password when it belongs to the same user instead of
+      // rejecting a config that already works.
+      if (!isLocal && !e.pass && cfg.email?.pass && cfg.email.user === e.user) {
+        e.pass = cfg.email.pass;
+      }
       if (!isLocal && (!e.user || !e.pass)) {
         return res.status(400).json({ success: false, error: 'user and pass are required for remote SMTP (not needed for a local MTA on 127.0.0.1)' });
       }
-      const cfg = await rm.read('CHANNELS/comms_config.json').catch(() => ({}));
       cfg.email = e.transport === 'sendmail'
         ? { transport: 'sendmail', ...(e.from ? { from: String(e.from) } : {}) }
         : {
