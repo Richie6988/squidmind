@@ -1973,9 +1973,33 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
         reflection: summary, soul_updated: !!jsonMatch, skills_updated: skillUpdates.length
       }).catch(() => {});
 
+      // The Logs UI "Dreams" filter matches event_type 'poseidon_dream' —
+      // until now NOTHING ever emitted it, so the tab was always empty.
+      await this.rm.log({
+        event_type: 'poseidon_dream',
+        action: `Dream cycle: ${summary.slice(0, 140)}`,
+        actor: { type: 'poseidon', id: 'poseidon_dream' },
+        context: {
+          full_dream: dreamResponse,
+          soul_updated: !!jsonMatch,
+          skills_updated: skillUpdates.length
+        }
+      }).catch(() => {});
+
       log.info('[Dream] 💤 Dream cycle complete');
     } catch (err) {
       log.error('[Dream] Dream error:', err.message);
+      // Surface failed dreams in the Logs UI too — a silent dream failure
+      // looks identical to "dreams don't work".
+      try {
+        await this.rm.log({
+          event_type: 'poseidon_dream',
+          severity: 'warning',
+          action: `Dream cycle FAILED: ${err.message.slice(0, 160)}`,
+          actor: { type: 'poseidon', id: 'poseidon_dream' },
+          context: { error: err.message }
+        });
+      } catch {}
       // Safety: clear temp.md even on error so we don't loop on bad content
       try {
         const AQUARIUM = require('../aquarium');
