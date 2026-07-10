@@ -135,9 +135,17 @@ const TempleInterior = {
       <!-- Reasoning stream — shown when no file open -->
       <div id="ti-reasoning-panel"
         style="position:absolute;inset:0;display:block;overflow-y:auto;background:#020810;color:#00ffb4;font-family:'Courier New',monospace;font-size:12px;padding:14px;line-height:1.6;z-index:1;"></div>
-      <!-- Editor — overlays reasoning when a text/code file is open -->
-      <textarea id="ti-editor" class="ti-editor" spellcheck="false"
-        oninput="TempleInterior._ideMarkDirty()"
+      <!-- Editor — overlays reasoning when a text/code file is open.
+           VS-Code-style rendering: the textarea stays the REAL editor (all
+           save/dirty logic reads ed.value, untouched); a Prism-highlighted
+           <pre> is layered exactly underneath with identical font metrics,
+           the textarea's own text is made transparent (caret stays visible),
+           and a line-number gutter sits on the left. All three scroll-sync. -->
+      <div id="ti-editor-gutter" class="ti-editor-gutter" aria-hidden="true" style="display:none;"></div>
+      <pre id="ti-editor-hl" class="ti-editor-hl" aria-hidden="true" style="display:none;"><code id="ti-editor-hl-code" class="language-none"></code></pre>
+      <textarea id="ti-editor" class="ti-editor" spellcheck="false" wrap="off"
+        oninput="TempleInterior._ideMarkDirty();TempleInterior._ideSyncHighlight()"
+        onscroll="TempleInterior._ideSyncScroll()"
         onkeydown="if((event.ctrlKey||event.metaKey)&&event.key==='s'){event.preventDefault();TempleInterior._ideSave();}"
         placeholder="Open a file to edit..."
         style="display:none;position:absolute;inset:0;width:100%;height:100%;box-sizing:border-box;resize:none;border:none;outline:none;z-index:2;"></textarea>
@@ -1811,8 +1819,12 @@ const TempleInterior = {
     // and give each layer a distinct z-index band so ordering is never
     // ambiguous (reasoning < preview < editor).
     if (rPanel) { rPanel.style.zIndex = '1'; }
-    if (ed)     { ed.style.display = 'none';    ed.style.visibility = 'hidden';    ed.style.zIndex = '30'; }
+    if (ed)     { ed.style.display = 'none';    ed.style.visibility = 'hidden';    ed.style.zIndex = '30'; ed.classList.remove('with-gutter'); }
     if (frame)  { frame.style.display = 'none'; frame.style.visibility = 'hidden'; frame.style.zIndex = '20'; }
+    const hlEl  = document.getElementById('ti-editor-hl');
+    const gutEl = document.getElementById('ti-editor-gutter');
+    if (hlEl)  { hlEl.style.display = 'none'; }
+    if (gutEl) { gutEl.style.display = 'none'; }
 
     // Wire up file metadata UI
     if (fnEl) fnEl.textContent = f.name + (f.dirty ? ' ●' : '');
@@ -1891,6 +1903,15 @@ const TempleInterior = {
         const fileLang = f.name.match(/\.(\w+)$/)?.[1] || 'text';
         ed.setAttribute('data-lang', fileLang);
         if (f.loading) ed.placeholder = 'Loading…'; else ed.placeholder = '';
+        // Syntax highlight + line-number layers (VS-Code-style). Shown for
+        // every text file; _ideSyncHighlight decides whether Prism colours
+        // apply (known language) or the textarea stays plainly readable.
+        const hlEl  = document.getElementById('ti-editor-hl');
+        const gutEl = document.getElementById('ti-editor-gutter');
+        if (hlEl)  hlEl.style.display  = 'block';
+        if (gutEl) gutEl.style.display = 'block';
+        ed.classList.add('with-gutter');
+        this._ideSyncHighlight();
         setTimeout(() => {
           try {
             ed.focus();
@@ -2389,6 +2410,69 @@ const TempleInterior = {
   // referenced in the markup but never defined — so every keystroke threw
   // "TempleInterior._ideMarkDirty is not a function". Define it: sync the
   // buffer, flag dirty, update the tab marker.
+  // ── Syntax highlighting (VS-Code-style overlay) ──────────────────────────
+  // The textarea remains the source of truth; #ti-editor-hl renders the same
+  // text through Prism with identical font metrics, and #ti-editor-gutter
+  // shows line numbers. Called on show + every input (rAF-throttled).
+
+  _ideLangFor(name) {
+    const ext = (name || '').match(/\.(\w+)$/)?.[1]?.toLowerCase() || '';
+    return ({
+      py: 'python', js: 'javascript', mjs: 'javascript', cjs: 'javascript',
+      ts: 'typescript', jsx: 'javascript', tsx: 'typescript',
+      json: 'json', md: 'markdown', markdown: 'markdown',
+      html: 'markup', htm: 'markup', xml: 'markup', svg: 'markup',
+      css: 'css', sh: 'bash', bash: 'bash', zsh: 'bash',
+      yml: 'yaml', yaml: 'yaml',
+    })[ext] || null;
+  },
+
+  _ideSyncHighlight() {
+    if (this._hlRaf) return;
+    this._hlRaf = requestAnimationFrame(() => {
+      this._hlRaf = null;
+      const ed   = document.getElementById('ti-editor');
+      const hl   = document.getElementById('ti-editor-hl');
+      const code = document.getElementById('ti-editor-hl-code');
+      const gut  = document.getElementById('ti-editor-gutter');
+      if (!ed || !hl || !code) return;
+      const f    = this._openFiles[this._activeFileIdx];
+      const lang = f ? this._ideLangFor(f.name) : null;
+      const src  = ed.value;
+
+      if (window.Prism && lang && Prism.languages[lang]) {
+        // Trailing newline: keep the last (empty) line rendered so heights match
+        const toRender = src.endsWith('\n') ? src + ' ' : src;
+        code.innerHTML = Prism.highlight(toRender, Prism.languages[lang], lang);
+        ed.classList.add('hl-on');       // text transparent, caret visible
+      } else {
+        code.textContent = '';
+        ed.classList.remove('hl-on');    // plain readable textarea (txt, no Prism)
+      }
+
+      // Line numbers
+      if (gut) {
+        const n = src.split('\n').length;
+        if (gut._lineCount !== n) {
+          gut._lineCount = n;
+          let out = '';
+          for (let i = 1; i <= n; i++) out += i + '\n';
+          gut.textContent = out;
+        }
+      }
+      this._ideSyncScroll();
+    });
+  },
+
+  _ideSyncScroll() {
+    const ed  = document.getElementById('ti-editor');
+    const hl  = document.getElementById('ti-editor-hl');
+    const gut = document.getElementById('ti-editor-gutter');
+    if (!ed) return;
+    if (hl)  { hl.scrollTop = ed.scrollTop; hl.scrollLeft = ed.scrollLeft; }
+    if (gut) { gut.scrollTop = ed.scrollTop; }
+  },
+
   _ideMarkDirty() {
     if (this._activeFileIdx < 0 || !this._openFiles[this._activeFileIdx]) return;
     const f  = this._openFiles[this._activeFileIdx];

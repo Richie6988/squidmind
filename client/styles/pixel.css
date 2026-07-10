@@ -8756,3 +8756,85 @@ h4.pc-md-h { font-size: 8px; color: #94a3b8; }
   transition: background 0.15s, border-color 0.15s;
 }
 .pc-tts-btn:hover { background: rgba(79,172,254,0.1); border-color: rgba(79,172,254,0.6); }
+
+/* ═══ Temple IDE — VS-Code-style syntax highlighting overlay ══════════ */
+/* The highlight <pre> mirrors the textarea's exact font metrics; the
+   textarea's own glyphs turn transparent (hl-on) so Prism's colours show
+   through while the caret + selection stay native. */
+.ti-editor-hl {
+  position: absolute; inset: 0;
+  z-index: 29;                       /* just under the textarea (30) */
+  margin: 0;
+  background: #020810;
+  font-family: 'Courier New', 'Consolas', monospace;
+  font-size: 12px;
+  line-height: 1.65;
+  padding: 14px 16px 14px 60px;      /* left room for the gutter */
+  tab-size: 4;
+  white-space: pre;                  /* textarea has wrap="off" — match */
+  overflow: hidden;                  /* scroll comes from the textarea */
+  box-sizing: border-box;
+  pointer-events: none;
+  color: #c8d8f0;
+}
+.ti-editor-hl code { font: inherit; background: transparent; white-space: inherit; }
+
+.ti-editor.with-gutter { padding-left: 60px; }
+.ti-editor.hl-on {
+  background: transparent !important;
+  color: transparent !important;
+  caret-color: #e2e8f0;
+}
+.ti-editor.hl-on::selection,
+.ti-editor.hl-on *::selection { background: rgba(79,172,254,0.30); }
+
+.ti-editor-gutter {
+  position: absolute; top: 0; left: 0; bottom: 0;
+  width: 46px;
+  z-index: 31;                       /* above textarea so numbers stay visible */
+  background: #041020;
+  border-right: 1px solid rgba(255,255,255,0.06);
+  color: #3b556e;
+  font-family: 'Courier New', 'Consolas', monospace;
+  font-size: 12px;
+  line-height: 1.65;
+  padding: 14px 8px 14px 0;
+  text-align: right;
+  white-space: pre;
+  overflow: hidden;
+  box-sizing: border-box;
+  pointer-events: none;
+  user-select: none;
+}
+
+/* Prism token theme — tuned to the aquarium palette */
+.ti-editor-hl .token.comment,
+.ti-editor-hl .token.prolog,
+.ti-editor-hl .token.doctype,
+.ti-editor-hl .token.cdata      { color: #4a6076; font-style: italic; }
+.ti-editor-hl .token.punctuation{ color: #7d95ad; }
+.ti-editor-hl .token.property,
+.ti-editor-hl .token.tag,
+.ti-editor-hl .token.constant,
+.ti-editor-hl .token.symbol     { color: #ff7b9c; }
+.ti-editor-hl .token.boolean,
+.ti-editor-hl .token.number     { color: #ffb86c; }
+.ti-editor-hl .token.selector,
+.ti-editor-hl .token.attr-name,
+.ti-editor-hl .token.string,
+.ti-editor-hl .token.char,
+.ti-editor-hl .token.builtin    { color: #06ffa5; }
+.ti-editor-hl .token.operator,
+.ti-editor-hl .token.entity,
+.ti-editor-hl .token.url        { color: #7dd3fc; }
+.ti-editor-hl .token.atrule,
+.ti-editor-hl .token.attr-value,
+.ti-editor-hl .token.keyword    { color: #4facfe; font-weight: 600; }
+.ti-editor-hl .token.function,
+.ti-editor-hl .token.class-name { color: #fbbf24; }
+.ti-editor-hl .token.regex,
+.ti-editor-hl .token.important,
+.ti-editor-hl .token.variable   { color: #e879f9; }
+.ti-editor-hl .token.title,
+.ti-editor-hl .token.bold       { font-weight: 700; }
+.ti-editor-hl .token.italic     { font-style: italic; }
