@@ -280,6 +280,32 @@ router.get('/tasks/results', async (req, res) => {
   } catch (err) { res.status(500).json({ success: false, error: err.message }); }
 });
 
+// DELETE /tasks/results — clear ALL results from the log (kanban "clear done").
+// Registered before /:id so the bare path doesn't match the param route.
+// Optional body { statuses: ["completed"] } limits which statuses are cleared.
+router.delete('/tasks/results', async (req, res) => {
+  try {
+    const fsp      = require('fs').promises;
+    const AQUARIUM = require('../aquarium');
+    let rlog = { results: {} };
+    try { rlog = JSON.parse(await fsp.readFile(AQUARIUM.RESULTS_LOG, 'utf8')); } catch {}
+    const statuses = Array.isArray(req.body?.statuses) && req.body.statuses.length
+      ? new Set(req.body.statuses) : null;
+    let removed = 0;
+    if (Array.isArray(rlog.results)) {
+      const before = rlog.results.length;
+      rlog.results = statuses ? rlog.results.filter(r => !statuses.has(r.status)) : [];
+      removed = before - rlog.results.length;
+    } else {
+      for (const [id, r] of Object.entries(rlog.results || {})) {
+        if (!statuses || statuses.has(r.status)) { delete rlog.results[id]; removed++; }
+      }
+    }
+    await fsp.writeFile(AQUARIUM.RESULTS_LOG, JSON.stringify(rlog, null, 2), 'utf8');
+    res.json({ success: true, removed });
+  } catch (err) { res.status(500).json({ success: false, error: err.message }); }
+});
+
 // DELETE /tasks/results/:id — dismiss a result from the log
 router.delete('/tasks/results/:id', async (req, res) => {
   try {

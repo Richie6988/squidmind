@@ -8838,3 +8838,18 @@ h4.pc-md-h { font-size: 8px; color: #94a3b8; }
 .ti-editor-hl .token.title,
 .ti-editor-hl .token.bold       { font-weight: 700; }
 .ti-editor-hl .token.italic     { font-style: italic; }
+
+/* ═══ Kanban DONE column clear button ═════════════════════════════════ */
+.ti-kcol-clear {
+  background: rgba(239,68,68,0.08);
+  border: 1px solid rgba(239,68,68,0.28);
+  color: #ef4444;
+  border-radius: 4px;
+  font-family: var(--panel-font), sans-serif;
+  font-size: 7px;
+  letter-spacing: 0.08em;
+  padding: 2px 7px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.ti-kcol-clear:hover { background: rgba(239,68,68,0.18); }

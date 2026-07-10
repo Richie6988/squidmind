@@ -1157,7 +1157,7 @@ const TempleInterior = {
             <span class="ti-kcard-foot-right">
               ${elapsedBadge}
               ${quickAction}
-              <button class="ti-kcard-del" title="Delete task" onclick="event.stopPropagation();TempleInterior._deleteTask('${task.task_id}')">×</button>
+              <button class="ti-kcard-del" title="${(isDone || isFail) ? 'Dismiss from board' : 'Delete task'}" onclick="event.stopPropagation();TempleInterior.${(isDone || isFail) ? `_dismissDoneTask('${task.task_id}')` : `_deleteTask('${task.task_id}')`}">×</button>
             </span>
           </div>
         </div>
@@ -1190,7 +1190,10 @@ const TempleInterior = {
       ondrop="TempleInterior._kDrop(event,'${col.drop}');">
       <div class="ti-kcol-head ${col.cls}">
         <span>${col.label}</span>
-        <span class="ti-kcol-count">${(cols[col.key] || []).length}</span>
+        <span style="display:inline-flex;align-items:center;gap:6px;">
+          ${col.key === 'done' && (cols.done || []).length ? `<button class="ti-kcol-clear" onclick="TempleInterior._kClearDone()" title="Clear all done/failed/cancelled tasks from this board">CLEAR</button>` : ''}
+          <span class="ti-kcol-count">${(cols[col.key] || []).length}</span>
+        </span>
       </div>
       <div class="ti-kcards">
         ${(cols[col.key] || []).length
@@ -2721,6 +2724,32 @@ const TempleInterior = {
   openCronBuilder()      { this._newTaskModal(); },
   closeCronBuilder()     { document.querySelector('.cron-builder-modal')?.remove(); },
   _deleteProjectTask(id) { this._deleteTask(id); },
+
+  /** Dismiss ONE finished task (done/failed/cancelled) from the board.
+      Terminal tasks live in results_log.json, not the live registry, so the
+      regular DELETE /tasks/:id would 404 — this hits the results endpoint. */
+  async _dismissDoneTask(taskId) {
+    try {
+      await window.api._fetch(`/tasks/results/${taskId}`, { method: 'DELETE' });
+      this._renderKanban(); this._renderHeader();
+    } catch (e) { SquidModal.alert('Dismiss failed: ' + e.message); }
+  },
+
+  /** Clear ALL finished tasks currently on THIS board (project-scoped —
+      other projects' results are untouched). */
+  async _kClearDone() {
+    const cards = [...document.querySelectorAll('#ti-kcol-done .ti-kcard[data-task-id]')];
+    const ids = cards.map(c => c.dataset.taskId).filter(Boolean);
+    if (!ids.length) return;
+    const ok = await SquidModal.confirm(`Clear ${ids.length} finished task${ids.length > 1 ? 's' : ''} from this board? This removes them from the results history.`);
+    if (!ok) return;
+    try {
+      await Promise.all(ids.map(id =>
+        window.api._fetch(`/tasks/results/${id}`, { method: 'DELETE' }).catch(() => null)));
+      this._setStatus(`Cleared ${ids.length} finished tasks`);
+      this._renderKanban(); this._renderHeader();
+    } catch (e) { SquidModal.alert('Clear failed: ' + e.message); }
+  },
   getTempleBackground()  { return ''; },
   _initLeft(t)           { this._switchLeft(t); },
   _initRight(t)          { this._switchRight(t); },
