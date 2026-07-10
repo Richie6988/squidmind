@@ -190,7 +190,12 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
       for (const file of files) {
         if (!file.toLowerCase().endsWith('.gguf')) continue;
         const fullPath = path.join(this.modelsDir, file);
-        const stat = await fs.stat(fullPath);
+        // Per-file guard: a broken symlink or a file deleted mid-scan
+        // (ENOENT) used to abort the ENTIRE scan via the outer catch,
+        // hiding every other model. Skip just the bad entry instead.
+        let stat;
+        try { stat = await fs.stat(fullPath); }
+        catch (e) { log.warn(` scanLocalModels: skipping ${file} (${e.code || e.message})`); continue; }
         
         // Quick validity check (without parsing whole file)
         let isValid = false;

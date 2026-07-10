@@ -57,7 +57,41 @@ class FilesystemTools {
     if (!resolved.startsWith(this.workDir)) {
       throw new Error('Path outside workspace not allowed');
     }
-    
+
+    return resolved;
+  }
+
+  /**
+   * validateWritePath — everything validatePath does, PLUS the project
+   * structure contract for WRITE operations (write_file / create_directory):
+   *
+   *   PROJECTS/<name>/input/   ← source material (usually written by humans)
+   *   PROJECTS/<name>/output/  ← FINAL DELIVERABLES ONLY
+   *   PROJECTS/<name>/work/    ← scratch space for intermediate files
+   *
+   * Agents had a habit of inventing folder trees (notes/, thoughts/,
+   * analysis/, drafts/…) and saving reasoning dumps into output/. Reads
+   * stay unrestricted; writes inside a project must target one of the
+   * three sanctioned subdirs. Reasoning/notes belong in project memory
+   * (update_project_memory), not in files — the dream system condenses
+   * memory, it can't condense a folder maze.
+   */
+  validateWritePath(relativePath) {
+    const resolved = this.validatePath(relativePath);
+    const rel = path.relative(this.workDir, resolved);
+    const parts = rel.split(path.sep);
+    if (parts[0] === 'PROJECTS' && parts.length > 2) {
+      const sub = parts[2];
+      const ALLOWED = new Set(['input', 'output', 'work']);
+      if (!ALLOWED.has(sub)) {
+        throw new Error(
+          `PROJECT STRUCTURE: writes inside a project must go to input/, output/ or work/ — not "${sub}/". ` +
+          `Rules: output/ = FINAL deliverables only; work/ = intermediate/scratch files; ` +
+          `reasoning, notes and plans go to update_project_memory (section "notes" or "decision"), NOT files. ` +
+          `Retry with PROJECTS/${parts[1]}/work/${parts.slice(2).join('/')} if this is intermediate work.`
+        );
+      }
+    }
     return resolved;
   }
 
@@ -66,7 +100,7 @@ class FilesystemTools {
    */
   async createDirectory(relativePath) {
     try {
-      const fullPath = this.validatePath(relativePath);
+      const fullPath = this.validateWritePath(relativePath);
       await fs.mkdir(fullPath, { recursive: true });
       
       return {
@@ -87,7 +121,7 @@ class FilesystemTools {
    */
   async writeFile(relativePath, content) {
     try {
-      const fullPath = this.validatePath(relativePath);
+      const fullPath = this.validateWritePath(relativePath);
       
       // Check file size
       if (Buffer.byteLength(content, 'utf8') > this.maxFileSize) {
@@ -344,7 +378,7 @@ class FilesystemTools {
   async moveFile(source, destination) {
     try {
       const sourcePath = this.validatePath(source);
-      const destPath = this.validatePath(destination);
+      const destPath = this.validateWritePath(destination);
       
       // Ensure destination directory exists
       await fs.mkdir(path.dirname(destPath), { recursive: true });

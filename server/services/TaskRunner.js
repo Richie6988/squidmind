@@ -378,8 +378,11 @@ class TaskRunner {
       const progLine   = progressPart ? progressPart.slice(0, 200) : '';
       const msg = [
         titleLine, descLine, projLine, memLine, progLine,
-        '\n---\nUse your tools. Update progress after each step. When done, call update_project_memory to log achievements. End with a summary.'
-      ].join('').trim().slice(0, 1400);  // raised cap slightly for memory
+        '\n---\nUse your tools. Update progress after each step. ' +
+        'FILES: write ONLY final deliverables to output/, intermediate files to work/. ' +
+        'Do NOT create other folders. Do NOT save thoughts/notes/plans as files — condense them into ' +
+        'update_project_memory (sections: decision, notes, achievement). When done, log the achievement and end with a summary.'
+      ].join('').trim().slice(0, 1600);  // cap covers the files contract
 
       let output = '';
       let failed = false;
