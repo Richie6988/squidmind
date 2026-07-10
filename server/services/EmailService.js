@@ -141,6 +141,15 @@ class EmailService {
                  `if they run Postfix locally. Then stop.`,
         };
       }
+      // Local MTA configured but not running/installed
+      if (/ECONNREFUSED|ECONNRESET|ETIMEDOUT|ENOTFOUND/i.test(e.message) && /127\.0\.0\.1|localhost/i.test(e.message)) {
+        return {
+          ok: false,
+          error: `LOCAL MTA UNREACHABLE: ${e.message.slice(0, 120)}. The config points at a local mail server ` +
+                 `(Postfix) that isn't running. DO NOT try to fix it yourself — tell the user to run: ` +
+                 `"./start.sh --with-mail" (installs Postfix) or "sudo systemctl start postfix" if installed. Then stop.`,
+        };
+      }
       return { ok: false, error: e.message };
     }
   }

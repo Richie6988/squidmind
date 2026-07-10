@@ -192,10 +192,19 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
         const fullPath = path.join(this.modelsDir, file);
         // Per-file guard: a broken symlink or a file deleted mid-scan
         // (ENOENT) used to abort the ENTIRE scan via the outer catch,
-        // hiding every other model. Skip just the bad entry instead.
+        // hiding every other model. Skip just the bad entry instead —
+        // and warn only ONCE per file per process (the scan runs several
+        // times a minute; repeating the same warn floods the terminal).
         let stat;
         try { stat = await fs.stat(fullPath); }
-        catch (e) { log.warn(` scanLocalModels: skipping ${file} (${e.code || e.message})`); continue; }
+        catch (e) {
+          this._scanWarned = this._scanWarned || new Set();
+          if (!this._scanWarned.has(file)) {
+            this._scanWarned.add(file);
+            log.warn(` scanLocalModels: skipping ${file} (${e.code || e.message}) — likely a broken symlink; clean it with: rm "aquarium/MODELS/${file}"`);
+          }
+          continue;
+        }
         
         // Quick validity check (without parsing whole file)
         let isValid = false;
