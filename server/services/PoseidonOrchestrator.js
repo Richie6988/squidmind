@@ -210,7 +210,15 @@ My response: "${ss.last_response_preview}"${tools}
         if (skip && line.startsWith('## ') && !BG_SKIP.some(s => line.startsWith(s))) { skip = false; }
         if (!skip) bgLines.push(line);
       }
-      const compact = bgLines.join('\n');
+      const compact = bgLines.join('\n') + [
+        '',
+        '',
+        '# BACKGROUND MODE — UNATTENDED EXECUTION',
+        'You are running as a background task. NOBODY is present to answer you.',
+        'Asking a question here is a TASK FAILURE — the question goes nowhere and the task stalls.',
+        'NEVER ask for clarification, format, scope, deadline, sources, or approval. Decide everything yourself.',
+        'Produce the deliverable directly. Open it with one short "Assumptions:" line listing the choices you made, then the content.',
+      ].join('\n');
       log.info(`BG system prompt: ${compact.length} chars (was ${fullPrompt.length})`);
       return compact;
     }
@@ -401,14 +409,19 @@ My response: "${ss.last_response_preview}"${tools}
       lines.push('  → Wrong flow: list_files → read_file → write_file → \"I built the pipeline\" ← FORBIDDEN.');
       lines.push('  → If no agents assigned to project: inform user and suggest assigning one before creating tasks.');
       lines.push('');
-      lines.push('CLARIFICATION GATE — MANDATORY BEFORE ANY PROJECT OR BIG PLAN:');
-      lines.push('  WHEN the user asks for a new project, complex workflow, or more than ~5 tasks:');
-      lines.push('  → DO NOT immediately create tasks. First ask 2-4 targeted clarifying questions.');
-      lines.push('  → Ask about: scope, output format, deadline, which agents, what success looks like.');
-      lines.push('  → Open with: \"Before I break this into tasks, I need a few details:\"');
-      lines.push('  → Wait for user reply, THEN chunk into specific tasks.');
-      lines.push('  WHEN the request is already specific (clear scope + deliverable, < 5 tasks): proceed directly.');
-      lines.push('  WHEN the user says \"just do it\" / \"no questions\" / \"go ahead\": skip clarification immediately.');
+      lines.push('AUTONOMY DOCTRINE — DEFAULT IS ACT, NOT ASK:');
+      lines.push('  Missing details are NOT blockers — they are decisions YOU make. Use these defaults:');
+      lines.push('  → output format: .md file | deadline: none | agent: best skill match | scope/sources/style: your best judgment.');
+      lines.push('  → For a new project or big plan: state your assumptions in 1-2 lines, then create the tasks IMMEDIATELY in the SAME reply.');
+      lines.push('  → Ship a first version fast — the user iterates on results, not on questionnaires.');
+      lines.push('  You may ask AT MOST ONE question, ONLY when the task is impossible without the answer');
+      lines.push('  (missing credential/API key, unknown email recipient, destructive/irreversible action on an ambiguous target).');
+      lines.push('  Format, style, tone, deadline, depth, sources, and agent choice are NEVER valid reasons to ask.');
+      lines.push('  IF the user says \"be autonomous\", \"stop asking\", \"no more input\", \"do it\", or repeats a request you answered with questions:');
+      lines.push('  → asking ANYTHING further is FORBIDDEN for the rest of the session. Act on defaults NOW.');
+      lines.push('  NEVER repeat a previous reply verbatim. If you already asked once and the user pushed back, that IS your answer: proceed.');
+      lines.push('  Your skills are already summarized in this prompt — NEVER enumerate skills one-by-one with read_my_brain.');
+      lines.push('  Max 2 read_my_brain calls per turn, and only for a specific skill you are about to execute.');
       lines.push('');
       lines.push('  VIOLATION EXAMPLE: create_task(\"Verify and scrape all NEWS sources\") ← WRONG. Too big, not atomic.');
       lines.push('  CORRECT EXAMPLE: create_task(\"Scrape BBC News\") + create_task(\"Scrape CNN\") + create_task(\"Scrape Reuters\") ← RIGHT.');

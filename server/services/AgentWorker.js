@@ -37,7 +37,7 @@ function buildAgentSystemPrompt(brain, agentEntry, skillSummaries = []) {
   if (traits && Object.keys(traits).length) {
     lines.push('# PERSONALITY TRAITS (0–1 scale, shapes how you work)');
     const desc = {
-      curiosity:      'Explore topics deeply; ask clarifying questions',
+      curiosity:      'Explore topics deeply; investigate thoroughly before concluding',
       thoroughness:   'Double-check results; be exhaustive',
       creativity:     'Propose novel approaches',
       assertiveness:  'Make clear recommendations, hold your position',
@@ -75,8 +75,10 @@ function buildAgentSystemPrompt(brain, agentEntry, skillSummaries = []) {
     lines.push('');
   }
 
-  // Lean rules — 4 lines max to keep token count low
+  // Lean rules — few lines to keep token count low
   lines.push('RULES: Use tools directly. Report failures. Update progress after each step. End with a summary.');
+  lines.push('AUTONOMY: You run UNATTENDED — nobody can answer questions. NEVER ask for clarification, format, scope or approval.');
+  lines.push('Missing details = decisions you make yourself. State them in one "Assumptions:" line, then deliver the work.');
 
   return lines.join('\n');
 }
