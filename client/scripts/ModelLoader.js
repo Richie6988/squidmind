@@ -1276,11 +1276,15 @@ const ModelLoader = {
         return;
       }
       
-      list.innerHTML = '<h3 style="font-size:10px; color:var(--accent); margin-top:12px;">Downloads</h3>' +
+      const hasFinished = res.downloads.some(d => ['completed', 'failed', 'cancelled'].includes(d.status));
+      const clearBtn = hasFinished
+        ? ` <button class="btn-secondary" style="font-size:8px;padding:2px 8px;margin-left:8px;" onclick="ModelLoader._clearDownloads()">Clear finished</button>`
+        : '';
+      list.innerHTML = `<h3 style="font-size:10px; color:var(--accent); margin-top:12px;">Downloads${clearBtn}</h3>` +
         res.downloads.map(d => this._renderDownload(d)).join('');
       
       // If all complete or failed, stop polling and refresh library
-      const inProgress = res.downloads.some(d => d.status === 'downloading' || d.status === 'starting');
+      const inProgress = res.downloads.some(d => d.status === 'downloading' || d.status === 'starting' || d.status === 'retrying');
       if (!inProgress) {
         if (this._downloadPollInterval) {
           clearInterval(this._downloadPollInterval);
@@ -1297,13 +1301,17 @@ const ModelLoader = {
   _renderDownload(d) {
     let badge = '', actions = '';
     if (d.status === 'downloading') badge = '<span style="color:#3B82F6;">downloading</span>';
+    else if (d.status === 'retrying') badge = `<span style="color:#f59e0b;">retrying… ${this._escape(d.error || '')}</span>`;
     else if (d.status === 'completed') badge = '<span style="color:var(--success);">complete</span>';
     else if (d.status === 'failed') badge = `<span style="color:var(--danger);">failed: ${this._escape(d.error || '')}</span>`;
     else if (d.status === 'cancelled') badge = '<span style="color:var(--text-secondary);">cancelled</span>';
     else badge = `<span>${d.status}</span>`;
     
-    if (d.status === 'downloading' || d.status === 'starting') {
+    if (d.status === 'downloading' || d.status === 'starting' || d.status === 'retrying') {
       actions = `<button class="btn-secondary" style="font-size:8px; padding:3px 8px;" onclick="ModelLoader._cancelDownload('${d.downloadId}')">Cancel</button>`;
+    } else if (d.status === 'failed' || d.status === 'cancelled') {
+      // Retry re-queues the origin URL; the kept .partial makes it resume.
+      actions = `<button class="btn-secondary" style="font-size:8px; padding:3px 8px;" onclick="ModelLoader._retryDownload('${this._escapePath(d.url)}', '${this._escapePath(d.fileName)}')">Retry</button>`;
     }
     
     const sizeStr = d.totalBytes
@@ -1328,6 +1336,26 @@ const ModelLoader = {
       await window.api._fetch(`/models/downloads/${downloadId}/cancel`, { method: 'POST' });
       await this._refreshDownloads();
     } catch {}
+  },
+
+  async _clearDownloads() {
+    try {
+      await window.api._fetch('/models/downloads/clear', { method: 'POST' });
+      await this._refreshDownloads();
+    } catch {}
+  },
+
+  async _retryDownload(url, fileName) {
+    try {
+      await window.api._fetch('/models/download', {
+        method: 'POST',
+        body: JSON.stringify({ url, fileName, force: true }),
+      });
+      if (!this._downloadPollInterval) this._downloadPollInterval = setInterval(() => this._refreshDownloads(), 1500);
+      await this._refreshDownloads();
+    } catch (err) {
+      await SquidModal.alert('Retry failed: ' + err.message);
+    }
   },
   
   _escapePath(p) {

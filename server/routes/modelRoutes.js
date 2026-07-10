@@ -311,6 +311,13 @@ function buildRouter(v2ModelService) {
     }
   });
 
+  // POST /api/v2/models/downloads/clear — remove finished/failed/cancelled
+  // entries from the list. Registered BEFORE /downloads/:id so 'clear'
+  // isn't captured as an :id.
+  router.post('/downloads/clear', (req, res) => {
+    res.json({ success: true, cleared: downloader.clearFinished() });
+  });
+
   // GET /api/v2/models/downloads/:id - poll progress
   router.get('/downloads/:id', (req, res) => {
     const state = downloader.getProgress(req.params.id);

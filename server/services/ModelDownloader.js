@@ -88,8 +88,9 @@ class ModelDownloader {
       state.status = 'failed';
       state.error = err.message;
       state.completedAt = new Date().toISOString();
-      // Cleanup partial file
-      try { if (fs.existsSync(destPath + '.partial')) fs.unlinkSync(destPath + '.partial'); } catch {}
+      // KEEP the .partial file — a retried download of the same file
+      // resumes from it with a Range request instead of restarting a
+      // multi-GB transfer from zero.
     });
     
     return state;
@@ -97,17 +98,49 @@ class ModelDownloader {
   
   /**
    * Internal: actually perform the download with redirect handling.
+   *
+   * Transient failures retry up to 3 times, ALWAYS restarting the redirect
+   * chain from the ORIGIN url (huggingface.co/resolve/...) — the cdn-lfs
+   * URLs it redirects to are presigned with an Expires timestamp, so
+   * retrying the CDN URL after a stall/interruption yields HTTP 403
+   * (expired signature). A fresh chain gets a fresh signature.
+   * Retries resume from the .partial file with a Range request.
    */
   async _doDownload(state) {
     state.status = 'downloading';
-    
+
     if (!fs.existsSync(this.modelsDir)) {
       await fsp.mkdir(this.modelsDir, { recursive: true });
     }
-    
+
+    const MAX_ATTEMPTS = 3;
+    let lastErr = null;
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+      try {
+        await this._attemptDownload(state);
+        return; // success
+      } catch (err) {
+        lastErr = err;
+        if (err.permanent || attempt === MAX_ATTEMPTS) throw err;
+        state.status = 'retrying';
+        state.error = `attempt ${attempt} failed (${err.message.split('\n')[0]}) — retrying with fresh URL…`;
+        await new Promise(r => setTimeout(r, 1500 * attempt));
+        state.status = 'downloading';
+        state.error = null;
+      }
+    }
+    throw lastErr;
+  }
+
+  /** One full redirect-chain + stream attempt, resuming from .partial if present. */
+  _attemptDownload(state) {
     const partialPath = state.destPath + '.partial';
     
     return new Promise((resolve, reject) => {
+      // Resume support: request the remainder of an existing .partial.
+      let resumeFrom = 0;
+      try { if (fs.existsSync(partialPath)) resumeFrom = fs.statSync(partialPath).size; } catch {}
+
       const followRedirect = (currentUrl, depth = 0) => {
         if (depth > 10) return reject(new Error('Too many redirects'));
         
@@ -124,6 +157,7 @@ class ModelDownloader {
           'Accept':     '*/*',
         };
         if (isHfHost && hfToken) headers['Authorization'] = `Bearer ${hfToken}`;
+        if (resumeFrom > 0) headers['Range'] = `bytes=${resumeFrom}-`;
 
         const req = lib.get(currentUrl, { headers }, (res) => {
           // Follow 3xx redirects
@@ -136,8 +170,19 @@ class ModelDownloader {
           }
           if (res.statusCode === 401 || res.statusCode === 403) {
             res.resume();
+            // 403 from a presigned CDN URL (has Expires/Signature in the
+            // query, host is NOT huggingface.co) = expired signature →
+            // TRANSIENT: the retry ladder restarts from the origin URL
+            // and gets a fresh signature. 401/403 from hf.co itself is a
+            // real auth problem → permanent.
+            const u = new URL(currentUrl);
+            const isSignedCdn = !/(^|\.)huggingface\.co$/i.test(u.hostname) &&
+              /(^|&)(Expires|X-Amz-Expires|Policy|Signature)=/i.test(u.search.slice(1));
+            if (res.statusCode === 403 && isSignedCdn) {
+              return reject(new Error(`HTTP 403 (expired signed URL) from ${u.hostname}`));
+            }
             const isGated = res.statusCode === 401;
-            return reject(new Error(
+            const permErr = new Error(
               `HTTP ${res.statusCode} from ${currentUrl}\n` +
               (isGated
                 ? 'This model is GATED. Accept its license on huggingface.co, ' +
@@ -145,15 +190,31 @@ class ModelDownloader {
                   'https://huggingface.co/settings/tokens) and retry.'
                 : 'Access forbidden. Check that your HF_TOKEN has "read" ' +
                   'scope and that you have accepted the model license.')
-            ));
+            );
+            permErr.permanent = true;
+            return reject(permErr);
           }
-          if (res.statusCode !== 200) {
+          // 416 = our .partial is stale relative to the remote file (or
+          // already complete) — drop it and let the retry start clean.
+          if (res.statusCode === 416) {
             res.resume();
-            return reject(new Error(`HTTP ${res.statusCode} from ${currentUrl}`));
+            try { fs.unlinkSync(partialPath); } catch {}
+            return reject(new Error('HTTP 416 — stale .partial discarded, retrying from zero'));
           }
-          
-          state.totalBytes = parseInt(res.headers['content-length'] || '0', 10);
-          const out = fs.createWriteStream(partialPath);
+          if (res.statusCode !== 200 && res.statusCode !== 206) {
+            res.resume();
+            const err = new Error(`HTTP ${res.statusCode} from ${currentUrl}`);
+            if (res.statusCode >= 400 && res.statusCode < 500) err.permanent = true;
+            return reject(err);
+          }
+
+          // 206 = server honored the Range → append. 200 despite a Range
+          // request = server ignored it → restart the file from zero.
+          const resuming = res.statusCode === 206 && resumeFrom > 0;
+          const bodyBytes = parseInt(res.headers['content-length'] || '0', 10);
+          state.totalBytes = resuming ? resumeFrom + bodyBytes : bodyBytes;
+          state.bytesDownloaded = resuming ? resumeFrom : 0;
+          const out = fs.createWriteStream(partialPath, resuming ? { flags: 'a' } : {});
           
           res.on('data', (chunk) => {
             state.bytesDownloaded += chunk.length;
@@ -185,6 +246,18 @@ class ModelDownloader {
       
       followRedirect(state.url);
     });
+  }
+
+  /** Remove finished (completed/failed/cancelled) entries from the list. */
+  clearFinished() {
+    let cleared = 0;
+    for (const [id, s] of this.active.entries()) {
+      if (['completed', 'failed', 'cancelled'].includes(s.status)) {
+        this.active.delete(id);
+        cleared++;
+      }
+    }
+    return cleared;
   }
   
   getProgress(downloadId) {
