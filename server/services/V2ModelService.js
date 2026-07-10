@@ -525,8 +525,26 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
       try { if (llama.gpu) log.info(`  GPU backend: ${llama.gpu}`); } catch {}
 
       // Estimate total layers for gpu_layers auto-resolve.
-      // ~160 MB/layer at Q4_K_M. Clamp to [20, 80].
-      const estLayers = Math.max(20, Math.min(80, Math.round(fileSizeGb * 1024 / 160)));
+      // Prefer the REAL layer count from the GGUF header: the old
+      // "~160 MB/layer" heuristic assumes dense Q4 and is wildly wrong for
+      // MoE models (an 8x3B MoE has ~28 layers of ~450MB — the heuristic
+      // guessed 78 layers, so the frac math offloaded nearly everything and
+      // the first attempt always OOM'd, burning slow 12GB retries down the
+      // ladder). Header read is a few KB; fall back to the heuristic if it
+      // fails.
+      let estLayers = Math.max(20, Math.min(80, Math.round(fileSizeGb * 1024 / 160)));
+      let isMoE = false;
+      try {
+        const { readGgufFileInfo } = await import('node-llama-cpp');
+        const gguf = await readGgufFileInfo(fullPath, { readTensorInfo: false, logWarnings: false });
+        const arch = gguf?.metadata?.general?.architecture;
+        const am   = arch ? gguf.metadata[arch] : null;
+        if (am?.block_count > 0) estLayers = Number(am.block_count) + 1; // +1 output layer
+        isMoE = Number(am?.expert_count || 0) > 1;
+        log.info(`  GGUF header: arch=${arch}, layers=${estLayers}${isMoE ? `, MoE ${am.expert_count} experts (${am.expert_used_count || '?'} active) — ALL expert weights count for VRAM, only active ones for compute` : ''}`);
+      } catch (e) {
+        log.warn(`  GGUF header read failed (${e.message}) — falling back to size heuristic (${estLayers} layers)`);
+      }
 
       // Always recalculate gpuLayers AND contextLength dynamically based on CURRENT VRAM.
       // The stored registry values may be stale (computed under different VRAM conditions).
@@ -535,7 +553,9 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
 
       if (config.gpuLayers === 'auto' || config.gpuLayers === 'max') {
         if (vramBefore && freeBeforeGb > 0.5) {
-          const frac    = Math.min(1.0, (freeBeforeGb * 0.72) / fileSizeGb);
+          // MoE: slightly more conservative — expert routing needs larger
+          // compute buffers per GPU layer than a dense model of equal size.
+          const frac    = Math.min(1.0, (freeBeforeGb * (isMoE ? 0.62 : 0.72)) / fileSizeGb);
           const computed = Math.round(estLayers * frac);
           // Previously reserved 4 layers on CPU unconditionally to leave VRAM
           // for KV cache. That's a false economy: those 4 CPU layers add
