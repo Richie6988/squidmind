@@ -8253,6 +8253,20 @@ h4.pc-md-h { font-size: 8px; color: #94a3b8; }
 .ti-kcard-del       { font-size: 13px !important; padding: 2px 8px !important; }
 .ti-kcard-foot      { gap: 6px !important; }
 
+/* Narrow temple columns (~200px): at these font sizes the footer row
+   (agent badge + dep badge + timer + ▶/× buttons) is wider than the
+   column and the running card overflowed/clipped. Let the row wrap and
+   clamp long titles to 2 lines — the full title lives in the tooltip. */
+.ti-kcard-foot       { flex-wrap: wrap !important; row-gap: 4px !important; }
+.ti-kcard-foot-right { margin-left: auto !important; }
+.ti-kcard-title {
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
 .ti-tasklist        { padding: 6px 8px !important; }
 .ti-taskrow         { padding: 8px 11px !important; gap: 9px !important; }
 .ti-taskrow-ico     { font-size: 13px !important; }
@@ -8858,4 +8872,12 @@ h4.pc-md-h { font-size: 8px; color: #94a3b8; }
 /* 130% base zoom for the whole app (user preference — the pixel-art UI
    uses small font sizes tuned for density; this scales everything up).
    CSS zoom is supported in Chromium and Firefox 126+. */
-html { zoom: 130%; }
+:root { --app-zoom: 1.3; }
+html { zoom: var(--app-zoom); }
+
+/* zoom does NOT divide viewport units: max-height:85vh inside the zoomed
+   root paints at 85 × 1.3 ≈ 110% of the real window, so flex-centered
+   modals (Edit Agent, etc.) were taller than the screen and cropped at
+   top and bottom. Re-cap every modal shell to the real visible height.
+   !important beats the per-modal vh caps scattered above. */
+.modal .modal-content { max-height: calc(88vh / var(--app-zoom)) !important; }
