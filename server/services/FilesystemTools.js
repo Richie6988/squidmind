@@ -139,6 +139,20 @@ class FilesystemTools {
       
       // Write file
       await fs.writeFile(fullPath, content, 'utf8');
+
+      // Ground-truth deliverable tracking: record what was ACTUALLY written
+      // during the currently running task (single-flight makes a global safe).
+      // The TaskRunner attaches this to the task result, so "files created"
+      // is a verified fact instead of a model claim.
+      try {
+        const tid = global.__ACTIVE_TASK_ID;
+        if (tid) {
+          global.__TASK_WRITES = global.__TASK_WRITES || new Map();
+          const arr = global.__TASK_WRITES.get(tid) || [];
+          arr.push({ path: relativePath, bytes: Buffer.byteLength(content, 'utf8') });
+          global.__TASK_WRITES.set(tid, arr);
+        }
+      } catch { /* tracking must never break the write */ }
       
       return {
         success: true,
@@ -164,8 +178,25 @@ class FilesystemTools {
       
       const content = await fs.readFile(fullPath, 'utf8');
       
-      // Full content
+      // Full content — with a CONTEXT-PROTECTION cap. Local models run on
+      // small contexts (8-16k tokens); an uncapped read of a big file blows
+      // the window and crashes/derails the generation. Above the cap we
+      // return head+tail with an explicit truncation notice teaching the
+      // head/tail options for targeted reads.
       if (!head && !tail) {
+        const MAX_READ = 24_000;   // chars ≈ 6-8k tokens, safe on 8k ctx
+        if (content.length > MAX_READ) {
+          const headPart = content.slice(0, Math.floor(MAX_READ * 0.7));
+          const tailPart = content.slice(-Math.floor(MAX_READ * 0.25));
+          return {
+            success: true,
+            text: headPart +
+              `\n\n[... TRUNCATED: file is ${content.length} chars, showing first ${headPart.length} + last ${tailPart.length}. ` +
+              `Use read_file with {head: N} or {tail: N} (lines) for targeted sections. ...]\n\n` + tailPart,
+            size: Buffer.byteLength(content, 'utf8'),
+            truncated: true,
+          };
+        }
         return {
           success: true,
           text: content,

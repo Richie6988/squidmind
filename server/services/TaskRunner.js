@@ -88,6 +88,8 @@ class TaskRunner {
     this._done.add(taskId);
     this._running.delete(taskId);
     this._runningMeta?.delete(taskId);
+      if (global.__ACTIVE_TASK_ID === taskId) global.__ACTIVE_TASK_ID = null;
+      global.__TASK_WRITES?.delete(taskId);
     this._failCounts.delete(taskId);
     this._retryAfter.delete(taskId);
     // Persist so it survives restart
@@ -395,6 +397,9 @@ class TaskRunner {
     this._running.add(taskId);
     this._runningMeta = this._runningMeta || new Map();
     this._runningMeta.set(taskId, { agentId, startedAt: Date.now() });
+    // Ground-truth deliverable tracking: FilesystemTools records every real
+    // write under this id while the task runs (single-flight → one id).
+    global.__ACTIVE_TASK_ID = taskId;
 
     log.info(`▶ ${taskId}: "${task.title}"${agentId ? ' → ' + agentId : ' → poseidon'}`);
 
@@ -596,6 +601,8 @@ class TaskRunner {
         }
         this._running.delete(taskId);
         this._runningMeta?.delete(taskId);
+      if (global.__ACTIVE_TASK_ID === taskId) global.__ACTIVE_TASK_ID = null;
+      global.__TASK_WRITES?.delete(taskId);
         return;
       }
 
@@ -760,6 +767,8 @@ class TaskRunner {
           // Not a real failure — task will retry next tick after CHAT finishes
           this._running.delete(taskId);
           this._runningMeta?.delete(taskId);
+      if (global.__ACTIVE_TASK_ID === taskId) global.__ACTIVE_TASK_ID = null;
+      global.__TASK_WRITES?.delete(taskId);
           return;
         }
         output = `Execution error: ${e.message}`;
@@ -805,15 +814,29 @@ class TaskRunner {
           await this._setStatus(taskId, 'planned', {
             output_preview: `${label}: retry in ${Math.round(backoffMs/1000)}s`
           });
+          // Learning retry: the next attempt's prompt includes task.progress
+          // ("Previous progress: … Resume from where you left off"). Feed the
+          // failure reason into it so the agent doesn't repeat the same
+          // mistake blind. Resource errors (oom/sequence) are NOT the agent's
+          // fault — keep progress clean for those.
+          if (!isResourceError) {
+            await this._updateProgressField(taskId,
+              `attempt ${prevFails} FAILED [${errType}]: ${String(output).slice(0, 180)} — fix this specific problem, don't redo completed steps`);
+          }
         }
       } else {
         this._failCounts.delete(taskId);
         this._retryAfter.delete(taskId);
         await this._markDone(taskId);  // persist: never re-run even after restart
+        // Verified deliverables — what the tools ACTUALLY wrote during this
+        // task, independent of what the model claims in its summary.
+        const writes = global.__TASK_WRITES?.get(taskId) || [];
+        const filesWritten = writes.map(w => w.path).slice(0, 20);
         await this._setStatus(taskId, 'completed', {
           completed_at: new Date().toISOString(),
           output_preview: output.slice(0, 300),
-          result_summary: output.slice(0, 500)
+          result_summary: output.slice(0, 500),
+          ...(filesWritten.length ? { files_written: filesWritten } : {})
         });
         await this._updateProgressField(taskId, 'completed — ' + output.slice(0, 120));
         await this._notify(`[IAQUA] Task done: "${task.title}"\n${output.slice(0, 200)}`);
@@ -839,6 +862,8 @@ class TaskRunner {
       }
       this._running.delete(taskId);
       this._runningMeta?.delete(taskId);
+      if (global.__ACTIVE_TASK_ID === taskId) global.__ACTIVE_TASK_ID = null;
+      global.__TASK_WRITES?.delete(taskId);
     }
   }
 
@@ -870,6 +895,7 @@ class TaskRunner {
             result_summary: task.result_summary || extra.result_summary || null,
             result_file:    task.result_file    || extra.result_file    || null,
             output_preview: task.output_preview  || extra.output_preview || null,
+            files_written:  task.files_written  || extra.files_written  || null,
             started_at:     task.lifecycle?.started_at || null,
             completed_at:   task.completed_at   || extra.completed_at   || new Date().toISOString(),
             duration_ms:    task.lifecycle?.started_at

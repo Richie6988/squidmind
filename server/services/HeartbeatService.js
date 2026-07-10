@@ -311,7 +311,12 @@ class HeartbeatService {
         log.info(`[Heartbeat] 🔍 Auto-review: ${proj.name} (${active.length} active, ${recentlyDone.length} completed to review)`);
 
         const doneList = recentlyDone.length
-          ? recentlyDone.map(t => `  [${t.task_id}] ${t.title} → ${(t.result_summary || '(no summary)').slice(0, 120)}`).join('\n')
+          ? recentlyDone.map(t => {
+              const files = Array.isArray(t.files_written) && t.files_written.length
+                ? ` | VERIFIED files: ${t.files_written.slice(0, 6).join(', ')}`
+                : ' | VERIFIED files: none';
+              return `  [${t.task_id}] ${t.title} → ${(t.result_summary || '(no summary)').slice(0, 100)}${files}`;
+            }).join('\n')
           : '  (none)';
 
         // Pull the project's goal so the review is anchored to the VISION,
