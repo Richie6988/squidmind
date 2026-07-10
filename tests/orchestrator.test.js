@@ -713,6 +713,11 @@ async function main() {
     'github_status', 'github_commit', 'github_diff', 'github_push',
     // models / images / dispatch
     'list_models', 'generate_image', 'dispatch_to_agent',
+    // shipped after this list was written (comms, docs, exec, images, MCP)
+    'send_email', 'search_image', 'edit_image',
+    'generate_docx', 'generate_pptx',
+    'execute_bash', 'fetch_url',
+    'call_mcp_tool', 'list_mcp_servers',
   ];
 
   const chatNames = Object.keys(chatTools).sort();
@@ -736,6 +741,11 @@ async function main() {
     'update_project_memory', 'read_project_memory', 'audit_project',
     'list_models', 'generate_image',
     'list_skills', 'read_my_brain', 'record_skill_outcome',
+    // shipped after this list was written
+    'send_email', 'search_image', 'edit_image',
+    'generate_docx', 'generate_pptx',
+    'execute_bash',
+    'call_mcp_tool', 'list_mcp_servers',
   ];
   const bgNames = Object.keys(bgTools).sort();
   const expectedBgSorted = [...expectedBgTools].sort();
