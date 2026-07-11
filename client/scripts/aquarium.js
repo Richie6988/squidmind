@@ -334,10 +334,20 @@ const aquarium = {
 
 
 
-  onMouseMove(e) {
+  // clientX/getBoundingClientRect are VISUAL viewport px, but canvas
+  // internal coordinates (canvas.width = wrapper.clientWidth) are LAYOUT
+  // px — under html{zoom:130%} every click landed 1.3× off the sprite.
+  _mouseXY(e) {
+    const zEl = document.documentElement;
+    const z = (typeof zEl.currentCSSZoom === 'number' && zEl.currentCSSZoom > 0)
+      ? zEl.currentCSSZoom
+      : (parseFloat(getComputedStyle(zEl).zoom) || 1);
     const rect = this.canvas.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
+    return { x: (e.clientX - rect.left) / z, y: (e.clientY - rect.top) / z };
+  },
+
+  onMouseMove(e) {
+    const { x, y } = this._mouseXY(e);
     
     // Check hover on squids
     let hoveredSquid = null;
@@ -354,9 +364,7 @@ const aquarium = {
   },
 
   onClick(e) {
-    const rect = this.canvas.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
+    const { x, y } = this._mouseXY(e);
     
     // Find clicked squid
     for (const squid of this.squids) {
