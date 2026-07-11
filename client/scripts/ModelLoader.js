@@ -614,7 +614,7 @@ const ModelLoader = {
     const isEdit = !!existingModelId;
     const existing = isEdit ? this.library.models.find(m => m.model_id === existingModelId) : null;
     const cfg = existing?.config || {
-      contextLength: 'auto', gpuLayers: 'auto', cpuThreads: 4, batchSize: 512,
+      contextLength: 'auto', gpuLayers: 'auto', cpuThreads: '', batchSize: '',
       flashAttention: true, useMmap: true, useMlock: false,
       randomSeed: true, autoUnloadIdleMinutes: 15
     };
@@ -672,9 +672,9 @@ const ModelLoader = {
               <span>Force pin in RAM/VRAM (don't swap out)</span></label></div>
           
           <div class="agent-form-row"><label>CPU threads</label>
-            <input id="ml-threads" type="number" min="1" max="32" value="${cfg.cpuThreads}"></div>
+            <input id="ml-threads" type="number" min="1" max="32" value="${cfg.cpuThreads ?? ''}" placeholder="auto (physical cores)"></div>
           <div class="agent-form-row"><label>Batch size</label>
-            <input id="ml-batch" type="number" min="32" max="2048" value="${cfg.batchSize}"></div>
+            <input id="ml-batch" type="number" min="32" max="2048" value="${cfg.batchSize ?? ''}" placeholder="auto (1024)"></div>
           <div class="agent-form-row"><label>Auto-unload idle (min)</label>
             <input id="ml-ttl" type="number" min="1" max="240" value="${cfg.autoUnloadIdleMinutes}"></div>
           <div class="agent-form-row"><label>Random seed</label>
@@ -771,11 +771,14 @@ const ModelLoader = {
       // Parse values - allow 'auto' / 'max' as special strings
       const ctxRaw = dlg.querySelector('#ml-ctx').value.trim().toLowerCase();
       const gpuRaw = dlg.querySelector('#ml-gpu').value.trim().toLowerCase();
+      const threadsRaw = parseInt(dlg.querySelector('#ml-threads').value, 10);
+      const batchRaw   = parseInt(dlg.querySelector('#ml-batch').value, 10);
       const params = {
         contextLength: ctxRaw === 'auto' ? 'auto' : (parseInt(ctxRaw, 10) || 'auto'),
         gpuLayers: gpuRaw === 'auto' ? 'auto' : (gpuRaw === 'max' ? 'max' : (isNaN(parseInt(gpuRaw)) ? 'auto' : parseInt(gpuRaw, 10))),
-        cpuThreads: parseInt(dlg.querySelector('#ml-threads').value, 10),
-        batchSize: parseInt(dlg.querySelector('#ml-batch').value, 10),
+        // Empty = server auto-default (~physical cores / batch 1024)
+        ...(Number.isFinite(threadsRaw) ? { cpuThreads: threadsRaw } : {}),
+        ...(Number.isFinite(batchRaw)   ? { batchSize: batchRaw }   : {}),
         autoUnloadIdleMinutes: parseInt(dlg.querySelector('#ml-ttl').value, 10),
         flashAttention: dlg.querySelector('#ml-flash').checked,
         useMmap: dlg.querySelector('#ml-mmap').checked,
