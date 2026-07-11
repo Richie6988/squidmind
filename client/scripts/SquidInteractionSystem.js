@@ -65,13 +65,25 @@ class SquidInteractionSystem {
   }
 
   /**
+   * Effective CSS zoom (html { zoom: … }). clientX and DOM rects are VISUAL
+   * viewport px; canvas-internal coordinates are LAYOUT px — divide by this
+   * factor when converting (same fix as aquarium.onClick / the chat overlay).
+   */
+  _zoom() {
+    const el = document.documentElement;
+    if (typeof el.currentCSSZoom === 'number' && el.currentCSSZoom > 0) return el.currentCSSZoom;
+    return parseFloat(getComputedStyle(el).zoom) || 1;
+  }
+
+  /**
    * Get mouse position relative to canvas
    */
   getMousePos(e) {
+    const z = this._zoom();
     const rect = this.aquarium.canvas.getBoundingClientRect();
     return {
-      x: e.clientX - rect.left,
-      y: e.clientY - rect.top
+      x: (e.clientX - rect.left) / z,
+      y: (e.clientY - rect.top) / z
     };
   }
 
@@ -344,11 +356,15 @@ class SquidInteractionSystem {
             console.log(`[OK] Assigned ${squid.name} to ${card.projectName} (HTML card)`);
             
             // Create a virtual temple object pointing at the card position
-            // so the entry animation glides toward the card center
+            // so the entry animation glides toward the card center.
+            // Card rect + canvas rect are VISUAL px → divide by zoom to get
+            // canvas layout coords.
+            const zf = this._zoom();
+            const cvr = this.aquarium.canvas.getBoundingClientRect();
             const fakeTemple = {
               name: card.projectName,
-              x: card.rect.left + card.rect.width / 2 - this.aquarium.canvas.getBoundingClientRect().left,
-              y: card.rect.top + card.rect.height / 2 - this.aquarium.canvas.getBoundingClientRect().top
+              x: (card.rect.left + card.rect.width / 2 - cvr.left) / zf,
+              y: (card.rect.top + card.rect.height / 2 - cvr.top) / zf
             };
             this._animateSquidEnterTemple(squid, fakeTemple);
             
