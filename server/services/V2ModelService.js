@@ -1820,10 +1820,21 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
    * read_my_brain, log_decision) so Poseidon's skill base actually improves.
    * Results injected into next chat system prompt as # LAST DREAM.
    */
-  async triggerDream() {
+  async triggerDream(opts = {}) {
     const entry = this.poseidonModelId ? this.loaded.get(this.poseidonModelId) : null;
     if (!entry || entry.generating || entry.dreaming) return;
     if (!entry.model || !entry.context) return;
+
+    // Low-compute model (>50% layers on CPU): a dream is a huge prefill +
+    // long generation at a few tok/s — it holds the broker for tens of
+    // minutes and every user chat gets QUEUED behind it ("no chat with
+    // Poseidon"). Automatic dreams wait for a faster model; an explicit
+    // /dream still runs with { force: true }.
+    const cpuShare = entry.config?.cpuOffloadShare || 0;
+    if (!opts.force && cpuShare > 0.5) {
+      log.info(` 💤 Dream skipped — model is low-compute (${Math.round(cpuShare * 100)}% layers on CPU); auto-dream would block chat for a long time. Use /dream to force.`);
+      return;
+    }
 
     if (!this.broker.isDreamAllowed()) {
       log.info(' 💤 Dream skipped — broker has pending work');

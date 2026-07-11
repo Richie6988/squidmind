@@ -110,7 +110,7 @@ function buildPoseidonRoutes({ rm, refs }) {
       }
       // Fire-and-forget so the HTTP round-trip is quick; client polls
       // /dream-state to observe progress.
-      v2.triggerDream()
+      v2.triggerDream({ force: true })  // manual trigger — bypasses the low-compute auto-dream gate
         .then(() => console.info('[poseidon/dream] manual dream complete'))
         .catch(e => console.warn('[poseidon/dream] manual dream error:', e.message));
       res.json({ ok: true, message: 'Dream cycle triggered — check /dream-state for progress' });
