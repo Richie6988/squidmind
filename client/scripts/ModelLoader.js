@@ -269,6 +269,7 @@ const ModelLoader = {
         .ml-hf-file-right{display:flex;align-items:center;gap:6px;flex-shrink:0;}
         .ml-hf-quant{font-size:9px;font-weight:700;min-width:56px;font-family:monospace;}
         .ml-hf-rec{font-size:7px;background:rgba(79,172,254,0.2);color:#4facfe;padding:1px 4px;white-space:nowrap;}
+        .ml-hf-slow{font-size:7px;background:rgba(245,158,11,0.18);color:#f59e0b;padding:1px 4px;white-space:nowrap;cursor:help;}
         .ml-hf-fname{font-size:8px;color:#94a3b8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
         .ml-hf-fsize{font-size:9px;color:#64748b;white-space:nowrap;min-width:45px;text-align:right;}
         .ml-hf-dl-btn{background:linear-gradient(135deg,#4facfe,#2563eb);border:none;color:#fff;padding:3px 8px;font-size:8px;cursor:pointer;white-space:nowrap;transition:all .12s;}
@@ -1201,16 +1202,21 @@ const ModelLoader = {
       }
       // Auto-select best quant (Q4_K_M recommended, else first file)
       const best = data.files.find(f => f.recommended) || data.files[0];
+      // 🐢 hint: weights bigger than ~85% of total VRAM won't fully fit on
+      // GPU → partial CPU offload → slow chat. Detected once, cached.
+      const vramGb = await this._getVramGb();
       fileList.innerHTML = data.files.map(f => {
         const isBest = f === best;
         const qColor = /Q8|Q6/.test(f.quant)?'#34d399':/Q[45]/.test(f.quant)?'#60a5fa':/Q[23]/.test(f.quant)?'#f59e0b':/IQ/.test(f.quant)?'#a78bfa':'#94a3b8';
         const sizeStr = f.size_gb != null ? f.size_gb + ' GB' : '?';
+        const slow = vramGb > 0 && f.size_gb != null && f.size_gb > vramGb * 0.85;
         const safeUrl = f.url.replace(/'/g,"\'");
         const safeName = f.name.replace(/'/g,"\'");
         return `<div class="ml-hf-file-row${isBest?' ml-hf-file-rec':''}">
           <div class="ml-hf-file-left">
             <span class="ml-hf-quant" style="color:${qColor}">${f.quant}</span>
             ${isBest?'<span class="ml-hf-rec">★ Best</span>':''}
+            ${slow?`<span class="ml-hf-slow" title="${f.size_gb} GB weights > ${vramGb.toFixed(1)} GB VRAM — layers will spill to CPU, expect slow chat">🐢 CPU-heavy</span>`:''}
             <span class="ml-hf-fname" title="${f.name}">${f.name}</span>
           </div>
           <div class="ml-hf-file-right">
@@ -1220,6 +1226,17 @@ const ModelLoader = {
         </div>`;
       }).join('');
     } catch(e) { fileList.innerHTML = '<div class="ml-hf-error">' + e.message + '</div>'; }
+  },
+
+  // Total VRAM in GB, detected server-side (nvidia-smi via /recommendations),
+  // cached for the session. 0 = unknown/no GPU.
+  async _getVramGb() {
+    if (this._vramGbCache != null) return this._vramGbCache;
+    try {
+      const d = await window.api._fetch('/models/recommendations');
+      this._vramGbCache = (d?.vram_mb || 0) / 1024;
+    } catch { this._vramGbCache = 0; }
+    return this._vramGbCache;
   },
 
   _hfCloseFiles() {
