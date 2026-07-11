@@ -502,6 +502,15 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
    * @returns {object} { success, model_id, config } - config holds the RESOLVED numbers
    */
   async loadModel(fileName, cfg = {}) {
+    // Soft migration: models imported before the auto-defaults have the OLD
+    // hardcoded defaults (cpuThreads:4, batchSize:512) PERSISTED in their
+    // registry config — exactly those values, together, mean "the user never
+    // chose them". Upgrade to the new auto defaults; any other combination
+    // is respected as a deliberate choice.
+    if (cfg.cpuThreads === 4 && cfg.batchSize === 512) {
+      log.info(` migrating legacy defaults for ${fileName}: threads 4→${DEFAULT_CPU_THREADS}, batch 512→1024`);
+      cfg = { ...cfg, cpuThreads: undefined, batchSize: undefined };
+    }
     const config = {
       contextLength: cfg.contextLength ?? 'auto',
       gpuLayers:     cfg.gpuLayers     ?? 'auto',
@@ -1024,6 +1033,8 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
         context_used_tokens:  e.contextUsedTokens  || 0,
         context_total_tokens: e.contextTotalTokens || e.config?.contextLength || 0,
         context_pct: e.contextPct ?? 0,
+        last_perf: e.lastPerf || null,   // { first_token_s, decode_tok_s, tokens, at }
+        cpu_offload_share: e.config?.cpuOffloadShare ?? 0,
         dreaming: e.dreaming || false
       })),
       poseidon_model_id: this.poseidonModelId,
@@ -1539,6 +1550,8 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
       let lastIdx = 0;
       let lastChunkAt = Date.now();
       let firstEventSeen = false;
+      let firstEventAt = 0;
+      const turnStartToks = entry.totalTokensGenerated;
       const IDLE_TIMEOUT_MS = 300000;  // 5 min — tool calls (web fetch, file ops) can take time
       const ABSOLUTE_MAX_MS = 30 * 60_000;
       const PREFILL_MAX_MS  = 20 * 60_000; // prompt processing budget (heavily CPU-offloaded MoE can take many minutes)
@@ -1552,6 +1565,7 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
           const ev = events[lastIdx++];
           // Any token output (text, thinking, tools) resets the idle clock
           lastChunkAt = Date.now();
+          if (!firstEventSeen) firstEventAt = Date.now();
           firstEventSeen = true;
           if (ev.type === 'text') {
             entry.totalTokensGenerated += Math.ceil(ev.chunk.length / 4);
@@ -1636,6 +1650,19 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
       }
       entry._thinkBuf = '';
       entry._inThink  = false;
+
+      // ── Per-turn performance telemetry ──────────────────────────────────
+      // Objective numbers instead of "it feels slow": time-to-first-token
+      // (≈ prefill, only meaningful on turn 1 — later turns reuse KV) and
+      // decode tok/s (est., chars/4). Stored on the entry for /models status.
+      if (firstEventAt) {
+        const prefillS = (firstEventAt - start) / 1000;
+        const decodeS  = (Date.now() - firstEventAt) / 1000;
+        const toks     = entry.totalTokensGenerated - turnStartToks;
+        const tokSec   = decodeS > 0.5 && toks > 0 ? Math.round(toks / decodeS * 10) / 10 : null;
+        entry.lastPerf = { first_token_s: Math.round(prefillS * 10) / 10, decode_tok_s: tokSec, tokens: toks, at: Date.now() };
+        log.info(` ⏱ turn perf: first token ${entry.lastPerf.first_token_s}s${tokSec ? `, decode ~${tokSec} tok/s` : ''} (${toks} tok est.)`);
+      }
 
       // Successfully completed a turn — but NOT if we aborted (session was
       // disposed, so sessionTurns must stay at 0 for the next call to create
