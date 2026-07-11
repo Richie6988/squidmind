@@ -19,6 +19,7 @@ const RETRY_BACKOFF = [0, 30_000, 120_000, 300_000]; // attempt 1: immediate, 2:
 function classifyError(msg) {
   if (!msg) return 'unknown';
   const m = msg.toLowerCase();
+  if (m.startsWith('honesty gate')) return 'honesty';
   if (m.includes('out of memory') || m.includes('oom') || m.includes('vram') || m.includes('no context')) return 'oom';
   if (m.includes('no sequences left') || m.includes('sequences left') || m.includes('sequence') && m.includes('left')) return 'sequence';
   if (m.includes('preempted')) return 'preempted';
@@ -463,6 +464,7 @@ class TaskRunner {
 
       let output = '';
       let failed = false;
+      let toolCalls = -1;  // -1 = unknown (AgentWorker path); counted on the BG-Poseidon path
 
       // ── IMAGE GEN TASK ────────────────────────────────────────────────────
       // Detect by task_type first (most reliable), then by title pattern
@@ -721,6 +723,7 @@ class TaskRunner {
           // Preemption: abort BG inference the moment a CHAT request is queued.
           // The task will retry on the next tick once Poseidon is free.
           let preempted = false;
+          toolCalls = 0;  // count real tool activity for the honesty gate
           const bus = global.ReasoningBus;
           if (bus) bus.push({ type: 'task_start', task_id: taskId, title: task.title, agent: agentId || 'poseidon', project: task.project_name });
           for await (const ev of this.modelService.chatWithPoseidon(posMsg, [], { _skipBroker: true, _bgMode: true })) {
@@ -728,7 +731,7 @@ class TaskRunner {
             if (ev.type === 'thinking')      bus?.push({ type: 'thinking', task_id: taskId, chunk: ev.chunk });
             if (ev.type === 'thinking_start') bus?.push({ type: 'thinking_start', task_id: taskId });
             if (ev.type === 'thinking_end')   bus?.push({ type: 'thinking_end', task_id: taskId });
-            if (ev.type === 'tool_call')      bus?.push({ type: 'tool_call', task_id: taskId, name: ev.name, args: ev.args });
+            if (ev.type === 'tool_call')      { toolCalls++; bus?.push({ type: 'tool_call', task_id: taskId, name: ev.name, args: ev.args }); }
             if (ev.type === 'tool_result')    bus?.push({ type: 'tool_result', task_id: taskId, name: ev.name, ok: ev.result?.ok !== false, summary: String(ev.result?.message || '').slice(0, 200) });
             if (this.modelService.broker.hasHighPriorityWaiting()) {
               preempted = true;
@@ -775,6 +778,40 @@ class TaskRunner {
         failed = true;
       }
       } // end if (!usedAgentWorker)
+
+      // ── COMPLETION HONESTY GATE ─────────────────────────────────────────
+      // A small model can end with a confident summary while having done
+      // nothing. Two VERIFIABLE lies (checked against the tool-write ledger,
+      // not against what the model claims):
+      //  1. The reply says a file was written/created/saved but zero
+      //     write_file/edit_file calls happened this task → hallucinated
+      //     deliverable, previously accepted as 'completed'.
+      //  2. Near-empty reply with zero tool calls → nothing happened at all.
+      // Failing here feeds the teaching text into the retry's progress field,
+      // so attempt 2 knows exactly what to fix.
+      if (!failed && output.trim().length > 0) {
+        const ledger = global.__TASK_WRITES?.get(taskId) || [];
+        const claimsFile =
+          /\b(sav|wrot|writ|creat|generat|export)\w*\b[^.\n]{0,80}\.(md|txt|json|csv|html|png|jpg|docx|pptx|xlsx|pdf)\b/i.test(output)
+          || /\boutput\/[\w.-]+/i.test(output);
+        if (claimsFile && ledger.length === 0) {
+          failed = true;
+          output = `HONESTY GATE: the reply claims a file was written but NO write_file/edit_file call happened during this task. Actually CREATE the deliverable with write_file (path under output/) — do not describe it. Claimed reply was: ${output.slice(0, 300)}`;
+        } else if (ledger.length === 0 && toolCalls === 0 && output.trim().length < 200) {
+          failed = true;
+          output = `HONESTY GATE: task ended after ${output.trim().length} chars with ZERO tool calls and ZERO files. Do the actual work with your tools, then summarize. Reply was: ${output.slice(0, 200)}`;
+        }
+        if (failed) {
+          await this.rm.log({
+            event_type: 'honesty_gate', severity: 'warning',
+            actor: { type: 'system', id: agentId || 'poseidon_main' },
+            subject: { type: 'task', id: taskId },
+            action: `Honesty gate rejected completion of "${task.title}"`,
+            context: { reason: output.slice(0, 200), tool_calls: toolCalls, files_written: ledger.length }
+          }).catch(() => {});
+          log.warn(`⚖ honesty gate rejected ${taskId} (tools=${toolCalls}, writes=${ledger.length})`);
+        }
+      }
 
       if (output.trim().length > 0 && !output.startsWith('Execution error:')) {
         await this._saveOutput(taskId, output);
