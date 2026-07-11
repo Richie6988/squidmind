@@ -128,7 +128,7 @@ class PoseidonOrchestrator {
    * which should fix the 'context shift strategy' errors with qwen3-5-9b
    * at ctx=15000.
    */
-  async buildSystemPrompt(bgMode = false) {
+  async buildSystemPrompt(bgMode = false, compactChat = false) {
     this.rm.invalidateCache();
     const brain = await this.rm.getPoseidonBrain();
     
@@ -201,7 +201,10 @@ My response: "${ss.last_response_preview}"${tools}
     const fullPrompt = sections.join('\n\n' + '─'.repeat(60) + '\n\n');
 
     // BG mode: strip verbose sections to save context tokens (~30% reduction)
-    if (bgMode) {
+    // compactChat: same stripping for INTERACTIVE chat on low-compute models
+    // (mostly CPU-offloaded weights — every prompt token costs real time),
+    // but WITHOUT the unattended-mode override: a user IS present.
+    if (bgMode || compactChat) {
       const BG_SKIP = ['## TOOLS REFERENCE', '## PATH ALIASES', '## TOOL USAGE', '## Session info', '## SKILLS METACOGNITION'];
       const bgLines = [];
       let skip = false;
@@ -210,7 +213,7 @@ My response: "${ss.last_response_preview}"${tools}
         if (skip && line.startsWith('## ') && !BG_SKIP.some(s => line.startsWith(s))) { skip = false; }
         if (!skip) bgLines.push(line);
       }
-      const compact = bgLines.join('\n') + [
+      const tail = bgMode ? [
         '',
         '',
         '# BACKGROUND MODE — UNATTENDED EXECUTION',
@@ -218,8 +221,15 @@ My response: "${ss.last_response_preview}"${tools}
         'Asking a question here is a TASK FAILURE — the question goes nowhere and the task stalls.',
         'NEVER ask for clarification, format, scope, deadline, sources, or approval. Decide everything yourself.',
         'Produce the deliverable directly. Open it with one short "Assumptions:" line listing the choices you made, then the content.',
-      ].join('\n');
-      log.info(`BG system prompt: ${compact.length} chars (was ${fullPrompt.length})`);
+      ] : [
+        '',
+        '',
+        '# COMPACT MODE',
+        'This model runs mostly on CPU — every token is expensive. Keep replies concise and to the point.',
+        'All AUTONOMY DOCTRINE rules apply unchanged.',
+      ];
+      const compact = bgLines.join('\n') + tail.join('\n');
+      log.info(`${bgMode ? 'BG' : 'Compact-chat'} system prompt: ${compact.length} chars (was ${fullPrompt.length})`);
       return compact;
     }
 

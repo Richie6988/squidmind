@@ -711,6 +711,7 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
         // extra GPU layers in Step 1.
         const gpuL = Number(config.gpuLayers) || 0;
         const cpuShare = estLayers > 0 ? 1 - gpuL / estLayers : 0;
+        config.cpuOffloadShare = Math.round(cpuShare * 100) / 100;  // used by session creation (compact prompt for slow models)
         const offloadCap = cpuShare > 0.6 ? 12288 : cpuShare > 0.3 ? 16384 : Infinity;
 
         if (vramAfter && freeAfterGb > margin + 0.1) {
@@ -1237,14 +1238,22 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
 
       if (!entry.session) {
         const orchestrator = this.orchestrator;
+        // Low-compute model (>50% of layers on CPU): every prompt token
+        // costs real wall-clock time (observed: 4223-token prompt = minutes
+        // of prefill on the 8x3B MoE). Trade prompt richness for usability:
+        // compact system prompt + slim BG toolset. Stable per-model, so no
+        // session-rebuild churn on chat/bg swaps.
+        const cpuShare   = entry.config?.cpuOffloadShare || 0;
+        const lowCompute = cpuShare > 0.5;
+        if (lowCompute) log.info(` low-compute model (${Math.round(cpuShare * 100)}% layers on CPU) — compact prompt + slim toolset for chat`);
         let systemPrompt, functions;
         if (orchestrator) {
-          systemPrompt = await orchestrator.buildSystemPrompt(_bgMode);
+          systemPrompt = await orchestrator.buildSystemPrompt(_bgMode, lowCompute);
           try {
-            // Always use the full toolset. The slim BG variant was an
-            // optimisation that no longer fires (we keep one session across
-            // chat/bg) and forced session rebuild on every mode swap.
-            functions = await orchestrator.buildFunctions('chat');
+            // Full toolset normally (the slim BG variant no longer fires on
+            // mode swaps — we keep one session across chat/bg). Low-compute
+            // models use the BG toolset: fewer schemas = shorter prefill.
+            functions = await orchestrator.buildFunctions(lowCompute ? 'bg' : 'chat');
           } catch (err) {
             log.warn(' Function-calling setup failed:', err.message, '- continuing without functions');
             functions = undefined;
