@@ -810,6 +810,20 @@ class TaskRunner {
             context: { reason: output.slice(0, 200), tool_calls: toolCalls, files_written: ledger.length }
           }).catch(() => {});
           log.warn(`⚖ honesty gate rejected ${taskId} (tools=${toolCalls}, writes=${ledger.length})`);
+          // Reputation: strikes accumulate on the agent even when the task
+          // goes on to succeed on retry — Poseidon sees them in its agent
+          // roster and can route critical work to agents that don't fabricate.
+          if (agentId && agentId !== 'poseidon_main') {
+            try {
+              const areg = await this.rm.getAgentRegistry();
+              const ag = areg.agents?.[agentId];
+              if (ag) {
+                ag.performance_summary = ag.performance_summary || {};
+                ag.performance_summary.honesty_strikes = (ag.performance_summary.honesty_strikes || 0) + 1;
+                await this.rm.write('AGENTS/agent_registry.json', areg);
+              }
+            } catch {}
+          }
         }
       }
 

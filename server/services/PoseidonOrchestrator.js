@@ -509,8 +509,13 @@ My response: "${ss.last_response_preview}"${tools}
       lines.push('(none yet - the user can create some via "+ New Agent", or you can with create_agent)');
     } else {
       agentList.slice(0, 30).forEach(a => {
-        lines.push(`- ${a.agent_id}: ${a.display_name} | ${a.specialization || 'general'} | ${a.status} | ${a.performance_summary?.tasks_completed || 0} tasks done`);
+        const p = a.performance_summary || {};
+        const total = (p.tasks_completed || 0) + (p.tasks_failed || 0);
+        const rel = total > 0 ? ` | ✓${p.tasks_completed || 0} ✗${p.tasks_failed || 0} (${Math.round((p.success_rate || 0) * 100)}% reliable)` : ' | no track record yet';
+        const strikes = p.honesty_strikes ? ` | ⚖${p.honesty_strikes} honesty strikes` : '';
+        lines.push(`- ${a.agent_id}: ${a.display_name} | ${a.specialization || 'general'} | ${a.status}${rel}${strikes}`);
       });
+      lines.push('Prefer reliable agents for critical tasks; honesty strikes = claimed work that never happened.');
     }
     
     lines.push('');
@@ -1865,6 +1870,9 @@ My response: "${ss.last_response_preview}"${tools}
         specialization: a.specialization,
         status: a.status,
         tasks_completed: a.performance_summary?.tasks_completed || 0,
+        tasks_failed: a.performance_summary?.tasks_failed || 0,
+        success_rate: Math.round((a.performance_summary?.success_rate || 0) * 100) / 100,
+        honesty_strikes: a.performance_summary?.honesty_strikes || 0,
         current_project: a.current_project || null
       }));
       return { ok: true, count: agents.length, agents };
