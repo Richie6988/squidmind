@@ -10,7 +10,12 @@
  */
 
 const path = require('path');
+const os = require('os');
 const log = require('../utils/logger').createLogger('V2ModelService');
+// Inference threads default: ~physical cores (logical / 2 on SMT CPUs).
+// Was hardcoded 4 — on a 6-core Ryzen the CPU-offloaded layers ran on
+// 4/6 cores, throttling prefill AND decode by ~1/3 for zero benefit.
+const DEFAULT_CPU_THREADS = Math.max(4, Math.floor(os.cpus().length / 2));
 const ModelBroker = require('./ModelBroker');
 const { PRIORITY } = ModelBroker;
 const ImageGenerationService = require('./ImageGenerationService');
@@ -174,8 +179,8 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
     // This mirrors LM Studio's defaults and is the right choice 99% of the time.
     contextLength: 'auto',
     gpuLayers: 'auto',
-    cpuThreads: 4,
-    batchSize: 512,
+    cpuThreads: DEFAULT_CPU_THREADS,   // ~physical cores (see top of file)
+    batchSize: 1024,          // prompt-processing batch — bigger = faster prefill, ladder guards VRAM
     flashAttention: true,     // ~50% smaller KV cache (biggest VRAM saver)
     useMmap: true,            // OS-level page sharing for the model file
     useMlock: false,          // disabled by default (can be enabled in Edit Params)
@@ -500,8 +505,8 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
     const config = {
       contextLength: cfg.contextLength ?? 'auto',
       gpuLayers:     cfg.gpuLayers     ?? 'auto',
-      cpuThreads:    cfg.cpuThreads    ?? 4,
-      batchSize:     cfg.batchSize     ?? 512,
+      cpuThreads:    cfg.cpuThreads    ?? DEFAULT_CPU_THREADS,
+      batchSize:     cfg.batchSize     ?? 1024,
       flashAttention:cfg.flashAttention ?? true,
       useMmap:       cfg.useMmap       ?? true,
       useMlock:      cfg.useMlock      ?? false,
