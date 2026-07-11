@@ -198,24 +198,23 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
         let stat;
         try { stat = await fs.stat(fullPath); }
         catch (e) {
-          // Broken symlink: lstat reads the link ITSELF and succeeds even
-          // when the target is gone — auto-remove it instead of nagging
-          // the user with a manual `rm` on every restart. A file deleted
-          // mid-scan (race) fails lstat too and just gets skipped.
-          if (e.code === 'ENOENT') {
-            try {
-              const l = await fs.lstat(fullPath);
-              if (l.isSymbolicLink()) {
-                await fs.unlink(fullPath);
-                log.warn(` scanLocalModels: removed broken symlink ${file} (target no longer exists)`);
-                continue;
-              }
-            } catch {}
-          }
+          // Broken symlink: NEVER auto-delete — the target can be
+          // TEMPORARILY absent (unmounted drive, network share, file being
+          // moved) and deleting the link is destructive and irreversible
+          // (lesson learned: a Flux T5 companion symlink got auto-removed
+          // this way). Warn once per process with the target path so the
+          // user can decide, and skip.
           this._scanWarned = this._scanWarned || new Set();
           if (!this._scanWarned.has(file)) {
             this._scanWarned.add(file);
-            log.warn(` scanLocalModels: skipping ${file} (${e.code || e.message})`);
+            let target = '';
+            if (e.code === 'ENOENT') {
+              try {
+                const l = await fs.lstat(fullPath);
+                if (l.isSymbolicLink()) target = ` — symlink to missing target "${await fs.readlink(fullPath)}" (mount the target or remove the link)`;
+              } catch {}
+            }
+            log.warn(` scanLocalModels: skipping ${file} (${e.code || e.message})${target}`);
           }
           continue;
         }
