@@ -802,6 +802,9 @@ function buildPoseidonChatRoute(v2ModelService) {
             summary: summaryStr, duration_ms: ev.duration_ms
           })}\n\n`);
           bus?.push({ type: 'tool_result', task_id: 'poseidon_chat', name: ev.name, ok: ev.result?.ok !== false, summary: summaryStr });
+        } else if (ev.type === 'status') {
+          // Progress visibility (broker wait, slow prefill) — not chat content
+          res.write(`event: status\ndata: ${JSON.stringify({ message: ev.message })}\n\n`);
         } else if (ev.type === 'thinking_start') {
           res.write(`event: thinking_start\ndata: {}\n\n`);
           bus?.push({ type: 'thinking_start', task_id: 'poseidon_chat' });

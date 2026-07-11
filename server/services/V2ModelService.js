@@ -1150,6 +1150,14 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
       log.info(` Reloaded with ctx=${entry.config?.contextLength}`);
     }
     // Acquire the model slot unless caller already holds it (e.g. TaskRunner BG)
+    // If something else holds the broker (BG task, image gen), the acquire
+    // can wait up to 5 min — surface it in the UI instead of dead silence.
+    if (!_skipBroker) {
+      const bs = this.broker.getState();
+      if (bs.state === 'BUSY') {
+        yield { type: 'status', message: `Waiting for model — busy with ${bs.owner || 'another task'} (${bs.priority || '?'}, held ${bs.held_sec}s)…` };
+      }
+    }
     const brokerToken = _skipBroker
       ? null
       : await this.broker.acquire(PRIORITY.CHAT, 'poseidon_chat', { timeoutMs: 5 * 60_000 });
@@ -1364,6 +1372,13 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
         entry._lastSystemPromptChars = systemPrompt.length;
         const wrapper = entry.session.chatWrapper?.constructor?.name || 'unknown';
         log.info(` Session created for ${this.poseidonModelId} (${wrapper}, ctx=${ctxTokens}, prompt=${promptTokens}tok${functions ? `, ${Object.keys(functions).length} tools` : ', no tools (ctx too small)'})`);
+        // First message on a low-compute model pays a long prefill (the
+        // whole system prompt through the CPU-offloaded layers) — announce
+        // it, otherwise the UI shows a mute spinner for minutes.
+        const _cs = entry.config?.cpuOffloadShare || 0;
+        if (_cs > 0.5) {
+          yield { type: 'status', message: `Processing ${promptTokens}-token prompt — model runs ${Math.round(_cs * 100)}% on CPU, first reply can take a few minutes…` };
+        }
       }
       const session = entry.session;
       if (entry.sessionTurns > 0) {
@@ -1588,6 +1603,7 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
           if (idleMs > 30000 && Date.now() - (entry._lastPrefillLog || 0) > 60000) {
             entry._lastPrefillLog = Date.now();
             log.info(` still prefilling (${Math.round(idleMs / 1000)}s, no first token yet — large prompt and/or CPU-offloaded layers)…`);
+            yield { type: 'status', message: `Still processing the prompt (${Math.round(idleMs / 1000)}s) — no first token yet, model is working…` };
           }
         } else if (!isThinking && idleMs > IDLE_TIMEOUT_MS) {
           log.warn(` generation idle timeout (${Math.round(idleMs/1000)}s) — resetting session`);

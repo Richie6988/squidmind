@@ -357,11 +357,15 @@ const PoseidonChat = {
     const timers = statusSeq.map(([delay, msg]) =>
       setTimeout(() => {
         if (firstToken) return;
+        // A real server status (broker wait / prefill progress) beats the
+        // client-side guesses — stop cycling canned messages over it.
+        if (this._serverStatusSeen) return;
         const el = contentEl.querySelector('#pc-loader-msg');
         if (el) el.textContent = msg;
         this._setStatus(msg, 'loading');
       }, delay)
     );
+    this._serverStatusSeen = false;  // reset per message
     const clearTimers = () => {
       timers.forEach(clearTimeout);
       clearInterval(elapsedTimer);
@@ -468,6 +472,16 @@ const PoseidonChat = {
                       'write_file','edit_file','github_commit','github_pull'];
 
     if (type === 'error')          { throw new Error(p.error); }
+    if (type === 'status') {
+      // Progress info (broker wait, slow prefill) — update the loader label
+      // and status bar. Deliberately NOT onFirstToken(): the loader stays
+      // until real content arrives.
+      this._serverStatusSeen = true;
+      const lm = el.querySelector('#pc-loader-msg') || this.modal?.querySelector('#pc-loader-msg');
+      if (lm && p.message) lm.textContent = p.message;
+      if (p.message) this._setStatus(p.message, 'generating');
+      return;
+    }
     if (type === 'start')          { this._mutatedThisTurn = false; return; }
     if (type === 'end') {
       if (p.turn !== undefined) this._updateTurnCounter();
