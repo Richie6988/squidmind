@@ -1510,8 +1510,10 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
       //   - 'tool_call' / 'tool_result' events: surface for UI thinking display
       let lastIdx = 0;
       let lastChunkAt = Date.now();
+      let firstEventSeen = false;
       const IDLE_TIMEOUT_MS = 300000;  // 5 min — tool calls (web fetch, file ops) can take time
       const ABSOLUTE_MAX_MS = 30 * 60_000;
+      const PREFILL_MAX_MS  = 20 * 60_000; // prompt processing budget (heavily CPU-offloaded MoE can take many minutes)
       const start = Date.now();
       while (true) {
         const isDone = await Promise.race([
@@ -1522,6 +1524,7 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
           const ev = events[lastIdx++];
           // Any token output (text, thinking, tools) resets the idle clock
           lastChunkAt = Date.now();
+          firstEventSeen = true;
           if (ev.type === 'text') {
             entry.totalTokensGenerated += Math.ceil(ev.chunk.length / 4);
           }
@@ -1556,8 +1559,31 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
         const idleMs = Date.now() - lastChunkAt;
         // Don't timeout while model is actively thinking (think block open)
         const isThinking = entry._inThink === true;
-        if (!isThinking && idleMs > IDLE_TIMEOUT_MS) {
+        // PREFILL emits ZERO events: on a partially CPU-offloaded model
+        // (big MoE on 8GB VRAM) a 4k-token system prompt legitimately takes
+        // many minutes. The 5-min idle rule killed the session mid-prefill
+        // and broke SILENTLY — UI stuck on "Thinking…" forever ("model
+        // loads but no chat"). Idle rule now only applies AFTER the first
+        // token; prefill gets its own budget and a server-log heartbeat.
+        if (!firstEventSeen) {
+          if (idleMs > PREFILL_MAX_MS) {
+            log.warn(` prefill exceeded ${Math.round(PREFILL_MAX_MS / 60000)}min — resetting session`);
+            yield { type: 'text', chunk: '\n\n_[Prompt processing timed out — this model runs mostly on CPU and cannot process the system prompt in reasonable time. Use a smaller model for chat.]_' };
+            try { if (entry.session?.dispose) await entry.session.dispose(); } catch {}
+            entry.session = null;
+            entry._currentSequence = null;
+            entry.sessionTurns = 0;
+            entry._thinkBuf = '';
+            entry._inThink  = false;
+            break;
+          }
+          if (idleMs > 30000 && Date.now() - (entry._lastPrefillLog || 0) > 60000) {
+            entry._lastPrefillLog = Date.now();
+            log.info(` still prefilling (${Math.round(idleMs / 1000)}s, no first token yet — large prompt and/or CPU-offloaded layers)…`);
+          }
+        } else if (!isThinking && idleMs > IDLE_TIMEOUT_MS) {
           log.warn(` generation idle timeout (${Math.round(idleMs/1000)}s) — resetting session`);
+          yield { type: 'text', chunk: '\n\n_[Generation stalled and was reset — send your message again.]_' };
           // Reset session so next message reloads cleanly (user won't notice)
           try { if (entry.session?.dispose) await entry.session.dispose(); } catch {}
           entry.session = null;
