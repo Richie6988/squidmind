@@ -429,6 +429,7 @@ My response: "${ss.last_response_preview}"${tools}
       lines.push('TASK DECOMPOSITION — MANDATORY:');
       lines.push('  RULE: any request involving multiple items, sources, files, URLs, agents = ONE task per item. NEVER one big task.');
       lines.push('  RULE: before create_task, mentally list all items. Create N separate tasks, one per item.');
+      lines.push('  RULE: every task that produces content or files MUST include acceptance_criteria (2-4 concrete, checkable statements). The quality review judges the deliverable against them — vague criteria = vague deliverables.');
       lines.push('  RULE: task title must be specific: "Scrape BBC News https://bbc.com/news" not "Check all sources".');
       lines.push('  RULE: after creating tasks → STOP. Do NOT execute. Reply: "Created N tasks: [list]".');
       lines.push('  RULE: inline execution only for single, immediate actions (read one file, answer one question).');
@@ -660,6 +661,9 @@ My response: "${ss.last_response_preview}"${tools}
 
       create_task: defineChatSessionFunction({
         description: 'Create a task in the tasks registry. Optionally assign to a specific agent. ' +
+          'ALWAYS include acceptance_criteria: 2-4 concrete, checkable statements defining what a GOOD ' +
+          'deliverable looks like (e.g. "covers at least 5 sources with URLs", "under 800 words", ' +
+          '"saved as output/newsletter.md"). The quality review judges the deliverable against them. ' +
           'For multi-step work, CHAIN tasks with depends_on: a task will not start until every task id ' +
           'listed in depends_on has completed. Example: create the "directory structure" task first, then ' +
           'create each module task with depends_on set to the structure task\'s id.',
@@ -668,6 +672,7 @@ My response: "${ss.last_response_preview}"${tools}
           properties: {
             title: { type: 'string' },
             description: { type: 'string' },
+            acceptance_criteria: { type: 'string', description: '2-4 concrete checkable criteria for a good deliverable. REQUIRED for any task producing content or files.' },
             project: { type: 'string', description: 'Project name to attach this task to' },
             assigned_agent_id: { type: 'string', description: 'Optional agent_id to assign immediately' },
             priority: { type: 'string', enum: ['low', 'medium', 'high', 'critical'], description: 'Default: medium' },
@@ -2072,7 +2077,7 @@ My response: "${ss.last_response_preview}"${tools}
     }
   }
 
-  async _createTask({ title, description, project, assigned_agent_id, priority, depends_on }) {
+  async _createTask({ title, description, acceptance_criteria, project, assigned_agent_id, priority, depends_on }) {
     try {
       // WIP LIMIT (structural) — a project with a pile of open tasks doesn't
       // need MORE tasks, it needs the existing ones finished and integrated.
@@ -2130,6 +2135,7 @@ My response: "${ss.last_response_preview}"${tools}
         task_id:      taskId,
         title,
         description:  description || '',
+        acceptance_criteria: acceptance_criteria || null,
         task_type:    'text',
         sort_order:   0,
         project_name: project || null,

@@ -447,6 +447,20 @@ class TaskRunner {
         ? `\nPrevious progress: ${task.progress}\n(Resume from where you left off — do NOT redo completed steps)`
         : '';
       const descPart = task.description ? `\nDetails: ${task.description}` : '';
+      // The contract the quality review will judge the deliverable against.
+      const critPart = task.acceptance_criteria
+        ? `\nACCEPTANCE CRITERIA (your deliverable is judged against these):\n${String(task.acceptance_criteria).slice(0, 400)}`
+        : '';
+      // Prior deliverables in the same project — build ON them, don't restart.
+      let priorPart = '';
+      if (task.project_name) {
+        try {
+          const RegistryManager = require('./RegistryManager');
+          const pdir = path.join(AQUARIUM.PROJECTS, RegistryManager.projectFolder({ name: task.project_name }), 'output');
+          const files = (await fs.readdir(pdir).catch(() => [])).slice(-8);
+          if (files.length) priorPart = `\nExisting project deliverables in output/: ${files.join(', ')} (read them with read_file if relevant — extend, don't duplicate)`;
+        } catch {}
+      }
 
       // Trim components to prevent context overflow on small models (16k ctx)
       const titleLine  = `TASK [${taskId}]: ${task.title}`;
@@ -455,7 +469,7 @@ class TaskRunner {
       const memLine    = projectMemoryPart ? projectMemoryPart.slice(0, 400) : '';
       const progLine   = progressPart ? progressPart.slice(0, 200) : '';
       const msg = [
-        titleLine, descLine, projLine, memLine, progLine,
+        titleLine, descLine, critPart, priorPart, projLine, memLine, progLine,
         '\n---\nUse your tools. Update progress after each step. ' +
         'FILES: write ONLY final deliverables to output/, intermediate files to work/. ' +
         'Do NOT create other folders. Do NOT save thoughts/notes/plans as files — condense them into ' +
@@ -895,6 +909,67 @@ class TaskRunner {
         await this._updateProjectMemoryForTask(task, 'completed', output);
       }
 
+      // ── QUALITY REVIEW (draft → critique → revise, max 1 revision) ──────
+      // One-shot output from a small model is mediocre; a revision pass
+      // against explicit acceptance criteria is the single biggest quality
+      // lever available on local hardware. Short prompt (~1k tok), text-only
+      // verdict — cheap even on slow models. Unparseable verdicts default to
+      // PASS so a sloppy reviewer can never loop a task forever.
+      if (!failed && output.trim().length > 0 && (task.revisions || 0) < 1) {
+        try {
+          const ledger2 = global.__TASK_WRITES?.get(taskId) || [];
+          // Review the actual deliverable file when one was written, else the reply.
+          let deliverable = output;
+          if (ledger2.length) {
+            const rel = ledger2[ledger2.length - 1].path || String(ledger2[ledger2.length - 1]);
+            const candidates = [
+              rel,
+              path.join(AQUARIUM.ROOT || path.dirname(AQUARIUM.TASKS), rel),
+              task.project_name ? path.join(AQUARIUM.PROJECTS, require('./RegistryManager').projectFolder({ name: task.project_name }), rel) : null,
+            ].filter(Boolean);
+            for (const cand of candidates) {
+              try { deliverable = await fs.readFile(cand, 'utf8'); break; } catch {}
+            }
+          }
+          const crit = task.acceptance_criteria
+            ? `ACCEPTANCE CRITERIA:\n${String(task.acceptance_criteria).slice(0, 400)}`
+            : 'No explicit criteria — judge on: does it fully accomplish the task title, is it concrete (no filler/placeholders), is it usable as-is.';
+          const reviewPrompt =
+            `[QUALITY REVIEW — reply with the verdict ONLY, no tools]\n` +
+            `Task: ${task.title}\n${crit}\n\nDELIVERABLE (may be truncated):\n${String(deliverable).slice(0, 2800)}\n\n` +
+            `Reply EXACTLY in this format:\nSCORE: <1-10>\nVERDICT: <PASS|REVISE>\nFIXES: <if REVISE: 2 concrete, specific fixes; if PASS: ->`;
+          let review = '';
+          for await (const ev of this.modelService.chatWithPoseidon(reviewPrompt, [], { _skipBroker: true, _bgMode: true })) {
+            if (ev.type === 'text') review += ev.chunk;
+            if (review.length > 1200) break;
+          }
+          const score   = parseInt((review.match(/SCORE:\s*(\d{1,2})/i) || [])[1], 10);
+          const verdict = /VERDICT:\s*REVISE/i.test(review) ? 'REVISE' : 'PASS';
+          const fixes   = ((review.match(/FIXES:\s*([\s\S]{0,400})/i) || [])[1] || '').trim();
+          task.review = { score: Number.isFinite(score) ? score : null, verdict, at: new Date().toISOString() };
+          log.info(`⭐ quality review ${taskId}: ${verdict}${Number.isFinite(score) ? ` (${score}/10)` : ''}`);
+          if (verdict === 'REVISE' && fixes) {
+            // Send back for ONE revision — the learning-retry machinery
+            // injects `progress` into the next attempt's prompt.
+            await this._setStatus(taskId, 'open', {
+              revisions: (task.revisions || 0) + 1,
+              review: task.review,
+              progress: `QUALITY REVIEW${Number.isFinite(score) ? ` (${score}/10)` : ''} — the previous deliverable needs these SPECIFIC fixes before it is acceptable: ${fixes}. Revise the existing deliverable (read it first), do not start from scratch.`
+            });
+            await this.rm.log({
+              event_type: 'quality_review', severity: 'info',
+              actor: { type: 'system', id: 'quality_review' },
+              subject: { type: 'task', id: taskId },
+              action: `Review sent "${task.title}" back for revision${Number.isFinite(score) ? ` (${score}/10)` : ''}`,
+              context: { fixes: fixes.slice(0, 300) }
+            }).catch(() => {});
+            return; // not final — the task will re-run with the fixes
+          }
+        } catch (revErr) {
+          log.warn(`quality review skipped for ${taskId}: ${revErr.message}`);
+        }
+      }
+
       const finalStatus = failed ? 'failed' : 'completed';
 
       await this.rm.log({
@@ -929,6 +1004,12 @@ class TaskRunner {
       if (extra.result_file    !== undefined) task.result_file    = extra.result_file;
       if (extra.completed_at   !== undefined) { task.completed_at = extra.completed_at; task.lifecycle.completed_at = extra.completed_at; }
       if (extra.started_at     !== undefined) task.lifecycle.started_at = extra.started_at;
+      // Generic pass-through for retry/review machinery (progress carries
+      // teaching text into the next attempt's prompt; revisions caps the
+      // quality-review loop; review stores the verdict for the UI).
+      if (extra.progress  !== undefined) task.progress  = extra.progress;
+      if (extra.revisions !== undefined) task.revisions = extra.revisions;
+      if (extra.review    !== undefined) task.review    = extra.review;
 
       // Write to results_log BEFORE _writeTaskDetails purges terminal tasks
       const TERMINAL_FOR_LOG = new Set(['completed', 'failed', 'cancelled']);
