@@ -809,14 +809,10 @@ class Squid {
     const nameFont = hover ? 'bold 14px "Press Start 2P"' : 'bold 12px "Press Start 2P"';
     const levelFont = hover ? '11px "Press Start 2P"' : '10px "Press Start 2P"';
 
-    // Background
+    // Background — slightly darker on hover, but NO border rectangle
+    // (the blue strokeRect box on hover was visual noise — user request).
     ctx.fillStyle = hover ? 'rgba(0, 0, 0, 0.85)' : 'rgba(0, 0, 0, 0.7)';
     ctx.fillRect(-bgW / 2, -bgH / 2, bgW, bgH);
-    if (hover) {
-      ctx.strokeStyle = '#4facfe';
-      ctx.lineWidth = 1;
-      ctx.strokeRect(-bgW / 2, -bgH / 2, bgW, bgH);
-    }
 
     // Name with level
     ctx.fillStyle = '#FFFFFF';
