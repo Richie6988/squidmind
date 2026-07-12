@@ -287,11 +287,12 @@ const SquidAccessories = {
   },
 
   _roundGlasses(ctx, c, size) {
-    // Round wire-frame glasses — 2 circular lenses framing the eyes
-    // Eye centers at ±size*0.25. In cells: ±size*0.25 / (size/8) = ±2c
-    // Eye Y = 0. Glasses H=2.8c → top at -H/2 = -1.4c to center on eyes.
-    const lx = -2.15, rx = 1.15; // left/right lens left edges
-    const ty = -1.4, H = 2.8, W = 2.6; // top y centered on eye Y=0
+    // Round wire-frame glasses — 2 circular lenses framing the eyes.
+    // Eye centers ±2c (= ±size*0.25 with c=size/8), radius 1.44c (Ø 2.88c).
+    // Lens CENTERED on each eye: left edge = eyeCenter - W/2; ty = -H/2.
+    const W = 2.9, H = 2.9;                    // ≥ eye diameter 2.88c
+    const lx = -2 - W / 2, rx = 2 - W / 2;     // lens left edges, centered on ±2c
+    const ty = -H / 2;
     const FR = '#2a2a2a', LE = 'rgba(120,200,255,0.18)';
     // Lens fill (subtle tint)
     this._r(ctx, lx, ty, W, H, LE, c);
@@ -314,8 +315,9 @@ const SquidAccessories = {
   },
 
   _sunglasses(ctx, c, size) {
-    // Retro aviator shades — big lenses, golden frame
-    const lx=-2.4, rx=0.9, ty=-1.4, W=3, H=2.8;
+    // Retro aviator shades — big lenses, golden frame, centered on eyes ±2c
+    const W = 3.2, H = 3.0;
+    const lx = -2 - W / 2, rx = 2 - W / 2, ty = -H / 2;
     const FR = '#B8860B', LE = 'rgba(0,0,0,0.82)', GL = 'rgba(255,255,200,0.12)';
     // Dark lenses
     this._r(ctx, lx, ty, W, H, LE, c);
@@ -338,8 +340,9 @@ const SquidAccessories = {
   },
 
   _monocle(ctx, c, size) {
-    // Gold monocle on right eye + chain to collar
-    const rx = 1.2, ty = -1.5, W = 2.8, H = 2.8;
+    // Gold monocle centered on the RIGHT eye (+2c) + chain to collar
+    const W = 2.9, H = 2.9;
+    const rx = 2 - W / 2, ty = -H / 2;
     const G = '#FFD700', GD = '#B8860B', LE = 'rgba(200,230,255,0.15)';
     // Lens tint
     this._r(ctx, rx, ty, W, H, LE, c);
@@ -384,8 +387,9 @@ const SquidAccessories = {
   },
 
   _pixelGlasses(ctx, c, size) {
-    // Chunky 8-bit pixel glasses — black square frames, cyan tint
-    const lx = -2.4, rx = 1.0, ty = -1.5, W = 2.8, H = 2.8;
+    // Chunky 8-bit pixel glasses — black square frames, cyan tint, on eyes ±2c
+    const W = 3.0, H = 3.0;
+    const lx = -2 - W / 2, rx = 2 - W / 2, ty = -H / 2;
     const FR = '#000000', LE = 'rgba(125,211,252,0.30)', SH = '#FFFFFF';
     // Tinted lenses
     this._r(ctx, lx, ty, W, H, LE, c);
@@ -408,8 +412,9 @@ const SquidAccessories = {
   },
 
   _3dGlasses(ctx, c, size) {
-    // Classic cyan/magenta 3D glasses — paper frame, two coloured lenses
-    const lx = -2.4, rx = 1.0, ty = -1.5, W = 2.8, H = 2.4;
+    // Classic cyan/magenta 3D glasses — paper frame, lenses on eyes ±2c
+    const W = 3.0, H = 2.6;
+    const lx = -2 - W / 2, rx = 2 - W / 2, ty = -H / 2;
     const FR = '#1a1a1a';
     const LCYAN = 'rgba(0,212,255,0.55)';
     const LRED  = 'rgba(255,40,90,0.55)';
@@ -432,8 +437,9 @@ const SquidAccessories = {
   },
 
   _eyepatch(ctx, c, size) {
-    // Black pirate eyepatch over right eye + strap across head
-    const rx = 0.7, ty = -1.7, W = 3.0, H = 3.0;
+    // Black pirate eyepatch centered on the RIGHT eye (+2c) + strap
+    const W = 3.0, H = 3.0;
+    const rx = 2 - W / 2, ty = -H / 2;
     const PA = '#0a0a0a', ST = '#1f1f1f';
     // Patch (rounded square — slightly inset corners)
     this._r(ctx, rx + 0.3, ty,         W - 0.6, H,         PA, c);  // mid stripe
