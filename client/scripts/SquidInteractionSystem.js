@@ -594,10 +594,11 @@ class SquidInteractionSystem {
     // object-key bug: right-clicking a squid did nothing. Merged here.)
     if (result.type === 'squid') {
       const squid = result.entity;
-      if (typeof ui !== 'undefined') {
-        ui.selectedSquid = squid;
-        ui.showSquidContextMenu(squid, e.clientX, e.clientY);
-      }
+      if (typeof ui !== 'undefined') ui.selectedSquid = squid;
+      // ui.showSquidContextMenu was deleted in the CLEAN D dead-code pass
+      // (its #squid-menu DOM host was removed too) — the menu lives here
+      // now, next to its temple sibling.
+      this.showSquidContextMenu(squid, e.clientX, e.clientY);
       return;
     }
 
@@ -611,6 +612,59 @@ class SquidInteractionSystem {
   /**
    * Show temple context menu
    */
+  /**
+   * Right-click menu for a squid. x/y are clientX/clientY (VISUAL px) —
+   * a position:fixed element inside the zoomed root positions in LAYOUT px,
+   * so divide by the effective zoom.
+   */
+  showSquidContextMenu(squid, x, y) {
+    const existing = document.getElementById('squid-context-menu');
+    if (existing) existing.remove();
+    const z = this._zoom();
+    const menu = document.createElement('div');
+    menu.id = 'squid-context-menu';
+    menu.style.cssText = `
+      position: fixed;
+      left: ${Math.round(x / z)}px;
+      top: ${Math.round(y / z)}px;
+      background: var(--ocean-deep);
+      border: 2px solid var(--border);
+      border-radius: 4px;
+      padding: 8px;
+      z-index: 10000;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+    `;
+    const name = (squid.name || squid.id || 'Agent').replace(/</g, '&lt;');
+    menu.innerHTML = `
+      <div style="font-size: 10px; color: var(--accent); margin-bottom: 8px;">${name}</div>
+      <button id="scm-edit" style="width: 100%; padding: 6px; margin: 2px 0; font-size: 9px; background: var(--accent); color: black; border: none; cursor: pointer;">
+        Edit Agent
+      </button>
+      <button id="scm-dispatch" style="width: 100%; padding: 6px; margin: 2px 0; font-size: 9px; background: var(--success); color: black; border: none; cursor: pointer;">
+        Dispatch Task
+      </button>
+    `;
+    document.body.appendChild(menu);
+    menu.querySelector('#scm-edit').onclick = () => {
+      menu.remove();
+      if (typeof AgentForm !== 'undefined') AgentForm.open(squid.id).catch(e => console.warn('AgentForm.open:', e.message));
+    };
+    menu.querySelector('#scm-dispatch').onclick = async () => {
+      menu.remove();
+      if (typeof PoseidonChat !== 'undefined') {
+        await PoseidonChat.open();
+        const ta = PoseidonChat.modal?.querySelector('#pc-input');
+        if (ta) { ta.value = `Dispatch a task to ${squid.name || squid.id}: `; ta.focus(); }
+      }
+    };
+    setTimeout(() => {
+      document.addEventListener('click', function closeMenu() {
+        menu.remove();
+        document.removeEventListener('click', closeMenu);
+      }, { once: true });
+    }, 100);
+  }
+
   showTempleContextMenu(temple, x, y) {
     // Remove existing menu
     const existing = document.getElementById('temple-context-menu');
