@@ -59,6 +59,11 @@ router.get('/agents', async (req, res) => {
   } catch (err) { res.status(500).json({ success: false, error: err.message }); }
 });
 
+// GET /agents/stats — MUST be registered BEFORE /agents/:id, otherwise the
+// param route captures 'stats' as an agent id and 404s. The handler itself
+// is defined below (hoisted function).
+router.get('/agents/stats', (req, res) => agentStatsHandler(req, res));
+
 router.get('/agents/:id', async (req, res) => {
   try {
     rm.invalidateCache();
@@ -221,7 +226,8 @@ router.get('/tasks', async (req, res) => {
 // Answers "which agent actually delivers": completed/failed counts, success
 // rate, average duration, last activity. Cheap to compute (results_log is
 // small), computed on demand — no background job needed.
-router.get('/agents/stats', async (req, res) => {
+// Handler for GET /agents/stats (registered ABOVE /agents/:id — see there).
+async function agentStatsHandler(req, res) {
   try {
     const AQUARIUM = require('../aquarium');
     const fsp = require('fs').promises;
@@ -268,7 +274,7 @@ router.get('/agents/stats', async (req, res) => {
 
     res.json({ success: true, ok: true, total_results: entries.length, agents: stats });
   } catch (err) { res.status(500).json({ success: false, error: err.message }); }
-});
+}
 
 router.get('/tasks/results', async (req, res) => {
   try {
