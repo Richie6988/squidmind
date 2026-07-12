@@ -8,6 +8,27 @@ The interface is a living aquarium: agents swim as animated pixel-art squids, pr
 
 ---
 
+## What's New — July 2026 sprint
+
+**Models & inference**
+- GGUF-header-driven auto-config: real layer count, exact GQA detection (kv-heads), MoE expert count. Oversized models budget VRAM layers-first (fixed ~1.25 GB KV reserve, everything else to GPU layers) instead of handing leftover VRAM to a giant KV cache.
+- Context auto-capped when layers spill to CPU (>60% → 12k, >30% → 16k); gpuLayers OOM retry ladder; the final CPU rung can't be vetoed by node-llama-cpp's pre-load estimator.
+- Low-compute chat mode (>50% layers on CPU): minimal ~600-token system prompt + slim 27-tool set instead of the full 4k prompt — prefill ÷6.
+- CPU threads default to physical cores (was hardcoded 4), batch 1024 (was 512); legacy 4/512 configs soft-migrate at load. Per-turn perf telemetry: `⏱ turn perf: first token 22.4s, decode ~3.2 tok/s`.
+- Live chat status events: broker waits ("busy with task_00xx, held Ns") and slow prefills stream progress to the loader instead of dead air; prefill has its own 20-min budget separate from the 5-min idle timeout.
+- HF downloads: expired-signature 403s retry from the origin URL, Range-resume from kept `.partial` files, Clear-finished/Retry buttons, 🐢 CPU-heavy badge on files bigger than ~85% of detected VRAM.
+
+**Agentic core**
+- Autonomy doctrine: act-first with stated assumptions replaces the clarification questionnaire; background/agent runs may never ask questions (nobody is there).
+- Completion honesty gate: task replies claiming file writes are verified against the tool-write ledger; fabrications fail with a teaching retry and count as honesty strikes.
+- Agent reputation loop: Poseidon's roster and `list_agents` show `✓/✗ (success %) | ⚖ strikes` so critical tasks route to agents that actually deliver.
+- Dream cycle now logs `poseidon_dream` events (Dreams tab in Logs works) and auto-dreams skip low-compute models.
+
+**UI (130% default zoom)**
+- All coordinate math (chat overlay, canvas clicks/hover, drag & drop) divides by the effective CSS zoom; modals and app-shell heights use `--vh100 = 100vh / zoom` so nothing paints below the real fold; kanban cards wrap instead of overflowing narrow columns.
+
+---
+
 ## Table of Contents
 
 1. [Architecture Overview](#1-architecture-overview)
@@ -36,7 +57,14 @@ Express 5 — server/index.js  (Node 22, port 3000)
         │
         ├── V2ModelService        GGUF model loader via node-llama-cpp v3; manages
         │                         per-model LlamaContext + ChatSession; single context
-        │                         slot per model (sequences:1 for KV budget discipline)
+        │                         slot per model (sequences:1 for KV budget discipline).
+        │                         Auto-config reads the GGUF header (real layer count,
+        │                         GQA kv-heads, MoE expert count): oversized models get
+        │                         a layers-first VRAM budget (fixed KV reserve, rest to
+        │                         GPU layers), ctx capped when heavily CPU-offloaded,
+        │                         gpuLayers OOM retry ladder, low-compute chat mode
+        │                         (minimal prompt + slim toolset when >50% layers on
+        │                         CPU), per-turn perf telemetry (first-token s, tok/s).
         │
         ├── ModelBroker           One inference slot total. Priority queue (0=CHAT,
         │                         1=IMAGE, 2=AGENT, 3=POSEIDON_BG, 4=DREAM).
@@ -52,11 +80,19 @@ Express 5 — server/index.js  (Node 22, port 3000)
         │
         ├── TaskRunner            Polls every 5 s. Picks the oldest planned task not
         │                         already running. Enforces one task per agent at a time.
-        │                         Persists _done.json. MAX_RETRIES = 3.
+        │                         Persists _done.json. MAX_RETRIES = 3 with learning
+        │                         retries (previous failure injected into the next
+        │                         attempt's prompt). Completion honesty gate: replies
+        │                         claiming file writes are checked against the verified
+        │                         tool-write ledger — hallucinated deliverables fail
+        │                         with a teaching message and add an honesty strike to
+        │                         the agent's reputation (visible to Poseidon).
         │
         ├── HeartbeatService      5 s tick. Reads CPU/RAM/VRAM. Triggers dream cycle
         │                         when Poseidon idle ≥ 10 min and broker free, with
-        │                         ≥ 30 min cooldown between dreams.
+        │                         ≥ 30 min cooldown between dreams. Auto-dreams are
+        │                         skipped on low-compute models (>50% layers on CPU)
+        │                         so a slow dream never queues chat behind the broker.
         │
         ├── BotService            Telegram long-polling. Routes messages to Poseidon.
         │

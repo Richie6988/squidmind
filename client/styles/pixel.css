@@ -569,7 +569,9 @@ h1 {
 /* Main Layout */
 .main-container {
   display: flex;
-  height: calc(100vh - 70px);
+  /* real visible height at 130% zoom — was 100vh, which painted 30% below
+     the fold (squids swam offscreen, Control Tower bottom unreachable) */
+  height: calc(var(--vh100) - 70px);
 }
 
 .aquarium-wrapper {
@@ -819,7 +821,7 @@ button:active, .btn:active {
     position: fixed;
     right: -400px;
     top: 70px;
-    height: calc(100vh - 70px);
+    height: calc(var(--vh100) - 70px);
     z-index: 100;
     transition: right 0.3s;
   }
@@ -3967,7 +3969,7 @@ input[type="color"]::-webkit-color-swatch {
   position: relative;
   flex: 0 0 auto;
   width: var(--right-panel-width, 280px);
-  height: calc(100vh - 70px);
+  height: calc(var(--vh100) - 70px);
   background: var(--ocean-deep);
   border-left: 2px solid var(--border);
   z-index: 100;
@@ -4807,7 +4809,7 @@ button .pixel-icon {
   border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
-  height: calc(100vh - 70px);
+  height: calc(var(--vh100) - 70px);
   overflow: hidden;
 }
 
@@ -8872,7 +8874,12 @@ h4.pc-md-h { font-size: 8px; color: #94a3b8; }
 /* 130% base zoom for the whole app (user preference — the pixel-art UI
    uses small font sizes tuned for density; this scales everything up).
    CSS zoom is supported in Chromium and Firefox 126+. */
-:root { --app-zoom: 1.3; }
+:root {
+  --app-zoom: 1.3;
+  /* Real visible viewport height: zoom does NOT divide vh, so 100vh paints
+     at 130% of the window. Use this for app-shell heights. */
+  --vh100: calc(100vh / var(--app-zoom));
+}
 html { zoom: var(--app-zoom); }
 
 /* zoom does NOT divide viewport units: max-height:85vh inside the zoomed
