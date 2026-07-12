@@ -128,7 +128,7 @@ class PoseidonOrchestrator {
    * which should fix the 'context shift strategy' errors with qwen3-5-9b
    * at ctx=15000.
    */
-  async buildSystemPrompt(bgMode = false, compactChat = false) {
+  async buildSystemPrompt(bgMode = false) {
     this.rm.invalidateCache();
     const brain = await this.rm.getPoseidonBrain();
     
@@ -199,45 +199,6 @@ My response: "${ss.last_response_preview}"${tools}
       this._sectionCurrentState(brain, agentReg, projectReg, taskReg)
     ];
     const fullPrompt = sections.join('\n\n' + '─'.repeat(60) + '\n\n');
-
-    // LOW-COMPUTE CHAT: on a heavily CPU-offloaded model every prompt token
-    // costs ~30-50ms of prefill (observed: 4238-tok prompt = 3+ minutes
-    // before the first token; the section-stripped variant saved almost
-    // nothing). Build a minimal prompt FROM SCRATCH instead: counts + the
-    // autonomy doctrine condensed + a read_my_brain pointer. Full detail is
-    // one tool call away. checkpoint/session/temp.md resume niceties are
-    // deliberately dropped — 3k chars of nice-to-have is 2 minutes of wait.
-    if (compactChat && !bgMode) {
-      const agentN = Object.keys(agentReg.agents || {}).length;
-      const projN  = Object.values(projectReg.projects || {}).filter(p => p.status !== 'archived').length;
-      const openN  = Object.values(taskReg.tasks || {}).filter(t => t.status !== 'completed' && t.status !== 'archived').length;
-      const compact = [
-        this._sectionUnrestricted(),
-        [
-          '# YOU',
-          `You are Poseidon, orchestrator of this local AI aquarium: ${agentN} agents, ${projN} active projects, ${openN} open tasks.`,
-          'Details on demand: read_my_brain("agents" | "projects" | "tasks" | "skills" | "skills.<name>").',
-          'All data lives in aquarium/ — PROJECTS, AGENTS, TASKS, MODELS, LOGS, SKILLS, BRAIN, CHANNELS.',
-          '',
-          '# TOOLS — CALL THEM, NEVER WRITE THEM',
-          'Your tools are real functions injected by the runtime. To use one, CALL it through the function-calling mechanism.',
-          'NEVER write tool syntax as text — no "||tool_name({...})", no pseudo-calls inside ``` code fences. Text that LOOKS like a call does NOTHING.',
-          'Flow: call ONE tool → wait for its actual result → continue. Never narrate results that have not arrived, never claim an action you did not perform.',
-          'If your reply contains "||" followed by a tool name, you have made this exact mistake — stop and call the function instead.',
-          '',
-          '# AUTONOMY — ACT, DO NOT ASK',
-          'Missing details are decisions YOU make. Defaults: .md output, no deadline, best-fit agent, your judgment on scope/sources/style.',
-          'State assumptions in one line, then act in the SAME reply. NEVER repeat a previous reply verbatim.',
-          'Ask at most ONE question, only if truly blocked (missing credential, unknown recipient, destructive action on an ambiguous target).',
-          'If the user says "be autonomous" / "stop asking" / "do it": asking anything further is FORBIDDEN.',
-          '',
-          '# COMPACT MODE',
-          'This model runs mostly on CPU — every token is expensive. Be concise, no filler, no restating the question.',
-        ].join('\n'),
-      ].join('\n\n' + '─'.repeat(60) + '\n\n');
-      log.info(`Low-compute chat prompt: ${compact.length} chars (full would be ${fullPrompt.length})`);
-      return compact;
-    }
 
     // BG mode: strip verbose sections to save context tokens (~30% reduction)
     if (bgMode) {
@@ -461,6 +422,7 @@ My response: "${ss.last_response_preview}"${tools}
       lines.push('  IF the user says \"be autonomous\", \"stop asking\", \"no more input\", \"do it\", or repeats a request you answered with questions:');
       lines.push('  → asking ANYTHING further is FORBIDDEN for the rest of the session. Act on defaults NOW.');
       lines.push('  NEVER repeat a previous reply verbatim. If you already asked once and the user pushed back, that IS your answer: proceed.');
+      lines.push('  ACTION HONESTY: never state that something was done ("cleared", "created", "reset", "Actions Taken") unless YOU called the tool THIS TURN and saw its real result. Describing an action is not performing it.');
       lines.push('  Your skills are already summarized in this prompt — NEVER enumerate skills one-by-one with read_my_brain.');
       lines.push('  Max 2 read_my_brain calls per turn, and only for a specific skill you are about to execute.');
       lines.push('');

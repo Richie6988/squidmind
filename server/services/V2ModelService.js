@@ -1262,22 +1262,17 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
 
       if (!entry.session) {
         const orchestrator = this.orchestrator;
-        // Low-compute model (>50% of layers on CPU): every prompt token
-        // costs real wall-clock time (observed: 4223-token prompt = minutes
-        // of prefill on the 8x3B MoE). Trade prompt richness for usability:
-        // compact system prompt + slim BG toolset. Stable per-model, so no
-        // session-rebuild churn on chat/bg swaps.
-        const cpuShare   = entry.config?.cpuOffloadShare || 0;
-        const lowCompute = cpuShare > 0.5;
-        if (lowCompute) log.info(` low-compute model (${Math.round(cpuShare * 100)}% layers on CPU) — compact prompt + slim toolset for chat`);
+        // REVERTED (user directive): the low-compute minimal prompt broke
+        // tool calling — the model narrated actions ("||tool()" syntax, then
+        // skill-JSON blobs, then plain-prose "Actions Taken" theater) instead
+        // of calling functions. Chat ALWAYS gets the full prompt + full
+        // toolset; slow prefill on offloaded models is the price of correct
+        // behavior (mitigated by real CPU threads + batch 1024).
         let systemPrompt, functions;
         if (orchestrator) {
-          systemPrompt = await orchestrator.buildSystemPrompt(_bgMode, lowCompute);
+          systemPrompt = await orchestrator.buildSystemPrompt(_bgMode);
           try {
-            // Full toolset normally (the slim BG variant no longer fires on
-            // mode swaps — we keep one session across chat/bg). Low-compute
-            // models use the BG toolset: fewer schemas = shorter prefill.
-            functions = await orchestrator.buildFunctions(lowCompute ? 'bg' : 'chat');
+            functions = await orchestrator.buildFunctions('chat');
           } catch (err) {
             log.warn(' Function-calling setup failed:', err.message, '- continuing without functions');
             functions = undefined;
@@ -1673,7 +1668,7 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
       // signatures and ZERO real tool calls happened, run ONE corrective
       // follow-up in the same session, streamed to the user — honest and
       // visible instead of silently fake.
-      const FAB_PATTERN = /\|\|\s*[a-z_]{3,}\s*\(|"type"\s*:\s*"skill_(created|updated)"|"skill_?id"\s*:|\b(create_task|update_project_memory|write_skill|dispatch_to_agent)\s*\(\s*[{"']/i;
+      const FAB_PATTERN = /\|\|\s*[a-z_]{3,}\s*\(|"type"\s*:\s*"skill_(created|updated)"|"skill_?id"\s*:|\b(create_task|update_project_memory|write_skill|dispatch_to_agent)\s*\(\s*[{"']|\bactions?\s+taken\s*:/i;
       if (!_bgMode && !entry._abortedAt && turnToolCalls === 0 && FAB_PATTERN.test(turnText)) {
         log.warn(' ⚖ fabricated actions in chat reply (0 real tool calls) — running corrective execution pass');
         yield { type: 'status', message: 'Narrated actions detected — nothing was executed. Forcing real execution…' };
