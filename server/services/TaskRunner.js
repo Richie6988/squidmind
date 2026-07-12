@@ -811,6 +811,12 @@ class TaskRunner {
         if (claimsFile && ledger.length === 0) {
           failed = true;
           output = `HONESTY GATE: the reply claims a file was written but NO write_file/edit_file call happened during this task. Actually CREATE the deliverable with write_file (path under output/) — do not describe it. Claimed reply was: ${output.slice(0, 300)}`;
+        } else if (/\|\|\s*[a-z_]{3,}\s*\(/i.test(output)) {
+          // Pseudo tool-calls written as TEXT ("||create_task({...})" in a
+          // code fence) — the model narrated the syntax instead of calling
+          // the function. Nothing executed. Detectable, teachable.
+          failed = true;
+          output = `HONESTY GATE: the reply contains tool-call SYNTAX written as text ("||tool(...)"). Text that looks like a call does NOTHING — no task was created, no memory updated. CALL the functions through the function-calling mechanism, one at a time, and wait for each real result. Reply was: ${output.slice(0, 300)}`;
         } else if (ledger.length === 0 && toolCalls === 0 && output.trim().length < 200) {
           failed = true;
           output = `HONESTY GATE: task ended after ${output.trim().length} chars with ZERO tool calls and ZERO files. Do the actual work with your tools, then summarize. Reply was: ${output.slice(0, 200)}`;

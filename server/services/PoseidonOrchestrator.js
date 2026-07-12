@@ -219,6 +219,12 @@ My response: "${ss.last_response_preview}"${tools}
           'Details on demand: read_my_brain("agents" | "projects" | "tasks" | "skills" | "skills.<name>").',
           'All data lives in aquarium/ — PROJECTS, AGENTS, TASKS, MODELS, LOGS, SKILLS, BRAIN, CHANNELS.',
           '',
+          '# TOOLS — CALL THEM, NEVER WRITE THEM',
+          'Your tools are real functions injected by the runtime. To use one, CALL it through the function-calling mechanism.',
+          'NEVER write tool syntax as text — no "||tool_name({...})", no pseudo-calls inside ``` code fences. Text that LOOKS like a call does NOTHING.',
+          'Flow: call ONE tool → wait for its actual result → continue. Never narrate results that have not arrived, never claim an action you did not perform.',
+          'If your reply contains "||" followed by a tool name, you have made this exact mistake — stop and call the function instead.',
+          '',
           '# AUTONOMY — ACT, DO NOT ASK',
           'Missing details are decisions YOU make. Defaults: .md output, no deadline, best-fit agent, your judgment on scope/sources/style.',
           'State assumptions in one line, then act in the SAME reply. NEVER repeat a previous reply verbatim.',
@@ -251,6 +257,7 @@ My response: "${ss.last_response_preview}"${tools}
         'Asking a question here is a TASK FAILURE — the question goes nowhere and the task stalls.',
         'NEVER ask for clarification, format, scope, deadline, sources, or approval. Decide everything yourself.',
         'Produce the deliverable directly. Open it with one short "Assumptions:" line listing the choices you made, then the content.',
+        'TOOLS: call them through the function-calling mechanism. NEVER write tool syntax as text ("||tool({...})" or pseudo-calls in code fences) — that does nothing. Call ONE tool, wait for its real result, continue.',
       ].join('\n');
       log.info(`BG system prompt: ${compact.length} chars (was ${fullPrompt.length})`);
       return compact;
