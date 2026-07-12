@@ -8888,3 +8888,19 @@ html { zoom: var(--app-zoom); }
    top and bottom. Re-cap every modal shell to the real visible height.
    !important beats the per-modal vh caps scattered above. */
 .modal .modal-content { max-height: calc(88vh / var(--app-zoom)) !important; }
+
+/* ═══ Control Tower: compact resources (user request) ═══════════════════ */
+/* The stock stat rows (7px padding + 12px bars + 4px gaps) ate a third of
+   the tower. Scoped to the monitor only — other stat-items unchanged. */
+#monitor-system-stats .stat-item { padding: 2px 8px; margin-bottom: 2px; }
+#monitor-system-stats .stat-bar  { height: 7px; border-width: 1px; }
+#monitor-system-stats .stat-label { font-size: 8px; min-width: 30px; }
+#monitor-system-stats .stat-value { font-size: 9px; }
+
+/* Agent levels: collapsible header + rows */
+.squad-tele-toggle {
+  font-size: 7px; letter-spacing: .12em; color: #64748b;
+  cursor: pointer; user-select: none; padding: 3px 0 1px;
+  font-family: 'Courier New', monospace;
+}
+.squad-tele-toggle:hover { color: #94a3b8; }

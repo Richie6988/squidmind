@@ -106,7 +106,8 @@ const ControlTowerLive = {
       box.id = 'squad-telemetry';
       host.appendChild(box);
     }
-    const rows = agents.slice(0, 8).map(a => {
+    const open = !!this._levelsOpen;  // collapsed by default — saves tower space
+    const rows = open ? agents.slice(0, 8).map(a => {
       const done   = a.performance_summary?.tasks_completed || 0;
       const level  = Math.floor(Math.sqrt(done)) + 1;
       const next   = level * level;             // validated tasks needed for next level
@@ -116,8 +117,13 @@ const ControlTowerLive = {
         <span class="squad-tele-name">${((a.display_name || a.agent_id) + '').slice(0, 16)}</span>
         <span class="squad-tele-rate" style="color:${lvColor};font-weight:700;">Lv ${level}</span>
       </div>`;
-    }).join('');
-    box.innerHTML = rows;
+    }).join('') : '';
+    box.innerHTML =
+      `<div class="squad-tele-toggle" id="squad-levels-toggle">${open ? '▾' : '▸'} AGENT LEVELS</div>${rows}`;
+    box.querySelector('#squad-levels-toggle').onclick = () => {
+      this._levelsOpen = !this._levelsOpen;
+      this._renderAgentLevels(agents);
+    };
   },
 
   /**
