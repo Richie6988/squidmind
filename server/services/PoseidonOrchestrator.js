@@ -398,6 +398,7 @@ My response: "${ss.last_response_preview}"${tools}
       lines.push('  RULE: any request involving multiple items, sources, files, URLs, agents = ONE task per item. NEVER one big task.');
       lines.push('  RULE: before create_task, mentally list all items. Create N separate tasks, one per item.');
       lines.push('  RULE: every task that produces content or files MUST include acceptance_criteria (2-4 concrete, checkable statements). The quality review judges the deliverable against them — vague criteria = vague deliverables.');
+      lines.push('  RULE: task descriptions must be EXECUTION-READY. The agent executes — it does not plan. A good description contains: (1) numbered imperative steps in order, (2) the exact output filename (e.g. output/newsletter_draft.md), (3) concrete inputs (URLs, source files, topics). "Set up the pipeline" is a BAD description; "1. web_search top AI news today 2. pick 5 stories 3. write 600-word digest to output/digest.md" is a GOOD one.');
       lines.push('  RULE: task title must be specific: "Scrape BBC News https://bbc.com/news" not "Check all sources".');
       lines.push('  RULE: after creating tasks → STOP. Do NOT execute. Reply: "Created N tasks: [list]".');
       lines.push('  RULE: inline execution only for single, immediate actions (read one file, answer one question).');

@@ -464,12 +464,16 @@ class TaskRunner {
 
       // Trim components to prevent context overflow on small models (16k ctx)
       const titleLine  = `TASK [${taskId}]: ${task.title}`;
+      // Pure-executor doctrine: the plan is Poseidon's job; the agent's job
+      // is tool calls. Without this, agents spent their turn re-analyzing
+      // the task ("thinking about what to do") instead of doing it.
+      const execLine   = 'EXECUTE MODE: the plan is already decided — do NOT restate, re-plan or analyze this task. Start calling tools IMMEDIATELY and produce the deliverable. Thinking out loud is not work; only tool calls and the written output count.';
       const descLine   = descPart  ? descPart.slice(0, 400)   : '';
       const projLine   = projectPart;
       const memLine    = projectMemoryPart ? projectMemoryPart.slice(0, 400) : '';
       const progLine   = progressPart ? progressPart.slice(0, 200) : '';
       const msg = [
-        titleLine, descLine, critPart, priorPart, projLine, memLine, progLine,
+        titleLine, execLine, descLine, critPart, priorPart, projLine, memLine, progLine,
         '\n---\nUse your tools. Update progress after each step. ' +
         'FILES: write ONLY final deliverables to output/, intermediate files to work/. ' +
         'Do NOT create other folders. Do NOT save thoughts/notes/plans as files — condense them into ' +
@@ -955,11 +959,16 @@ class TaskRunner {
           task.review = { score: Number.isFinite(score) ? score : null, verdict, at: new Date().toISOString() };
           log.info(`⭐ quality review ${taskId}: ${verdict}${Number.isFinite(score) ? ` (${score}/10)` : ''}`);
           if (verdict === 'REVISE' && fixes) {
-            // Send back for ONE revision — the learning-retry machinery
-            // injects `progress` into the next attempt's prompt.
+            // Poseidon validation loop: the task restarts with a BETTER
+            // DESCRIPTION, not just a note — the revision requirements are
+            // appended to the description itself (drives the re-run prompt
+            // fully; progress is sliced to 200 chars) plus the progress
+            // teaching for continuity.
+            const upgradedDesc = `${task.description || ''}\n\nREVISION REQUIREMENTS (validation, attempt ${(task.revisions || 0) + 1}): ${fixes}`.slice(0, 1200);
             await this._setStatus(taskId, 'open', {
               revisions: (task.revisions || 0) + 1,
               review: task.review,
+              description: upgradedDesc,
               progress: `QUALITY REVIEW${Number.isFinite(score) ? ` (${score}/10)` : ''} — the previous deliverable needs these SPECIFIC fixes before it is acceptable: ${fixes}. Revise the existing deliverable (read it first), do not start from scratch.`
             });
             await this.rm.log({
@@ -1016,6 +1025,7 @@ class TaskRunner {
       if (extra.progress  !== undefined) task.progress  = extra.progress;
       if (extra.revisions !== undefined) task.revisions = extra.revisions;
       if (extra.review    !== undefined) task.review    = extra.review;
+      if (extra.description !== undefined) task.description = extra.description;
 
       // Write to results_log BEFORE _writeTaskDetails purges terminal tasks
       const TERMINAL_FOR_LOG = new Set(['completed', 'failed', 'cancelled']);
