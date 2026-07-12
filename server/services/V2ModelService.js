@@ -1551,6 +1551,8 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
       let lastChunkAt = Date.now();
       let firstEventSeen = false;
       let firstEventAt = 0;
+      let turnText = '';
+      let turnToolCalls = 0;
       const turnStartToks = entry.totalTokensGenerated;
       const IDLE_TIMEOUT_MS = 300000;  // 5 min — tool calls (web fetch, file ops) can take time
       const ABSOLUTE_MAX_MS = 30 * 60_000;
@@ -1569,7 +1571,9 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
           firstEventSeen = true;
           if (ev.type === 'text') {
             entry.totalTokensGenerated += Math.ceil(ev.chunk.length / 4);
+            turnText += ev.chunk;
           }
+          if (ev.type === 'tool_call') turnToolCalls++;
           yield ev;
         }
         if (isDone) break;
@@ -1650,6 +1654,58 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
       }
       entry._thinkBuf = '';
       entry._inThink  = false;
+
+      // Final drain: the flush above pushes tail events into `events` AFTER
+      // the streaming loop exited — they were never yielded to the client
+      // (pre-existing bug: the end of a reply could silently vanish).
+      while (lastIdx < events.length) {
+        const ev = events[lastIdx++];
+        if (ev.type === 'text') { turnText += ev.chunk; entry.totalTokensGenerated += Math.ceil(ev.chunk.length / 4); }
+        if (ev.type === 'tool_call') turnToolCalls++;
+        yield ev;
+      }
+
+      // ── FABRICATION AUTO-CORRECTION (chat only, once per user message) ──
+      // Prompt doctrine alone cannot fix a weak function-calling head: the
+      // model keeps inventing new theater ("||tool(...)" syntax, raw skill
+      // JSON blobs) that LOOKS like orchestration and executes nothing.
+      // Mechanical backstop: if the finished reply matches fabrication
+      // signatures and ZERO real tool calls happened, run ONE corrective
+      // follow-up in the same session, streamed to the user — honest and
+      // visible instead of silently fake.
+      const FAB_PATTERN = /\|\|\s*[a-z_]{3,}\s*\(|"type"\s*:\s*"skill_(created|updated)"|"skill_?id"\s*:|\b(create_task|update_project_memory|write_skill|dispatch_to_agent)\s*\(\s*[{"']/i;
+      if (!_bgMode && !entry._abortedAt && turnToolCalls === 0 && FAB_PATTERN.test(turnText)) {
+        log.warn(' ⚖ fabricated actions in chat reply (0 real tool calls) — running corrective execution pass');
+        yield { type: 'status', message: 'Narrated actions detected — nothing was executed. Forcing real execution…' };
+        yield { type: 'text', chunk: '\n\n_[System: the actions above were narrated, not executed — running them for real now.]_\n\n' };
+        try {
+          const correction = session.prompt(
+            '[SYSTEM CHECK] Your previous reply WROTE actions as text (tool syntax or JSON) — none of it executed: no task was created, no memory updated, no skill written. ' +
+            'Now DO it: call the actual functions through the function-calling mechanism, ONE at a time, waiting for each real result. ' +
+            'Do NOT repeat the narration, do NOT output JSON or "||" syntax — only real calls, then a one-line summary of what actually happened.',
+            promptOpts
+          );
+          let corrIdle = Date.now();
+          while (true) {
+            const done = await Promise.race([
+              correction.then(() => true),
+              new Promise(r => setTimeout(() => r(false), 100))
+            ]);
+            while (lastIdx < events.length) {
+              const ev = events[lastIdx++];
+              corrIdle = Date.now();
+              if (ev.type === 'text') entry.totalTokensGenerated += Math.ceil(ev.chunk.length / 4);
+              yield ev;
+            }
+            if (done) break;
+            if (entry._abortRequested) break;
+            if (Date.now() - corrIdle > 300000) { log.warn(' corrective pass idle timeout'); break; }
+          }
+          while (lastIdx < events.length) yield events[lastIdx++];
+        } catch (corrErr) {
+          log.warn(` corrective pass failed: ${corrErr.message}`);
+        }
+      }
 
       // ── Per-turn performance telemetry ──────────────────────────────────
       // Objective numbers instead of "it feels slow": time-to-first-token
