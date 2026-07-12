@@ -392,8 +392,9 @@ const aquarium = {
     this.selectedSquid = squid;
     squid.isSelected = true;
     
-    // Show detail panel
-    ui.showSquidDetail(squid);
+    // Left click = SELECT only (highlight ring). Edition / detail lives in
+    // the right-click menu — opening a panel on every left click was
+    // redundant and annoying (user request).
   }
 };
 
