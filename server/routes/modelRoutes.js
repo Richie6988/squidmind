@@ -373,6 +373,23 @@ function buildRouter(modelService) {
     res.json({ success: true, broker: modelService.broker?.getState?.() ?? null });
   });
 
+  // GET /api/v2/models/tool-usage — per-tool telemetry for factual pruning.
+  // Returns calls / success / avg latency / by-mode split since first record.
+  router.get('/tool-usage', async (req, res) => {
+    try {
+      const ModelService = require('../services/ModelService');
+      res.json({ success: true, ...(await ModelService.getToolStats()) });
+    } catch (e) { res.status(500).json({ success: false, error: e.message }); }
+  });
+  // DELETE /api/v2/models/tool-usage — reset the counters (starts a new window).
+  router.delete('/tool-usage', async (req, res) => {
+    try {
+      const ModelService = require('../services/ModelService');
+      await ModelService.resetToolStats();
+      res.json({ success: true });
+    } catch (e) { res.status(500).json({ success: false, error: e.message }); }
+  });
+
   // POST /api/v2/models/import - register a model in the library (no load)
   router.post('/import', async (req, res) => {
     try {

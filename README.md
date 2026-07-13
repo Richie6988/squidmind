@@ -301,7 +301,8 @@ After wiring, at startup:
 | GET | `/api/v2/projects/:id/outputs` | List output files with name, size, mtime |
 | GET | `/api/v2/projects/:id/inputs` | List input files |
 | POST | `/api/v2/projects/:id/inputs` | Upload file to project input/ |
-| DELETE | `/api/v2/projects/:id/inputs/:filename` | Remove input file |
+| DELETE | `/api/v2/projects/:id/inputs/:filename`  | Remove input file |
+| DELETE | `/api/v2/projects/:id/outputs/:filename` | Remove output file |
 | GET | `/api/v2/projects/:id/inputs/:filename` | Serve input file |
 | GET | `/api/v2/projects/:id/outputs/:filename` | Serve output file |
 | GET | `/api/files/read` | Serve arbitrary file by absolute path |
@@ -466,7 +467,7 @@ Runs a single task for a single agent.
 
 **System prompt sections for agents:** identity, specialization, role, personality traits, current task, project context, skill list with steps.
 
-**AgentWorkerPool (417 lines):** Manages a pool of AgentWorker instances. Used exclusively by the `/api/v2/agents/:id/run` manual dispatch route — it is NOT used by TaskRunner for automated task execution (TaskRunner runs all scheduled tasks via Poseidon BG mode via `chatWithPoseidon`). Useful for direct manual agent invocation from the UI or external API calls.
+**AgentWorkerPool (417 lines):** Manages a pool of AgentWorker instances. Used exclusively by the `/api/v2/agents/:id/run` route (manual dispatch) — it is NOT used by TaskRunner for automated task execution (TaskRunner runs all scheduled tasks via Poseidon BG mode via `chatWithPoseidon`). Useful for direct manual agent invocation from the UI or external API calls.
 
 ---
 

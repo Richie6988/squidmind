@@ -428,7 +428,17 @@ const ModelLoader = {
           ${(!cats[col.key]?.length) ? `<div class="ml-cat-empty">DROP HERE</div>` : ''}
         </div>
       </div>`).join('')}
+    </div>
+    <div style="margin-top:16px;padding:10px;border-top:1px solid var(--border);">
+      <button class="btn-secondary" id="ml-tool-usage-btn"
+        style="width:100%;display:inline-flex;align-items:center;justify-content:center;gap:6px;font-size:10px;"
+        title="Per-tool call counts, success rate and latency — evidence for pruning the toolset">
+        📊 Tool Usage Telemetry
+      </button>
     </div>`;
+
+    // Wire the tool-usage panel opener
+    container.querySelector('#ml-tool-usage-btn')?.addEventListener('click', () => this._openToolUsage());
 
     // Wire drag handles on all model cards
     container.querySelectorAll('.model-library-card').forEach(card => {
@@ -441,6 +451,89 @@ const ModelLoader = {
       });
       card.addEventListener('dragend', () => { card.style.opacity = ''; });
     });
+  },
+
+  /**
+   * Tool-usage telemetry panel — a modal with the per-tool call table:
+   * name / calls / success % / avg latency / last used / by-mode split.
+   * Sorted by call count desc. This is the evidence needed to prune the
+   * toolset without guessing — the top of the list stays, the tail with
+   * zero real calls is the obvious cut.
+   */
+  async _openToolUsage() {
+    const existing = document.getElementById('ml-tool-usage-modal');
+    if (existing) existing.remove();
+    const dlg = document.createElement('div');
+    dlg.id = 'ml-tool-usage-modal';
+    dlg.className = 'modal';
+    dlg.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.65);z-index:10001;display:flex;align-items:center;justify-content:center;';
+    dlg.innerHTML = `
+      <div class="modal-content" style="max-width:820px;width:92vw;max-height:80vh;overflow:auto;background:var(--ocean-deep);border:2px solid var(--border);border-radius:6px;padding:18px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:10px;">
+          <h2 style="margin:0;font-size:12px;letter-spacing:.06em;">📊 Tool Usage Telemetry</h2>
+          <div style="display:flex;gap:6px;">
+            <button class="btn-secondary" id="ml-tu-reset" style="font-size:9px;">Reset window</button>
+            <button class="btn-secondary" id="ml-tu-close" style="font-size:9px;">Close</button>
+          </div>
+        </div>
+        <div id="ml-tu-since" style="font-size:9px;color:#94a3b8;margin-bottom:8px;"></div>
+        <div id="ml-tu-body">Loading…</div>
+        <div style="font-size:9px;color:#94a3b8;margin-top:12px;line-height:1.5;">
+          <strong>How to read this</strong>: rows sorted by total calls. Tools with 0 calls after a few days of real use are strong candidates for pruning; low success rate + high calls means the model is confused about the tool; very high avg latency on a rarely-used tool is a specific bottleneck.
+        </div>
+      </div>`;
+    document.body.appendChild(dlg);
+    dlg.querySelector('#ml-tu-close').onclick = () => dlg.remove();
+    dlg.querySelector('#ml-tu-reset').onclick = async () => {
+      if (!await SquidModal.confirm('Reset tool usage counters? The persisted history is discarded and a new measurement window begins now.')) return;
+      await window.api._fetch('/models/tool-usage', { method: 'DELETE' });
+      this._refreshToolUsage(dlg);
+    };
+    this._refreshToolUsage(dlg);
+  },
+
+  async _refreshToolUsage(dlg) {
+    const body = dlg.querySelector('#ml-tu-body');
+    const since = dlg.querySelector('#ml-tu-since');
+    try {
+      const r = await window.api._fetch('/models/tool-usage');
+      const rows = r.rows || [];
+      since.textContent = `Since ${r.since ? new Date(r.since).toLocaleString() : '—'} · ${rows.length} tool(s) recorded`;
+      if (!rows.length) {
+        body.innerHTML = '<p style="font-size:10px;color:#94a3b8;padding:20px;text-align:center;">No tool calls recorded yet — chat with Poseidon or run a task, then reopen this panel.</p>';
+        return;
+      }
+      const fmt = (ms) => ms >= 10000 ? `${(ms/1000).toFixed(1)}s` : `${ms}ms`;
+      const modeSplit = (bm) => Object.entries(bm || {}).map(([k, v]) => `${k}:${v}`).join(' ');
+      body.innerHTML = `
+        <table style="width:100%;border-collapse:collapse;font-size:10px;">
+          <thead>
+            <tr style="background:rgba(255,255,255,0.04);">
+              <th style="text-align:left;padding:6px 8px;">Tool</th>
+              <th style="text-align:right;padding:6px 8px;">Calls</th>
+              <th style="text-align:right;padding:6px 8px;">Success</th>
+              <th style="text-align:right;padding:6px 8px;">Avg latency</th>
+              <th style="text-align:left;padding:6px 8px;">By mode</th>
+              <th style="text-align:left;padding:6px 8px;">Last used</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows.map(row => {
+              const okColor = row.success_rate >= 90 ? '#06ffa5' : row.success_rate >= 70 ? '#fbbf24' : '#ef4444';
+              return `<tr style="border-top:1px solid rgba(255,255,255,0.06);">
+                <td style="padding:5px 8px;font-family:'Courier New',monospace;">${row.name}</td>
+                <td style="padding:5px 8px;text-align:right;">${row.calls}</td>
+                <td style="padding:5px 8px;text-align:right;color:${okColor};">${row.success_rate}%</td>
+                <td style="padding:5px 8px;text-align:right;color:#94a3b8;">${fmt(row.avg_ms)}</td>
+                <td style="padding:5px 8px;color:#94a3b8;font-family:'Courier New',monospace;">${modeSplit(row.by_mode)}</td>
+                <td style="padding:5px 8px;color:#94a3b8;">${row.last_at ? new Date(row.last_at).toLocaleString() : '—'}</td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>`;
+    } catch (e) {
+      body.innerHTML = `<p style="font-size:10px;color:var(--danger);padding:12px;">Failed to load telemetry: ${e.message}</p>`;
+    }
   },
 
   async _catDrop(event, newCategory) {

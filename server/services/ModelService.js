@@ -28,6 +28,82 @@ class ModelService {
   // Any model with trainCtx < this is an encoder / non-chat model.
   static MIN_VIABLE_CTX = 4096;
 
+  // ── Tool-usage telemetry ───────────────────────────────────────────────
+  // Facts-based pruning: counts per tool since first run (or since manual
+  // reset). Persisted debounced 30s to LOGS/tool_usage.json so a crash
+  // doesn't lose the day. Loaded lazily on the first record so the file
+  // is optional (fresh install → empty stats, no error).
+  static _toolStats = null;
+  static _toolStatsDirty = false;
+  static _toolStatsTimer = null;
+
+  static async _loadToolStats() {
+    if (ModelService._toolStats) return ModelService._toolStats;
+    const AQUARIUM = require('../aquarium');
+    const p = require('path').join(AQUARIUM.LOGS, 'tool_usage.json');
+    try {
+      const raw = await require('fs').promises.readFile(p, 'utf8');
+      ModelService._toolStats = JSON.parse(raw);
+    } catch {
+      ModelService._toolStats = { since: new Date().toISOString(), tools: {} };
+    }
+    return ModelService._toolStats;
+  }
+
+  static _recordToolUse(name, { ok, duration_ms, mode }) {
+    if (!ModelService._toolStats) {
+      // Kick off the load; subsequent calls tick against the loaded object.
+      ModelService._loadToolStats().catch(() => {});
+      return;
+    }
+    const t = ModelService._toolStats.tools[name] ||= {
+      calls: 0, ok: 0, err: 0, last_at: null,
+      total_duration_ms: 0, by_mode: {},
+    };
+    t.calls++;
+    if (ok) t.ok++; else t.err++;
+    t.total_duration_ms += Math.max(0, duration_ms || 0);
+    t.last_at = new Date().toISOString();
+    t.by_mode[mode || 'chat'] = (t.by_mode[mode || 'chat'] || 0) + 1;
+    ModelService._toolStatsDirty = true;
+    // Debounce persist: 30s idle → write. A busy chain of 100 calls costs
+    // one write, not 100.
+    if (!ModelService._toolStatsTimer) {
+      ModelService._toolStatsTimer = setTimeout(() => {
+        ModelService._toolStatsTimer = null;
+        if (!ModelService._toolStatsDirty) return;
+        ModelService._toolStatsDirty = false;
+        const AQUARIUM = require('../aquarium');
+        const p = require('path').join(AQUARIUM.LOGS, 'tool_usage.json');
+        require('fs').promises.writeFile(p, JSON.stringify(ModelService._toolStats, null, 2), 'utf8').catch(() => {});
+      }, 30_000);
+    }
+  }
+
+  static async getToolStats() {
+    await ModelService._loadToolStats();
+    // Enrich with average latency + success rate for the UI.
+    const rows = Object.entries(ModelService._toolStats.tools).map(([name, t]) => ({
+      name,
+      calls: t.calls,
+      ok: t.ok, err: t.err,
+      success_rate: t.calls ? +(t.ok / t.calls * 100).toFixed(1) : 0,
+      avg_ms: t.calls ? Math.round(t.total_duration_ms / t.calls) : 0,
+      last_at: t.last_at,
+      by_mode: t.by_mode || {},
+    })).sort((a, b) => b.calls - a.calls);
+    return { since: ModelService._toolStats.since, rows };
+  }
+
+  static async resetToolStats() {
+    ModelService._toolStats = { since: new Date().toISOString(), tools: {} };
+    ModelService._toolStatsDirty = true;
+    if (ModelService._toolStatsTimer) { clearTimeout(ModelService._toolStatsTimer); ModelService._toolStatsTimer = null; }
+    const AQUARIUM = require('../aquarium');
+    const p = require('path').join(AQUARIUM.LOGS, 'tool_usage.json');
+    await require('fs').promises.writeFile(p, JSON.stringify(ModelService._toolStats, null, 2), 'utf8').catch(() => {});
+  }
+
   constructor(registryManager, modelsDir) {
     this.rm = registryManager;
     this.modelsDir = modelsDir;
@@ -1718,10 +1794,22 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
                     events.push({ type: 'image', url: imgUrl, alt, caption: alt });
                   }
                 }
+                // Telemetry — count success + latency so we can prune the
+                // toolset later on FACTS, not opinion. Includes success/error
+                // split; loop_broken / budget_exceeded already counted early.
+                ModelService._recordToolUse(fnName, {
+                  ok: !(result && result.ok === false),
+                  duration_ms: Date.now() - callTime,
+                  mode: entry._sessionMode || 'chat',
+                });
                 return result;
               } catch (err) {
                 const errResult = { ok: false, error: err.message };
                 events.push({ type: 'tool_result', name: fnName, result: errResult, duration_ms: Date.now() - callTime });
+                ModelService._recordToolUse(fnName, {
+                  ok: false, duration_ms: Date.now() - callTime,
+                  mode: entry._sessionMode || 'chat',
+                });
                 return errResult;
               }
             }
