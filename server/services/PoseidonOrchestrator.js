@@ -631,6 +631,7 @@ My response: "${ss.last_response_preview}"${tools}
 
       create_task: defineChatSessionFunction({
         description: 'Create a task in the tasks registry. Optionally assign to a specific agent. ' +
+          'If you set assigned_agent_id, the task is ALREADY assigned and will run automatically — do NOT also call dispatch_to_agent for it (that creates a duplicate). ' +
           'ALWAYS include acceptance_criteria: 2-4 concrete, checkable statements defining what a GOOD ' +
           'deliverable looks like (e.g. "covers at least 5 sources with URLs", "under 800 words", ' +
           '"saved as output/newsletter.md"). The quality review judges the deliverable against them. ' +
@@ -1728,7 +1729,8 @@ My response: "${ss.last_response_preview}"${tools}
       }),
 
       dispatch_to_agent: defineChatSessionFunction({
-        description: 'Create a task assigned to a specific agent and queue it for execution. The TaskRunner will pick it up automatically. Prefer create_task directly for most cases. Use this when you need to assign to a specific agent immediately.',
+        description: 'Create a task assigned to a specific agent and queue it for execution. The TaskRunner will pick it up automatically. ' +
+          'NEVER call this after create_task for the same work: create_task with assigned_agent_id ALREADY assigns and queues the task — calling dispatch_to_agent afterwards creates a DUPLICATE. Use one or the other, never both.',
         params: {
           type: 'object',
           properties: {
@@ -1741,6 +1743,22 @@ My response: "${ss.last_response_preview}"${tools}
         },
         handler: async ({ agent_id, title, description, project_id }) => {
           try {
+            // Duplicate guard: the model routinely chains create_task →
+            // dispatch_to_agent for the SAME work (observed: task created
+            // twice). If an open task with the same title + agent was
+            // created in the last 2 minutes, return it instead of forking.
+            try {
+              const reg = await self.rm.getTasksRegistry();
+              const dup = Object.values(reg.tasks || {}).find(t =>
+                t.title === title &&
+                t.assigned_to === agent_id &&
+                !['completed', 'failed', 'cancelled', 'archived'].includes(t.status) &&
+                Date.now() - new Date(t.created_at || 0).getTime() < 120_000
+              );
+              if (dup) {
+                return `Task "${title}" already exists as ${dup.task_id} (created ${Math.round((Date.now() - new Date(dup.created_at).getTime()) / 1000)}s ago, assigned to ${agent_id}) — NOT duplicated. It will run automatically.`;
+              }
+            } catch {}
             const result = await self._createTask({
               title,
               description: description || title,

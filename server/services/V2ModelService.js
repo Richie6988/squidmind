@@ -1371,10 +1371,24 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
           throw new Error('No sequences left — failed to recover after context recreate');
         };
         sequence = await _acquireSequence();
+        // Wrapper selection: 'auto' resolves via GGUF metadata; for finetunes
+        // the resolver often can't match a specialized wrapper and falls back
+        // to JinjaTemplateChatWrapper (the template shipped IN the gguf).
+        // Uncensored/ablated finetunes frequently ship sloppy templates →
+        // function calling degrades into narrated JSON ("skill blobs", fake
+        // pipelines). For known model families, force the specialized wrapper
+        // (grammar-backed function calling) instead of trusting the template.
+        let chatWrapper = 'auto';
+        const mid = (this.poseidonModelId || '').toLowerCase();
+        if (/qwen/.test(mid) && llamaCpp.QwenChatWrapper) {
+          chatWrapper = new llamaCpp.QwenChatWrapper();
+        } else if (/llama[-_.]?3|^l3[-_.]/.test(mid) && llamaCpp.Llama3_1ChatWrapper) {
+          chatWrapper = new llamaCpp.Llama3_1ChatWrapper();
+        }
         entry.session    = new llamaCpp.LlamaChatSession({
           contextSequence: sequence,
           systemPrompt,
-          chatWrapper: 'auto'
+          chatWrapper
         });
         entry._functions         = functions;
         entry._currentSequence   = sequence;
@@ -1382,6 +1396,7 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
         entry._sessionMode       = _bgMode ? 'bg' : 'chat';
         entry._lastSystemPromptChars = systemPrompt.length;
         const wrapper = entry.session.chatWrapper?.constructor?.name || 'unknown';
+        if (chatWrapper !== 'auto') log.info(` chatWrapper forced to ${wrapper} (model family match — Jinja fallback breaks function calling on finetunes)`);
         log.info(` Session created for ${this.poseidonModelId} (${wrapper}, ctx=${ctxTokens}, prompt=${promptTokens}tok${functions ? `, ${Object.keys(functions).length} tools` : ', no tools (ctx too small)'})`);
         // First message on a low-compute model pays a long prefill (the
         // whole system prompt through the CPU-offloaded layers) — announce
