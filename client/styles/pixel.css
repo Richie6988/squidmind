@@ -4815,7 +4815,7 @@ button .pixel-icon {
 
 .btn-new-project-card {
   flex: 0 0 auto;
-  margin: 12px;
+  margin: 14px 12px 12px 12px;   /* +2px top so hover translateY(-2px) is not clipped by container overflow:hidden */
   padding: 10px 12px;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   color: white;
@@ -4825,10 +4825,11 @@ button .pixel-icon {
   font-size: 9px;
   cursor: pointer;
   box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
-  transition: transform 0.15s;
+  transition: transform 0.15s, box-shadow 0.15s;
 }
 .btn-new-project-card:hover {
   transform: translateY(-2px);
+  box-shadow: 0 6px 18px rgba(102, 126, 234, 0.5);
 }
 
 .temple-cards-list {

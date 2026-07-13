@@ -1110,16 +1110,19 @@ const PoseidonChat = {
     if (!this._streamVoiceActive) return;
 
     this._streamBuffer += chunk;
-    // Extract complete sentences: end at . ! ? … ; or a hard newline pair.
-    // Minimum 24 chars per unit so we don't fire on "Ok." alone.
-    const SENT_RE = /([^.!?…\n]+[.!?…]+["')\]]*|\S[^\n]{80,}\n)/g;
+    // Fire on CLAUSE boundaries — .!?…;:,— (long-dash) or hard newline —
+    // instead of only sentences. A clause of 6-15 words gets natural
+    // prosody with much lower latency than waiting for a full sentence
+    // (2-3s to first speech vs 8-10s). Minimum 12 chars so "Ok," alone
+    // doesn't fire the TTS pipeline for nothing.
+    const CLAUSE_RE = /([^.!?…;:,—\n]+[.!?…;:,—]+["')\]]*|\S[^\n]{50,}\n)/g;
     let m; let lastEnd = 0;
-    while ((m = SENT_RE.exec(this._streamBuffer)) !== null) {
+    while ((m = CLAUSE_RE.exec(this._streamBuffer)) !== null) {
       const s = m[0].trim();
       lastEnd = m.index + m[0].length;
       // Skip markdown-only fragments (headers, list bullets on their own line)
       const clean = s.replace(/^[#>*\-`\s]+/, '').trim();
-      if (clean.length >= 24) this._enqueueStreamSentence(clean);
+      if (clean.length >= 12) this._enqueueStreamSentence(clean);
     }
     if (lastEnd > 0) this._streamBuffer = this._streamBuffer.slice(lastEnd);
   },
