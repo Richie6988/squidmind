@@ -711,7 +711,12 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
         const bytesPerLayerGb = fileSizeGb / estLayers;
         ModelService._kvProbe = ModelService._kvProbe || new Map();
         const cachedProbe = ModelService._kvProbe.get(`${fileName}|fa=${!!config.flashAttention}`);
-        const kvBytesPerTok = cachedProbe?.kvPerTok || 100 * 1024;
+        // KV per token: use MEASURED value from a prior load if cached
+        // (accurate per architecture), else 65 KB/tok — empirical from
+        // measured hybrid qwen35 (was 100 → left 4 GB of VRAM unused
+        // because the reservation was 75% too big). GQA + hybrid archs
+        // are more efficient than dense-attention rules of thumb suggest.
+        const kvBytesPerTok = cachedProbe?.kvPerTok || 65 * 1024;
         const ctxKvGb = (config.contextLength * kvBytesPerTok) / (1024 ** 3);
         const marginGb = isMoE ? 0.85 : 0.55; // KV cache metadata + compute buffers + CUDA runtime
         const availLayersGb = Math.max(0, freeBeforeGb - ctxKvGb - marginGb);
@@ -1028,6 +1033,28 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
           });
           config.contextLength = context.contextSize;
           log.info(`  Context created: ${config.contextLength} tokens${i > 0 ? ` (after ${i} retry/ies)` : ''}`);
+          // Post-hoc KV measurement: we just created a real context of known
+          // size — measure what it actually cost so the next load's auto-
+          // budget uses ground truth instead of an empirical fallback.
+          // This is more reliable than the pre-load differential probe
+          // (which happens on a bare model with cold buffers).
+          try {
+            const vramNow = await llama.getVramState();
+            if (vramNow && vramAfter) {
+              const ctxCostBytes = Math.max(0, vramAfter.free - vramNow.free);
+              const measuredKv = Math.round(ctxCostBytes / config.contextLength);
+              if (measuredKv > 512 && measuredKv < 500 * 1024) {  // sane range
+                ModelService._kvProbe = ModelService._kvProbe || new Map();
+                const probeKey = `${fileName}|fa=${!!config.flashAttention}`;
+                const prev = ModelService._kvProbe.get(probeKey);
+                ModelService._kvProbe.set(probeKey, {
+                  kvPerTok: measuredKv,
+                  fixedBytes: prev?.fixedBytes || 0.3 * 1024 ** 3,
+                });
+                log.info(`  📏 measured actual KV cost: ${(ctxCostBytes / 1024 ** 3).toFixed(2)}GB for ${config.contextLength} tokens → ${(measuredKv / 1024).toFixed(1)}KB/tok (cached for next load)`);
+              }
+            }
+          } catch { /* best effort */ }
           ctxErr = null;
           break;
         } catch (e) {
