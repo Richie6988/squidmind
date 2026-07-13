@@ -1924,12 +1924,24 @@ My response: "${ss.last_response_preview}"${tools}
                 return `Task "${title}" already exists as ${dup.task_id} (created ${Math.round((Date.now() - new Date(dup.created_at).getTime()) / 1000)}s ago, assigned to ${agent_id}) — NOT duplicated. It will run automatically.`;
               }
             } catch {}
+            // Resolve project name (needed for temple-membership check
+            // in _createTask, which uses `project` name — not project_id).
+            let projectName = null;
+            if (project_id) {
+              try {
+                const proj = await self.rm.resolveProjectByNameOrId(project_id);
+                projectName = proj?.entry?.name || null;
+              } catch {}
+            }
+            // FIX: _createTask expects assigned_agent_id + project (name),
+            // not assigned_to + project_id. Two silently ignored fields =
+            // task created unassigned and outside its temple. Rename.
             const result = await self._createTask({
               title,
               description: description || title,
               priority: 'medium',
-              project_id: project_id || null,
-              assigned_to: agent_id
+              project: projectName,
+              assigned_agent_id: agent_id
             });
             return { ok: true, task_id: result.task_id, message: `Task "${title}" created and assigned to ${agent_id}. TaskRunner will execute it automatically.` };
           } catch(e) { return { ok: false, error: e.message }; }

@@ -298,10 +298,20 @@ class TaskRunner {
           && !depsPending
           && Date.now() >= retryDelay;
       })
-      // Queue order: explicit sort_order bump (image/urgent tasks) then FIFO by task_id
+      // Queue order: PRIORITY first (critical > high > medium > low),
+      // then explicit sort_order bump, then chronological by created_at
+      // (falls back to task_id). Fixes the case where a newer high-priority
+      // task started while an older high-priority task waited at the
+      // top of the visible queue.
       .sort((a, b) => {
+        const P = { critical: 4, high: 3, medium: 2, low: 1 };
+        const priorityDiff = (P[b.priority] || 2) - (P[a.priority] || 2);
+        if (priorityDiff !== 0) return priorityDiff;
         const pDiff = (b.sort_order || 0) - (a.sort_order || 0);
         if (pDiff !== 0) return pDiff;
+        const aTime = a.created_at ? new Date(a.created_at).getTime() : 0;
+        const bTime = b.created_at ? new Date(b.created_at).getTime() : 0;
+        if (aTime && bTime && aTime !== bTime) return aTime - bTime;
         return (a.task_id || '').localeCompare(b.task_id || '');
       });
 
