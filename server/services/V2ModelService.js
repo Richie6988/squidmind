@@ -620,7 +620,13 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
             // small fixed KV reserve (≈16-20k tokens, plenty — Step 5 caps
             // ctx for offloaded models anyway), overhead for CUDA runtime +
             // compute buffers, and EVERYTHING else goes to layers.
-            const kvReserveGb = 1.25;
+            // KV reserve grew from 1.25 → 1.55GB: the tight ctx (~11-13k
+            // real) was eating conversations after a handful of tool calls.
+            // Trading ~2 GPU layers for +25% context is a good deal on
+            // hybrid archs where the CPU-side layers are mostly linear
+            // attention (fast) and every extra tool call takes 1-2k tokens.
+            // On dense archs this simply pushes an ~11k session to ~14k.
+            const kvReserveGb = 1.55;
             const overheadGb  = isMoE ? 0.8 : 0.5;  // MoE routing needs bigger compute buffers
             gpuTarget = Math.max(1, Math.floor((freeBeforeGb - kvReserveGb - overheadGb) / bytesPerLayerGb));
             gpuTarget = Math.min(gpuTarget, estLayers - 1);
@@ -1116,6 +1122,7 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
         context_total_tokens: e.contextTotalTokens || e.config?.contextLength || 0,
         context_pct: e.contextPct ?? 0,
         system_prompt_tokens: Math.ceil((e._lastSystemPromptChars || 0) / 4),
+        session_mode: e._sessionMode || null,
         last_perf: e.lastPerf || null,   // { first_token_s, decode_tok_s, tokens, at }
         cpu_offload_share: e.config?.cpuOffloadShare ?? 0,
         dreaming: e.dreaming || false

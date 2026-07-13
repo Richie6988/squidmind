@@ -216,7 +216,11 @@ const ControlTowerLive = {
           <div id="ctx-bar-sys" style="height:100%;background:#4facfe;transition:width 0.5s;flex:0 0 auto;"></div>
           <div id="ctx-bar-fill" style="height:100%;transition:width 0.5s,background 0.5s;flex:0 0 auto;"></div>
         </div>
-        <div style="display:flex;justify-content:space-between;margin-top:3px;font-size:7px;color:#94a3b8;">
+        <div style="display:flex;justify-content:space-between;margin-top:3px;font-size:7px;font-family:'Courier New',monospace;">
+          <span id="ctx-sys-label" style="color:#4facfe;"></span>
+          <span id="ctx-free-label" style="color:#94a3b8;"></span>
+        </div>
+        <div style="display:flex;justify-content:space-between;margin-top:2px;font-size:7px;color:#94a3b8;">
           <span id="ctx-turns"></span>
           <span id="ctx-tokens" style="font-family:'Courier New',monospace;"></span>
         </div>`;
@@ -242,6 +246,16 @@ const ControlTowerLive = {
       fill.style.background = displayPct < 60 ? '#06ffa5' : displayPct < 85 ? '#fbbf24' : '#ef4444';
     }
     if (track) track.title = `System prompt + tools: ${sysTok} tok — conversation: ${Math.max(0, ctxUsed - sysTok)} tok — free: ${Math.max(0, ctxTotal - ctxUsed)} tok`;
+    // Legend: name the blue segment (Poseidon full / Agent slim / BG slim)
+    // so the same tower is readable regardless of which system prompt is
+    // resident. The right label = context still free.
+    const sysLbl = document.getElementById('ctx-sys-label');
+    const freeLbl = document.getElementById('ctx-free-label');
+    const modeName = model.session_mode === 'agent' ? 'Agent'
+                    : model.session_mode === 'bg' ? 'BG'
+                    : 'Poseidon';
+    if (sysLbl)  sysLbl.textContent  = sysTok  ? `${modeName} prompt: ${sysTok} tok` : '';
+    if (freeLbl) freeLbl.textContent = ctxTotal ? `${Math.max(0, ctxTotal - ctxUsed)} tok free` : '';
 
     // Top label: show used/total when available, else just total size
     if (val) {
