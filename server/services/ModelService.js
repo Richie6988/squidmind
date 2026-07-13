@@ -830,8 +830,14 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
       if (vramAfter) log.info(`  VRAM after weights: ${freeAfterGb.toFixed(2)} GB free`);
 
       // ── Step 4: Compute contextLength from REAL remaining VRAM ─────────
-      // Always recompute — never trust the stored value (stale, wrong GPU, etc.)
-      {
+      // Recompute ONLY when the user left contextLength on 'auto'. When they
+      // set a number (25000, 45000…) the whole computation is skipped:
+      // Step 5 (createContext + OOM ladder) is the single source of truth
+      // for what actually fits. The [explicit] log line already announced
+      // the choice — stopping here means we honor it. The ladder will
+      // graciously step down if the number is impossible, and the error
+      // message tells the user WHY.
+      if (config.contextLength === 'auto') {
         const modelName = (this.poseidonModelId || fileName.replace(/\.gguf$/i, '')).toLowerCase();
         // Exact GQA from the GGUF header when available — the name regex
         // missed e.g. 'l3-2-8x3b-…' (a GQA Llama-3.2) and budgeted 60KB/tok.
@@ -953,8 +959,26 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
       }
       const ctxLadder = (() => {
         const target = config.contextLength;
-        const steps  = [target, Math.floor(target * 0.75), Math.floor(target / 2), ModelService.MIN_VIABLE_CTX, 2048];
-        return [...new Set(steps.map(v => Math.max(2048, Math.min(v, trainCtx))))];
+        // Ladder must be STRICTLY DECREASING — 4096 after 3072 wasted a
+        // retry with a size we already knew wouldn't fit. Build a decreasing
+        // series, dedupe, floor at 2048, cap at trainCtx.
+        const raw = [
+          target,
+          Math.floor(target * 0.75),
+          Math.floor(target * 0.5),
+          Math.floor(target * 0.35),
+          Math.floor(target * 0.20),
+          ModelService.MIN_VIABLE_CTX,
+          2048,
+        ].map(v => Math.max(2048, Math.min(v, trainCtx)));
+        const seen = new Set();
+        const out = [];
+        for (const v of raw) {
+          if (out.length && v >= out[out.length - 1]) continue;   // must decrease
+          if (seen.has(v)) continue;
+          seen.add(v); out.push(v);
+        }
+        return out;
       })();
 
       let ctxErr = null;
@@ -983,7 +1007,18 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
       }
       if (!context) {
         await model.dispose(); model = null;
-        throw ctxErr || new Error('All context sizes failed (OOM)');
+        // Explain what happened in a way the user can act on. Never leave
+        // them with "A context size of 2048 is too large" — the number
+        // itself isn't the story; the budget is.
+        const freeGb = freeAfterGb.toFixed(2);
+        const gpuL   = config.gpuLayers;
+        const target = ctxLadder[0];
+        throw new Error(
+          `Cannot fit any context (tried ${ctxLadder.join(', ')}). ` +
+          `After loading ${gpuL} GPU layers only ${freeGb} GB is free — not enough for the KV cache + compute buffers even at 2048 tokens. ` +
+          `Fix by REDUCING gpuLayers in model_params (each layer freed gives ~150MB back to KV) or reduce contextLength target below ${target}. ` +
+          `On this 8GB card, gpuLayers=27 leaves ~2.2GB for KV → ~20k ctx; gpuLayers=32 leaves ~1.5GB → ~10k ctx max.`
+        );
       }
 
       // Warn if context ended up too small for the system prompt
