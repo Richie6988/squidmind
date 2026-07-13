@@ -1416,6 +1416,14 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
         const wrapper = entry.session.chatWrapper?.constructor?.name || 'unknown';
         if (chatWrapper !== 'auto') log.info(` chatWrapper forced to ${wrapper} (model family match — Jinja fallback breaks function calling on finetunes)`);
         log.info(` Session created for ${this.poseidonModelId} (${wrapper}, ctx=${ctxTokens}, prompt=${promptTokens}tok${functions ? `, ${Object.keys(functions).length} tools` : ', no tools (ctx too small)'})`);
+        // Tight-context early warning: when the fixed prompt (system+tools)
+        // eats more than ~45% of the context, the context-shift compaction
+        // WILL fail after a few tool calls ("did not return a history that
+        // fits"). Say it now instead of crashing 30s into the turn.
+        if (ctxTokens > 0 && promptTokens > ctxTokens * 0.45) {
+          log.warn(` ⚠ ctx=${ctxTokens} is tight for a ${promptTokens}-token prompt (${Math.round(promptTokens / ctxTokens * 100)}%) — expect context-shift failures; free VRAM or raise contextLength`);
+          yield { type: 'status', message: `⚠ Context is tight (${ctxTokens} tokens, prompt uses ${Math.round(promptTokens / ctxTokens * 100)}%) — long conversations may fail. Free VRAM or raise contextLength.` };
+        }
         // First message on a low-compute model pays a long prefill (the
         // whole system prompt through the CPU-offloaded layers) — announce
         // it, otherwise the UI shows a mute spinner for minutes.
