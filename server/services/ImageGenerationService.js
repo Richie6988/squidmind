@@ -11,7 +11,7 @@
  * node-llama-cpp (which is text-only). We spawn the sd CLI instead.
  */
 
-const { spawn, exec } = require('child_process');
+const { spawn, exec, execSync } = require('child_process');
 const log = require('../utils/logger').createLogger('ImageGenerationService');
 const { promisify } = require('util');
 const execAsync = promisify(exec);
@@ -160,8 +160,25 @@ class ImageGenerationService {
       const VRAM_BUDGET   = isFluxModel ? 2.5 : 5.5;
       const resolutionOOM = vramEstimate > VRAM_BUDGET;
 
+      // REAL free-VRAM check — the resolution/quant heuristics never looked
+      // at what is actually free. With the LLM resident (GPU layers + a big
+      // KV cache) the GPU run that used to fit gets its CUDA allocs killed
+      // → "exited with code null". Degrade to CPU instead of crashing.
+      let freeVramGb = 0;
+      try {
+        const out = execSync('nvidia-smi --query-gpu=memory.free --format=csv,noheader,nounits',
+          { timeout: 3000, encoding: 'utf8' });
+        freeVramGb = parseInt(String(out).trim(), 10) / 1024 || 0;
+      } catch {}
+      let modelSizeGb = 0;
+      try { modelSizeGb = fs2.statSync(path2.join(modelDir, modelFile)).size / 1024 ** 3; } catch {}
+      const needGb = modelSizeGb * 1.15 + vramEstimate + 0.4; // weights + activations + runtime
+      const vramShort = freeVramGb > 0 && freeVramGb < needGb;
+      if (vramShort) log.warn(`Insufficient free VRAM for GPU diffusion: ${freeVramGb.toFixed(1)}GB free, ~${needGb.toFixed(1)}GB needed (LLM resident?) — falling back to CPU`);
+
       // Force CPU when: Q4+ quantization OR resolution too large for VRAM
-      const forceCPU = quantNum >= 4 || resolutionOOM;
+      // OR not enough VRAM actually free right now
+      const forceCPU = quantNum >= 4 || resolutionOOM || vramShort;
       if (forceCPU) {
         const reason = quantNum >= 4 ? `Q${quantNum} quant` : `${width}x${height} resolution (~${vramEstimate.toFixed(1)}GB est.)`;
         log.info('Forcing CPU:', reason, '(avoids VRAM OOM)');

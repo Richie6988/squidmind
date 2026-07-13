@@ -528,7 +528,7 @@ const ModelLoader = {
         <button class="btn-secondary" onclick="ModelLoader.showImportDialog('${this._escape(m.file_name)}', '${m.model_id}')">Edit Params</button>
         <button class="btn-secondary" onclick="ModelLoader.renameModel('${m.model_id}', this)" style="display:inline-flex;align-items:center;gap:3px;">${window.PixelIcons?.inline('config',11)||''}Rename</button>
         <button class="btn-secondary" title="Toggle between text and image generation mode" onclick="ModelLoader.setModelType('${m.model_id}','${nextType}')">${toggleLabel}</button>
-        ${m.is_loaded ? `<button class="btn-secondary" onclick="ModelLoader.unload('${m.model_id}', this, event.shiftKey)" title="Unload model from VRAM (auto-reloads on next request). Hold Shift for FORCE unload — kills any in-flight generation.">Unload from Memory</button><button class="btn-danger" onclick="ModelLoader.unload('${m.model_id}', this, true)" title="Force unload — kills any in-flight generation, drops broker state, evicts weights">⚠ Force</button>` : ''}
+        ${m.is_loaded ? `<button class="btn-secondary" onclick="ModelLoader.unload('${m.model_id}', this)" title="Unload model from VRAM (auto-reloads on next request). If a generation is running you will be asked to confirm killing it.">Unload from Memory</button>` : ''}
         <button class="btn-secondary danger-action" onclick="ModelLoader.remove('${m.model_id}', this)" title="Remove model from library (file on disk is kept)">Remove</button>
       `;
     }
@@ -840,21 +840,29 @@ const ModelLoader = {
     }
   },
   
-  async unload(modelId, btnEl, force = false) {
-    const msg = force
-      ? `FORCE-UNLOAD ${modelId}?\n\nThis will kill any in-flight generation (chat replies, image gen, background tasks), drop broker state, and evict weights.\n\nUse when the model is stuck or you need VRAM back RIGHT NOW.`
+  async unload(modelId, btnEl) {
+    // ONE button, smart behavior (the separate ⚠ FORCE button confused the
+    // UI): if a generation is in-flight, warn that it will be KILLED and use
+    // the force path; otherwise a plain unload with a plain confirm.
+    let busy = false;
+    try {
+      const st = await window.api._fetch('/models/status');
+      const e = (st?.loaded_models || []).find(x => x.model_id === modelId);
+      busy = !!(e && (e.generating || e.dreaming));
+    } catch {}
+    const msg = busy
+      ? `⚠ ${modelId} is GENERATING right now.\n\nUnloading will KILL the in-flight work (chat reply, image gen or background task), drop broker state, and evict weights.\n\nUnload anyway?`
       : `Unload ${modelId} from memory? (will auto-reload on next request)`;
     if (!await SquidModal.confirm(msg)) return;
     try {
       const fn = async () => {
         await window.api._fetch(`/models/${modelId}/unload`, {
           method: 'POST',
-          body:   force ? JSON.stringify({ force: true }) : undefined,
+          body:   busy ? JSON.stringify({ force: true }) : undefined,
         });
         await this._refresh();
       };
-      const label = force ? 'Force-unloading…' : 'Unloading…';
-      if (btnEl && window.LoadingButton) await window.LoadingButton.run(btnEl, fn, label);
+      if (btnEl && window.LoadingButton) await window.LoadingButton.run(btnEl, fn, busy ? 'Force-unloading…' : 'Unloading…');
       else await fn();
     } catch (err) {
       await SquidModal.alert('Unload failed: ' + err.message);

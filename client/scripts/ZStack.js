@@ -46,11 +46,11 @@
         if (m.type === 'childList') {
           for (const n of m.addedNodes) {
             if (n.nodeType !== 1) continue;
-            if (n.classList?.contains('modal')) maybeRaiseOnShow(n);
+            if (n.classList?.contains('modal') || n.classList?.contains('squid-modal-overlay')) maybeRaiseOnShow(n);
             // A container appended with modals inside
-            n.querySelectorAll?.('.modal').forEach(maybeRaiseOnShow);
+            n.querySelectorAll?.('.modal, .squid-modal-overlay').forEach(maybeRaiseOnShow);
           }
-        } else if (m.type === 'attributes' && m.target.classList?.contains('modal')) {
+        } else if (m.type === 'attributes' && (m.target.classList?.contains('modal') || m.target.classList?.contains('squid-modal-overlay'))) {
           maybeRaiseOnShow(m.target);
         }
       }
@@ -66,7 +66,7 @@
     document.addEventListener(
       'mousedown',
       (e) => {
-        const modal = e.target.closest?.('.modal');
+        const modal = e.target.closest?.('.modal, .squid-modal-overlay');
         if (modal && isVisible(modal)) ZStack.raise(modal);
       },
       true
