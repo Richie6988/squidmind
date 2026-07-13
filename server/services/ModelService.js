@@ -877,19 +877,20 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
             const d2 = await measureCtx(8192);
             const rawKvPerTok = Math.round((d2 - d1) / 4096);
             // SANITY: allocator noise can make d2 <= d1 (cached buffers,
-            // fragmentation), yielding a tiny/negative per-token cost. When
-            // that happens the probe is worthless — trust the header-derived
-            // formula (via the fallback chain below) instead of "measuring"
-            // 2KB/tok and computing a 262k ctx that OOMs every rung.
-            const MIN_SANE = 8 * 1024;   // any real KV per token must be >= 8KB
-            if (rawKvPerTok < MIN_SANE || d2 <= d1) {
-              log.warn(`  KV probe noisy (raw=${rawKvPerTok}B/tok, d4k=${(d1 / 1024 ** 3).toFixed(2)}GB, d8k=${(d2 / 1024 ** 3).toFixed(2)}GB) — discarding, falling back to header/heuristic`);
+            // fragmentation), yielding zero/negative per-token cost. THAT
+            // is the only failure mode to reject. A LOW positive value is
+            // legitimate on hybrid archs (qwen3.5 has linear-attention
+            // layers with near-zero KV; 4.5 KB/tok is realistic — we
+            // previously rejected it as "noise" and forced a 30x header
+            // overestimate). Trust the differential when d8k > d4k.
+            if (d2 <= d1 || rawKvPerTok < 512) {
+              log.warn(`  KV probe noisy (raw=${rawKvPerTok}B/tok, d4k=${(d1 / 1024 ** 3).toFixed(2)}GB, d8k=${(d2 / 1024 ** 3).toFixed(2)}GB) — d8k <= d4k means allocator caching, discarding`);
             } else {
               const kvPerTok = rawKvPerTok;
               const fixedBytes = Math.max(0, d1 - 4096 * kvPerTok);
               probeData = { kvPerTok, fixedBytes };
               ModelService._kvProbe.set(probeKey, probeData);
-              log.info(`  KV probe (differential): ${Math.round(kvPerTok / 1024)}KB/tok + ${(fixedBytes / 1024 ** 3).toFixed(2)}GB fixed buffers (d4k=${(d1 / 1024 ** 3).toFixed(2)}GB, d8k=${(d2 / 1024 ** 3).toFixed(2)}GB)`);
+              log.info(`  KV probe (differential): ${(kvPerTok / 1024).toFixed(1)}KB/tok + ${(fixedBytes / 1024 ** 3).toFixed(2)}GB fixed buffers (d4k=${(d1 / 1024 ** 3).toFixed(2)}GB, d8k=${(d2 / 1024 ** 3).toFixed(2)}GB)`);
             }
           } catch (probeErr) {
             log.warn(`  KV probe failed (${probeErr.message}) — falling back to estimates`);
@@ -919,11 +920,11 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
           const availKvGb = freeAfterGb - margin;
           const toksFit   = Math.floor(availKvGb * 1024 ** 3 / bytesPerTok);
           const computed  = Math.max(ModelService.MIN_VIABLE_CTX, Math.floor(toksFit / 1024) * 1024);
-          // Hard ceiling on the AUTO path: no consumer GPU justifies a
-          // 262k context. Anything past 65k is a red flag (the OOM ladder
-          // would burn 3+ retries and can cascade into an eviction loop).
-          // Explicit contextLength in config bypasses 'auto' entirely.
-          const AUTO_CTX_CEILING = 65536;
+          // Hard ceiling ONLY when we're estimating: measurement is trust,
+          // the cap exists to keep an over-optimistic formula from asking
+          // for 262k. If the differential probe actually measured the KV
+          // cost, respect it — the OOM ladder is still the last guard.
+          const AUTO_CTX_CEILING = measuredKvPerTok > 0 ? Infinity : 65536;
           config.contextLength = Math.min(computed, trainCtx, offloadCap, AUTO_CTX_CEILING);
           log.info(`  [auto] contextLength: ${config.contextLength} (availKv=${availKvGb.toFixed(2)}GB, ${Math.round(bytesPerTok/1024)}KB/tok${measuredKvPerTok ? ' (MEASURED)' : headerKvBytesPerTok ? ' (header estimate)' : ' (heuristic)'}, isGQA=${isGQA}, toksFit=${toksFit}${Number.isFinite(offloadCap) ? `, capped at ${offloadCap} — ${Math.round(cpuShare*100)}% of layers on CPU` : ''})`);
         } else if (!vramAfter) {
@@ -1923,6 +1924,33 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
         maxTokens
       };
       if (wrappedFunctions) promptOpts.functions = wrappedFunctions;
+
+      // PRE-FLIGHT compaction — the context-shift strategy of node-llama-cpp
+      // crashes when history + system prompt > ctx. Reset the chat history
+      // BEFORE that happens (system prompt stays, tools stay, KV of the
+      // system reprocess is unavoidable but ~ONE round of prefill instead
+      // of a crash + friendly error + wasted turn).
+      try {
+        const usedTokEst = Math.ceil((entry._lastSystemPromptChars || 0) / 4)
+          + Math.ceil((userMessage || '').length / 4)
+          + (entry.contextUsedTokens || 0);
+        const ctxTotal = entry.config?.contextLength || 0;
+        if (ctxTotal && usedTokEst > ctxTotal * 0.85 && entry.session?.getChatHistory) {
+          const hist = entry.session.getChatHistory();
+          const nonSystem = hist.filter(h => h.type !== 'system').length;
+          if (nonSystem > 0 && entry.session?.resetChatHistory) {
+            log.info(` ⇢ pre-flight compaction: ~${usedTokEst}/${ctxTotal} tokens (>85%), resetting chat history (system prompt kept)`);
+            yield { type: 'status', message: `Context filling up — resetting conversation history to free room.` };
+            await entry.session.resetChatHistory();
+            entry.sessionTurns = 0;
+            entry.contextUsedTokens = 0;
+            entry.contextPct = 0;
+          }
+        }
+      } catch (compactErr) {
+        log.warn(` pre-flight compaction check failed: ${compactErr.message} — continuing`);
+      }
+
       const completion = session.prompt(userMessage, promptOpts);
 
       // Yield events as they accumulate. Two kinds:
