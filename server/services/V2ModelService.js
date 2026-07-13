@@ -1738,6 +1738,25 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
         }
       }
 
+      // ── STRUCTURED PLAN PIPELINE (plan_project tool) ────────────────────
+      // The chat model's only job was ONE plan_project call; the actual
+      // multi-step work (context → grammar-constrained plan → task creation
+      // → memory) runs HERE in code, streamed into the same reply. Small
+      // models cannot loop or groom memory inside this — structurally.
+      if (this.orchestrator?.pendingPlan && !_bgMode) {
+        const pp = this.orchestrator.pendingPlan;
+        this.orchestrator.pendingPlan = null;
+        yield { type: 'status', message: `Generating structured plan for ${pp.project}…` };
+        try {
+          for await (const ev of this.orchestrator.runPlanPipeline({ session, llama: this.llama, ...pp })) {
+            yield ev;
+          }
+        } catch (planErr) {
+          log.warn(` plan pipeline failed: ${planErr.message}`);
+          yield { type: 'text', chunk: `\n\n_[Plan pipeline failed: ${planErr.message} — nothing was created.]_` };
+        }
+      }
+
       // ── Per-turn performance telemetry ──────────────────────────────────
       // Objective numbers instead of "it feels slow": time-to-first-token
       // (≈ prefill, only meaningful on turn 1 — later turns reuse KV) and

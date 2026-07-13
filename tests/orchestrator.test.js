@@ -711,8 +711,8 @@ async function main() {
     'web_search', 'web_fetch', 'fetch_and_save', 'fetch_image_url',
     // github
     'github_status', 'github_commit', 'github_diff', 'github_push',
-    // models / images / dispatch
-    'list_models', 'generate_image', 'dispatch_to_agent',
+    // models / images / dispatch / structured planning
+    'list_models', 'generate_image', 'dispatch_to_agent', 'plan_project',
     // shipped after this list was written (comms, docs, exec, images, MCP)
     'send_email', 'search_image', 'edit_image',
     'generate_docx', 'generate_pptx',
