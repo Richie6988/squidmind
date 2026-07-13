@@ -429,16 +429,22 @@ const ModelLoader = {
         </div>
       </div>`).join('')}
     </div>
-    <div style="margin-top:16px;padding:10px;border-top:1px solid var(--border);">
+    <div style="margin-top:16px;padding:10px;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:6px;">
       <button class="btn-secondary" id="ml-tool-usage-btn"
         style="width:100%;display:inline-flex;align-items:center;justify-content:center;gap:6px;font-size:10px;"
         title="Per-tool call counts, success rate and latency — evidence for pruning the toolset">
         📊 Tool Usage Telemetry
       </button>
+      <button class="btn-secondary" id="ml-agentic-test-btn"
+        style="width:100%;display:inline-flex;align-items:center;justify-content:center;gap:6px;font-size:10px;"
+        title="Runs a one-file test task through the full chat → agent → review cycle so you can see every phase transition in the log AND on the Control Tower">
+        🧪 Run Agentic Test
+      </button>
     </div>`;
 
     // Wire the tool-usage panel opener
     container.querySelector('#ml-tool-usage-btn')?.addEventListener('click', () => this._openToolUsage());
+    container.querySelector('#ml-agentic-test-btn')?.addEventListener('click', () => this._runAgenticTest());
 
     // Wire drag handles on all model cards
     container.querySelectorAll('.model-library-card').forEach(card => {
@@ -451,6 +457,30 @@ const ModelLoader = {
       });
       card.addEventListener('dragend', () => { card.style.opacity = ''; });
     });
+  },
+
+  /**
+   * Trigger the end-to-end agentic phase test. Creates a trivial task on
+   * the first available agent and shows a toast pointing the user at the
+   * Control Tower and server logs where every phase transition is now
+   * loudly visible.
+   */
+  async _runAgenticTest() {
+    try {
+      const r = await window.api._fetch('/models/agentic-test', { method: 'POST' });
+      if (r.success) {
+        await SquidModal.alert(
+          `✓ Test task ${r.task_id} queued for ${r.agent_id}.\n\n` +
+          `Watch the Control Tower AGENT panel — the phase should switch from CHAT → AGENT within a few seconds. ` +
+          `Server logs show every [phase] transition with model/ctx/project. ` +
+          `The task writes output/hello.md then triggers the review phase, then hands back to CHAT.`
+        );
+      } else {
+        await SquidModal.alert(`Failed to queue test task: ${r.error || 'unknown error'}`);
+      }
+    } catch (e) {
+      await SquidModal.alert(`Failed to queue test task: ${e.message}`);
+    }
   },
 
   /**

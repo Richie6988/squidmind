@@ -368,6 +368,46 @@ function buildRouter(modelService) {
     res.json({ success: true, ...modelService.getStatus() });
   });
 
+  // GET /api/v2/models/phase — snapshot of the current agentic phase.
+  // Cheap: reads the loaded entry fields we already stamp on swap.
+  router.get('/phase', (req, res) => {
+    const st = modelService.getStatus();
+    const m = (st.loaded_models || [])[0] || {};
+    res.json({
+      success: true,
+      phase: m.phase || 'idle',
+      model: m.model_id || null,
+      ctx: m.context_total_tokens || 0,
+      task_id: m.phase_task_id || null,
+      project: m.phase_project || null,
+      agent: m.phase_agent || null,
+      generating: !!m.generating,
+    });
+  });
+
+  // POST /api/v2/models/agentic-test — one-click end-to-end phase cycle test.
+  // Creates a trivial task assigned to any agent, so the TaskRunner will pick
+  // it up and go through chat → agent → review → back to chat with visible
+  // phase transitions in the log AND on the tower. No side effects except
+  // the temp task itself, which the test agent completes and archives.
+  router.post('/agentic-test', async (req, res) => {
+    try {
+      const rm = modelService.rm;
+      const areg = await rm.getAgentRegistry();
+      const agents = Object.values(areg.agents || {});
+      if (!agents.length) return res.status(400).json({ success: false, error: 'No agents in registry — create one first.' });
+      const agent = agents[0];
+      const created = await rm.createTask({
+        title: `[AGENTIC TEST] Write hello.md`,
+        description: `Write exactly one file: output/hello.md with the content "hello from ${agent.display_name || agent.agent_id} at ${new Date().toISOString()}". Nothing else.`,
+        task_type: 'text',
+        priority: 'high',
+        assigned_to: agent.agent_id,
+      });
+      res.json({ success: true, task_id: created.task_id, agent_id: agent.agent_id, message: `Test task ${created.task_id} created and queued. Watch server logs for [phase] transitions and the Control Tower for the live state.` });
+    } catch (e) { res.status(500).json({ success: false, error: e.message }); }
+  });
+
   // GET /api/v2/models/broker — broker state for monitoring
   router.get('/broker', (req, res) => {
     res.json({ success: true, broker: modelService.broker?.getState?.() ?? null });

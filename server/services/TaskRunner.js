@@ -698,6 +698,16 @@ class TaskRunner {
               ? (await this.rm.resolveProjectByNameOrId(task.project_name))?.entry
               : null;
             await this.modelService.ensureLoadedFor('agent', projEntry);
+            // Stamp WHAT this phase is doing on the entry — the tower reads
+            // this to show "AGENT · task_0128 · NEWSROOM · agent_0006" live.
+            const poseidonId = this.modelService.poseidonModelId;
+            const currentModelId = projEntry?.assigned_model_id || poseidonId;
+            const currentEntry = this.modelService.loaded.get(currentModelId);
+            if (currentEntry) {
+              currentEntry._phaseTaskId = taskId;
+              currentEntry._phaseProject = task.project_name || null;
+              currentEntry._phaseAgent = agentId || null;
+            }
             if (bus) bus.push({ type: 'phase', phase: 'agent', task_id: taskId, project: task.project_name });
           } catch (swapErr) {
             log.warn(`Phase swap to agent failed: ${swapErr.message} — continuing on current model`);
@@ -1090,6 +1100,16 @@ class TaskRunner {
       this._runningMeta?.delete(taskId);
       if (global.__ACTIVE_TASK_ID === taskId) global.__ACTIVE_TASK_ID = null;
       global.__TASK_WRITES?.delete(taskId);
+      // Clear phase meta on the loaded entry when this task's phase ends —
+      // otherwise the tower would keep showing "AGENT · task_0128" after
+      // the task returned to chat phase.
+      const poseidonId = this.modelService.poseidonModelId;
+      const posEntry = poseidonId ? this.modelService.loaded.get(poseidonId) : null;
+      if (posEntry && posEntry._phaseTaskId === taskId) {
+        posEntry._phaseTaskId = null;
+        posEntry._phaseProject = null;
+        posEntry._phaseAgent = null;
+      }
     }
   }
 

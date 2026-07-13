@@ -31,11 +31,55 @@ const ControlTowerLive = {
       if (brainRes.status === 'fulfilled') this._renderResources(brainRes.value.brain);
       if (agentsRes.status === 'fulfilled') this._renderSquad(agentsRes.value.registry);
       if (libRes.status === 'fulfilled') this._renderModel(libRes.value);
-      if (statusRes.status === 'fulfilled') this._renderContextBar(statusRes.value);
+      if (statusRes.status === 'fulfilled') {
+        this._renderContextBar(statusRes.value);
+        this._renderPhase(statusRes.value);   // agentic state — always visible
+      }
       if (brokerRes.status === 'fulfilled' && brokerRes.value) this._renderBroker(brokerRes.value.state);
     } catch (err) {
       // silent - endpoints might be temporarily unavailable
     }
+  },
+
+  /**
+   * Render the current agentic phase: what the model is doing right now,
+   * which task/project/agent if in BG. This is the panel the user was
+   * missing — every phase transition is loud and visible.
+   */
+  _renderPhase(status) {
+    const model = (status.loaded_models || [])[0];
+    let panel = document.getElementById('phase-panel');
+    if (!panel) {
+      const monitorHost = document.getElementById('monitor-model-pill')?.parentElement;
+      if (!monitorHost) return;
+      panel = document.createElement('div');
+      panel.id = 'phase-panel';
+      panel.style.cssText = 'margin-top:10px;padding:8px 10px;background:rgba(6,255,165,0.04);border:1px solid rgba(6,255,165,0.15);border-radius:4px;font-size:9px;';
+      monitorHost.appendChild(panel);
+    }
+    if (!model) {
+      panel.innerHTML = `<div style="color:#64748b;">No model loaded</div>`;
+      return;
+    }
+    const phase = model.phase || (model.generating ? 'chat' : 'idle');
+    const phaseColor = phase === 'agent' ? '#fbbf24' : phase === 'review' ? '#a78bfa' : phase === 'chat' ? '#06ffa5' : '#64748b';
+    const phaseLabel = { chat: 'CHAT', agent: 'AGENT', review: 'REVIEW', idle: 'IDLE' }[phase] || phase.toUpperCase();
+    const busy = model.generating ? '● generating' : '○ idle';
+    let subline = '';
+    if (phase === 'agent' && model.phase_task_id) {
+      subline = `task ${model.phase_task_id}${model.phase_project ? ` · ${model.phase_project}` : ''}${model.phase_agent ? ` · ${model.phase_agent}` : ''}`;
+    } else if (phase === 'review' && model.phase_task_id) {
+      subline = `reviewing ${model.phase_task_id}`;
+    } else if (phase === 'chat') {
+      subline = `${(model.context_total_tokens/1000).toFixed(0)}k ctx · ${model.session_turns || 0} turns`;
+    }
+    panel.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:center;font-family:'Courier New',monospace;">
+        <span style="color:${phaseColor};font-weight:700;letter-spacing:0.1em;">${phaseLabel}</span>
+        <span style="color:#94a3b8;font-size:8px;">${busy}</span>
+      </div>
+      ${subline ? `<div style="color:#94a3b8;font-size:8px;font-family:'Courier New',monospace;margin-top:3px;">${subline}</div>` : ''}
+    `;
   },
   
   _renderResources(brain) {

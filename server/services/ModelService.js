@@ -1227,10 +1227,18 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
       currentPhase !== phase ||
       (phaseCtx && currentCtx && Math.abs(currentCtx - phaseCtx) > 512);
 
+    // OBSERVABILITY: single structured trace line + bus push so both the
+    // server log AND the UI show every phase transition (or a no-op skip).
+    // Was invisible before → user had no idea if the swap even fired.
+    const project = projectEntry?.name || null;
+    const trace = { from: currentPhase, to: phase, model: targetModelId, project, ctx: phaseCtx || 'chat', swap: needsSwap };
+    log.info(`[phase] ${currentPhase || '(none)'} → ${phase} · model=${targetModelId}${project ? ` project=${project}` : ''} ctx=${phaseCtx || 'chat'}${needsSwap ? ' · SWAP' : ' · noop'}`);
+    if (global.ReasoningBus) global.ReasoningBus.push({ type: 'phase_transition', ...trace, at: new Date().toISOString() });
+
     if (this.loaded.size && needsSwap) {
       // Evict everything else — one model per phase, no accidental KV.
       for (const [id] of this.loaded) {
-        log.info(` ⇢ phase swap: unloading ${id} to load ${targetModelId} for ${phase}`);
+        log.info(`[phase] unloading ${id} to reload for phase=${phase}`);
         await this.unloadModel(id).catch(() => {});
       }
     }
@@ -1240,12 +1248,13 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
       // configured contextLength (registry model_params); for agent/review
       // we clamp to a tight regime so the small task has a small blast radius.
       if (phaseCtx) this._nextLoadCtxOverride = { modelId: targetModelId, contextLength: phaseCtx };
-      log.info(` ⇢ loading ${targetModelId} for phase=${phase}${phaseCtx ? ` (ctx=${phaseCtx})` : ' (ctx=chat regime)'}`);
+      log.info(`[phase] loading ${targetModelId} for phase=${phase}${phaseCtx ? ` (ctx=${phaseCtx})` : ' (ctx=chat regime)'}`);
       await this.ensureLoaded(targetModelId);
     }
 
     const entry = this.loaded.get(targetModelId);
     if (entry) entry._phase = phase;
+    if (global.ReasoningBus) global.ReasoningBus.push({ type: 'phase_ready', phase, model: targetModelId, ctx: entry?.config?.contextLength || 0, at: new Date().toISOString() });
     return { model_id: targetModelId, phase };
   }
 
@@ -1411,6 +1420,10 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
         context_pct: e.contextPct ?? 0,
         system_prompt_tokens: Math.ceil((e._lastSystemPromptChars || 0) / 4),
         session_mode: e._sessionMode || null,
+        phase: e._phase || null,
+        phase_task_id: e._phaseTaskId || null,
+        phase_project: e._phaseProject || null,
+        phase_agent: e._phaseAgent || null,
         last_perf: e.lastPerf || null,   // { first_token_s, decode_tok_s, tokens, at }
         cpu_offload_share: e.config?.cpuOffloadShare ?? 0,
         dreaming: e.dreaming || false
