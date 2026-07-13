@@ -548,6 +548,7 @@ My response: "${ss.last_response_preview}"${tools}
       return;
     }
     // 1. Context gathered in CODE (no model calls, no loops possible)
+    const projName = proj.entry?.name || project;
     const memory = await this.rm.getProjectMemory(proj.id).catch(() => null);
     const areg   = await this.rm.getAgentRegistry();
     const agents = Object.values(areg.agents || {});
@@ -582,7 +583,7 @@ My response: "${ss.last_response_preview}"${tools}
     const grammar = await llama.createGrammarForJsonSchema(planSchema);
     const planPrompt =
       `[PLANNING — output ONLY the JSON plan]\n` +
-      `Goal: ${goal}\nProject: ${proj.name}\n` +
+      `Goal: ${goal}\nProject: ${projName}\n` +
       (memBits ? `${memBits}\n` : '') +
       `Agents: ${roster}\n\n` +
       `Produce 3 to 6 atomic tasks that fully accomplish the goal, in execution order.\n` +
@@ -600,14 +601,14 @@ My response: "${ss.last_response_preview}"${tools}
     }
 
     // 3. Execution in CODE: create tasks, chain deps sequentially, ONE memory update
-    yield { type: 'text', chunk: `\n\n**Plan for ${proj.name}** — ${tasks.length} tasks:\n` };
+    yield { type: 'text', chunk: `\n\n**Plan for ${projName}** — ${tasks.length} tasks:\n` };
     const createdIds = [];
     for (const t of tasks) {
       const res = await this._createTask({
         title: t.title,
         description: t.description,
         acceptance_criteria: t.acceptance_criteria || null,
-        project: proj.name,
+        project: projName,
         assigned_agent_id: agentIds.includes(t.agent_id) ? t.agent_id : null,
         priority: 'high',
         _pipeline: true,  // chained = serial by construction, exempt from WIP limit
@@ -634,7 +635,7 @@ My response: "${ss.last_response_preview}"${tools}
       event_type: 'plan_pipeline',
       actor: { type: 'system', id: 'plan_pipeline' },
       subject: { type: 'project', id: proj.id },
-      action: `Structured plan: ${createdIds.length} tasks created for "${proj.name}"`,
+      action: `Structured plan: ${createdIds.length} tasks created for "${projName}"`,
       context: { goal: String(goal).slice(0, 200), task_ids: createdIds }
     }).catch(() => {});
     yield { type: 'text', chunk: `\nTasks are chained (each starts when the previous completes) and will run automatically. Quality review validates each deliverable.\n` };
@@ -755,7 +756,7 @@ My response: "${ss.last_response_preview}"${tools}
         },
         handler: async ({ goal, project }) => {
           self.pendingPlan = { goal, project };
-          return `Structured planning pipeline engaged for "${project}". The plan will be generated and all tasks created immediately after this reply — tell the user the plan is being built, then STOP (no other tool calls needed).`;
+          return { ok: true, message: `Structured planning pipeline engaged for "${project}". The REAL task list (with real ids) will be generated and printed automatically right after your reply. Say ONE short sentence ("Building the plan for ${project}…") and STOP — do NOT invent a task table, do NOT write task ids, no other tool calls.` };
         }
       }),
 

@@ -562,6 +562,7 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
       let estLayers = Math.max(20, Math.min(80, Math.round(fileSizeGb * 1024 / 160)));
       let isMoE = false;
       let headerGQA = null;   // exact GQA from header (null = unknown, fall back to name regex)
+      let headerKvBytesPerTok = 0;  // exact KV bytes/token from header (0 = unknown, use heuristic)
       try {
         const { readGgufFileInfo } = await import('node-llama-cpp');
         const gguf = await readGgufFileInfo(fullPath, { readTensorInfo: false, logWarnings: false });
@@ -572,6 +573,14 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
         const hc  = Number(am?.attention?.head_count || 0);
         const hck = Number(am?.attention?.head_count_kv || 0);
         if (hc > 0 && hck > 0) headerGQA = hck < hc;
+        // EXACT KV cost per token: 2 tensors (K+V) × 2 bytes (f16) ×
+        // n_layers × n_kv_heads × head_dim. The 38/60KB heuristic was
+        // optimistic for qwen35 (~68KB real) — every load burned 2 OOM
+        // ladder retries before landing.
+        const emb = Number(am?.embedding_length || 0);
+        if (hc > 0 && hck > 0 && emb > 0 && am?.block_count > 0) {
+          headerKvBytesPerTok = 4 * Number(am.block_count) * hck * (emb / hc);
+        }
         log.info(`  GGUF header: arch=${arch}, layers=${estLayers}${headerGQA !== null ? `, GQA=${headerGQA} (${hck}/${hc} kv heads)` : ''}${isMoE ? `, MoE ${am.expert_count} experts (${am.expert_used_count || '?'} active) — ALL expert weights count for VRAM, only active ones for compute` : ''}`);
       } catch (e) {
         log.warn(`  GGUF header read failed (${e.message}) — falling back to size heuristic (${estLayers} layers)`);
@@ -714,9 +723,9 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
         // Exact GQA from the GGUF header when available — the name regex
         // missed e.g. 'l3-2-8x3b-…' (a GQA Llama-3.2) and budgeted 60KB/tok.
         const isGQA = (headerGQA !== null) ? headerGQA : /qwen|llama[-_]?3|mistral|gemma/.test(modelName);
-        const bytesPerTok = config.flashAttention
-          ? (isGQA ? 38 * 1024 : 60 * 1024)
-          : 100 * 1024;
+        const bytesPerTok = headerKvBytesPerTok > 0
+          ? Math.round(headerKvBytesPerTok * 1.08)   // exact from GGUF header + 8% safety
+          : (config.flashAttention ? (isGQA ? 38 * 1024 : 60 * 1024) : 100 * 1024);
         const margin = 0.65;  // 650MB: CUDA runtime + activations + cuBLAS + hybrid-arch overhead
 
         // Cap ctx when a big share of layers runs on CPU: each prompt token
@@ -733,7 +742,7 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
           const toksFit   = Math.floor(availKvGb * 1024 ** 3 / bytesPerTok);
           const computed  = Math.max(V2ModelService.MIN_VIABLE_CTX, Math.floor(toksFit / 1024) * 1024);
           config.contextLength = Math.min(computed, trainCtx, offloadCap);
-          log.info(`  [auto] contextLength: ${config.contextLength} (availKv=${availKvGb.toFixed(2)}GB, ${bytesPerTok/1024}KB/tok, isGQA=${isGQA}, toksFit=${toksFit}${Number.isFinite(offloadCap) ? `, capped at ${offloadCap} — ${Math.round(cpuShare*100)}% of layers on CPU` : ''})`);
+          log.info(`  [auto] contextLength: ${config.contextLength} (availKv=${availKvGb.toFixed(2)}GB, ${Math.round(bytesPerTok/1024)}KB/tok${headerKvBytesPerTok ? ' (exact from header)' : ''}, isGQA=${isGQA}, toksFit=${toksFit}${Number.isFinite(offloadCap) ? `, capped at ${offloadCap} — ${Math.round(cpuShare*100)}% of layers on CPU` : ''})`);
         } else if (!vramAfter) {
           // No VRAM info — use a conservative default
           config.contextLength = 8192;
