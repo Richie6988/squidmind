@@ -750,7 +750,11 @@ const TempleInterior = {
     const ok = await SquidModal.confirm(`Delete "${fileName}"?`);
     if (!ok) return;
     const ep = type === 'input' ? 'inputs' : 'outputs';
-    await fetch(`/api/v2/projects/${folder}/${ep}/${encodeURIComponent(fileName)}`, { method: 'DELETE' });
+    const r = await fetch(`/api/v2/projects/${folder}/${ep}/${encodeURIComponent(fileName)}`, { method: 'DELETE' });
+    if (!r.ok) {
+      const d = await r.json().catch(() => ({}));
+      await SquidModal.alert(`Could not delete "${fileName}": ${d.error || r.status}`);
+    }
     this._loadFileList(folder, type, document.getElementById(type === 'input' ? 'ti-input-list' : 'ti-output-list'));
   },
 

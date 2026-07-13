@@ -129,6 +129,23 @@ function buildProjectFileRoutes({ rm }) {
     } catch (e) { res.status(404).json({ success: false, error: e.message }); }
   });
 
+  // ── DELETE /:projectId/outputs/:filename ──────────────────────────────────
+  // The temple output tab's ✕ has always called this route — it never
+  // existed server-side (only inputs had one), so deletion silently 404'd
+  // and users had to remove deliverables from the filesystem by hand.
+  router.delete('/:projectId/outputs/:filename', async (req, res) => {
+    const safeName = sanitize(req.params.filename);
+    try {
+      const folder = await resolveFolder(req.params.projectId);
+      const filePath = path.join(AQUARIUM.PROJECTS, folder, 'output', safeName);
+      if (!filePath.startsWith(AQUARIUM.PROJECTS)) {
+        return res.status(403).json({ success: false, error: 'forbidden' });
+      }
+      await fsp.unlink(filePath);
+      res.json({ success: true });
+    } catch (e) { res.status(404).json({ success: false, error: e.message }); }
+  });
+
   // ── GET /:projectId/inputs/:filename — serve input file ───────────────────
   router.get('/:projectId/inputs/:filename', async (req, res) => {
     const safeName = sanitize(req.params.filename);
