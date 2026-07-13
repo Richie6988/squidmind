@@ -250,26 +250,24 @@ const ControlTowerLive = {
                     : model.session_mode === 'bg' ? 'BG'
                     : 'Poseidon';
 
-    // Right-aligned header: N/M (X%) if there's any conversation, else just Nk ctx
+    // Right-aligned header: N/M (X%) if there's any conversation, else empty
+    // (avoids "45k" up top duplicating "45056 free" below when idle).
+    const conversationTok = Math.max(0, ctxUsed - sysTok);
+    const freeTok = Math.max(0, ctxTotal - ctxUsed);
     if (val) {
-      if (ctxTotal > 0 && ctxUsed > 0) {
+      if (ctxTotal > 0 && conversationTok > 0) {
         val.textContent = `${(ctxUsed/1000).toFixed(1)}k / ${(ctxTotal/1000).toFixed(0)}k · ${displayPct}%`;
         val.style.color = displayPct >= 85 ? '#ef4444' : displayPct >= 60 ? '#fbbf24' : '#cbd5e1';
-      } else if (ctxTotal > 0) {
-        val.textContent = `${(ctxTotal/1000).toFixed(0)}k`;
-        val.style.color = '#94a3b8';
       } else {
         val.textContent = '';
       }
     }
 
     // Single legend row — no more duplicated numbers
-    const conversationTok = Math.max(0, ctxUsed - sysTok);
-    const freeTok = Math.max(0, ctxTotal - ctxUsed);
     if (legSys)  legSys.textContent  = sysTok ? `${modeName} ${sysTok}` : '';
     if (legConv) legConv.textContent = conversationTok > 0 ? `conv ${conversationTok}` : (turns > 0 ? `turn ${turns}` : '');
     if (legConvDot) legConvDot.style.background = convColor;
-    if (legFree) legFree.textContent = ctxTotal ? `${freeTok} free` : '';
+    if (legFree) legFree.textContent = ctxTotal ? `${(freeTok/1000).toFixed(1)}k free of ${(ctxTotal/1000).toFixed(0)}k` : '';
   },
 
   stop() {

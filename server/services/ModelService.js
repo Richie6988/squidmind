@@ -104,6 +104,29 @@ class ModelService {
     await require('fs').promises.writeFile(p, JSON.stringify(ModelService._toolStats, null, 2), 'utf8').catch(() => {});
   }
 
+  /**
+   * Load the persisted KV probe cache from disk on first access. Cheap:
+   * a small JSON file, one shot per process. Populates ModelService._kvProbe
+   * so subsequent auto-budget calls use ground truth without waiting for a
+   * fresh probe or post-hoc measurement.
+   */
+  static async _loadKvProbeCache() {
+    if (ModelService._kvProbeLoaded) return;
+    ModelService._kvProbeLoaded = true;
+    ModelService._kvProbe = ModelService._kvProbe || new Map();
+    try {
+      const p = require('path').join(require('../aquarium').LOGS, 'kv_probe_cache.json');
+      const raw = await require('fs').promises.readFile(p, 'utf8');
+      const parsed = JSON.parse(raw);
+      for (const [key, val] of Object.entries(parsed)) {
+        ModelService._kvProbe.set(key, val);
+      }
+      if (Object.keys(parsed).length) {
+        log.info(`KV probe cache loaded: ${Object.keys(parsed).length} model(s) with ground truth`);
+      }
+    } catch { /* no cache yet, first run — fallback will be used */ }
+  }
+
   constructor(registryManager, modelsDir) {
     this.rm = registryManager;
     this.modelsDir = modelsDir;
@@ -708,15 +731,16 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
       // safer than the header formula which double-counts hybrid layers.
       // The OOM ladder still steps down if the model has bigger buffers.
       if (explicitCtx && !explicitLayers && freeBeforeGb > 0.5) {
+        await ModelService._loadKvProbeCache();
         const bytesPerLayerGb = fileSizeGb / estLayers;
         ModelService._kvProbe = ModelService._kvProbe || new Map();
         const cachedProbe = ModelService._kvProbe.get(`${fileName}|fa=${!!config.flashAttention}`);
         // KV per token: use MEASURED value from a prior load if cached
-        // (accurate per architecture), else 65 KB/tok — empirical from
-        // measured hybrid qwen35 (was 100 → left 4 GB of VRAM unused
-        // because the reservation was 75% too big). GQA + hybrid archs
-        // are more efficient than dense-attention rules of thumb suggest.
-        const kvBytesPerTok = cachedProbe?.kvPerTok || 65 * 1024;
+        // (accurate per architecture), else 40 KB/tok — empirical from
+        // measured hybrid qwen35 (was 65 → still left 1.75 GB unused,
+        // measurement showed 39 KB/tok). GQA + hybrid archs are more
+        // efficient than dense-attention rules of thumb suggest.
+        const kvBytesPerTok = cachedProbe?.kvPerTok || 40 * 1024;
         const ctxKvGb = (config.contextLength * kvBytesPerTok) / (1024 ** 3);
         const marginGb = isMoE ? 0.85 : 0.55; // KV cache metadata + compute buffers + CUDA runtime
         const availLayersGb = Math.max(0, freeBeforeGb - ctxKvGb - marginGb);
@@ -1047,10 +1071,21 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
                 ModelService._kvProbe = ModelService._kvProbe || new Map();
                 const probeKey = `${fileName}|fa=${!!config.flashAttention}`;
                 const prev = ModelService._kvProbe.get(probeKey);
-                ModelService._kvProbe.set(probeKey, {
+                const entry = {
                   kvPerTok: measuredKv,
                   fixedBytes: prev?.fixedBytes || 0.3 * 1024 ** 3,
-                });
+                };
+                ModelService._kvProbe.set(probeKey, entry);
+                // Persist to disk so a server restart keeps ground truth
+                // instead of falling back to 40 KB/tok on every reboot.
+                try {
+                  const p = require('path').join(require('../aquarium').LOGS, 'kv_probe_cache.json');
+                  const fs = require('fs').promises;
+                  let existing = {};
+                  try { existing = JSON.parse(await fs.readFile(p, 'utf8')); } catch {}
+                  existing[probeKey] = entry;
+                  await fs.writeFile(p, JSON.stringify(existing, null, 2)).catch(() => {});
+                } catch {}
                 log.info(`  📏 measured actual KV cost: ${(ctxCostBytes / 1024 ** 3).toFixed(2)}GB for ${config.contextLength} tokens → ${(measuredKv / 1024).toFixed(1)}KB/tok (cached for next load)`);
               }
             }
