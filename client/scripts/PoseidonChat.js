@@ -486,9 +486,16 @@ const PoseidonChat = {
     if (type === 'end') {
       if (p.turn !== undefined) this._updateTurnCounter();
       this._updateTtsButton();  // show 🔊 button after response
-      // Auto-speak: when voice is enabled in settings, read the reply aloud
-      // automatically (same pipeline as the manual 🔊 button).
-      this._maybeAutoSpeak();
+      // Flush any tail text (last sentence without a terminator) to the
+      // streaming voice queue instead of falling back to whole-reply speech.
+      // If streaming voice wasn't enabled for this turn, fall through to the
+      // legacy full-reply auto-speak.
+      if (this._streamVoiceActive) {
+        this._flushStreamSpeak();
+        this._streamVoiceActive = false;
+      } else {
+        this._maybeAutoSpeak();
+      }
       // Inject copy button — read accumulated text from contentEl's text nodes
       const lastAiMsg = this.modal?.querySelectorAll('.pc-msg-ai');
       const lastMsg = lastAiMsg?.[lastAiMsg.length - 1];
@@ -551,6 +558,10 @@ const PoseidonChat = {
       // Store raw text, render as markdown
       node.dataset.raw = (node.dataset.raw || '') + p.text;
       node.innerHTML = this._md(node.dataset.raw);
+      // Streaming voice: extract every COMPLETE sentence produced so far and
+      // send it to the TTS queue. Playback starts on the first sentence
+      // instead of waiting for the whole reply — immersion + latency win.
+      this._maybeStreamSpeak(p.text);
     }
   },
 
@@ -1057,6 +1068,102 @@ const PoseidonChat = {
     div.textContent = msg;
     document.body.appendChild(div);
     setTimeout(() => div.remove(), 5000);
+  },
+
+  /**
+   * Streaming voice — read each SENTENCE as soon as it appears in the chat,
+   * instead of waiting for the whole reply. This is the "auto-speak" path
+   * during live streaming; _maybeAutoSpeak stays as the fallback for the
+   * "voice off during stream" and for manual replay.
+   *
+   * Pipeline: text chunks feed a rolling buffer, sentence boundaries pop
+   * complete sentences (>= _minChars, so we don't ship "Hi." alone and
+   * pay the TTS latency for one word), each sentence is fetched → queued
+   * → played in order. Fetches overlap playback so the model producing
+   * sentence N+1 while sentence N plays hides latency.
+   */
+  async _maybeStreamSpeak(chunk) {
+    // Same config gate as legacy auto-speak, but honored on the FIRST chunk
+    // of the turn so we can decide to stream or not.
+    if (this._streamVoiceActive === undefined) this._streamVoiceActive = false;
+    if (!this._streamVoiceInited) {
+      this._streamVoiceInited = true;
+      try {
+        const now = Date.now();
+        if (!this._voiceCfgCache || (now - this._voiceCfgCacheAt) > 60_000) {
+          const r = await window.api._fetch('/voice/config').catch(() => null);
+          this._voiceCfgCache  = r?.config || null;
+          this._voiceCfgCacheAt = now;
+        }
+        this._streamVoiceActive = !!this._voiceCfgCache?.enabled;
+      } catch { this._streamVoiceActive = false; }
+      if (this._streamVoiceActive) {
+        // Stop any lingering audio from a previous turn
+        if (this._ttsAudio && !this._ttsAudio.paused) {
+          try { this._ttsAudio.pause(); this._ttsAudio.currentTime = 0; } catch {}
+        }
+        this._streamBuffer = '';
+        this._streamQueue  = [];   // { promise: Promise<Blob|null> }
+        this._streamPlaying = false;
+      }
+    }
+    if (!this._streamVoiceActive) return;
+
+    this._streamBuffer += chunk;
+    // Extract complete sentences: end at . ! ? … ; or a hard newline pair.
+    // Minimum 24 chars per unit so we don't fire on "Ok." alone.
+    const SENT_RE = /([^.!?…\n]+[.!?…]+["')\]]*|\S[^\n]{80,}\n)/g;
+    let m; let lastEnd = 0;
+    while ((m = SENT_RE.exec(this._streamBuffer)) !== null) {
+      const s = m[0].trim();
+      lastEnd = m.index + m[0].length;
+      // Skip markdown-only fragments (headers, list bullets on their own line)
+      const clean = s.replace(/^[#>*\-`\s]+/, '').trim();
+      if (clean.length >= 24) this._enqueueStreamSentence(clean);
+    }
+    if (lastEnd > 0) this._streamBuffer = this._streamBuffer.slice(lastEnd);
+  },
+
+  _flushStreamSpeak() {
+    const tail = (this._streamBuffer || '').replace(/^[#>*\-`\s]+/, '').trim();
+    if (tail.length >= 6) this._enqueueStreamSentence(tail);
+    this._streamBuffer = '';
+  },
+
+  _enqueueStreamSentence(text) {
+    if (!this._streamQueue) this._streamQueue = [];
+    const voiceCfg = this._voiceCfgCache || {};
+    // Fire the TTS request immediately — playback picks it up in order.
+    const promise = fetch('/api/v2/voice/tts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text, voice: voiceCfg.tts_voice, speed: voiceCfg.tts_speed }),
+    }).then(r => (r.ok ? r.blob() : null)).catch(() => null);
+    this._streamQueue.push({ promise });
+    this._pumpStreamQueue();
+  },
+
+  async _pumpStreamQueue() {
+    if (this._streamPlaying) return;
+    this._streamPlaying = true;
+    try {
+      while (this._streamQueue && this._streamQueue.length) {
+        const item = this._streamQueue.shift();
+        const blob = await item.promise.catch(() => null);
+        if (!blob) continue;
+        const url = URL.createObjectURL(blob);
+        const audio = new Audio(url);
+        this._ttsAudio = audio;
+        await new Promise((resolve) => {
+          audio.onended = () => { URL.revokeObjectURL(url); resolve(); };
+          audio.onerror = () => { URL.revokeObjectURL(url); resolve(); };
+          audio.play().catch(() => resolve());
+        });
+      }
+    } finally {
+      this._streamPlaying = false;
+      this._streamVoiceInited = false;   // reset for next turn
+    }
   },
 
   /**
