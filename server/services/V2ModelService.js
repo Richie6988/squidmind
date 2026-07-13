@@ -1085,6 +1085,7 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
         context_used_tokens:  e.contextUsedTokens  || 0,
         context_total_tokens: e.contextTotalTokens || e.config?.contextLength || 0,
         context_pct: e.contextPct ?? 0,
+        system_prompt_tokens: Math.ceil((e._lastSystemPromptChars || 0) / 4),
         last_perf: e.lastPerf || null,   // { first_token_s, decode_tok_s, tokens, at }
         cpu_offload_share: e.config?.cpuOffloadShare ?? 0,
         dreaming: e.dreaming || false

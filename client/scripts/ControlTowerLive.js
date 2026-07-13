@@ -208,14 +208,15 @@ const ControlTowerLive = {
       barWrap.id = 'ctx-bar-wrap';
       barWrap.style.cssText = 'margin-top:6px;';
       barWrap.innerHTML = `
-        <div style="display:flex;justify-content:space-between;align-items:center;font-size:7px;color:#64748b;margin-bottom:3px;letter-spacing:.04em;">
+        <div style="display:flex;justify-content:space-between;align-items:center;font-size:7px;color:#94a3b8;margin-bottom:3px;letter-spacing:.04em;">
           <span>CONTEXT</span>
-          <span id="ctx-bar-val" style="font-family:'Courier New',monospace;color:#94a3b8;"></span>
+          <span id="ctx-bar-val" style="font-family:'Courier New',monospace;color:#cbd5e1;"></span>
         </div>
-        <div style="height:4px;background:rgba(255,255,255,0.08);border-radius:2px;overflow:hidden;">
-          <div id="ctx-bar-fill" style="height:100%;border-radius:2px;transition:width 0.5s,background 0.5s;min-width:2px;"></div>
+        <div id="ctx-bar-track" style="height:5px;background:rgba(255,255,255,0.08);border-radius:2px;overflow:hidden;display:flex;" title="">
+          <div id="ctx-bar-sys" style="height:100%;background:#4facfe;transition:width 0.5s;flex:0 0 auto;"></div>
+          <div id="ctx-bar-fill" style="height:100%;transition:width 0.5s,background 0.5s;flex:0 0 auto;"></div>
         </div>
-        <div style="display:flex;justify-content:space-between;margin-top:3px;font-size:7px;color:#475569;">
+        <div style="display:flex;justify-content:space-between;margin-top:3px;font-size:7px;color:#94a3b8;">
           <span id="ctx-turns"></span>
           <span id="ctx-tokens" style="font-family:'Courier New',monospace;"></span>
         </div>`;
@@ -223,16 +224,24 @@ const ControlTowerLive = {
     }
 
     const fill    = document.getElementById('ctx-bar-fill');
+    const sysFill = document.getElementById('ctx-bar-sys');
+    const track   = document.getElementById('ctx-bar-track');
     const val     = document.getElementById('ctx-bar-val');
     const tokEl   = document.getElementById('ctx-tokens');
     const turnsEl = document.getElementById('ctx-turns');
 
-    // Bar fill — always show at least the prompt size if pct is 0
+    // Two segments: BLUE = fixed system prompt+tools (paid every session),
+    // GREEN/AMBER/RED = the conversation on top of it.
+    const sysTok = model.system_prompt_tokens || 0;
     const displayPct = pct || (ctxTotal > 0 ? Math.round(ctxUsed / ctxTotal * 100) : 0);
+    const sysPct  = ctxTotal > 0 ? Math.min(100, (sysTok / ctxTotal) * 100) : 0;
+    const convPct = Math.max(0, Math.min(100 - sysPct, displayPct - sysPct));
+    if (sysFill) sysFill.style.width = sysPct.toFixed(1) + '%';
     if (fill) {
-      fill.style.width      = Math.min(100, displayPct) + '%';
+      fill.style.width      = convPct.toFixed(1) + '%';
       fill.style.background = displayPct < 60 ? '#06ffa5' : displayPct < 85 ? '#fbbf24' : '#ef4444';
     }
+    if (track) track.title = `System prompt + tools: ${sysTok} tok — conversation: ${Math.max(0, ctxUsed - sysTok)} tok — free: ${Math.max(0, ctxTotal - ctxUsed)} tok`;
 
     // Top label: show used/total when available, else just total size
     if (val) {
@@ -240,7 +249,7 @@ const ControlTowerLive = {
         val.textContent = `${(ctxUsed/1000).toFixed(1)}k / ${(ctxTotal/1000).toFixed(0)}k (${displayPct}%)`;
       } else if (ctxTotal > 0) {
         val.textContent = `${(ctxTotal/1000).toFixed(0)}k ctx`;
-        val.style.color = '#475569';
+        val.style.color = '#94a3b8';
       }
     }
 
