@@ -702,15 +702,22 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
       // 28 layers (~15k on 8GB), silently missing the target.
       // Solve: ctx * bytesPerTok + margin <= freeBefore - gpuLayers * bytesPerLayer
       //        gpuLayers = (freeBefore - margin - ctx*bytesPerTok) / bytesPerLayer
-      // We use a conservative KV estimate (150KB/tok — empirical dense qwen35);
-      // the OOM ladder still steps down if the model has bigger buffers.
+      // KV per token comes from the probe cache when available (accurate
+      // per architecture — hybrid qwen35 is ~80 KB/tok, dense llama-3
+      // is ~130 KB/tok). Fallback to 100 KB/tok — an empirical midpoint
+      // safer than the header formula which double-counts hybrid layers.
+      // The OOM ladder still steps down if the model has bigger buffers.
       if (explicitCtx && !explicitLayers && freeBeforeGb > 0.5) {
         const bytesPerLayerGb = fileSizeGb / estLayers;
-        const ctxKvGb = (config.contextLength * 150 * 1024) / (1024 ** 3);
+        ModelService._kvProbe = ModelService._kvProbe || new Map();
+        const cachedProbe = ModelService._kvProbe.get(`${fileName}|fa=${!!config.flashAttention}`);
+        const kvBytesPerTok = cachedProbe?.kvPerTok || 100 * 1024;
+        const ctxKvGb = (config.contextLength * kvBytesPerTok) / (1024 ** 3);
         const marginGb = isMoE ? 0.85 : 0.55; // KV cache metadata + compute buffers + CUDA runtime
         const availLayersGb = Math.max(0, freeBeforeGb - ctxKvGb - marginGb);
         const targetLayers = Math.max(1, Math.min(estLayers, Math.floor(availLayersGb / bytesPerLayerGb)));
-        log.info(`  [auto-budget] target ctx=${config.contextLength} → gpuLayers=${targetLayers}/${estLayers} (KV ~${ctxKvGb.toFixed(1)}GB reserved + ${marginGb}GB margin, ${(targetLayers * bytesPerLayerGb).toFixed(1)}GB layers)`);
+        const kvSource = cachedProbe ? 'MEASURED' : 'empirical fallback';
+        log.info(`  [auto-budget] target ctx=${config.contextLength}, KV=${Math.round(kvBytesPerTok/1024)}KB/tok (${kvSource}) → gpuLayers=${targetLayers}/${estLayers} (KV ~${ctxKvGb.toFixed(1)}GB reserved + ${marginGb}GB margin, ${(targetLayers * bytesPerLayerGb).toFixed(1)}GB layers)`);
         config.gpuLayers = targetLayers;
       } else {
         if (!explicitLayers) config.gpuLayers     = 'auto';
