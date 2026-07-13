@@ -610,6 +610,7 @@ My response: "${ss.last_response_preview}"${tools}
         project: proj.name,
         assigned_agent_id: agentIds.includes(t.agent_id) ? t.agent_id : null,
         priority: 'high',
+        _pipeline: true,  // chained = serial by construction, exempt from WIP limit
         depends_on: createdIds.length ? [createdIds[createdIds.length - 1]] : [],
       });
       const id = res?.task_id || null;
@@ -2194,15 +2195,37 @@ My response: "${ss.last_response_preview}"${tools}
     }
   }
 
-  async _createTask({ title, description, acceptance_criteria, project, assigned_agent_id, priority, depends_on }) {
+  async _createTask({ title, description, acceptance_criteria, project, assigned_agent_id, priority, depends_on, _pipeline = false }) {
+    try {
+      // IDEMPOTENT CREATION — an open task with the same title in the same
+      // project is THE task, not a new one. Kills the observed loop where a
+      // WIP-limited model retried creating its own already-created tasks 4x.
+      let regCache = null;
+      try {
+        regCache = await this.rm.getTasksRegistry();
+        const existing = Object.values(regCache.tasks || {}).find(t =>
+          t.title === title &&
+          (!project || t.project_name === project || t.project_id === project) &&
+          !['completed', 'failed', 'cancelled', 'archived'].includes(t.lifecycle?.status || t.status || 'open')
+        );
+        if (existing) {
+          return { ok: true, task_id: existing.task_id, title, existing: true,
+            message: `Task "${title}" already exists as ${existing.task_id} — NOT duplicated. It will run automatically.` };
+        }
+      } catch { /* best-effort */ }
+      return await this._createTaskInner({ title, description, acceptance_criteria, project, assigned_agent_id, priority, depends_on, _pipeline, regCache });
+    } catch (err) { return { ok: false, error: err.message }; }
+  }
+
+  async _createTaskInner({ title, description, acceptance_criteria, project, assigned_agent_id, priority, depends_on, _pipeline = false, regCache = null }) {
     try {
       // WIP LIMIT (structural) — a project with a pile of open tasks doesn't
       // need MORE tasks, it needs the existing ones finished and integrated.
       // Unbounded task creation is exactly how projects devolve into "lots of
       // files, no progress toward the goal". Cap live tasks per project.
-      if (project) {
+      if (project && !_pipeline) {
         try {
-          const reg = await this.rm.getTasksRegistry();
+          const reg = regCache || await this.rm.getTasksRegistry();
           const live = Object.values(reg.tasks || {}).filter(t =>
             (t.project_name === project || t.project_id === project) &&
             !['completed', 'failed', 'cancelled'].includes(t.lifecycle?.status || t.status || 'open') &&
@@ -2213,7 +2236,7 @@ My response: "${ss.last_response_preview}"${tools}
             return {
               ok: false,
               error: `WIP LIMIT: project "${project}" already has ${live.length} unfinished tasks (limit ${WIP_LIMIT}). ` +
-                     `Do NOT create more. Instead: review the existing tasks (${live.map(t => t.task_id).join(', ')}), ` +
+                     `Do NOT create more and do NOT retry this call. Instead: review the existing tasks (${live.map(t => t.task_id).join(', ')}), ` +
                      `finish or cancel them, integrate their outputs toward the project goal, and update ` +
                      `project memory (completion %, next_steps). Create new tasks only once the backlog shrinks.`,
             };
@@ -2225,9 +2248,25 @@ My response: "${ss.last_response_preview}"${tools}
       const taskId = await this.rm.generateNextId('TASKS/tasks_registry.json');
 
       // Normalise depends_on: accept string or array, keep valid-looking ids only
-      const deps = (Array.isArray(depends_on) ? depends_on : (depends_on ? [depends_on] : []))
+      let deps = (Array.isArray(depends_on) ? depends_on : (depends_on ? [depends_on] : []))
         .filter(d => typeof d === 'string' && /^task_\d+$/i.test(d.trim()))
         .map(d => d.trim());
+      // PHANTOM-DEP VALIDATION — the model referenced task ids from OTHER
+      // sessions/projects as dependencies (observed: kickoff tasks waiting
+      // on an unrelated TEST task). A dep must exist AND belong to the same
+      // project; anything else is stripped with a note.
+      let strippedDeps = [];
+      if (deps.length) {
+        try {
+          const reg2 = regCache || await this.rm.getTasksRegistry();
+          const valid = deps.filter(d => {
+            const dt = reg2.tasks?.[d];
+            return dt && (!project || dt.project_name === project || dt.project_id === project);
+          });
+          strippedDeps = deps.filter(d => !valid.includes(d));
+          deps = valid;
+        } catch {}
+      }
 
       // Resolve agent name
       let agentName = null;
@@ -2277,7 +2316,7 @@ My response: "${ss.last_response_preview}"${tools}
         context: { project, project_id: projectId, assigned_to: assigned_agent_id, priority }
       });
 
-      return { ok: true, task_id: taskId, title, depends_on: deps.length ? deps : undefined, message: `Created task ${taskId}: "${title}"${assigned_agent_id ? ` assigned to ${agentName || assigned_agent_id}` : ''}${project ? ` (project: ${project})` : ''}${deps.length ? ` — waits for ${deps.join(', ')}` : ''}.` };
+      return { ok: true, task_id: taskId, title, depends_on: deps.length ? deps : undefined, message: `Created task ${taskId}: "${title}"${assigned_agent_id ? ` assigned to ${agentName || assigned_agent_id}` : ''}${project ? ` (project: ${project})` : ''}${deps.length ? ` — waits for ${deps.join(', ')}` : ''}${strippedDeps.length ? ` (ignored invalid dependencies: ${strippedDeps.join(', ')} — not in this project)` : ''}.` };
     } catch (err) {
       return { ok: false, error: err.message };
     }
