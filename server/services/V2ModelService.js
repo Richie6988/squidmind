@@ -744,32 +744,46 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
         // reloads skip the probe (~1s).
         V2ModelService._kvProbe = V2ModelService._kvProbe || new Map();
         const probeKey = `${fileName}|fa=${!!config.flashAttention}`;
-        let measuredKvPerTok = V2ModelService._kvProbe.get(probeKey) || 0;
-        if (!measuredKvPerTok && vramAfter && freeAfterGb > 0.9) {
+        let probeData = V2ModelService._kvProbe.get(probeKey) || null;
+        if (!probeData && vramAfter && freeAfterGb > 1.2) {
+          // DIFFERENTIAL probe: a single context measurement bills the fixed
+          // compute buffer as per-token cost (measured 102KB/tok on a hybrid
+          // arch whose true KV is a fraction of that → ctx collapsed again).
+          // Two probes of different sizes cancel the fixed part exactly:
+          //   kvPerTok = (delta8k − delta4k) / 4096 ; fixed = delta4k − 4096·kv
           try {
-            const beforeProbe = await llama.getVramState();
-            const probeCtx = await model.createContext({
-              contextSize: 4096, batchSize: 256, sequences: 1,
-              flashAttention: config.flashAttention
-            });
-            const afterProbe = await llama.getVramState();
-            await probeCtx.dispose();
-            const deltaBytes = Math.max(0, beforeProbe.free - afterProbe.free);
-            // Subtract a rough fixed compute-buffer share so we don't bill
-            // per-token what is per-context; floor at 4KB/tok sanity.
-            measuredKvPerTok = Math.max(4 * 1024, Math.round((deltaBytes * 0.92) / 4096));
-            V2ModelService._kvProbe.set(probeKey, measuredKvPerTok);
-            log.info(`  KV probe: 4096-tok context cost ${(deltaBytes / 1024 ** 3).toFixed(2)} GB → ${Math.round(measuredKvPerTok / 1024)}KB/tok (measured)`);
+            const probeBatch = Math.min(1024, config.batchSize || 1024);
+            const measureCtx = async (size) => {
+              const before = await llama.getVramState();
+              const ctx = await model.createContext({
+                contextSize: size, batchSize: probeBatch, sequences: 1,
+                flashAttention: config.flashAttention
+              });
+              const after = await llama.getVramState();
+              await ctx.dispose();
+              return Math.max(0, before.free - after.free);
+            };
+            const d1 = await measureCtx(4096);
+            const d2 = await measureCtx(8192);
+            const kvPerTok = Math.max(2 * 1024, Math.round((d2 - d1) / 4096));
+            const fixedBytes = Math.max(0, d1 - 4096 * kvPerTok);
+            probeData = { kvPerTok, fixedBytes };
+            V2ModelService._kvProbe.set(probeKey, probeData);
+            log.info(`  KV probe (differential): ${Math.round(kvPerTok / 1024)}KB/tok + ${(fixedBytes / 1024 ** 3).toFixed(2)}GB fixed buffers (d4k=${(d1 / 1024 ** 3).toFixed(2)}GB, d8k=${(d2 / 1024 ** 3).toFixed(2)}GB)`);
           } catch (probeErr) {
             log.warn(`  KV probe failed (${probeErr.message}) — falling back to estimates`);
           }
         }
+        const measuredKvPerTok = probeData?.kvPerTok || 0;
+        const measuredFixedGb  = probeData ? probeData.fixedBytes / 1024 ** 3 : 0;
         const bytesPerTok = measuredKvPerTok > 0
           ? Math.round(measuredKvPerTok * 1.05)      // measured + 5% safety
           : headerKvBytesPerTok > 0
             ? Math.round(headerKvBytesPerTok * 1.08) // header estimate (dense archs)
             : (config.flashAttention ? (isGQA ? 38 * 1024 : 60 * 1024) : 100 * 1024);
-        const margin = 0.65;  // 650MB: CUDA runtime + activations + cuBLAS + hybrid-arch overhead
+        // Margin: when the fixed compute buffer was MEASURED, subtract it plus
+        // a small CUDA-runtime pad; otherwise fall back to the blanket 650MB.
+        const margin = measuredFixedGb > 0 ? measuredFixedGb + 0.25 : 0.65;
 
         // Cap ctx when a big share of layers runs on CPU: each prompt token
         // crosses every CPU layer, so a 60k context on a mostly-CPU model
@@ -1190,7 +1204,7 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
     });
   }
 
-  async *chatWithPoseidon(userMessage, historyIn = [], { _skipBroker = false, _bgMode = false, _genParams = null } = {}) {
+  async *chatWithPoseidon(userMessage, historyIn = [], { _skipBroker = false, _bgMode = false, _genParams = null, _agentPrompt = null } = {}) {
     let history = historyIn.slice(); // mutable copy
     if (!this.poseidonModelId) {
       throw new Error('No model assigned to Poseidon. Import a model and assign it first.');
@@ -1308,9 +1322,27 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
       //   - BG tools are a subset of chat tools, so they still work in bg context.
       //   - The ~500-token saving from the slim BG toolset is not worth the
       //     wall-clock cost of reprocessing the system prompt each turn.
-      // We still record _sessionMode for diagnostics, but no longer reset.
-      if (entry.session && entry._sessionMode && entry._sessionMode !== (_bgMode ? 'bg' : 'chat')) {
-        log.info(` Mode swap ${entry._sessionMode}→${_bgMode ? 'bg' : 'chat'}: keeping session (KV cache preserved)`);
+      // We still record _sessionMode for diagnostics, but no longer reset —
+      // EXCEPT when crossing into/out of AGENT mode: agent tasks run on an
+      // ISOLATED session with a compact mission-only prompt (no aquarium
+      // vision, slim toolset — user directive). Poseidon chat↔bg keep the
+      // shared full-prompt session (KV reuse).
+      const wantMode = _agentPrompt ? 'agent' : (_bgMode ? 'bg' : 'chat');
+      if (entry.session && entry._sessionMode && entry._sessionMode !== wantMode) {
+        const crossingAgent = entry._sessionMode === 'agent' || wantMode === 'agent';
+        if (crossingAgent) {
+          log.info(` Mode swap ${entry._sessionMode}→${wantMode}: rebuilding session (agent isolation)`);
+          try { if (entry.session?.dispose) await entry.session.dispose(); } catch {}
+          try { if (entry._currentSequence?.dispose) await entry._currentSequence.dispose(); } catch {}
+          await new Promise(r => setTimeout(r, 100));
+          entry.session = null;
+          entry._currentSequence = null;
+          entry.sessionTurns = 0;
+          entry.contextPct = 0;
+          entry.contextUsedTokens = 0;
+        } else {
+          log.info(` Mode swap ${entry._sessionMode}→${wantMode}: keeping session (KV cache preserved)`);
+        }
       }
 
       if (!entry.session) {
@@ -1323,9 +1355,12 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
         // behavior (mitigated by real CPU threads + batch 1024).
         let systemPrompt, functions;
         if (orchestrator) {
-          systemPrompt = await orchestrator.buildSystemPrompt(_bgMode);
+          // Agent isolation: mission-only prompt + slim BG toolset. The
+          // wrapper is still forced per model family, the honesty gate and
+          // fabrication detection still guard the output.
+          systemPrompt = _agentPrompt || await orchestrator.buildSystemPrompt(_bgMode);
           try {
-            functions = await orchestrator.buildFunctions('chat');
+            functions = await orchestrator.buildFunctions(_agentPrompt ? 'bg' : 'chat');
           } catch (err) {
             log.warn(' Function-calling setup failed:', err.message, '- continuing without functions');
             functions = undefined;
@@ -1446,7 +1481,7 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
         entry._functions         = functions;
         entry._currentSequence   = sequence;
         entry.sessionTurns       = 0;
-        entry._sessionMode       = _bgMode ? 'bg' : 'chat';
+        entry._sessionMode       = wantMode;
         entry._lastSystemPromptChars = systemPrompt.length;
         const wrapper = entry.session.chatWrapper?.constructor?.name || 'unknown';
         if (chatWrapper !== 'auto') log.info(` chatWrapper forced to ${wrapper} (model family match — Jinja fallback breaks function calling on finetunes)`);

@@ -760,8 +760,37 @@ class TaskRunner {
               }
             } catch {}
           }
+          // AGENT ISOLATION — the agent gets a compact mission-only prompt:
+          // its identity, the execution doctrine, honesty rules and tool
+          // protocol. No aquarium vision, no orchestration doctrine, no
+          // project-management rules (~500 tok vs ~4800 for the full prompt).
+          let _agentPrompt = null;
+          if (agentId) {
+            try {
+              const areg3 = await this.rm.getAgentRegistry();
+              const ae3 = areg3.agents?.[agentId];
+              const abrain3 = ae3?.brain_file ? await this.rm.read(`AGENTS/${ae3.brain_file}`).catch(() => null) : null;
+              const aname = abrain3?.identity?.nickname || ae3?.display_name || agentId;
+              const arole = abrain3?.identity?.role || ae3?.specialization || 'general worker';
+              _agentPrompt = [
+                `You are ${aname}, a ${arole}. You execute ONE task, alone, unattended.`,
+                '',
+                '# EXECUTION',
+                'The plan is already decided. Do NOT restate, re-plan or analyze the task — start calling tools immediately and produce the deliverable.',
+                'Write every deliverable file under output/ with write_file. A reply without a written file is NOT a completed task (unless the task explicitly asks for analysis only).',
+                'NOBODY is present: never ask questions. Decide everything yourself; open with one short "Assumptions:" line if you made choices.',
+                '',
+                '# TOOLS — CALL THEM, NEVER WRITE THEM',
+                'Your tools are real functions injected by the runtime. Call them through the function-calling mechanism, ONE at a time, wait for each real result.',
+                'NEVER write tool syntax as text ("||tool(...)", JSON blobs, pseudo-calls in code fences) — text that looks like a call does NOTHING.',
+                '',
+                '# HONESTY',
+                'Never state that something was done unless YOU called the tool this turn and saw its real result. Your output is verified against the actual files written.',
+              ].join('\n');
+            } catch {}
+          }
           let _lastTouch = 0;
-          for await (const ev of this.modelService.chatWithPoseidon(posMsg, [], { _skipBroker: true, _bgMode: true, _genParams })) {
+          for await (const ev of this.modelService.chatWithPoseidon(posMsg, [], { _skipBroker: true, _bgMode: true, _genParams, _agentPrompt })) {
             // Keepalive on the OUTER TaskRunner token — a long BG generation
             // must not expire as a dead holder mid-run.
             if (Date.now() - _lastTouch > 10_000) { _lastTouch = Date.now(); this.modelService.broker.touch(bgToken); }

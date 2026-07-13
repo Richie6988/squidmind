@@ -500,6 +500,34 @@ function buildRouter(v2ModelService) {
 
       const serveUrl = `/api/files/read?path=${encodeURIComponent(result.outputPath)}`;
       log.info?.(`[upscale-image] ${factor}x via ${result.backend}: ${result.from} → ${result.to} (${path.basename(result.outputPath)})`);
+
+      // Register in results_log so the Control Tower RESULTS carousel shows
+      // the upscaled image like any generation (it only lived in the server
+      // folder before — invisible in the UI).
+      try {
+        const fsp2 = require('fs').promises;
+        const upId = `upscale_${Date.now()}`;
+        let rlog = { results: {} };
+        try { rlog = JSON.parse(await fsp2.readFile(AQUARIUM.RESULTS_LOG, 'utf8')); } catch {}
+        rlog.results[upId] = {
+          task_id:        upId,
+          title:          `Image: upscale ${factor}x — ${path.basename(source_image)}`,
+          task_type:      'image_generation',
+          status:         'completed',
+          result_summary: `Upscaled ${result.from} → ${result.to} via ${result.backend}`,
+          result_file:    result.outputPath,
+          output_preview: serveUrl,
+          completed_at:   new Date().toISOString(),
+          assigned_name:  'upscaler',
+          project_name:   null, project_id: null,
+        };
+        await fsp2.writeFile(AQUARIUM.RESULTS_LOG, JSON.stringify(rlog, null, 2), 'utf8');
+        global.ReasoningBus?.push({
+          type: 'task_lifecycle', task_id: upId, status: 'completed',
+          title: rlog.results[upId].title, result_file: result.outputPath,
+        });
+      } catch (re) { log.warn?.(`[upscale-image] results_log write failed: ${re.message}`); }
+
       res.json({
         ok: true, success: true,
         outputPath: result.outputPath, url: serveUrl,
