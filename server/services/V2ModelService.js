@@ -732,9 +732,43 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
         // Exact GQA from the GGUF header when available — the name regex
         // missed e.g. 'l3-2-8x3b-…' (a GQA Llama-3.2) and budgeted 60KB/tok.
         const isGQA = (headerGQA !== null) ? headerGQA : /qwen|llama[-_]?3|mistral|gemma/.test(modelName);
-        const bytesPerTok = headerKvBytesPerTok > 0
-          ? Math.round(headerKvBytesPerTok * 1.08)   // exact from GGUF header + 8% safety
-          : (config.flashAttention ? (isGQA ? 38 * 1024 : 60 * 1024) : 100 * 1024);
+
+        // KV cost per token: MEASURE, don't estimate. Every formula we
+        // tried was wrong for some architecture (the 38KB heuristic was
+        // optimistic for dense GQA; the header formula counts ALL layers
+        // and overestimates 3-4x on HYBRID archs like qwen3.5 where only a
+        // fraction of layers carry a KV cache — that regression shrank a
+        // machine that used to run 40k contexts down to 11k). A 4096-token
+        // probe context measures the true allocation, whatever the arch,
+        // KV quantization, or flash setting. Cached per model+flags so
+        // reloads skip the probe (~1s).
+        V2ModelService._kvProbe = V2ModelService._kvProbe || new Map();
+        const probeKey = `${fileName}|fa=${!!config.flashAttention}`;
+        let measuredKvPerTok = V2ModelService._kvProbe.get(probeKey) || 0;
+        if (!measuredKvPerTok && vramAfter && freeAfterGb > 0.9) {
+          try {
+            const beforeProbe = await llama.getVramState();
+            const probeCtx = await model.createContext({
+              contextSize: 4096, batchSize: 256, sequences: 1,
+              flashAttention: config.flashAttention
+            });
+            const afterProbe = await llama.getVramState();
+            await probeCtx.dispose();
+            const deltaBytes = Math.max(0, beforeProbe.free - afterProbe.free);
+            // Subtract a rough fixed compute-buffer share so we don't bill
+            // per-token what is per-context; floor at 4KB/tok sanity.
+            measuredKvPerTok = Math.max(4 * 1024, Math.round((deltaBytes * 0.92) / 4096));
+            V2ModelService._kvProbe.set(probeKey, measuredKvPerTok);
+            log.info(`  KV probe: 4096-tok context cost ${(deltaBytes / 1024 ** 3).toFixed(2)} GB → ${Math.round(measuredKvPerTok / 1024)}KB/tok (measured)`);
+          } catch (probeErr) {
+            log.warn(`  KV probe failed (${probeErr.message}) — falling back to estimates`);
+          }
+        }
+        const bytesPerTok = measuredKvPerTok > 0
+          ? Math.round(measuredKvPerTok * 1.05)      // measured + 5% safety
+          : headerKvBytesPerTok > 0
+            ? Math.round(headerKvBytesPerTok * 1.08) // header estimate (dense archs)
+            : (config.flashAttention ? (isGQA ? 38 * 1024 : 60 * 1024) : 100 * 1024);
         const margin = 0.65;  // 650MB: CUDA runtime + activations + cuBLAS + hybrid-arch overhead
 
         // Cap ctx when a big share of layers runs on CPU: each prompt token
@@ -751,7 +785,7 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
           const toksFit   = Math.floor(availKvGb * 1024 ** 3 / bytesPerTok);
           const computed  = Math.max(V2ModelService.MIN_VIABLE_CTX, Math.floor(toksFit / 1024) * 1024);
           config.contextLength = Math.min(computed, trainCtx, offloadCap);
-          log.info(`  [auto] contextLength: ${config.contextLength} (availKv=${availKvGb.toFixed(2)}GB, ${Math.round(bytesPerTok/1024)}KB/tok${headerKvBytesPerTok ? ' (exact from header)' : ''}, isGQA=${isGQA}, toksFit=${toksFit}${Number.isFinite(offloadCap) ? `, capped at ${offloadCap} — ${Math.round(cpuShare*100)}% of layers on CPU` : ''})`);
+          log.info(`  [auto] contextLength: ${config.contextLength} (availKv=${availKvGb.toFixed(2)}GB, ${Math.round(bytesPerTok/1024)}KB/tok${measuredKvPerTok ? ' (MEASURED)' : headerKvBytesPerTok ? ' (header estimate)' : ' (heuristic)'}, isGQA=${isGQA}, toksFit=${toksFit}${Number.isFinite(offloadCap) ? `, capped at ${offloadCap} — ${Math.round(cpuShare*100)}% of layers on CPU` : ''})`);
         } else if (!vramAfter) {
           // No VRAM info — use a conservative default
           config.contextLength = 8192;
