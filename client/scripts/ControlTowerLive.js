@@ -206,23 +206,22 @@ const ControlTowerLive = {
       if (!pill) return;
       barWrap = document.createElement('div');
       barWrap.id = 'ctx-bar-wrap';
-      barWrap.style.cssText = 'margin-top:6px;';
+      barWrap.style.cssText = 'margin-top:8px;';
       barWrap.innerHTML = `
-        <div style="display:flex;justify-content:space-between;align-items:center;font-size:7px;color:#94a3b8;margin-bottom:3px;letter-spacing:.04em;">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;font-size:8px;color:#94a3b8;letter-spacing:.04em;margin-bottom:4px;">
           <span>CONTEXT</span>
-          <span id="ctx-bar-val" style="font-family:'Courier New',monospace;color:#cbd5e1;"></span>
+          <span id="ctx-bar-val" style="font-family:'Courier New',monospace;color:#cbd5e1;font-size:9px;"></span>
         </div>
-        <div id="ctx-bar-track" style="height:5px;background:rgba(255,255,255,0.08);border-radius:2px;overflow:hidden;display:flex;" title="">
-          <div id="ctx-bar-sys" style="height:100%;background:#4facfe;transition:width 0.5s;flex:0 0 auto;"></div>
-          <div id="ctx-bar-fill" style="height:100%;transition:width 0.5s,background 0.5s;flex:0 0 auto;"></div>
+        <div id="ctx-bar-track" title="" style="height:6px;background:rgba(255,255,255,0.08);border-radius:2px;overflow:hidden;display:flex;">
+          <div id="ctx-bar-sys"  style="height:100%;background:#4facfe;transition:width 0.4s;flex:0 0 auto;"></div>
+          <div id="ctx-bar-fill" style="height:100%;transition:width 0.4s,background 0.4s;flex:0 0 auto;"></div>
         </div>
-        <div style="display:flex;justify-content:space-between;margin-top:3px;font-size:7px;font-family:'Courier New',monospace;">
-          <span id="ctx-sys-label" style="color:#4facfe;"></span>
-          <span id="ctx-free-label" style="color:#94a3b8;"></span>
-        </div>
-        <div style="display:flex;justify-content:space-between;margin-top:2px;font-size:7px;color:#94a3b8;">
-          <span id="ctx-turns"></span>
-          <span id="ctx-tokens" style="font-family:'Courier New',monospace;"></span>
+        <div id="ctx-bar-legend" style="display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:8px;font-family:'Courier New',monospace;color:#94a3b8;margin-top:5px;line-height:1;">
+          <span style="display:flex;gap:10px;align-items:center;">
+            <span id="ctx-legend-sys"  style="display:inline-flex;align-items:center;gap:4px;"><span style="width:6px;height:6px;background:#4facfe;border-radius:1px;"></span><span></span></span>
+            <span id="ctx-legend-conv" style="display:inline-flex;align-items:center;gap:4px;"><span id="ctx-legend-conv-dot" style="width:6px;height:6px;background:#06ffa5;border-radius:1px;"></span><span></span></span>
+          </span>
+          <span id="ctx-legend-free" style="color:#64748b;"></span>
         </div>`;
       pill.parentNode.insertBefore(barWrap, pill.nextSibling);
     }
@@ -231,45 +230,46 @@ const ControlTowerLive = {
     const sysFill = document.getElementById('ctx-bar-sys');
     const track   = document.getElementById('ctx-bar-track');
     const val     = document.getElementById('ctx-bar-val');
-    const tokEl   = document.getElementById('ctx-tokens');
-    const turnsEl = document.getElementById('ctx-turns');
+    const legSys  = document.getElementById('ctx-legend-sys')?.lastElementChild;
+    const legConv = document.getElementById('ctx-legend-conv')?.lastElementChild;
+    const legConvDot = document.getElementById('ctx-legend-conv-dot');
+    const legFree = document.getElementById('ctx-legend-free');
 
-    // Two segments: BLUE = fixed system prompt+tools (paid every session),
-    // GREEN/AMBER/RED = the conversation on top of it.
+    // BLUE segment = fixed system+tools; GREEN/AMBER/RED = conversation.
     const sysTok = model.system_prompt_tokens || 0;
     const displayPct = pct || (ctxTotal > 0 ? Math.round(ctxUsed / ctxTotal * 100) : 0);
     const sysPct  = ctxTotal > 0 ? Math.min(100, (sysTok / ctxTotal) * 100) : 0;
     const convPct = Math.max(0, Math.min(100 - sysPct, displayPct - sysPct));
+    const convColor = displayPct < 60 ? '#06ffa5' : displayPct < 85 ? '#fbbf24' : '#ef4444';
     if (sysFill) sysFill.style.width = sysPct.toFixed(1) + '%';
-    if (fill) {
-      fill.style.width      = convPct.toFixed(1) + '%';
-      fill.style.background = displayPct < 60 ? '#06ffa5' : displayPct < 85 ? '#fbbf24' : '#ef4444';
-    }
-    if (track) track.title = `System prompt + tools: ${sysTok} tok — conversation: ${Math.max(0, ctxUsed - sysTok)} tok — free: ${Math.max(0, ctxTotal - ctxUsed)} tok`;
-    // Legend: name the blue segment (Poseidon full / Agent slim / BG slim)
-    // so the same tower is readable regardless of which system prompt is
-    // resident. The right label = context still free.
-    const sysLbl = document.getElementById('ctx-sys-label');
-    const freeLbl = document.getElementById('ctx-free-label');
+    if (fill) { fill.style.width = convPct.toFixed(1) + '%'; fill.style.background = convColor; }
+    if (track) track.title = `System+tools ${sysTok} tok · conversation ${Math.max(0, ctxUsed - sysTok)} tok · free ${Math.max(0, ctxTotal - ctxUsed)} tok`;
+
+    // Session label matches what's actually resident
     const modeName = model.session_mode === 'agent' ? 'Agent'
                     : model.session_mode === 'bg' ? 'BG'
                     : 'Poseidon';
-    if (sysLbl)  sysLbl.textContent  = sysTok  ? `${modeName} prompt: ${sysTok} tok` : '';
-    if (freeLbl) freeLbl.textContent = ctxTotal ? `${Math.max(0, ctxTotal - ctxUsed)} tok free` : '';
 
-    // Top label: show used/total when available, else just total size
+    // Right-aligned header: N/M (X%) if there's any conversation, else just Nk ctx
     if (val) {
       if (ctxTotal > 0 && ctxUsed > 0) {
-        val.textContent = `${(ctxUsed/1000).toFixed(1)}k / ${(ctxTotal/1000).toFixed(0)}k (${displayPct}%)`;
+        val.textContent = `${(ctxUsed/1000).toFixed(1)}k / ${(ctxTotal/1000).toFixed(0)}k · ${displayPct}%`;
+        val.style.color = displayPct >= 85 ? '#ef4444' : displayPct >= 60 ? '#fbbf24' : '#cbd5e1';
       } else if (ctxTotal > 0) {
-        val.textContent = `${(ctxTotal/1000).toFixed(0)}k ctx`;
+        val.textContent = `${(ctxTotal/1000).toFixed(0)}k`;
         val.style.color = '#94a3b8';
+      } else {
+        val.textContent = '';
       }
     }
 
-    // Bottom row: turns + tokens generated (only show when non-zero)
-    if (turnsEl) turnsEl.textContent = turns > 0 ? `turn ${turns}` : '';
-    if (tokEl)   tokEl.textContent   = tokens > 0 ? (tokens >= 10000 ? `${(tokens/1000).toFixed(1)}k tok` : `${window.Format?.num(tokens) || tokens} tok`) : '';
+    // Single legend row — no more duplicated numbers
+    const conversationTok = Math.max(0, ctxUsed - sysTok);
+    const freeTok = Math.max(0, ctxTotal - ctxUsed);
+    if (legSys)  legSys.textContent  = sysTok ? `${modeName} ${sysTok}` : '';
+    if (legConv) legConv.textContent = conversationTok > 0 ? `conv ${conversationTok}` : (turns > 0 ? `turn ${turns}` : '');
+    if (legConvDot) legConvDot.style.background = convColor;
+    if (legFree) legFree.textContent = ctxTotal ? `${freeTok} free` : '';
   },
 
   stop() {

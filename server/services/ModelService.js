@@ -694,7 +694,27 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
       if (phaseCtxOverride) log.info(`  [phase override] contextLength=${phaseCtxOverride} (agent/review regime)`);
       if (explicitCtx)      log.info(`  [explicit] contextLength=${config.contextLength} (user override — auto formula bypassed)`);
       if (explicitLayers)   log.info(`  [explicit] gpuLayers=${config.gpuLayers} (user override — auto formula bypassed)`);
-      if (!explicitLayers) config.gpuLayers     = 'auto';
+
+      // AUTO-BUDGET: if the user set an explicit contextLength but LEFT
+      // gpuLayers on auto, we solve their real goal — pick gpuLayers so
+      // the target ctx actually fits. Otherwise the explicit ctx would
+      // just OOM at load and the ladder would shrink it to whatever fits
+      // 28 layers (~15k on 8GB), silently missing the target.
+      // Solve: ctx * bytesPerTok + margin <= freeBefore - gpuLayers * bytesPerLayer
+      //        gpuLayers = (freeBefore - margin - ctx*bytesPerTok) / bytesPerLayer
+      // We use a conservative KV estimate (150KB/tok — empirical dense qwen35);
+      // the OOM ladder still steps down if the model has bigger buffers.
+      if (explicitCtx && !explicitLayers && freeBeforeGb > 0.5) {
+        const bytesPerLayerGb = fileSizeGb / estLayers;
+        const ctxKvGb = (config.contextLength * 150 * 1024) / (1024 ** 3);
+        const marginGb = isMoE ? 0.85 : 0.55; // KV cache metadata + compute buffers + CUDA runtime
+        const availLayersGb = Math.max(0, freeBeforeGb - ctxKvGb - marginGb);
+        const targetLayers = Math.max(1, Math.min(estLayers, Math.floor(availLayersGb / bytesPerLayerGb)));
+        log.info(`  [auto-budget] target ctx=${config.contextLength} → gpuLayers=${targetLayers}/${estLayers} (KV ~${ctxKvGb.toFixed(1)}GB reserved + ${marginGb}GB margin, ${(targetLayers * bytesPerLayerGb).toFixed(1)}GB layers)`);
+        config.gpuLayers = targetLayers;
+      } else {
+        if (!explicitLayers) config.gpuLayers     = 'auto';
+      }
       if (phaseCtxOverride) config.contextLength = phaseCtxOverride;
       else if (!explicitCtx) config.contextLength = 'auto';
 

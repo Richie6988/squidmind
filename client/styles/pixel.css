@@ -8889,39 +8889,57 @@ html { zoom: var(--app-zoom); }
    !important beats the per-modal vh caps scattered above. */
 .modal .modal-content { max-height: calc(88vh / var(--app-zoom)) !important; }
 
-/* ═══ Control Tower: compact resources (user request) ═══════════════════ */
-/* The stock stat rows use inline-block children aligned by text BASELINE
-   (line 4025 block) — align-items:center was a no-op because the element
-   was not flex. Force flex, then center. The 4px padding gives breathing
-   room without stealing tower height. Scoped to monitor only. */
+/* ═══ Control Tower: compact resources ═══════════════════════════════════ */
+/* Nailed this after three failed passes by targeting the real markup:
+     .stat-item > .stat-label + .stat-bar > .stat-fill + .stat-value
+   The parent must be flex; every direct child gets align-self:center so
+   nothing depends on the base rule (line 4025 uses inline-block with a
+   different baseline). Height on .stat-bar is what .stat-fill grows from,
+   so it must be explicit here. Scoped to #monitor-system-stats only. */
 #monitor-system-stats .stat-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 4px 8px;
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  gap: 10px;
+  padding: 5px 10px;
   margin: 3px 0;
-  min-height: 22px;
-}
-#monitor-system-stats .stat-label {
-  font-size: 8px;
-  width: 34px;
-  min-width: 34px;
+  min-height: 24px;
   line-height: 1;
-  display: block;   /* kill inline-block baseline behavior */
 }
-#monitor-system-stats .stat-bar {
-  height: 7px;
-  border-width: 1px;
-  flex: 1;
-  vertical-align: unset;   /* was middle from inline-block layout */
-  width: auto;             /* was fixed 100px */
-}
-#monitor-system-stats .stat-value {
+#monitor-system-stats .stat-item > .stat-label {
+  align-self: center;
+  display: block;
+  width: 42px;
+  min-width: 42px;
+  flex: 0 0 auto;
   font-size: 9px;
   line-height: 1;
-  margin-left: 0;
-  min-width: 30px;
+  color: var(--text-secondary);
+  margin: 0;
+}
+#monitor-system-stats .stat-item > .stat-bar {
+  align-self: center;
+  display: block;
+  flex: 1 1 auto;
+  width: auto !important;
+  height: 8px !important;
+  vertical-align: unset;
+  margin: 0;
+  border-width: 1px;
+}
+#monitor-system-stats .stat-item > .stat-bar > .stat-fill {
+  height: 100%;
+  display: block;
+}
+#monitor-system-stats .stat-item > .stat-value {
+  align-self: center;
+  display: block;
+  flex: 0 0 auto;
+  min-width: 34px;
+  font-size: 10px;
+  line-height: 1;
   text-align: right;
+  margin: 0;
 }
 
 /* Agent levels: collapsible header + rows */
