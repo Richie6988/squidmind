@@ -1,5 +1,5 @@
 /**
- * V2ModelService - GGUF model loading and chat using node-llama-cpp v3
+ * ModelService - GGUF model loading and chat using node-llama-cpp v3
  * 
  * Features:
  *  - Load models with all user-controlled settings (context, GPU layers, threads, etc.)
@@ -11,7 +11,7 @@
 
 const path = require('path');
 const os = require('os');
-const log = require('../utils/logger').createLogger('V2ModelService');
+const log = require('../utils/logger').createLogger('ModelService');
 // Inference threads default: ~physical cores (logical / 2 on SMT CPUs).
 // Was hardcoded 4 — on a 6-core Ryzen the CPU-offloaded layers ran on
 // 4/6 cores, throttling prefill AND decode by ~1/3 for zero benefit.
@@ -22,7 +22,7 @@ const ImageGenerationService = require('./ImageGenerationService');
 const fs = require('fs').promises;
 const fsSync = require('fs');
 
-class V2ModelService {
+class ModelService {
   // Minimum context tokens needed for the Poseidon system prompt + tools + 1 turn.
   // Derived from poseidon_brain.json size (~2800 tokens) + safety margin.
   // Any model with trainCtx < this is an encoder / non-chat model.
@@ -343,7 +343,7 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
     }
     
     const modelId = this._fileNameToId(path.basename(fileName));
-    const finalConfig = { ...V2ModelService.DEFAULT_CONFIG, ...config };
+    const finalConfig = { ...ModelService.DEFAULT_CONFIG, ...config };
     
     // Auto-detect model type from filename if not specified in config
     const model_type = config.model_type || ImageGenerationService.detectModelType(path.basename(fileName));
@@ -739,10 +739,10 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
       const trainCtx = model.trainContextSize;
       log.info(`  Weights loaded. trainCtx=${trainCtx}, gpuLayers=${config.gpuLayers}`);
 
-      if (trainCtx < V2ModelService.MIN_VIABLE_CTX) {
+      if (trainCtx < ModelService.MIN_VIABLE_CTX) {
         await model.dispose(); model = null;
         throw new Error(
-          `trainCtx=${trainCtx} < ${V2ModelService.MIN_VIABLE_CTX} — encoder model (T5/CLIP/VAE), not a chat LLM. ` +
+          `trainCtx=${trainCtx} < ${ModelService.MIN_VIABLE_CTX} — encoder model (T5/CLIP/VAE), not a chat LLM. ` +
           `Tag it as model_type: "image".`
         );
       }
@@ -770,9 +770,9 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
         // probe context measures the true allocation, whatever the arch,
         // KV quantization, or flash setting. Cached per model+flags so
         // reloads skip the probe (~1s).
-        V2ModelService._kvProbe = V2ModelService._kvProbe || new Map();
+        ModelService._kvProbe = ModelService._kvProbe || new Map();
         const probeKey = `${fileName}|fa=${!!config.flashAttention}`;
-        let probeData = V2ModelService._kvProbe.get(probeKey) || null;
+        let probeData = ModelService._kvProbe.get(probeKey) || null;
         if (!probeData && vramAfter && freeAfterGb > 1.2) {
           // DIFFERENTIAL probe: a single context measurement bills the fixed
           // compute buffer as per-token cost (measured 102KB/tok on a hybrid
@@ -806,7 +806,7 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
               const kvPerTok = rawKvPerTok;
               const fixedBytes = Math.max(0, d1 - 4096 * kvPerTok);
               probeData = { kvPerTok, fixedBytes };
-              V2ModelService._kvProbe.set(probeKey, probeData);
+              ModelService._kvProbe.set(probeKey, probeData);
               log.info(`  KV probe (differential): ${Math.round(kvPerTok / 1024)}KB/tok + ${(fixedBytes / 1024 ** 3).toFixed(2)}GB fixed buffers (d4k=${(d1 / 1024 ** 3).toFixed(2)}GB, d8k=${(d2 / 1024 ** 3).toFixed(2)}GB)`);
             }
           } catch (probeErr) {
@@ -836,7 +836,7 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
         if (vramAfter && freeAfterGb > margin + 0.1) {
           const availKvGb = freeAfterGb - margin;
           const toksFit   = Math.floor(availKvGb * 1024 ** 3 / bytesPerTok);
-          const computed  = Math.max(V2ModelService.MIN_VIABLE_CTX, Math.floor(toksFit / 1024) * 1024);
+          const computed  = Math.max(ModelService.MIN_VIABLE_CTX, Math.floor(toksFit / 1024) * 1024);
           // Hard ceiling on the AUTO path: no consumer GPU justifies a
           // 262k context. Anything past 65k is a red flag (the OOM ladder
           // would burn 3+ retries and can cascade into an eviction loop).
@@ -850,7 +850,7 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
           log.info(`  [auto] contextLength: ${config.contextLength} (no VRAM info, conservative default)`);
         } else {
           // Very little VRAM left — use minimum viable
-          config.contextLength = V2ModelService.MIN_VIABLE_CTX;
+          config.contextLength = ModelService.MIN_VIABLE_CTX;
           log.info(`  [auto] contextLength: ${config.contextLength} (low VRAM: ${freeAfterGb.toFixed(2)}GB free)`);
         }
       }
@@ -870,14 +870,14 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
       // ladder below still protects us if the estimate is optimistic.
       const seqCount = freeBeforeGb >= 18 ? 3 : freeBeforeGb >= 10 ? 2 : 1;
       if (seqCount > 1) {
-        const perSeq = Math.max(V2ModelService.MIN_VIABLE_CTX,
+        const perSeq = Math.max(ModelService.MIN_VIABLE_CTX,
           Math.floor(config.contextLength / seqCount / 1024) * 1024);
         log.info(`  [auto] sequences: ${seqCount} (${freeBeforeGb.toFixed(1)}GB free) — ctx ${config.contextLength} → ${perSeq}/sequence`);
         config.contextLength = perSeq;
       }
       const ctxLadder = (() => {
         const target = config.contextLength;
-        const steps  = [target, Math.floor(target * 0.75), Math.floor(target / 2), V2ModelService.MIN_VIABLE_CTX, 2048];
+        const steps  = [target, Math.floor(target * 0.75), Math.floor(target / 2), ModelService.MIN_VIABLE_CTX, 2048];
         return [...new Set(steps.map(v => Math.max(2048, Math.min(v, trainCtx))))];
       })();
 
@@ -911,9 +911,9 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
       }
 
       // Warn if context ended up too small for the system prompt
-      if (config.contextLength < V2ModelService.MIN_VIABLE_CTX) {
+      if (config.contextLength < ModelService.MIN_VIABLE_CTX) {
         log.warn(
-          `[V2ModelService] ⚠ Context ${config.contextLength} < ${V2ModelService.MIN_VIABLE_CTX} minimum. ` +
+          `[ModelService] ⚠ Context ${config.contextLength} < ${ModelService.MIN_VIABLE_CTX} minimum. ` +
           `Chat may fail. Try: smaller model, fewer GPU layers, or CPU-only mode.`
         );
       }
@@ -1497,7 +1497,7 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
 
         // Auto-slim system prompt when context is tight.
         // System prompt must leave room for conversation: use 40% budget (not 60%).
-        const ctxTokens   = entry.config?.contextLength || V2ModelService.MIN_VIABLE_CTX;
+        const ctxTokens   = entry.config?.contextLength || ModelService.MIN_VIABLE_CTX;
         const promptTokens = Math.ceil(systemPrompt.length / 4);
         const budgetTokens = Math.floor(ctxTokens * 0.40); // 40% for system prompt
         if (promptTokens > budgetTokens) {
@@ -2698,4 +2698,4 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
   }
 }
 
-module.exports = V2ModelService;
+module.exports = ModelService;

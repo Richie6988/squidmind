@@ -10,22 +10,46 @@ The interface is a living aquarium: agents swim as animated pixel-art squids, pr
 
 ## What's New — July 2026 sprint
 
-**Models & inference**
-- GGUF-header-driven auto-config: real layer count, exact GQA detection (kv-heads), MoE expert count. Oversized models budget VRAM layers-first (fixed ~1.25 GB KV reserve, everything else to GPU layers) instead of handing leftover VRAM to a giant KV cache.
-- Context auto-capped when layers spill to CPU (>60% → 12k, >30% → 16k); gpuLayers OOM retry ladder; the final CPU rung can't be vetoed by node-llama-cpp's pre-load estimator.
-- Low-compute chat mode (>50% layers on CPU): minimal ~600-token system prompt + slim 27-tool set instead of the full 4k prompt — prefill ÷6.
-- CPU threads default to physical cores (was hardcoded 4), batch 1024 (was 512); legacy 4/512 configs soft-migrate at load. Per-turn perf telemetry: `⏱ turn perf: first token 22.4s, decode ~3.2 tok/s`.
-- Live chat status events: broker waits ("busy with task_00xx, held Ns") and slow prefills stream progress to the loader instead of dead air; prefill has its own 20-min budget separate from the 5-min idle timeout.
-- HF downloads: expired-signature 403s retry from the origin URL, Range-resume from kept `.partial` files, Clear-finished/Retry buttons, 🐢 CPU-heavy badge on files bigger than ~85% of detected VRAM.
+The system landed on an agentic architecture that trades speed for correctness. What you can trust in a run now is: each role has its own model + context, no hidden KV leaks between phases, tool calls are verified against the actual filesystem, and structural planning replaces improvised control flow.
 
-**Agentic core**
-- Autonomy doctrine: act-first with stated assumptions replaces the clarification questionnaire; background/agent runs may never ask questions (nobody is there).
-- Completion honesty gate: task replies claiming file writes are verified against the tool-write ledger; fabrications fail with a teaching retry and count as honesty strikes.
-- Agent reputation loop: Poseidon's roster and `list_agents` show `✓/✗ (success %) | ⚖ strikes` so critical tasks route to agents that actually deliver.
-- Dream cycle now logs `poseidon_dream` events (Dreams tab in Logs works) and auto-dreams skip low-compute models.
+**Agentic phase swaps — the core discipline**
+Every phase (chat / agent / review) runs on a **freshly loaded model** with its **own context regime**, and the KV cache from one role never crosses into another. Chat honors the operator's configured context (large, e.g. 45k tokens), agent execution runs on a tight 6k context with a mission-only prompt (~500 tokens), quality review runs on 10k with a validation-only prompt. Projects can bind different models per phase (`assigned_model_id`, `review_model_id`) so a small fast model does the agent work while Poseidon keeps the strategic seat, or the same model is simply reloaded with a different regime — the operator chooses. Direct chat auto-restores the Poseidon regime when a task leaves the aquarium in an agent/review phase. Trade-off explicitly accepted: each swap costs ~30–40s of load; quality of workflow > raw throughput.
 
-**UI (130% default zoom)**
-- All coordinate math (chat overlay, canvas clicks/hover, drag & drop) divides by the effective CSS zoom; modals and app-shell heights use `--vh100 = 100vh / zoom` so nothing paints below the real fold; kanban cards wrap instead of overflowing narrow columns.
+**Structural planning — control flow in code, not in the model**
+Multi-task kickoffs are handled by `plan_project(goal, project)`: the model makes one trivial call, then a coded pipeline runs the multi-step work — reads project memory + agent roster, does ONE grammar-constrained generation (`createGrammarForJsonSchema`) that produces a 3-6 task JSON plan whose `agent_id` field is bound to a live registry enum (the model *structurally cannot* invent agents, loop, narrate tools, or output prose), then creates each task via `_createTask`, chains dependencies sequentially, updates memory once. Freeform `create_task` remains for one-off work with idempotency (same-title open task returned, not duplicated) and phantom-dep validation (deps must exist AND belong to the same project). WIP limit of 4 per project on freeform, exempt for plan-pipeline tasks (chained = serial by construction).
+
+**Task lifecycle with honesty and validation**
+Task descriptions must be execution-ready (numbered imperative steps + exact output filename); the agent prompt starts with an EXECUTE MODE preamble that forbids re-planning ("thinking out loud is not work"). After generation, three gates fire in order:
+- *Completion honesty gate*: replies claiming file writes are verified against a tool-write ledger; fabrications (`||tool()` syntax, JSON blobs, plain-prose "Actions Taken") trigger a teaching retry and add a strike to the agent's reputation.
+- *Auto-correction pass*: if fabrication signatures are detected with zero real tool calls, one corrective session runs in-turn, streamed and visible to the user — "actions above were narrated, not executed — running them for real now."
+- *Quality review*: a short critique reads the actual written file, scores against the acceptance criteria; REVISE sends the task back once with the fixes appended to the description permanently (not to progress) — the re-run has a full improved spec. Unparseable verdicts default to PASS so a sloppy reviewer can't loop a task.
+Agent reputation surfaces in Poseidon's roster (`✓/✗ (success %) | ⚖ strikes`) and in the Control Tower agent level line.
+
+**Per-agent sampling — brain params finally applied**
+`brain_config.inference_params` existed in every brain file but was never read at generation. Fixed: `create_agent` seeds temperature by specialization (designer 0.95, researcher/analyst 0.4, coding 0.35, general 0.7 — explicit param wins) and tunes creativity/thoroughness traits; TaskRunner reads the brain at run time and passes `{temperature, topP, topK}` through the generation. An artist runs hot, an analyst runs cold.
+
+**Model loading — measured, not estimated**
+GGUF header parsed for real layer count, exact GQA (`head_count_kv`/`head_count`), explicit `attention.key_length`/`value_length` (matters on modern archs where head_dim ≠ emb/heads), MoE `expert_count`. KV cost per token is **measured**, not computed: a differential probe (two contexts of 4096 and 8192 tokens, batch at the config value, delta VRAM difference) cancels the fixed compute buffer exactly and yields true bytes/token whatever the architecture (dense, hybrid Qwen3.5, MoE) or KV quantization. Sanity floors reject allocator noise (`d8k ≤ d4k` or `kv < 8KB` → discard, fall back to header formula → heuristic). Cached per model+flash setting.
+
+Model params in the registry are **respected**: explicit `contextLength` in `model_params` bypasses the auto formula, the offload caps, and the safety ceiling — the OOM ladder is the only guard on the way down. `[explicit] contextLength=N (user override — auto formula bypassed)` in the logs when honored. Phase overrides (agent/review) still win over an explicit chat ctx for the transient load. Chat wrappers forced by model family (`qwen*` → QwenChatWrapper, `llama-3`/`l3-*` → Llama3_1ChatWrapper) — Jinja fallback templates from uncensored finetunes broke grammar-backed function calling; forcing the specialized wrapper is what restored real tool calls end-to-end.
+
+**Model broker — keepalive not clockwork**
+The 10-min MAX_HOLD expiry exists to recover from crashed holders, but was killing slow-alive generations mid-run ("Object is disposed"). Fixed: `broker.touch(token)` renews expiration on streaming activity (chat throttled 10s, prefill heartbeat during silent minutes, TaskRunner BG loops on every event). Holders that stop producing still expire after 10 silent minutes — the dead-holder recovery is intact, it just can't kill live work.
+
+**Streaming voice**
+TTS starts on the first sentence, not the last word. Text chunks feed a rolling buffer; complete sentences (≥ 24 chars, boundary on `.!?…;` or hard newline) pop and fire TTS requests immediately. A serial audio queue plays them in order — the model producing sentence N+1 while sentence N speaks hides the TTS latency. Config gate matches legacy auto-speak; when off, whole-reply speech still fires on `end`. Manual 🔊 replay untouched.
+
+**Control Tower**
+Context KPI splits system-prompt (blue segment: "Poseidon prompt: 4820 tok" / "Agent prompt: 512 tok" / "BG prompt: …") from the conversation stacked on it (green → amber → red) with a right-side "N tok free" legend and a hover breakdown. Agent levels behind a collapsed `▸ AGENT LEVELS` toggle, `Lv = floor(sqrt(validated_tasks)) + 1` where validation = passed the quality review. Density pass on resources rows (scoped `#monitor-system-stats`), aligned labels, ZStack window-manager (`MutationObserver` raises any panel appended or transitioning hidden→visible, capture-phase mousedown raises the panel you interact with — last opened / last touched on top), delete for output files (route existed nowhere, now does), unified smart Unload button (auto-detects generating/dreaming and asks the right question).
+
+**Image generation**
+GPU diffusion killed with "code null" when the LLM was resident (KV + layers left no room for the sd allocs). Fix: `nvidia-smi` free-VRAM check before each spawn, needed = `weights × 1.15 + activations + 0.4GB runtime` — when short, degrade to the proven CPU path (`--max-vram 0`) with a clear log instead of crashing. Upscales register in `results_log` + broadcast `task_lifecycle` so they show in the Control Tower RESULTS carousel like any generation.
+
+**UI polish (130% default zoom)**
+All coordinate math (chat overlay, canvas clicks/hover, drag & drop) divides by the effective CSS zoom; modals and app-shell heights use `--vh100 = 100vh / zoom` so nothing paints below the real fold; kanban cards wrap; left click on a squid selects only (edition lives in the right-click menu — both left-click open paths removed); glasses accessories recentered on true eye positions; tower stat rows explicitly centered.
+
+**Task assignment discipline**
+A project task can only be assigned to an agent that belongs to the temple: `_createTask` rejects outsiders with a teaching error listing project members + suggesting `assign_agent`; the plan pipeline restricts its agent enum to project members. Duplicate task from `create_task → dispatch_to_agent` chain closed by a 2-min guard (same title + agent, open → return existing).
 
 ---
 
@@ -55,7 +79,7 @@ Browser (Vanilla JS + Canvas — no build step)
         ▼
 Express 5 — server/index.js  (Node 22, port 3000)
         │
-        ├── V2ModelService        GGUF model loader via node-llama-cpp v3; manages
+        ├── ModelService        GGUF model loader via node-llama-cpp v3; manages
         │                         per-model LlamaContext + ChatSession; single context
         │                         slot per model (sequences:1 for KV budget discipline).
         │                         Auto-config reads the GGUF header (real layer count,
@@ -243,13 +267,13 @@ AQUARIUM.COMMS_CONFIG      — aquarium/CHANNELS/comms_config.json
 **Service wiring order:**
 ```
 RegistryManager → RegistryHealthCheck (background repair)
-             → V2ModelService (holds ref to rm)
-             → PoseidonOrchestrator (holds ref to rm + v2ModelService)
-             → ModelBroker (held by V2ModelService)
-             → AgentWorkerPool (holds ref to v2ModelService + rm)
+             → ModelService (holds ref to rm)
+             → PoseidonOrchestrator (holds ref to rm + modelService)
+             → ModelBroker (held by ModelService)
+             → AgentWorkerPool (holds ref to modelService + rm)
              → TaskRunner (holds ref to rm + agentPool + services)
              → HeartbeatService (holds ref to rm + modelService + taskRunner)
-             → BotService (holds ref to rm + v2ModelService)
+             → BotService (holds ref to rm + modelService)
 ```
 
 After wiring, at startup:
@@ -322,7 +346,7 @@ Central data access layer. All reads and writes go through here. Never use `fs` 
 
 ---
 
-### 5.2 V2ModelService (1903 lines)
+### 5.2 ModelService (1903 lines)
 
 Manages GGUF model loading, session lifecycle, and inference.
 
@@ -352,7 +376,7 @@ Manages GGUF model loading, session lifecycle, and inference.
 - `checkTtl()` — called by HeartbeatService. Unloads models idle longer than `autoUnloadIdleMinutes`.
 
 **Context auto-sizing:**
-When `contextLength = 'auto'`, V2ModelService queries available VRAM and uses:
+When `contextLength = 'auto'`, ModelService queries available VRAM and uses:
 - GQA models (Qwen3): 38 KB/token
 - Standard MHA: 60 KB/token
 - Applies a 0.65 GB margin for overhead
@@ -436,7 +460,7 @@ Runs a single task for a single agent.
 3. Load applicable skills (match task title/description against skill triggers)
 4. Build system prompt from agent personality + skills
 5. Build user message from task title + description + project context
-6. Call `V2ModelService.runAgentTask()` — streams tokens
+6. Call `ModelService.runAgentTask()` — streams tokens
 7. Write result to output file
 8. Call `closeTask()` with summary
 
@@ -454,7 +478,7 @@ Runs every **5000 ms**.
 1. Read CPU/RAM/VRAM metrics (CPU via `/proc/stat` delta, RAM via `process.memoryUsage()`, VRAM via nvidia-smi or AQUARIUM files)
 2. Broadcast metrics to SSE clients
 3. If model overloaded: trigger `RegistryHealthCheck.repair()`
-4. If Poseidon idle ≥ 10 min AND broker IDLE AND no tasks running AND cooldown ≥ 30 min: call `V2ModelService.triggerDream()`
+4. If Poseidon idle ≥ 10 min AND broker IDLE AND no tasks running AND cooldown ≥ 30 min: call `ModelService.triggerDream()`
 5. Trigger `TaskRunner.tick()`
 
 ---
@@ -829,7 +853,7 @@ node server/index.js
   │
   ├─ 2. Service construction
   │     RegistryManager → RegistryHealthCheck (background repair)
-  │     → V2ModelService → ModelBroker
+  │     → ModelService → ModelBroker
   │     → PoseidonOrchestrator
   │     → AgentWorkerPool → TaskRunner
   │     → HeartbeatService → BotService
@@ -858,7 +882,7 @@ User types message → POST /api/v2/poseidon/chat  (SSE response)
   │            session_state.json, temp.md (last 3000 chars),
   │            agent_registry.json, project_registry.json, tasks_registry.json
   │
-  ├─ 3. V2ModelService: load model if needed (lazy), create session if needed
+  ├─ 3. ModelService: load model if needed (lazy), create session if needed
   │
   ├─ 4. Stream tokens back to client via SSE
   │     Tool calls dispatched inline (create_task, read_project_memory, etc.)
@@ -903,7 +927,7 @@ Task created (by Poseidon tool or user)
 
 ```
 First chat request after server start:
-  V2ModelService.loadModel(modelId)
+  ModelService.loadModel(modelId)
   ├─ Read config from model_registry.json
   ├─ Resolve 'auto' contextLength from available VRAM
   │   (GQA models: 38 KB/tok, MHA: 60 KB/tok, margin: 0.65 GB)
@@ -924,7 +948,7 @@ Context overflow / OOM:
      so Poseidon resumes naturally
 
 TTL auto-unload:
-  HeartbeatService → V2ModelService.checkTtl()
+  HeartbeatService → ModelService.checkTtl()
   If model idle > autoUnloadIdleMinutes → unloadModel()
 ```
 
@@ -933,7 +957,7 @@ TTL auto-unload:
 Triggered by HeartbeatService when: `idle ≥ 10 min AND broker IDLE AND cooldown ≥ 30 min`
 
 ```
-V2ModelService.triggerDream()
+ModelService.triggerDream()
   │
   ├─ 1. Check: temp.md not empty and not starting with <!-- marker
   │           (if empty/cleared, skip cleanly and release broker)
@@ -1268,7 +1292,7 @@ squidmind/
 │   │   └── commsRoutes.js            /api/v2/comms (Telegram + voice config)
 │   │
 │   ├── services/
-│   │   ├── V2ModelService.js         GGUF loading, sessions, streaming, dream cycle
+│   │   ├── ModelService.js         GGUF loading, sessions, streaming, dream cycle
 │   │   ├── ModelBroker.js            Single-slot priority queue (CHAT→IMAGE→AGENT→BG→DREAM)
 │   │   ├── PoseidonOrchestrator.js   System prompt builder + 39 Poseidon tools
 │   │   ├── RegistryManager.js        JSON r/w with write-locks + ID mutex

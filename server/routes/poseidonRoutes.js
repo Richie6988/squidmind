@@ -28,7 +28,7 @@ function buildPoseidonRoutes({ rm, refs }) {
 
   router.post('/poseidon/reset-session', async (req, res) => {
     try {
-      const v2 = refs.v2ModelService;
+      const v2 = refs.modelService;
       if (!v2?.resetPoseidonSession) {
         return res.status(503).json({ success: false, error: 'Model service not ready' });
       }
@@ -104,7 +104,7 @@ function buildPoseidonRoutes({ rm, refs }) {
   // consolidation before shutting down.
   router.post('/poseidon/dream', async (req, res) => {
     try {
-      const v2 = refs.v2ModelService;
+      const v2 = refs.modelService;
       if (!v2?.triggerDream) {
         return res.status(503).json({ ok: false, error: 'Model service not ready' });
       }

@@ -10,7 +10,7 @@
  * GET  /broker                — ModelBroker state inspection
  * POST /broker/force-release  — emergency unstick (body: { reason? })
  *
- * Mounted at /api/v2 in server/index.js. v2ModelService is late-bound at boot,
+ * Mounted at /api/v2 in server/index.js. modelService is late-bound at boot,
  * so it's accessed lazily via the `refs` object at request time.
  */
 
@@ -50,7 +50,7 @@ function buildHealthRoutes({ rm, repairAllRegistries, dataRoot, refs }) {
 
     const optional = {};
     try {
-      const v2 = refs.v2ModelService;
+      const v2 = refs.modelService;
       optional.poseidon_model = v2?.poseidonModelId ? 'configured' : 'not_assigned';
       optional.model_loaded   = v2?.loaded?.size > 0 ? 'yes' : 'no';
       optional.broker_state   = v2?.broker?.getState?.() || 'unknown';
@@ -90,7 +90,7 @@ function buildHealthRoutes({ rm, repairAllRegistries, dataRoot, refs }) {
   // ── GET /broker ─────────────────────────────────────────────────────────────
   router.get('/broker', (req, res) => {
     try {
-      const state = refs.v2ModelService?.broker?.getState?.();
+      const state = refs.modelService?.broker?.getState?.();
       res.json({ success: true, state });
     } catch (e) { res.status(500).json({ success: false, error: e.message }); }
   });
@@ -98,7 +98,7 @@ function buildHealthRoutes({ rm, repairAllRegistries, dataRoot, refs }) {
   // ── POST /broker/force-release ──────────────────────────────────────────────
   router.post('/broker/force-release', (req, res) => {
     try {
-      const broker = refs.v2ModelService?.broker;
+      const broker = refs.modelService?.broker;
       if (!broker?.forceRelease) {
         return res.status(404).json({ success: false, error: 'forceRelease not available' });
       }

@@ -78,10 +78,10 @@ const { buildProjectFileRoutes } = require('./routes/projectFileRoutes');
 const { buildLegacyV1Routes }    = require('./routes/legacyV1Routes');
 const { buildFilesRoutes }       = require('./routes/filesRoutes');
 // Services ref — populated after initialization, used by routes that need late-bound services
-const servicesRef = { taskRunner: null, v2ModelService: null };
+const servicesRef = { taskRunner: null, modelService: null };
 app.use('/api/v2', buildRegistryRoutes(sharedRm, servicesRef));
 
-// Voice + health/recovery routes — stateless, depend only on rm + late-bound v2ModelService via refs.
+// Voice + health/recovery routes — stateless, depend only on rm + late-bound modelService via refs.
 app.use('/api/v2/voice', buildVoiceRoutes({ rm: sharedRm, fetchWithRetry }));
 app.use('/api/v2',       buildHealthRoutes({ rm: sharedRm, repairAllRegistries, dataRoot, refs: servicesRef }));
 
@@ -136,24 +136,24 @@ backupService.start();
 app.use('/api/v2/backups', buildBackupRoutes({ backupService }));
 
 // === V2 MODEL SERVICE (GGUF loading + Poseidon chat) ===
-const V2ModelService = require('./services/V2ModelService');
+const ModelService = require('./services/ModelService');
 const PoseidonOrchestrator = require('./services/PoseidonOrchestrator');
 const { buildRouter: buildModelRouter, buildPoseidonChatRoute, buildAbortRoute } = require('./routes/modelRoutes');
-const v2ModelService = new V2ModelService(sharedRm, AQUARIUM.MODELS_DIR);
-servicesRef.v2ModelService = v2ModelService;  // late-bound: healthRoutes reads via refs.v2ModelService
+const modelService = new ModelService(sharedRm, AQUARIUM.MODELS_DIR);
+servicesRef.modelService = modelService;  // late-bound: healthRoutes reads via refs.modelService
 
 // Orchestrator: gives Poseidon its identity prompt + function-calling tools.
 // Set BEFORE first chat so the model sees its full toolset.
 const poseidonOrchestrator = new PoseidonOrchestrator({
   registryManager: sharedRm,
-  modelService: v2ModelService,
+  modelService: modelService,
 });
-v2ModelService.setOrchestrator(poseidonOrchestrator);
+modelService.setOrchestrator(poseidonOrchestrator);
 
 // === AGENT WORKER POOL ===
 const { AgentWorkerPool } = require('./services/AgentWorker');
 const { buildAgentRunRoutes } = require('./routes/agentRoutes');
-const agentWorkerPool = new AgentWorkerPool(sharedRm, v2ModelService, toolRegistry);
+const agentWorkerPool = new AgentWorkerPool(sharedRm, modelService, toolRegistry);
 app.use('/api/v2/agents', buildAgentRunRoutes(agentWorkerPool));
 // Expose pool to Poseidon orchestrator for dispatch_to_agent tool
 poseidonOrchestrator.setAgentWorkerPool(agentWorkerPool);
@@ -161,27 +161,27 @@ poseidonOrchestrator.setAgentWorkerPool(agentWorkerPool);
 // === BOT SERVICE (Telegram / Discord remote comms) ===
 const BotService = require('./services/BotService');
 const { buildCommsRoutes } = require('./routes/commsRoutes');
-const botService = new BotService(sharedRm, v2ModelService);
+const botService = new BotService(sharedRm, modelService);
 app.use('/api/v2/comms', buildCommsRoutes(botService, sharedRm));
 // Start bots after server is listening (wired below in app.listen callback)
 
-app.use('/api/v2/models', buildModelRouter(v2ModelService));
-app.post('/api/v2/poseidon/chat', buildPoseidonChatRoute(v2ModelService));
-app.post('/api/v2/poseidon/abort', buildAbortRoute(v2ModelService));
+app.use('/api/v2/models', buildModelRouter(modelService));
+app.post('/api/v2/poseidon/chat', buildPoseidonChatRoute(modelService));
+app.post('/api/v2/poseidon/abort', buildAbortRoute(modelService));
 
 
-// Hook V2ModelService TTL check + dream into heartbeat
-heartbeat.setModelService(v2ModelService);
+// Hook ModelService TTL check + dream into heartbeat
+heartbeat.setModelService(modelService);
 
 // Task auto-runner — fires on every heartbeat tick
 const TaskRunner = require('./services/TaskRunner');
-const taskRunner = new TaskRunner(sharedRm, v2ModelService, agentWorkerPool, botService);
+const taskRunner = new TaskRunner(sharedRm, modelService, agentWorkerPool, botService);
 servicesRef.taskRunner = taskRunner;
-v2ModelService.taskRunner = taskRunner;   // let chat route refresh the BG-pause window
+modelService.taskRunner = taskRunner;   // let chat route refresh the BG-pause window
 heartbeat.setTaskRunner(taskRunner);
 taskRunner.loadDone().catch(e => console.warn('[TaskRunner] loadDone error:', e.message));
 
-// Mount routes that depend on late-bound taskRunner + v2ModelService (via refs).
+// Mount routes that depend on late-bound taskRunner + modelService (via refs).
 app.use('/api/v2',           buildPoseidonRoutes({ rm: sharedRm, refs: servicesRef }));
 app.use('/api/v2/projects',  buildProjectFileRoutes({ rm: sharedRm }));
 app.use('/api',              buildLegacyV1Routes({ rm: sharedRm }));
@@ -190,7 +190,7 @@ app.use('/api/files',        buildFilesRoutes());
 const _originalTick = heartbeat.tick.bind(heartbeat);
 heartbeat.tick = async function() {
   await _originalTick();
-  await v2ModelService.checkTtl();
+  await modelService.checkTtl();
   await taskRunner.tick().catch(e => console.warn('[TaskRunner] tick error:', e.message));
 };
 
@@ -375,9 +375,9 @@ async function start() {
 
       // Unload all models (disposes LlamaContext + ChatSession, frees VRAM)
       try {
-        const loaded = Array.from(v2ModelService.loaded?.keys?.() || []);
+        const loaded = Array.from(modelService.loaded?.keys?.() || []);
         for (const id of loaded) {
-          await v2ModelService.unloadModel(id).catch(e =>
+          await modelService.unloadModel(id).catch(e =>
             console.warn(`[Shutdown] unload ${id}:`, e.message));
         }
         console.log(`[Shutdown] ✓ Unloaded ${loaded.length} model(s)`);

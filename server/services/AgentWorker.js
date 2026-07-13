@@ -136,7 +136,7 @@ class AgentWorker extends EventEmitter {
    * @param {object} agentEntry  - from agent_registry.json
    * @param {object} brain       - from agents/<brain_file>.json
    * @param {object} rm          - RegistryManager
-   * @param {object} modelService - V2ModelService
+   * @param {object} modelService - ModelService
    * @param {object} toolRegistry - ToolRegistry singleton
    */
   constructor(agentId, agentEntry, brain, rm, modelService, toolRegistry) {
@@ -355,7 +355,7 @@ class AgentWorker extends EventEmitter {
 
     const maxTokens = this.brain.brain_config?.inference_params?.max_tokens_per_response || 2048;
 
-    // Think state machine (same as V2ModelService)
+    // Think state machine (same as ModelService)
     let thinkBuf = '';
     let inThink  = false;
 

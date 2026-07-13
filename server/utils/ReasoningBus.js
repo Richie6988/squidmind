@@ -3,7 +3,7 @@
 /**
  * ReasoningBus — lightweight pub/sub for live agent/poseidon thought streams.
  *
- * Producers (TaskRunner, V2ModelService, PoseidonOrchestrator route) call
+ * Producers (TaskRunner, ModelService, PoseidonOrchestrator route) call
  * push(event) to broadcast. Two consumer flavors:
  *
  *   subscribe(res)              — SSE response gets ALL events (global temple panel)

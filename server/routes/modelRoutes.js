@@ -7,15 +7,15 @@ const FilesystemBrowser = require('../services/FilesystemBrowser');
 const ModelDownloader = require('../services/ModelDownloader');
 
 const log = require('../utils/logger').createLogger('modelRoutes');
-function buildRouter(v2ModelService) {
+function buildRouter(modelService) {
   const router = express.Router();
   const fsBrowser = new FilesystemBrowser();
-  const downloader = new ModelDownloader(v2ModelService.modelsDir);
+  const downloader = new ModelDownloader(modelService.modelsDir);
 
   // GET /api/v2/models/library - merged scan + registry view (what user sees)
   router.get('/library', async (req, res) => {
     try {
-      const library = await v2ModelService.getLibrary();
+      const library = await modelService.getLibrary();
       res.json({ success: true, ...library });
     } catch (err) {
       res.status(500).json({ success: false, error: err.message });
@@ -55,20 +55,20 @@ function buildRouter(v2ModelService) {
         });
       }
 
-      const resolvedModelsDir = nodePath.resolve(v2ModelService.modelsDir);
+      const resolvedModelsDir = nodePath.resolve(modelService.modelsDir);
 
       // If file is already inside modelsDir, import it directly without symlinking
       if (absPath.startsWith(resolvedModelsDir)) {
-        const imported = await v2ModelService.importModel(absPath, config);
+        const imported = await modelService.importModel(absPath, config);
         res.json({ success: true, fileName: nodePath.basename(absPath), ...imported });
         return;
       }
 
       // Otherwise: symlink/copy into modelsDir, then register
-      const result = await fsBrowser.importFromPath(absPath, v2ModelService.modelsDir);
+      const result = await fsBrowser.importFromPath(absPath, modelService.modelsDir);
       // Register using the SYMLINK path in modelsDir (not the original)
-      const symlinkPath = nodePath.join(v2ModelService.modelsDir, result.fileName);
-      const imported = await v2ModelService.importModel(symlinkPath, config);
+      const symlinkPath = nodePath.join(modelService.modelsDir, result.fileName);
+      const imported = await modelService.importModel(symlinkPath, config);
       res.json({ success: true, fileName: result.fileName, action: result.action, ...imported });
     } catch (err) {
       log.error('[import-from-path] error:', err.message);
@@ -343,11 +343,11 @@ function buildRouter(v2ModelService) {
       if (!fileName) return res.status(400).json({ success: false, error: 'fileName required' });
       const fs = require('fs').promises;
       const path = require('path');
-      const fullPath = path.join(v2ModelService.modelsDir, path.basename(fileName));
+      const fullPath = path.join(modelService.modelsDir, path.basename(fileName));
       
       // Also remove from registry if imported
-      const modelId = v2ModelService._fileNameToId(fileName);
-      try { await v2ModelService.removeFromLibrary(modelId); } catch {}
+      const modelId = modelService._fileNameToId(fileName);
+      try { await modelService.removeFromLibrary(modelId); } catch {}
       
       await fs.unlink(fullPath);
       res.json({ success: true, fileName });
@@ -360,17 +360,17 @@ function buildRouter(v2ModelService) {
   // Used by the client to auto-fill the path input after native file picker
   router.get('/dir', (req, res) => {
     const path = require('path');
-    res.json({ success: true, dir: path.resolve(v2ModelService.modelsDir) });
+    res.json({ success: true, dir: path.resolve(modelService.modelsDir) });
   });
 
   // GET /api/v2/models/status - what's loaded right now
   router.get('/status', (req, res) => {
-    res.json({ success: true, ...v2ModelService.getStatus() });
+    res.json({ success: true, ...modelService.getStatus() });
   });
 
   // GET /api/v2/models/broker — broker state for monitoring
   router.get('/broker', (req, res) => {
-    res.json({ success: true, broker: v2ModelService.broker?.getState?.() ?? null });
+    res.json({ success: true, broker: modelService.broker?.getState?.() ?? null });
   });
 
   // POST /api/v2/models/import - register a model in the library (no load)
@@ -378,7 +378,7 @@ function buildRouter(v2ModelService) {
     try {
       const { fileName, ...config } = req.body;
       if (!fileName) return res.status(400).json({ success: false, error: 'fileName required' });
-      const result = await v2ModelService.importModel(fileName, config);
+      const result = await modelService.importModel(fileName, config);
       res.json(result);
     } catch (err) {
       res.status(500).json({ success: false, error: err.message });
@@ -390,7 +390,7 @@ function buildRouter(v2ModelService) {
     try {
       const { display_name } = req.body;
       if (!display_name?.trim()) return res.status(400).json({ success: false, error: 'display_name required' });
-      const rm = v2ModelService.rm;
+      const rm = modelService.rm;
       rm.invalidateCache();
       const reg = await rm.read('MODELS/model_registry.json');
       const entry = reg.models?.[req.params.modelId];
@@ -404,7 +404,7 @@ function buildRouter(v2ModelService) {
   // PATCH /api/v2/models/:id/params - edit load params
   router.patch('/:modelId/params', async (req, res) => {
     try {
-      const result = await v2ModelService.updateModelParams(req.params.modelId, req.body);
+      const result = await modelService.updateModelParams(req.params.modelId, req.body);
       res.json(result);
     } catch (err) {
       res.status(400).json({ success: false, error: err.message });
@@ -414,7 +414,7 @@ function buildRouter(v2ModelService) {
   // DELETE /api/v2/models/:id - remove from library
   router.delete('/:modelId', async (req, res) => {
     try {
-      const result = await v2ModelService.removeFromLibrary(req.params.modelId);
+      const result = await modelService.removeFromLibrary(req.params.modelId);
       res.json(result);
     } catch (err) {
       res.status(500).json({ success: false, error: err.message });
@@ -426,7 +426,7 @@ function buildRouter(v2ModelService) {
     try {
       const { fileName, ...cfg } = req.body;
       if (!fileName) return res.status(400).json({ success: false, error: 'fileName required' });
-      const result = await v2ModelService.loadModel(fileName, cfg);
+      const result = await modelService.loadModel(fileName, cfg);
       res.json({ success: true, ...result });
     } catch (err) {
       res.status(500).json({ success: false, error: err.message });
@@ -442,23 +442,23 @@ function buildRouter(v2ModelService) {
         // the broker doesn't stay pinned to BUSY. Signal every warmed entry;
         // the actual dispose runs inside unloadModel.
         try {
-          const entry = v2ModelService.loaded?.get?.(req.params.modelId);
+          const entry = modelService.loaded?.get?.(req.params.modelId);
           if (entry) entry._abortRequested = true;
           // Poseidon's entry gets the same signal in case caller passed the
           // wrong ID
-          if (v2ModelService.poseidonModelId) {
-            const pos = v2ModelService.loaded?.get?.(v2ModelService.poseidonModelId);
+          if (modelService.poseidonModelId) {
+            const pos = modelService.loaded?.get?.(modelService.poseidonModelId);
             if (pos) pos._abortRequested = true;
           }
           // Small wait so the generator sees the flag and exits cleanly
           await new Promise(r => setTimeout(r, 250));
           // Force-release any lingering broker tokens for this model
-          if (v2ModelService.broker?.forceReleaseAll) {
-            v2ModelService.broker.forceReleaseAll(`force-unload:${req.params.modelId}`);
+          if (modelService.broker?.forceReleaseAll) {
+            modelService.broker.forceReleaseAll(`force-unload:${req.params.modelId}`);
           }
         } catch (e) { log.warn?.('[force-unload] pre-abort error:', e.message); }
       }
-      const result = await v2ModelService.unloadModel(req.params.modelId);
+      const result = await modelService.unloadModel(req.params.modelId);
       res.json({ ...result, forced: force });
     } catch (err) {
       res.status(500).json({ success: false, error: err.message });
@@ -468,7 +468,7 @@ function buildRouter(v2ModelService) {
   // POST /api/v2/models/:modelId/assign-poseidon
   router.post('/:modelId/assign-poseidon', async (req, res) => {
     try {
-      const result = await v2ModelService.setPoseidonModel(req.params.modelId);
+      const result = await modelService.setPoseidonModel(req.params.modelId);
       res.json(result);
     } catch (err) {
       res.status(400).json({ success: false, error: err.message });
@@ -619,7 +619,7 @@ function buildRouter(v2ModelService) {
         // "upscale existing image" quick action where the user hasn't selected
         // a specific model.
         try {
-          const reg = await v2ModelService.rm.read('MODELS/model_registry.json').catch(() => ({ models: {} }));
+          const reg = await modelService.rm.read('MODELS/model_registry.json').catch(() => ({ models: {} }));
           const imgEntry = Object.entries(reg.models || {}).find(([, e]) =>
             (e.config?.model_type || e.model_type) === 'image' ||
             (e.config?.model_category || e.model_category) === 'image'
@@ -640,7 +640,7 @@ function buildRouter(v2ModelService) {
         }
       }
 
-      const tools = v2ModelService.orchestrator?.tools;
+      const tools = modelService.orchestrator?.tools;
       if (tools) {
         const result = await tools.generateImage({
           model_id: effectiveId,
@@ -664,7 +664,7 @@ function buildRouter(v2ModelService) {
         return res.json({ success: true, ok: true, ...result });
       }
       // Fallback: orchestrator not ready yet
-      const result = await v2ModelService.generateImage(req.body);
+      const result = await modelService.generateImage(req.body);
       if (!result.ok) {
         log.warn('[generate-image] (fallback) failed:', result.error, '— model:', resolvedId);
         return res.status(400).json({ success: false, ok: false, error: result.error });
@@ -683,7 +683,7 @@ function buildRouter(v2ModelService) {
       if (!['text', 'image'].includes(model_type)) {
         return res.status(400).json({ success: false, error: 'model_type must be "text" or "image"' });
       }
-      await v2ModelService.updateModelParams(req.params.modelId, { model_type });
+      await modelService.updateModelParams(req.params.modelId, { model_type });
       res.json({ success: true, model_id: req.params.modelId, model_type });
     } catch (err) {
       res.status(400).json({ success: false, error: err.message });
@@ -702,15 +702,15 @@ function buildRouter(v2ModelService) {
 
       // Auto-upsert: if model not in registry yet (unimported), create a minimal entry
       // This allows categorizing models without going through the full import flow
-      const rm = v2ModelService.rm;
+      const rm = modelService.rm;
       rm.invalidateCache();
       const reg = await rm.read('MODELS/model_registry.json').catch(() => ({ models: {} }));
       if (!reg.models[modelId]) {
         // Find the file on disk to bootstrap the entry
-        const lib = await v2ModelService.getLibrary();
+        const lib = await modelService.getLibrary();
         const found = lib.models?.find(m => m.model_id === modelId);
         if (found) {
-          await v2ModelService._registryUpsert(modelId, {
+          await modelService._registryUpsert(modelId, {
             model_id: modelId,
             file_name: found.file_name,
             file_path: found.file_path,
@@ -722,7 +722,7 @@ function buildRouter(v2ModelService) {
           return res.status(404).json({ success: false, error: `Model ${modelId} not found on disk` });
         }
       } else {
-        await v2ModelService.updateModelParams(modelId, { model_category, model_type });
+        await modelService.updateModelParams(modelId, { model_category, model_type });
       }
 
       res.json({ success: true, model_id: modelId, model_category });
@@ -737,7 +737,7 @@ function buildRouter(v2ModelService) {
 /**
  * Separately export the Poseidon chat route (SSE streaming) since it's not under /models
  */
-function buildPoseidonChatRoute(v2ModelService) {
+function buildPoseidonChatRoute(modelService) {
   return async (req, res) => {
     const { message, history, project } = req.body;
     if (!message) {
@@ -752,7 +752,7 @@ function buildPoseidonChatRoute(v2ModelService) {
       const pname = project.name || project.id;
       const ctxLines = [`[PROJECT INSTRUCTION — ${pname}${project.id ? ` (${project.id})` : ''}]`];
       try {
-        const rm = v2ModelService.rm;
+        const rm = modelService.rm;
         // Resolve id + folder
         let pid = project.id, folder = null;
         const resolved = await rm.resolveProjectByNameOrId(project.id || project.name).catch(() => null);
@@ -801,7 +801,7 @@ function buildPoseidonChatRoute(v2ModelService) {
     res.setHeader('X-Accel-Buffering', 'no');
 
     // Tell client we started
-    res.write(`event: start\ndata: ${JSON.stringify({ model_id: v2ModelService.poseidonModelId })}\n\n`);
+    res.write(`event: start\ndata: ${JSON.stringify({ model_id: modelService.poseidonModelId })}\n\n`);
 
     let chunkCount = 0;
     let toolCallCount = 0;
@@ -809,10 +809,10 @@ function buildPoseidonChatRoute(v2ModelService) {
     // Hold off BG tasks / auto-review while this chat turn runs, so the
     // heartbeat doesn't swap Poseidon into a background task between the
     // user's messages. Refreshed at the end for a post-reply grace window.
-    try { v2ModelService.taskRunner?.setChatActive?.(true); } catch {}
+    try { modelService.taskRunner?.setChatActive?.(true); } catch {}
     if (bus) bus.push({ type: 'task_start', task_id: 'poseidon_chat', title: message.slice(0, 80), agent: 'poseidon' });
     try {
-      for await (const ev of v2ModelService.chatWithPoseidon(effectiveMessage, history || [])) {
+      for await (const ev of modelService.chatWithPoseidon(effectiveMessage, history || [])) {
         if (ev.type === 'text') {
           chunkCount++;
           res.write(`data: ${JSON.stringify({ text: ev.chunk })}\n\n`);
@@ -847,7 +847,7 @@ function buildPoseidonChatRoute(v2ModelService) {
       if (bus) bus.push({ type: 'task_end', task_id: 'poseidon_chat' });
       res.write(`event: end\ndata: ${JSON.stringify({
         chunks: chunkCount, tool_calls: toolCallCount,
-        turn: v2ModelService.loaded.get(v2ModelService.poseidonModelId)?.sessionTurns ?? 0,
+        turn: modelService.loaded.get(modelService.poseidonModelId)?.sessionTurns ?? 0,
       })}\n\n`);
     } catch (err) {
       log.error('[Chat SSE] chatWithPoseidon error:', err.message, err.stack?.split('\n').slice(1,3).join(' '));
@@ -857,15 +857,15 @@ function buildPoseidonChatRoute(v2ModelService) {
       // Post-reply grace: keep BG paused a bit longer so the user can read
       // and start typing their next message before the heartbeat resumes
       // background work.
-      try { v2ModelService.taskRunner?.setChatActive?.(false); } catch {}
+      try { modelService.taskRunner?.setChatActive?.(false); } catch {}
       res.end();
     }
   };
 }
 
-function buildAbortRoute(v2ModelService) {
+function buildAbortRoute(modelService) {
   return (req, res) => {
-    const result = v2ModelService.abortGeneration();
+    const result = modelService.abortGeneration();
     res.json({ success: true, ...result });
   };
 }

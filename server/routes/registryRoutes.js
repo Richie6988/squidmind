@@ -180,7 +180,7 @@ router.patch('/tasks/:id/status', async (req, res) => {
     // status polling will pick up the new value on its next check.
     if (cancel_running === true) {
       try {
-        const ms = req.app.get?.('v2ModelService') || req.app.locals?.v2ModelService;
+        const ms = req.app.get?.('modelService') || req.app.locals?.modelService;
         if (ms?.loaded) {
           for (const entry of ms.loaded.values()) {
             entry._abortRequested = true;
