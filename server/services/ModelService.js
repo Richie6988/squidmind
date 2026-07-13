@@ -936,12 +936,16 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
 
         // Cap ctx when a big share of layers runs on CPU: each prompt token
         // crosses every CPU layer, so a 60k context on a mostly-CPU model
-        // means minutes of prefill. VRAM saved here was already spent on
-        // extra GPU layers in Step 1.
+        // means minutes of prefill. The caps here (12k/16k) were tuned for
+        // MoE throughput — they SILENTLY killed the "context-first" regime
+        // where the user offloads layers to CPU precisely to get more ctx.
+        // For dense archs: no cap. For MoE only: keep the throughput cap.
         const gpuL = Number(config.gpuLayers) || 0;
         const cpuShare = estLayers > 0 ? 1 - gpuL / estLayers : 0;
         config.cpuOffloadShare = Math.round(cpuShare * 100) / 100;  // used by session creation (compact prompt for slow models)
-        const offloadCap = cpuShare > 0.6 ? 12288 : cpuShare > 0.3 ? 16384 : Infinity;
+        const offloadCap = isMoE
+          ? (cpuShare > 0.6 ? 12288 : cpuShare > 0.3 ? 16384 : Infinity)
+          : Infinity;   // dense arch: no cap, user chose the trade-off
 
         if (vramAfter && freeAfterGb > margin + 0.1) {
           const availKvGb = freeAfterGb - margin;
