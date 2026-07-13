@@ -645,10 +645,10 @@ const ModelLoader = {
           <div id="ml-estimate" class="ml-estimate-box"></div>
           
           <div class="agent-form-row"><label>Context length</label>
-            <input id="ml-ctx" type="text" value="${this._escape(ctxValue)}" placeholder="auto, or a number like 8192">
+            <input id="ml-ctx" type="text" value="${this._escape(ctxValue)}" placeholder="auto (VRAM budget) — or force a number like 45000">
           </div>
           <div class="agent-form-row"><label>GPU layers</label>
-            <input id="ml-gpu" type="text" value="${this._escape(gpuValue)}" placeholder="auto, max, or a number">
+            <input id="ml-gpu" type="text" value="${this._escape(gpuValue)}" placeholder="auto (adaptive) — or force a number to trade layers ↔ context">
           </div>
           <div class="agent-form-row"><label>&nbsp;</label>
             <span class="hint" style="font-size:8px; color:var(--accent);">

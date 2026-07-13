@@ -595,10 +595,19 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
         log.warn(`  GGUF header read failed (${e.message}) — falling back to size heuristic (${estLayers} layers)`);
       }
 
-      // Always recalculate gpuLayers AND contextLength dynamically based on CURRENT VRAM.
-      // The stored registry values may be stale (computed under different VRAM conditions).
-      config.gpuLayers     = 'auto';
-      config.contextLength = 'auto';
+      // The stored registry values may be stale (computed under different
+      // VRAM conditions) — recalculate what the user left on 'auto'. But
+      // EXPLICIT numbers are the user's choice and override everything:
+      // setting contextLength: 45000 in model_params bypasses the auto
+      // formula, the offload caps, and the AUTO_CTX_CEILING. The OOM ladder
+      // is the only guard on the way down. This is the "context-first"
+      // opt-in the user asked for — trust their measurements over mine.
+      const explicitCtx    = Number.isFinite(config.contextLength) && config.contextLength > 0;
+      const explicitLayers = Number.isFinite(config.gpuLayers) && config.gpuLayers >= 0;
+      if (explicitCtx)    log.info(`  [explicit] contextLength=${config.contextLength} (user override — auto formula bypassed)`);
+      if (explicitLayers) log.info(`  [explicit] gpuLayers=${config.gpuLayers} (user override — auto formula bypassed)`);
+      if (!explicitLayers) config.gpuLayers     = 'auto';
+      if (!explicitCtx)    config.contextLength = 'auto';
 
       if (config.gpuLayers === 'auto' || config.gpuLayers === 'max') {
         if (vramBefore && freeBeforeGb > 0.5) {
