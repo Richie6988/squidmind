@@ -1419,6 +1419,13 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
       // Wrap each function so we can stream tool-call + tool-result events.
       // The wrapped versions still call the originals but also emit to `events`.
       let wrappedFunctions;
+      // Per-TURN tool budgets for "organizing" tools: the model can groom
+      // project memory in slight variants forever (observed: 3× next_steps
+      // rewrites, zero create_task) — the loop guard only catches IDENTICAL
+      // args. Overflow returns a teaching error that names the expected
+      // action instead of just blocking.
+      const turnToolCounts = {};
+      const GROOM_CAP = { update_project_memory: 2, read_project_memory: 2, read_my_brain: 4, list_tasks: 3 };
       if (entry._functions) {
         wrappedFunctions = {};
         for (const [fnName, fnDef] of Object.entries(entry._functions)) {
@@ -1430,6 +1437,20 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
             ...fnDef,
             handler: async (args) => {
               const callTime = Date.now();
+              turnToolCounts[fnName] = (turnToolCounts[fnName] || 0) + 1;
+              if (GROOM_CAP[fnName] && turnToolCounts[fnName] > GROOM_CAP[fnName]) {
+                const capErr = {
+                  ok: false,
+                  error: `TURN BUDGET SPENT — ${fnName} already called ${GROOM_CAP[fnName]}× this turn. Organizing is not progress. ` +
+                    `If this is a project kickoff/restart: call create_task NOW for each phase (execution-ready description + acceptance_criteria + assigned_agent_id). ` +
+                    `Project memory can be updated ONCE at the END, after the tasks exist.`,
+                  budget_exceeded: true,
+                };
+                log.warn(`Turn budget: ${fnName} exceeded ${GROOM_CAP[fnName]} calls — redirecting to action`);
+                events.push({ type: 'tool_call',   name: fnName, args, at: callTime, budget_exceeded: true });
+                events.push({ type: 'tool_result', name: fnName, result: capErr, duration_ms: 0, budget_exceeded: true });
+                return capErr;
+              }
               // ── Loop guard: fingerprint = tool name + normalised args.
               // If the last 2 calls have the same fingerprint, this would be
               // the 3rd → interrupt with an error result the LLM can see and
