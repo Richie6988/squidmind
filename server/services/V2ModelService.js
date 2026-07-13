@@ -765,11 +765,22 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
             };
             const d1 = await measureCtx(4096);
             const d2 = await measureCtx(8192);
-            const kvPerTok = Math.max(2 * 1024, Math.round((d2 - d1) / 4096));
-            const fixedBytes = Math.max(0, d1 - 4096 * kvPerTok);
-            probeData = { kvPerTok, fixedBytes };
-            V2ModelService._kvProbe.set(probeKey, probeData);
-            log.info(`  KV probe (differential): ${Math.round(kvPerTok / 1024)}KB/tok + ${(fixedBytes / 1024 ** 3).toFixed(2)}GB fixed buffers (d4k=${(d1 / 1024 ** 3).toFixed(2)}GB, d8k=${(d2 / 1024 ** 3).toFixed(2)}GB)`);
+            const rawKvPerTok = Math.round((d2 - d1) / 4096);
+            // SANITY: allocator noise can make d2 <= d1 (cached buffers,
+            // fragmentation), yielding a tiny/negative per-token cost. When
+            // that happens the probe is worthless — trust the header-derived
+            // formula (via the fallback chain below) instead of "measuring"
+            // 2KB/tok and computing a 262k ctx that OOMs every rung.
+            const MIN_SANE = 8 * 1024;   // any real KV per token must be >= 8KB
+            if (rawKvPerTok < MIN_SANE || d2 <= d1) {
+              log.warn(`  KV probe noisy (raw=${rawKvPerTok}B/tok, d4k=${(d1 / 1024 ** 3).toFixed(2)}GB, d8k=${(d2 / 1024 ** 3).toFixed(2)}GB) — discarding, falling back to header/heuristic`);
+            } else {
+              const kvPerTok = rawKvPerTok;
+              const fixedBytes = Math.max(0, d1 - 4096 * kvPerTok);
+              probeData = { kvPerTok, fixedBytes };
+              V2ModelService._kvProbe.set(probeKey, probeData);
+              log.info(`  KV probe (differential): ${Math.round(kvPerTok / 1024)}KB/tok + ${(fixedBytes / 1024 ** 3).toFixed(2)}GB fixed buffers (d4k=${(d1 / 1024 ** 3).toFixed(2)}GB, d8k=${(d2 / 1024 ** 3).toFixed(2)}GB)`);
+            }
           } catch (probeErr) {
             log.warn(`  KV probe failed (${probeErr.message}) — falling back to estimates`);
           }
@@ -798,7 +809,12 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
           const availKvGb = freeAfterGb - margin;
           const toksFit   = Math.floor(availKvGb * 1024 ** 3 / bytesPerTok);
           const computed  = Math.max(V2ModelService.MIN_VIABLE_CTX, Math.floor(toksFit / 1024) * 1024);
-          config.contextLength = Math.min(computed, trainCtx, offloadCap);
+          // Hard ceiling on the AUTO path: no consumer GPU justifies a
+          // 262k context. Anything past 65k is a red flag (the OOM ladder
+          // would burn 3+ retries and can cascade into an eviction loop).
+          // Explicit contextLength in config bypasses 'auto' entirely.
+          const AUTO_CTX_CEILING = 65536;
+          config.contextLength = Math.min(computed, trainCtx, offloadCap, AUTO_CTX_CEILING);
           log.info(`  [auto] contextLength: ${config.contextLength} (availKv=${availKvGb.toFixed(2)}GB, ${Math.round(bytesPerTok/1024)}KB/tok${measuredKvPerTok ? ' (MEASURED)' : headerKvBytesPerTok ? ' (header estimate)' : ' (heuristic)'}, isGQA=${isGQA}, toksFit=${toksFit}${Number.isFinite(offloadCap) ? `, capped at ${offloadCap} — ${Math.round(cpuShare*100)}% of layers on CPU` : ''})`);
         } else if (!vramAfter) {
           // No VRAM info — use a conservative default
