@@ -577,9 +577,18 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
         // n_layers × n_kv_heads × head_dim. The 38/60KB heuristic was
         // optimistic for qwen35 (~68KB real) — every load burned 2 OOM
         // ladder retries before landing.
+        // head_dim: PREFER the explicit attention.key_length/value_length —
+        // modern archs (qwen3+) use head_dim=128 regardless of
+        // embedding/heads, and emb/heads overestimates ~2.5x → the "exact"
+        // budget shrank ctx to 11k and the context shift crashed every chat.
+        const kl  = Number(am?.attention?.key_length || 0);
+        const vl  = Number(am?.attention?.value_length || 0);
         const emb = Number(am?.embedding_length || 0);
-        if (hc > 0 && hck > 0 && emb > 0 && am?.block_count > 0) {
-          headerKvBytesPerTok = 4 * Number(am.block_count) * hck * (emb / hc);
+        const headDimK = kl > 0 ? kl : (hc > 0 && emb > 0 ? emb / hc : 0);
+        const headDimV = vl > 0 ? vl : headDimK;
+        if (hck > 0 && headDimK > 0 && am?.block_count > 0) {
+          // 2 bytes (f16) × layers × kv_heads × (K dim + V dim)
+          headerKvBytesPerTok = 2 * Number(am.block_count) * hck * (headDimK + headDimV);
         }
         log.info(`  GGUF header: arch=${arch}, layers=${estLayers}${headerGQA !== null ? `, GQA=${headerGQA} (${hck}/${hc} kv heads)` : ''}${isMoE ? `, MoE ${am.expert_count} experts (${am.expert_used_count || '?'} active) — ALL expert weights count for VRAM, only active ones for compute` : ''}`);
       } catch (e) {
@@ -1932,10 +1941,12 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
         // Surface a friendly error if it's a context-too-small problem
         if (/too long|compress|system message/i.test(err.message)) {
           const ctx = entry.config?.contextLength || '?';
+          const promptTok = Math.ceil((entry._lastSystemPromptChars || 0) / 4);
           throw new Error(
-            `Model context (${ctx} tokens) is too small for the Poseidon system prompt. ` +
-            `Minimum recommended: ${V2ModelService.MIN_VIABLE_CTX} tokens. ` +
-            `Try a larger model or increase contextLength in model params.`
+            `Context (${ctx} tokens) is too small for this conversation: the system prompt + tools alone take ~${promptTok || '?'} tokens, ` +
+            `leaving too little room for history — the context-shift compaction failed. ` +
+            `Practical minimum here: ~${promptTok ? Math.ceil(promptTok * 2.5 / 1024) * 1024 : 12288} tokens. ` +
+            `Free VRAM (unload other models / reduce gpuLayers) or increase contextLength in model params.`
           );
         }
       }
