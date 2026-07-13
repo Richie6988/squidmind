@@ -1600,6 +1600,12 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
           lastChunkAt = Date.now();
           if (!firstEventSeen) firstEventAt = Date.now();
           firstEventSeen = true;
+          // Keepalive: an actively-streaming generation renews its broker
+          // token so the 10-min dead-holder expiry never yanks a live chat.
+          if (brokerToken && Date.now() - (entry._lastBrokerTouch || 0) > 10_000) {
+            entry._lastBrokerTouch = Date.now();
+            this.broker.touch(brokerToken);
+          }
           if (ev.type === 'text') {
             entry.totalTokensGenerated += Math.ceil(ev.chunk.length / 4);
             turnText += ev.chunk;
@@ -1658,6 +1664,7 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
             entry._lastPrefillLog = Date.now();
             log.info(` still prefilling (${Math.round(idleMs / 1000)}s, no first token yet — large prompt and/or CPU-offloaded layers)…`);
             yield { type: 'status', message: `Still processing the prompt (${Math.round(idleMs / 1000)}s) — no first token yet, model is working…` };
+            if (brokerToken) this.broker.touch(brokerToken);  // prefill emits no events but IS alive
           }
         } else if (!isThinking && idleMs > IDLE_TIMEOUT_MS) {
           log.warn(` generation idle timeout (${Math.round(idleMs/1000)}s) — resetting session`);

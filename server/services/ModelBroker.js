@@ -295,13 +295,28 @@ class ModelBroker extends EventEmitter {
   _checkExpiry() {
     if (!this._token) return;
     if (Date.now() > this._token.expiresAt) {
-      log.error(`[Broker] EXPIRY  ${this._token.id} — force-releasing after ${Math.round(MAX_HOLD_MS/60000)}min`);
+      log.error(`[Broker] EXPIRY  ${this._token.id} — force-releasing after ${Math.round(MAX_HOLD_MS/60000)}min without a keepalive (holder presumed dead)`);
       const stale = this._token;
       this._token = null;
       this._lastReleasedAt = Date.now();
       this.emit('idle');
       this._dequeue();
     }
+  }
+
+  /**
+   * touch — keepalive from an ACTIVE holder. The expiry timeout exists to
+   * recover from crashed holders that will never release; it must NOT yank
+   * the token from a slow-but-alive generation (observed: a >10min chat on
+   * a CPU-offloaded model lost its token mid-generation, a queued BG task
+   * was granted, the session got disposed under the running iteration →
+   * "Object is disposed"). Callers touch on streaming activity; holders
+   * that stop producing still expire after MAX_HOLD_MS of silence.
+   */
+  touch(token) {
+    if (!token || !this._token || this._token.id !== token.id) return false;
+    this._token.expiresAt = Date.now() + MAX_HOLD_MS;
+    return true;
   }
 
   destroy() {

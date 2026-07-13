@@ -744,7 +744,11 @@ class TaskRunner {
           toolCalls = 0;  // count real tool activity for the honesty gate
           const bus = global.ReasoningBus;
           if (bus) bus.push({ type: 'task_start', task_id: taskId, title: task.title, agent: agentId || 'poseidon', project: task.project_name });
+          let _lastTouch = 0;
           for await (const ev of this.modelService.chatWithPoseidon(posMsg, [], { _skipBroker: true, _bgMode: true })) {
+            // Keepalive on the OUTER TaskRunner token — a long BG generation
+            // must not expire as a dead holder mid-run.
+            if (Date.now() - _lastTouch > 10_000) { _lastTouch = Date.now(); this.modelService.broker.touch(bgToken); }
             if (ev.type === 'text')          { output += ev.chunk; bus?.push({ type: 'text', task_id: taskId, chunk: ev.chunk }); }
             if (ev.type === 'thinking')      bus?.push({ type: 'thinking', task_id: taskId, chunk: ev.chunk });
             if (ev.type === 'thinking_start') bus?.push({ type: 'thinking_start', task_id: taskId });
