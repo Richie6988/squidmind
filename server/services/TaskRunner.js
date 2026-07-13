@@ -744,8 +744,24 @@ class TaskRunner {
           toolCalls = 0;  // count real tool activity for the honesty gate
           const bus = global.ReasoningBus;
           if (bus) bus.push({ type: 'task_start', task_id: taskId, title: task.title, agent: agentId || 'poseidon', project: task.project_name });
+          // Per-agent sampling: an artist runs hot, an analyst runs cold.
+          // brain_config.inference_params existed in every brain file but
+          // was never applied at generation until now.
+          let _genParams = null;
+          if (agentId) {
+            try {
+              const areg2 = await this.rm.getAgentRegistry();
+              const ae2 = areg2.agents?.[agentId];
+              const abrain = ae2?.brain_file ? await this.rm.read(`AGENTS/${ae2.brain_file}`) : null;
+              const ip = abrain?.brain_config?.inference_params;
+              if (ip && Number.isFinite(ip.temperature)) {
+                _genParams = { temperature: ip.temperature, topP: ip.top_p, topK: ip.top_k };
+                log.info(`  sampling for ${agentId}: T=${ip.temperature}${ip.top_p ? ` topP=${ip.top_p}` : ''}`);
+              }
+            } catch {}
+          }
           let _lastTouch = 0;
-          for await (const ev of this.modelService.chatWithPoseidon(posMsg, [], { _skipBroker: true, _bgMode: true })) {
+          for await (const ev of this.modelService.chatWithPoseidon(posMsg, [], { _skipBroker: true, _bgMode: true, _genParams })) {
             // Keepalive on the OUTER TaskRunner token — a long BG generation
             // must not expire as a dead holder mid-run.
             if (Date.now() - _lastTouch > 10_000) { _lastTouch = Date.now(); this.modelService.broker.touch(bgToken); }

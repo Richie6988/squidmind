@@ -1189,7 +1189,7 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
     });
   }
 
-  async *chatWithPoseidon(userMessage, historyIn = [], { _skipBroker = false, _bgMode = false } = {}) {
+  async *chatWithPoseidon(userMessage, historyIn = [], { _skipBroker = false, _bgMode = false, _genParams = null } = {}) {
     let history = historyIn.slice(); // mutable copy
     if (!this.poseidonModelId) {
       throw new Error('No model assigned to Poseidon. Import a model and assign it first.');
@@ -1585,6 +1585,11 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
       entry._inThink    = false;  // are we currently inside a <think> block?
 
       const promptOpts = {
+        // Per-agent sampling (brain_config.inference_params) — plumbed from
+        // TaskRunner for BG agent tasks; chat uses model defaults.
+        ...(_genParams && Number.isFinite(_genParams.temperature) ? { temperature: _genParams.temperature } : {}),
+        ...(_genParams && Number.isFinite(_genParams.topP) ? { topP: _genParams.topP } : {}),
+        ...(_genParams && Number.isFinite(_genParams.topK) ? { topK: _genParams.topK } : {}),
         onTextChunk: (chunk) => {
           let buf = entry._thinkBuf + chunk;
           entry._thinkBuf = '';

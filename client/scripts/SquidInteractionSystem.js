@@ -495,25 +495,16 @@ class SquidInteractionSystem {
    * Handle single click on squid
    */
   handleSquidClick(squid) {
-    console.log('[SQUID] CLICKED SQUID:', squid.name, 'id=', squid.id);
-    
     // Bounce visual feedback
     const originalY = squid.targetY;
     squid.targetY = originalY - 30;
     setTimeout(() => { squid.targetY = originalY; }, 300);
-    
-    // V2 AgentForm is the canonical edit UI. squid.id is the agent_id from registry.
-    const agentId = squid.id || squid.agent_id || squid.agentId;
-    if (agentId && typeof AgentForm !== 'undefined' && agentId.startsWith?.('agent_')) {
-      AgentForm.open(agentId).catch(err => {
-        console.warn('[SQUID] AgentForm failed:', err.message);
-        alert('Could not open agent: ' + err.message);
-      });
-      return;
-    }
 
-    console.warn('[SQUID] Invalid agent id format:', agentId);
-    alert('This squid has an invalid id. Delete it and create a new one via "+ New Agent".');
+    // Left click = SELECT only (bounce + highlight ring). This path used to
+    // open AgentForm directly — the SECOND left-click edit path after the
+    // one removed from aquarium.selectSquid. Edition lives in the
+    // right-click menu (user request).
+    if (this.aquarium?.selectSquid) this.aquarium.selectSquid(squid);
   }
 
   /**

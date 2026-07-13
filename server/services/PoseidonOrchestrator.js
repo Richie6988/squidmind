@@ -551,7 +551,14 @@ My response: "${ss.last_response_preview}"${tools}
     const projName = proj.entry?.name || project;
     const memory = await this.rm.getProjectMemory(proj.id).catch(() => null);
     const areg   = await this.rm.getAgentRegistry();
-    const agents = Object.values(areg.agents || {});
+    let agents = Object.values(areg.agents || {});
+    // Temple membership: the plan can only assign agents PRESENT in the
+    // project. If the project has an assigned roster, restrict to it.
+    const members = proj.entry?.assigned_agents || [];
+    if (members.length) {
+      const inProject = agents.filter(a => members.includes(a.agent_id));
+      if (inProject.length) agents = inProject;
+    }
     const agentIds = agents.map(a => a.agent_id);
     const roster = agents.map(a =>
       `${a.agent_id} = ${a.display_name} (${a.specialization || 'general'})`).join('; ');
@@ -661,7 +668,8 @@ My response: "${ss.last_response_preview}"${tools}
               description: 'Agent specialization'
             },
             role: { type: 'string', description: 'One-line description of what this agent does' },
-            primary_color: { type: 'string', description: 'Hex color like #FF6B9D for the agent body' }
+            primary_color: { type: 'string', description: 'Hex color like #FF6B9D for the agent body' },
+            temperature: { type: 'number', description: 'Optional sampling temperature 0.1-1.2. Defaults by specialization: designer/creative ≈ 0.95, researcher/analyst/security ≈ 0.4, coding ≈ 0.35, general 0.7.' }
           },
           required: ['display_name', 'specialization']
         },
@@ -1933,8 +1941,18 @@ My response: "${ss.last_response_preview}"${tools}
   // HANDLERS - actual implementations
   // ===================================================================
 
-  async _createAgent({ display_name, specialization, role, primary_color }) {
+  async _createAgent({ display_name, specialization, role, primary_color, temperature }) {
     try {
+      // Sampling defaults BY ROLE — an artist needs heat, an analyst needs
+      // rigor. Explicit temperature (0.1-1.2) wins over the table.
+      const SPEC_TEMP = {
+        designer: 0.95, documentation: 0.55, general: 0.7, researcher: 0.4,
+        data_analyst: 0.4, ml_engineer: 0.5, security: 0.35, qa_tester: 0.4,
+        frontend_specialist: 0.45, backend_specialist: 0.35,
+        fullstack_dev: 0.4, devops: 0.35,
+      };
+      const temp = (Number.isFinite(temperature) && temperature >= 0.1 && temperature <= 1.2)
+        ? temperature : (SPEC_TEMP[specialization] ?? 0.7);
       const brain = {
         identity: {
           role: role || `${specialization} agent`,
@@ -1950,10 +1968,10 @@ My response: "${ss.last_response_preview}"${tools}
         brain_config: {
           model_binding: { preferred_model_id: null },
           system_prompt: `You are ${display_name}, a ${specialization} specialist agent. ${role || ''}`,
-          inference_params: { temperature: 0.7, top_p: 0.9, top_k: 40, repeat_penalty: 1.1, max_tokens_per_response: 2048 }
+          inference_params: { temperature: temp, top_p: temp >= 0.8 ? 0.95 : 0.9, top_k: 40, repeat_penalty: 1.1, max_tokens_per_response: 2048 }
         },
         personality: {
-          traits: { curiosity: 0.7, thoroughness: 0.7, creativity: 0.5, assertiveness: 0.5, empathy: 0.6 },
+          traits: { curiosity: 0.7, thoroughness: temp <= 0.45 ? 0.85 : 0.7, creativity: temp >= 0.8 ? 0.9 : 0.5, assertiveness: 0.5, empathy: 0.6 },
           communication_style: 'professional',
           default_mood: 'focused'
         },
@@ -2243,6 +2261,24 @@ My response: "${ss.last_response_preview}"${tools}
             };
           }
         } catch { /* limit is best-effort — never block on a read error */ }
+      }
+
+      // TEMPLE MEMBERSHIP — a project task can only be assigned to an agent
+      // that is ASSIGNED TO THAT PROJECT (present in the temple). Assigning
+      // outsiders made no sense and confused the aquarium view.
+      if (project && assigned_agent_id) {
+        try {
+          const projEntry = await this.rm.resolveProjectByNameOrId(project);
+          const members = projEntry?.entry?.assigned_agents || [];
+          if (members.length && !members.includes(assigned_agent_id)) {
+            return {
+              ok: false,
+              error: `AGENT NOT IN PROJECT: ${assigned_agent_id} is not assigned to "${project}". ` +
+                     `Project agents: ${members.join(', ') || 'none'}. ` +
+                     `Either assign the task to one of them, or first call assign_agent(${assigned_agent_id}, "${project}") to add the agent to the temple.`,
+            };
+          }
+        } catch { /* best-effort */ }
       }
 
       // Use the serialized generateNextId — prevents duplicate IDs on concurrent calls
