@@ -678,6 +678,20 @@ class TaskRunner {
           { timeoutMs: 10 * 60 * 1000 }
         );
         try {
+          // ═══ PHASE SWAP: AGENT ═══════════════════════════════════════════
+          // Each phase gets its own resident model + context regime. Agent
+          // work runs on the project's assigned_model_id (or Poseidon as
+          // fallback) with a tight ctx (6144) — no chat KV leaks in, no
+          // agent KV leaks out.
+          try {
+            const projEntry = task.project_name
+              ? (await this.rm.resolveProjectByNameOrId(task.project_name))?.entry
+              : null;
+            await this.modelService.ensureLoadedFor('agent', projEntry);
+            if (bus) bus.push({ type: 'phase', phase: 'agent', task_id: taskId, project: task.project_name });
+          } catch (swapErr) {
+            log.warn(`Phase swap to agent failed: ${swapErr.message} — continuing on current model`);
+          }
           // Dispose Poseidon session AND sequence before BG task — frees the single slot.
           // Check both independently: session may be null but sequence still alive.
           const poseidonId = this.modelService.poseidonModelId;
@@ -976,6 +990,18 @@ class TaskRunner {
       // PASS so a sloppy reviewer can never loop a task forever.
       if (!failed && output.trim().length > 0 && (task.revisions || 0) < 1) {
         try {
+          // ═══ PHASE SWAP: REVIEW ══════════════════════════════════════════
+          // Fresh model + fresh 10k ctx dedicated to judging this one
+          // deliverable. The agent that produced it is gone; its KV is not
+          // available to the reviewer. Clean judgement.
+          try {
+            const projEntry = task.project_name
+              ? (await this.rm.resolveProjectByNameOrId(task.project_name))?.entry
+              : null;
+            await this.modelService.ensureLoadedFor('review', projEntry);
+          } catch (swapErr) {
+            log.warn(`Phase swap to review failed: ${swapErr.message}`);
+          }
           const ledger2 = global.__TASK_WRITES?.get(taskId) || [];
           // Review the actual deliverable file when one was written, else the reply.
           let deliverable = output;

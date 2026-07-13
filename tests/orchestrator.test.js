@@ -712,7 +712,7 @@ async function main() {
     // github
     'github_status', 'github_commit', 'github_diff', 'github_push',
     // models / images / dispatch / structured planning
-    'list_models', 'generate_image', 'dispatch_to_agent', 'plan_project',
+    'list_models', 'generate_image', 'dispatch_to_agent', 'plan_project', 'assign_model_to_project',
     // shipped after this list was written (comms, docs, exec, images, MCP)
     'send_email', 'search_image', 'edit_image',
     'generate_docx', 'generate_pptx',

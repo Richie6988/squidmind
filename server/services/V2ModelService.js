@@ -595,6 +595,15 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
         log.warn(`  GGUF header read failed (${e.message}) — falling back to size heuristic (${estLayers} layers)`);
       }
 
+      // Phase override (set by ensureLoadedFor for agent/review sessions):
+      // temporarily clamp ctx to the phase regime, even if the user
+      // configured a large explicit contextLength for chat. Consumed once.
+      let phaseCtxOverride = null;
+      if (this._nextLoadCtxOverride?.modelId === modelId) {
+        phaseCtxOverride = this._nextLoadCtxOverride.contextLength;
+        this._nextLoadCtxOverride = null;
+      }
+
       // The stored registry values may be stale (computed under different
       // VRAM conditions) — recalculate what the user left on 'auto'. But
       // EXPLICIT numbers are the user's choice and override everything:
@@ -602,12 +611,16 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
       // formula, the offload caps, and the AUTO_CTX_CEILING. The OOM ladder
       // is the only guard on the way down. This is the "context-first"
       // opt-in the user asked for — trust their measurements over mine.
-      const explicitCtx    = Number.isFinite(config.contextLength) && config.contextLength > 0;
+      // EXCEPTION: phase override (agent/review) wins over both — a task
+      // agent runs on a small context regardless of chat config.
+      const explicitCtx    = !phaseCtxOverride && Number.isFinite(config.contextLength) && config.contextLength > 0;
       const explicitLayers = Number.isFinite(config.gpuLayers) && config.gpuLayers >= 0;
-      if (explicitCtx)    log.info(`  [explicit] contextLength=${config.contextLength} (user override — auto formula bypassed)`);
-      if (explicitLayers) log.info(`  [explicit] gpuLayers=${config.gpuLayers} (user override — auto formula bypassed)`);
+      if (phaseCtxOverride) log.info(`  [phase override] contextLength=${phaseCtxOverride} (agent/review regime)`);
+      if (explicitCtx)      log.info(`  [explicit] contextLength=${config.contextLength} (user override — auto formula bypassed)`);
+      if (explicitLayers)   log.info(`  [explicit] gpuLayers=${config.gpuLayers} (user override — auto formula bypassed)`);
       if (!explicitLayers) config.gpuLayers     = 'auto';
-      if (!explicitCtx)    config.contextLength = 'auto';
+      if (phaseCtxOverride) config.contextLength = phaseCtxOverride;
+      else if (!explicitCtx) config.contextLength = 'auto';
 
       if (config.gpuLayers === 'auto' || config.gpuLayers === 'max') {
         if (vramBefore && freeBeforeGb > 0.5) {
@@ -970,6 +983,67 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
     }
   }
 
+  /**
+   * ensureLoadedFor(phase, projectEntry)
+   *
+   * Agentic separation of concerns: each phase (chat / agent / review) gets
+   * its own resident model with its own context regime, and never inherits
+   * KV state from another phase. Bindings live on the project:
+   *   assigned_model_id  → model that agent tasks run on (fallback: Poseidon)
+   *   review_model_id    → model that quality review runs on (fallback: Poseidon)
+   *
+   * When the target model+phase differs from what's currently resident, the
+   * current model is unloaded and the target is loaded FRESH with a phase-
+   * specific contextLength override:
+   *   chat   → Poseidon full context (whatever the user set, honored)
+   *   agent  → 6144 tokens (slim prompt + a single task worth of tools)
+   *   review → 10240 tokens (project memory + one deliverable to judge)
+   *
+   * The KV cache never crosses phases — the "no hidden KV between roles"
+   * discipline you asked for.
+   */
+  async ensureLoadedFor(phase, projectEntry = null) {
+    const CTX_BY_PHASE = { chat: null, agent: 6144, review: 10240 };
+    const phaseCtx = CTX_BY_PHASE[phase] ?? null;
+
+    // Which model does this phase want? Fall back to Poseidon.
+    let targetModelId = this.poseidonModelId;
+    if (phase === 'agent'  && projectEntry?.assigned_model_id) targetModelId = projectEntry.assigned_model_id;
+    if (phase === 'review' && projectEntry?.review_model_id)   targetModelId = projectEntry.review_model_id;
+    if (!targetModelId) throw new Error('No model assigned to Poseidon');
+
+    // If the current resident is the WRONG model, OR the right model but
+    // with the wrong ctx regime, evict and reload fresh.
+    const currentEntry = this.loaded.get(targetModelId);
+    const currentPhase = currentEntry?._phase || null;
+    const currentCtx   = currentEntry?.config?.contextLength || 0;
+    const needsSwap =
+      !currentEntry ||
+      currentPhase !== phase ||
+      (phaseCtx && currentCtx && Math.abs(currentCtx - phaseCtx) > 512);
+
+    if (this.loaded.size && needsSwap) {
+      // Evict everything else — one model per phase, no accidental KV.
+      for (const [id] of this.loaded) {
+        log.info(` ⇢ phase swap: unloading ${id} to load ${targetModelId} for ${phase}`);
+        await this.unloadModel(id).catch(() => {});
+      }
+    }
+
+    if (!this.loaded.has(targetModelId)) {
+      // Load with phase-specific ctx override. For chat we honor the user's
+      // configured contextLength (registry model_params); for agent/review
+      // we clamp to a tight regime so the small task has a small blast radius.
+      if (phaseCtx) this._nextLoadCtxOverride = { modelId: targetModelId, contextLength: phaseCtx };
+      log.info(` ⇢ loading ${targetModelId} for phase=${phase}${phaseCtx ? ` (ctx=${phaseCtx})` : ' (ctx=chat regime)'}`);
+      await this.ensureLoaded(targetModelId);
+    }
+
+    const entry = this.loaded.get(targetModelId);
+    if (entry) entry._phase = phase;
+    return { model_id: targetModelId, phase };
+  }
+
   async unloadModel(modelId) {
     const entry = this.loaded.get(modelId);
     if (!entry) return { success: false, error: 'Not loaded' };
@@ -1249,6 +1323,26 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
     if (!this.loaded.has(this.poseidonModelId)) {
       log.info(` Auto-loading ${this.poseidonModelId} for Poseidon chat...`);
       await this.ensureLoaded(this.poseidonModelId);
+    }
+
+    // ═══ PHASE SWAP: CHAT ══════════════════════════════════════════════════
+    // If a task previously loaded an agent/review model (or the same model
+    // under a slim ctx regime), a direct user chat MUST restore the full
+    // Poseidon chat regime — otherwise you'd end up chatting with 6k tokens
+    // and the wrong prompt. Only when NOT already inside an agent/BG turn.
+    if (!_bgMode && !_agentPrompt) {
+      try {
+        const preEntry = this.loaded.get(this.poseidonModelId);
+        const prePhase = preEntry?._phase;
+        if (prePhase && prePhase !== 'chat') {
+          log.info(` ⇢ direct chat detected — phase swap ${prePhase}→chat (restoring Poseidon regime)`);
+          await this.ensureLoadedFor('chat', null);
+        } else if (preEntry && !prePhase) {
+          preEntry._phase = 'chat';  // first load: mark as chat
+        }
+      } catch (swapErr) {
+        log.warn(` chat phase swap failed: ${swapErr.message}`);
+      }
     }
     
     let entry = this.loaded.get(this.poseidonModelId);

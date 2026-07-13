@@ -846,6 +846,32 @@ My response: "${ss.last_response_preview}"${tools}
         handler: async (p) => self._assignAgent(p)
       }),
 
+      assign_model_to_project: defineChatSessionFunction({
+        description: 'Bind a model to a project for a specific phase. When agents run tasks for that project, the assigned model is loaded fresh with a tight context; same for review. Falls back to the Poseidon model when unset.',
+        params: {
+          type: 'object',
+          properties: {
+            project_name: { type: 'string' },
+            model_id:     { type: 'string', description: 'Model id from the library (or "poseidon" to fall back)' },
+            phase:        { type: 'string', enum: ['agent', 'review'] }
+          },
+          required: ['project_name', 'model_id', 'phase']
+        },
+        handler: async ({ project_name, model_id, phase }) => {
+          try {
+            const reg = await self.rm.read('PROJECTS/project_registry.json');
+            const proj = await self.rm.resolveProjectByNameOrId(project_name);
+            if (!proj) return { ok: false, error: `Project "${project_name}" not found` };
+            const entry = reg.projects[proj.id];
+            const val = model_id === 'poseidon' ? null : model_id;
+            if (phase === 'agent')  entry.assigned_model_id = val;
+            if (phase === 'review') entry.review_model_id   = val;
+            await self.rm.write('PROJECTS/project_registry.json', reg);
+            return { ok: true, message: `${phase} phase for "${entry.name}" ${val ? `bound to ${val}` : 'reset to Poseidon fallback'}` };
+          } catch (err) { return { ok: false, error: err.message }; }
+        }
+      }),
+
       unassign_agent: defineChatSessionFunction({
         description: 'Remove an agent from a project.',
         params: {
@@ -2087,6 +2113,11 @@ My response: "${ss.last_response_preview}"${tools}
         status: 'active',
         colors: memory.colors, temple_shape: 'classic',
         assigned_agents: [], vision: memory.vision,
+        // Per-phase model bindings — optional. When set, TaskRunner will
+        // swap to these models for agent execution / quality review.
+        // Falls back to the Poseidon model when null.
+        assigned_model_id: null,   // model used to execute agent tasks
+        review_model_id:   null,   // model used to judge deliverables
         display_order: Object.keys(reg.projects).length,
         created_at: new Date().toISOString(),
         created_by: 'poseidon_main',
