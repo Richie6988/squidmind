@@ -8890,15 +8890,39 @@ html { zoom: var(--app-zoom); }
 .modal .modal-content { max-height: calc(88vh / var(--app-zoom)) !important; }
 
 /* ═══ Control Tower: compact resources (user request) ═══════════════════ */
-/* The stock stat rows (7px padding + 12px bars + 4px gaps) ate a third of
-   the tower. Scoped to the monitor only — other stat-items unchanged.
-   Vertical centering: the tighter padding + smaller bar exposed a
-   line-height mismatch that pushed the label above the bar. Explicit
-   align-items + matched line-height fix it. */
-#monitor-system-stats .stat-item { padding: 4px 8px; margin-bottom: 2px; align-items: center; min-height: 20px; }
-#monitor-system-stats .stat-bar  { height: 7px; border-width: 1px; align-self: center; }
-#monitor-system-stats .stat-label { font-size: 8px; min-width: 34px; line-height: 1; }
-#monitor-system-stats .stat-value { font-size: 9px; line-height: 1; }
+/* The stock stat rows use inline-block children aligned by text BASELINE
+   (line 4025 block) — align-items:center was a no-op because the element
+   was not flex. Force flex, then center. The 4px padding gives breathing
+   room without stealing tower height. Scoped to monitor only. */
+#monitor-system-stats .stat-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  margin: 3px 0;
+  min-height: 22px;
+}
+#monitor-system-stats .stat-label {
+  font-size: 8px;
+  width: 34px;
+  min-width: 34px;
+  line-height: 1;
+  display: block;   /* kill inline-block baseline behavior */
+}
+#monitor-system-stats .stat-bar {
+  height: 7px;
+  border-width: 1px;
+  flex: 1;
+  vertical-align: unset;   /* was middle from inline-block layout */
+  width: auto;             /* was fixed 100px */
+}
+#monitor-system-stats .stat-value {
+  font-size: 9px;
+  line-height: 1;
+  margin-left: 0;
+  min-width: 30px;
+  text-align: right;
+}
 
 /* Agent levels: collapsible header + rows */
 .squad-tele-toggle {
