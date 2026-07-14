@@ -493,13 +493,18 @@ async function main() {
   r = await orch._listTasks({ status: 'completed' });
   log('listTasks status=completed returns 0',  r.count === 0);
 
-  // _updateTask — change status
+  // _updateTask — change status. Legacy vocabulary is NORMALIZED to the
+  // canonical todo/wip/done (in_progress → wip); that's the contract now.
   r = await orch._updateTask({ task_id: t1, field: 'status', new_value: 'in_progress' });
   log('updateTask status ok',                  r.ok === true);
-  // Verify on disk
+  // Verify on disk — canonical status persisted on both lifecycle and flat
   const t1Reg = await rm._readTaskDetails(t1);
   log('updateTask persists status on lifecycle + flat',
-      t1Reg.lifecycle?.status === 'in_progress' && t1Reg.status === 'in_progress');
+      t1Reg.lifecycle?.status === 'wip' && t1Reg.status === 'wip');
+
+  // Garbage status is rejected
+  r = await orch._updateTask({ task_id: t1, field: 'status', new_value: 'banana' });
+  log('updateTask rejects invalid status',     r.ok === false);
 
   r = await orch._updateTask({ task_id: 'ghost_task', field: 'status', new_value: 'x' });
   log('updateTask fails on missing task',      r.ok === false);
