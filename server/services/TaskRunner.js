@@ -752,10 +752,10 @@ class TaskRunner {
                   brain?.system_prompt               ||
                   (role ? `You are ${name}, an AI agent specializing in: ${role}.` : '');
 
-                // Include capability skills if defined
-                const caps = brain?.capabilities?.skills
-                  ? Object.keys(brain.capabilities.skills).join(', ')
-                  : '';
+                // Skills are SHARED across the platform (see AgentForm) —
+                // no per-agent whitelist. The agent discovers skills via the
+                // execute_skill tool at runtime; enumerating them here would
+                // just be prompt bloat.
                 const modelPref = brain?.brain_config?.model_binding?.preferred_model_id
                   ? `\nPreferred model: ${brain.brain_config.model_binding.preferred_model_id}`
                   : '';
@@ -763,7 +763,6 @@ class TaskRunner {
                 agentPrefix = `[AGENT: ${name}]\n`;
                 if (persona) agentPrefix += `${persona.slice(0, 500)}\n`;
                 if (role && persona && !persona.includes(role)) agentPrefix += `Role: ${role}\n`;
-                if (caps) agentPrefix += `Agent skills: ${caps}\n`;
                 agentPrefix += modelPref + `---\n`;
               }
             } catch (e) {
