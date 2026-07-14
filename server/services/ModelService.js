@@ -1466,6 +1466,7 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
         phase_task_id: e._phaseTaskId || null,
         phase_project: e._phaseProject || null,
         phase_agent: e._phaseAgent || null,
+        phase_agent_name: e._phaseAgentName || null,
         last_perf: e.lastPerf || null,   // { first_token_s, decode_tok_s, tokens, at }
         cpu_offload_share: e.config?.cpuOffloadShare ?? 0,
         dreaming: e.dreaming || false

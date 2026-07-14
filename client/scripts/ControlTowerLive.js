@@ -260,12 +260,8 @@ const ControlTowerLive = {
           <div id="ctx-bar-sys"  style="height:100%;background:#4facfe;transition:width 0.4s;flex:0 0 auto;"></div>
           <div id="ctx-bar-fill" style="height:100%;transition:width 0.4s,background 0.4s;flex:0 0 auto;"></div>
         </div>
-        <div id="ctx-bar-legend" style="display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:8px;font-family:'Courier New',monospace;color:#94a3b8;margin-top:5px;line-height:1;">
-          <span style="display:flex;gap:10px;align-items:center;">
-            <span id="ctx-legend-sys"  style="display:inline-flex;align-items:center;gap:4px;"><span style="width:6px;height:6px;background:#4facfe;border-radius:1px;"></span><span></span></span>
-            <span id="ctx-legend-conv" style="display:inline-flex;align-items:center;gap:4px;"><span id="ctx-legend-conv-dot" style="width:6px;height:6px;background:#06ffa5;border-radius:1px;"></span><span></span></span>
-          </span>
-          <span id="ctx-legend-free" style="color:#64748b;"></span>
+        <div id="ctx-bar-legend" style="display:flex;align-items:center;gap:8px;font-size:8px;font-family:'Courier New',monospace;color:#94a3b8;margin-top:5px;line-height:1;">
+          <span id="ctx-legend-sys" style="display:inline-flex;align-items:center;gap:4px;"><span style="width:6px;height:6px;background:#4facfe;border-radius:1px;"></span><span></span></span>
         </div>`;
       pill.parentNode.insertBefore(barWrap, pill.nextSibling);
     }
@@ -275,9 +271,6 @@ const ControlTowerLive = {
     const track   = document.getElementById('ctx-bar-track');
     const val     = document.getElementById('ctx-bar-val');
     const legSys  = document.getElementById('ctx-legend-sys')?.lastElementChild;
-    const legConv = document.getElementById('ctx-legend-conv')?.lastElementChild;
-    const legConvDot = document.getElementById('ctx-legend-conv-dot');
-    const legFree = document.getElementById('ctx-legend-free');
 
     // BLUE segment = fixed system+tools; GREEN/AMBER/RED = conversation.
     const sysTok = model.system_prompt_tokens || 0;
@@ -289,17 +282,14 @@ const ControlTowerLive = {
     if (fill) { fill.style.width = convPct.toFixed(1) + '%'; fill.style.background = convColor; }
     if (track) track.title = `System+tools ${sysTok} tok · conversation ${Math.max(0, ctxUsed - sysTok)} tok · free ${Math.max(0, ctxTotal - ctxUsed)} tok`;
 
-    // Session label matches what's actually resident
-    const modeName = model.session_mode === 'agent' ? 'Agent'
-                    : model.session_mode === 'bg' ? 'BG'
+    // Session label = who actually holds the context (real agent name, not a generic mode)
+    const modeName = model.session_mode === 'agent' ? (model.phase_agent_name || model.phase_agent || 'Agent')
+                    : model.session_mode === 'bg' ? (model.phase_agent_name || 'BG')
                     : 'Poseidon';
 
-    // Right-aligned header: N/M (X%) if there's any conversation, else empty
-    // (avoids "45k" up top duplicating "45056 free" below when idle).
-    const conversationTok = Math.max(0, ctxUsed - sysTok);
-    const freeTok = Math.max(0, ctxTotal - ctxUsed);
+    // Header: X/Y · % — always shown when a context exists (single source, no duplicates below)
     if (val) {
-      if (ctxTotal > 0 && conversationTok > 0) {
+      if (ctxTotal > 0) {
         val.textContent = `${(ctxUsed/1000).toFixed(1)}k / ${(ctxTotal/1000).toFixed(0)}k · ${displayPct}%`;
         val.style.color = displayPct >= 85 ? '#ef4444' : displayPct >= 60 ? '#fbbf24' : '#cbd5e1';
       } else {
@@ -307,11 +297,8 @@ const ControlTowerLive = {
       }
     }
 
-    // Single legend row — no more duplicated numbers
-    if (legSys)  legSys.textContent  = sysTok ? `${modeName} ${sysTok}` : '';
-    if (legConv) legConv.textContent = conversationTok > 0 ? `conv ${conversationTok}` : (turns > 0 ? `turn ${turns}` : '');
-    if (legConvDot) legConvDot.style.background = convColor;
-    if (legFree) legFree.textContent = ctxTotal ? `${(freeTok/1000).toFixed(1)}k free of ${(ctxTotal/1000).toFixed(0)}k` : '';
+    // Single legend line: holder name + its system prompt size
+    if (legSys) legSys.textContent = sysTok ? `${modeName} · sys ${sysTok}` : modeName;
   },
 
   stop() {

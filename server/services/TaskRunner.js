@@ -721,6 +721,7 @@ class TaskRunner {
               currentEntry._phaseTaskId = taskId;
               currentEntry._phaseProject = task.project_name || null;
               currentEntry._phaseAgent = agentId || null;
+              currentEntry._phaseAgentName = task.assigned_name || null;
             }
             if (bus) bus.push({ type: 'phase', phase: 'agent', task_id: taskId, project: task.project_name });
           } catch (swapErr) {
@@ -1122,6 +1123,7 @@ class TaskRunner {
         posEntry._phaseTaskId = null;
         posEntry._phaseProject = null;
         posEntry._phaseAgent = null;
+        posEntry._phaseAgentName = null;
       }
     }
   }
