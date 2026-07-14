@@ -618,16 +618,11 @@ My response: "${ss.last_response_preview}"${tools}
         project: projName,
         assigned_agent_id: agentIds.includes(t.agent_id) ? t.agent_id : null,
         priority: 'high',
-        _pipeline: true,  // chained = serial by construction, exempt from WIP limit
         depends_on: createdIds.length ? [createdIds[createdIds.length - 1]] : [],
       });
       const id = res?.task_id || null;
       if (res?.ok === false) {
         yield { type: 'text', chunk: `⚠ "${t.title}" not created: ${String(res.error).slice(0, 160)}\n` };
-        if (/WIP LIMIT/i.test(res.error || '')) {
-          yield { type: 'text', chunk: `_The project already has unfinished tasks — clear or complete them (kanban ✕ ALL) and re-run the plan._\n` };
-          break;
-        }
         continue;
       }
       if (id) createdIds.push(id);
@@ -2260,8 +2255,10 @@ My response: "${ss.last_response_preview}"${tools}
   async _createTask({ title, description, acceptance_criteria, project, assigned_agent_id, priority, depends_on, _pipeline = false }) {
     try {
       // IDEMPOTENT CREATION — an open task with the same title in the same
-      // project is THE task, not a new one. Kills the observed loop where a
-      // WIP-limited model retried creating its own already-created tasks 4x.
+      // project is THE task, not a new one. This idempotence is now the
+      // SOLE anti-loop guard (WIP LIMIT was removed): a model retrying
+      // its own already-created task after an OOM or context reset gets
+      // the existing id back instead of forking a duplicate.
       let regCache = null;
       try {
         regCache = await this.rm.getTasksRegistry();
@@ -2281,30 +2278,13 @@ My response: "${ss.last_response_preview}"${tools}
 
   async _createTaskInner({ title, description, acceptance_criteria, project, assigned_agent_id, priority, depends_on, _pipeline = false, regCache = null }) {
     try {
-      // WIP LIMIT (structural) — a project with a pile of open tasks doesn't
-      // need MORE tasks, it needs the existing ones finished and integrated.
-      // Unbounded task creation is exactly how projects devolve into "lots of
-      // files, no progress toward the goal". Cap live tasks per project.
-      if (project && !_pipeline) {
-        try {
-          const reg = regCache || await this.rm.getTasksRegistry();
-          const live = Object.values(reg.tasks || {}).filter(t =>
-            (t.project_name === project || t.project_id === project) &&
-            !['completed', 'failed', 'cancelled'].includes(t.lifecycle?.status || t.status || 'open') &&
-            !(t.schedule && t.schedule.type) && !t.cron_schedule   // templates don't count
-          );
-          const WIP_LIMIT = 4;
-          if (live.length >= WIP_LIMIT) {
-            return {
-              ok: false,
-              error: `WIP LIMIT: project "${project}" already has ${live.length} unfinished tasks (limit ${WIP_LIMIT}). ` +
-                     `Do NOT create more and do NOT retry this call. Instead: review the existing tasks (${live.map(t => t.task_id).join(', ')}), ` +
-                     `finish or cancel them, integrate their outputs toward the project goal, and update ` +
-                     `project memory (completion %, next_steps). Create new tasks only once the backlog shrinks.`,
-            };
-          }
-        } catch { /* limit is best-effort — never block on a read error */ }
-      }
+      // (No WIP limit — user directive.) The anti-loop safety net is the
+      // IDEMPOTENT-BY-TITLE guard in the outer _createTask: two attempts
+      // with the same title in the same project return the existing task
+      // instead of duplicating. That is what stopped the observed create-
+      // loops (model retrying its own already-created task after an OOM).
+      // A numeric cap punished legitimate batches (40 sources → 40 tasks)
+      // without adding real protection over idempotence.
 
       // TEMPLE MEMBERSHIP — a project task can only be assigned to an agent
       // that is ASSIGNED TO THAT PROJECT (present in the temple). Assigning
