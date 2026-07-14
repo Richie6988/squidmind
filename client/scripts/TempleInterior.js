@@ -205,8 +205,8 @@ const TempleInterior = {
     window.api?._fetch('/tasks').then(r => {
       const tasks = Object.values(r?.registry?.tasks || {});
       const mine  = pid ? tasks.filter(t => t.project_id === pid || t.context?.project_id === pid) : tasks;
-      const done  = mine.filter(t => ['completed','cancelled','archived'].includes(t.lifecycle?.status || t.status)).length;
-      const prog  = mine.filter(t => (t.lifecycle?.status || t.status) === 'in_progress').length;
+      const done  = mine.filter(t => ['done','completed','cancelled','archived'].includes(t.lifecycle?.status || t.status)).length;
+      const prog  = mine.filter(t => ['wip','in_progress'].includes(t.lifecycle?.status || t.status)).length;
       const total = mine.length;
       el.textContent = `${prog > 0 ? `▶ ${prog} running · ` : ''}${done}/${total} done`;
     }).catch(() => { el.textContent = ''; });
@@ -1083,25 +1083,25 @@ const TempleInterior = {
     const bySortOrder = (a, b) => (a.sort_order ?? 1000) - (b.sort_order ?? 1000);
     const cols = {
       todo: tasks.filter(t => {
-        const s = t.lifecycle?.status || t.status || 'open';
+        const s = t.lifecycle?.status || t.status || 'todo';
         if (brokerRunningId === t.task_id) return false;
-        return ['open','planned','queued'].includes(s);
+        return ['todo','open','planned','queued'].includes(s);
       }).sort(bySortOrder),
       prog: tasks.filter(t => {
-        const s = t.lifecycle?.status || t.status || 'open';
-        return s === 'in_progress' || brokerRunningId === t.task_id;
+        const s = t.lifecycle?.status || t.status || 'todo';
+        return s === 'wip' || s === 'in_progress' || brokerRunningId === t.task_id;
       }).sort(bySortOrder),
       done: tasks.filter(t => {
         const s = t.lifecycle?.status || t.status;
-        return ['completed','failed','cancelled'].includes(s) && brokerRunningId !== t.task_id;
+        return ['done','completed','failed','cancelled'].includes(s) && brokerRunningId !== t.task_id;
       }).sort(bySortOrder)
     };
 
     const makeCard = (task) => {
-      const status = task.lifecycle?.status || task.status || 'open';
-      const isRun  = status === 'in_progress' || brokerRunningId === task.task_id;
-      const isFail = status === 'failed' || status === 'cancelled';
-      const isDone = status === 'completed';
+      const status = task.lifecycle?.status || task.status || 'todo';
+      const isRun  = status === 'wip' || status === 'in_progress' || brokerRunningId === task.task_id;
+      const isFail = status === 'failed' || status === 'cancelled' || (status === 'done' && task.outcome === 'failed');
+      const isDone = status === 'completed' || (status === 'done' && task.outcome !== 'failed');
       const cls    = isRun ? 'prog' : isDone ? 'done' : isFail ? 'fail' : '';
       const agent  = task.assigned_name || task.assigned_to || '';
       // Status icon
@@ -1132,14 +1132,14 @@ const TempleInterior = {
         : '';
       // Quick action: play (open→in_progress) or stop (in_progress→open).
       // Visible only for movable statuses so completed/failed cards stay clean.
-      const st = String(task.lifecycle?.status || task.status || 'open').toLowerCase();
+      const st = String(task.lifecycle?.status || task.status || 'todo').toLowerCase();
       const deps = task.depends_on ? (Array.isArray(task.depends_on) ? task.depends_on : [task.depends_on]) : [];
       const depBadge = deps.length
         ? `<span class="ti-kcard-dep" title="Waits for ${this._esc(deps.join(', '))} to complete">⧗ ${this._esc(deps.length === 1 ? deps[0] : deps.length + ' deps')}</span>`
         : '';
-      const quickAction = (st === 'open' || st === 'planned' || st === 'assigned' || st === 'queued')
+      const quickAction = (st === 'todo' || st === 'open' || st === 'planned' || st === 'assigned' || st === 'queued')
         ? `<button class="ti-kcard-quickact play" title="Start task" onclick="event.stopPropagation();TempleInterior._quickStartTask('${task.task_id}')">▶</button>`
-        : (st === 'in_progress' || st === 'running')
+        : (st === 'wip' || st === 'in_progress' || st === 'running')
         ? `<button class="ti-kcard-quickact stop" title="Stop task" onclick="event.stopPropagation();TempleInterior._quickStopTask('${task.task_id}')">■</button>`
         : '';
       return `<div class="ti-kcard ${cls}" data-task-id="${task.task_id}"
@@ -1169,9 +1169,9 @@ const TempleInterior = {
     };
 
     const colDefs = [
-      { key: 'todo', label: 'TODO',     cls: 'todo', drop: 'open' },
-      { key: 'prog', label: 'PROGRESS', cls: 'prog', drop: 'in_progress' },
-      { key: 'done', label: 'DONE',     cls: 'done', drop: 'completed' }
+      { key: 'todo', label: 'TO-DO', cls: 'todo', drop: 'todo' },
+      { key: 'prog', label: 'WIP',   cls: 'prog', drop: 'wip' },
+      { key: 'done', label: 'DONE',  cls: 'done', drop: 'done' }
     ];
 
     const emptyStateFor = (key) => {
@@ -1298,9 +1298,9 @@ const TempleInterior = {
     try {
       // Update status (column change). Skip if dropped in the same column AND
       // the status didn't change — saves a roundtrip and avoids lifecycle churn.
-      const currentStatus = draggedCard?.classList.contains('done') ? 'completed'
-                          : draggedCard?.classList.contains('prog') ? 'in_progress'
-                          : draggedCard?.classList.contains('fail') ? 'failed' : 'open';
+      const currentStatus = draggedCard?.classList.contains('done') ? 'done'
+                          : draggedCard?.classList.contains('prog') ? 'wip'
+                          : draggedCard?.classList.contains('fail') ? 'done' : 'todo';
       if (currentStatus !== newStatus) {
         const r = await window.api._fetch(`/tasks/${taskId}/status`, {
           method: 'PATCH',

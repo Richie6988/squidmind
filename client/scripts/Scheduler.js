@@ -221,7 +221,7 @@ async function updateSchedulerCount() {
   if (!el) return;
   try {
     const r = await window.api._fetch('/tasks');
-    const count = Object.values(r.registry.tasks || {}).filter(t => t.schedule && t.lifecycle?.status !== 'cancelled' && t.lifecycle?.status !== 'completed').length;
+    const count = Object.values(r.registry.tasks || {}).filter(t => t.schedule && !['cancelled','completed','done'].includes(t.lifecycle?.status)).length;
     el.textContent = count;
   } catch {}
 }

@@ -30,6 +30,20 @@ function classifyError(msg) {
 
 const DONE_FILE = path.join(AQUARIUM.TASKS, '_done.json');
 
+/**
+ * CANONICAL TASK STATUSES: todo / wip / done.
+ * Everything else is legacy and normalized ON READ. Writes use ONLY the
+ * canonical three. A permanently-failed task is done with outcome:'failed'.
+ */
+function normStatus(s) {
+  s = String(s || 'todo').toLowerCase();
+  if (s === 'todo' || s === 'wip' || s === 'done') return s;
+  if (['open', 'planned', 'queued', 'assigned', 'pending', 'to-do'].includes(s)) return 'todo';
+  if (['in_progress', 'running'].includes(s)) return 'wip';
+  if (['completed', 'failed', 'cancelled', 'archived'].includes(s)) return 'done';
+  return 'todo';
+}
+
 class TaskRunner {
   constructor(rm, modelService, agentPool, botService = null) {
     this.rm           = rm;
@@ -60,7 +74,7 @@ class TaskRunner {
     // Also pre-populate from flat registry tasks already in terminal state
     // (handles tasks created before per-folder migration)
     try {
-      const TERMINAL_STATUSES = new Set(['completed','failed','cancelled','archived']);
+      const TERMINAL_STATUSES = new Set(['done','completed','failed','cancelled','archived']);
       const flatPath = require('path').join(AQUARIUM.TASKS, 'tasks_registry.json');
       const raw = await fs.readFile(flatPath, 'utf8');
       const reg = JSON.parse(raw);
@@ -112,9 +126,9 @@ class TaskRunner {
   /** Called by route when chat modal opens or closes */
   setChatActive(isOpen) {
     if (isOpen) {
-      // Block BG tasks while user is actively chatting. Refreshed on every
-      // chat turn, so this window only matters after the last message.
-      this._chatOpenUntil = Date.now() + 60_000;
+      // Richard's rule: BG tasks start only when the chat is closed OR after
+      // 5 minutes without chat activity. Refreshed on every chat turn.
+      this._chatOpenUntil = Date.now() + 5 * 60_000;
     } else {
       // Turn finished — keep BG paused long enough for the user to read the
       // reply and start their next message (was 3s, too short — the
@@ -195,8 +209,8 @@ class TaskRunner {
           task_id: cronTaskId,
           title: task.title,
           description: task.description || '',
-          status: 'open',
-          lifecycle: { status: 'open' },
+          status: 'todo',
+          lifecycle: { status: 'todo' },
           created_at: new Date().toISOString(),
           cron_schedule: null,   // fresh run — no re-cron
           schedule: null,        // fresh run — instance, not template
@@ -208,8 +222,8 @@ class TaskRunner {
           reg.tasks[task.task_id].schedule = { ...task.schedule, last_run_at: new Date().toISOString() };
           // 'once' templates are consumed after their single spawn
           if (task.schedule.type === 'once') {
-            reg.tasks[task.task_id].lifecycle = { ...(reg.tasks[task.task_id].lifecycle || {}), status: 'completed' };
-            reg.tasks[task.task_id].status = 'completed';
+            reg.tasks[task.task_id].lifecycle = { ...(reg.tasks[task.task_id].lifecycle || {}), status: 'done' };
+            reg.tasks[task.task_id].status = 'done';
           }
         }
         reg.metadata = reg.metadata || {};
@@ -226,29 +240,29 @@ class TaskRunner {
       return; // one task per tick
     }
 
-    // ── One-shot tasks: pick highest priority open/planned task ───────────
-    // TERMINAL = statuses that are NEVER retried.
-    // NOTE: 'failed' is NOT terminal here — only permanently failed (fails >= MAX_RETRIES) tasks
-    // are excluded via the tooManyFails check below. This allows tasks set to 'failed' by
-    // external code (session crash, manual set) to be retried if fail count is still low.
-    const TERMINAL = new Set(['completed','cancelled','archived','in_progress']);
+    // ── One-shot tasks: pick the oldest runnable todo ──────────────────────
+    // Canonical statuses: a task is runnable iff normStatus(s) === 'todo'.
+    // wip = currently held (or stale from a crash — reset below); done = never again.
 
-    // Reset stale in_progress tasks (stuck from previous server run, not in _running)
+    // Reset stale wip tasks (stuck from previous server run, not in _running)
     // Also clean up orphaned failed tasks whose disk entry was deleted
     for (const t of allTasks) {
-      const s = t.lifecycle?.status || t.status;
+      const raw = t.lifecycle?.status || t.status;
+      const s   = normStatus(raw);
       const fails = this._failCounts.get(t.task_id) || 0;
-      if (s === 'in_progress' && !this._running.has(t.task_id) && !this._done.has(t.task_id)) {
-        log.info(`Resetting stale in_progress task ${t.task_id} → planned`);
-        this._setStatus(t.task_id, 'planned').catch(() => {});
+      if (s === 'wip' && !this._running.has(t.task_id) && !this._done.has(t.task_id)) {
+        log.info(`Resetting stale wip task ${t.task_id} → todo`);
+        this._setStatus(t.task_id, 'todo').catch(() => {});
       }
-      // Failed with 0 counted retries = set externally (session crash, manual) — retry it
-      if (s === 'failed' && fails === 0 && !this._done.has(t.task_id)) {
-        log.info(`Resetting externally-failed ${t.task_id} → planned (fails=${fails})`);
-        this._setStatus(t.task_id, 'planned').catch(() => {});
+      // Legacy 'failed' with 0 counted retries = set externally (session
+      // crash, manual) — retry it. Checked on RAW status: canonical writes
+      // never produce 'failed' in the live registry anymore.
+      if (raw === 'failed' && fails === 0 && !this._done.has(t.task_id)) {
+        log.info(`Resetting externally-failed ${t.task_id} → todo (fails=${fails})`);
+        this._setStatus(t.task_id, 'todo').catch(() => {});
       }
       // If a task has been retried MAX_RETRIES times, mark done so it stops blocking
-      if (s === 'failed' && fails >= this.MAX_RETRIES) {
+      if (raw === 'failed' && fails >= this.MAX_RETRIES) {
         log.info(`Permanently failed ${t.task_id} — adding to done set`);
         this._done.add(t.task_id);
         this._markDone(t.task_id).catch(() => {});
@@ -270,7 +284,7 @@ class TaskRunner {
 
     const runnable = allTasks
       .filter(t => {
-        const s = t.lifecycle?.status || t.status || 'open';
+        const s = normStatus(t.lifecycle?.status || t.status);
         const tooManyFails = (this._failCounts.get(t.task_id) || 0) >= this.MAX_RETRIES;
         const retryDelay = this._retryAfter.get(t.task_id) || 0;
         const agentId = t.assigned_to;
@@ -289,7 +303,7 @@ class TaskRunner {
         // was picked up as a plain task, ran once, completed → purged, and
         // the recurrence was lost ("repetitive tasks only run once").
         const isScheduleTemplate = !!(t.schedule && t.schedule.type) || !!t.cron_schedule;
-        return !TERMINAL.has(s)
+        return s === 'todo'
           && !isScheduleTemplate
           && !this._running.has(t.task_id)
           && !this._done.has(t.task_id)
@@ -415,7 +429,7 @@ class TaskRunner {
     log.info(`▶ ${taskId}: "${task.title}"${agentId ? ' → ' + agentId : ' → poseidon'}`);
 
     try {
-      await this._setStatus(taskId, 'in_progress', { started_at: new Date().toISOString() });
+      await this._setStatus(taskId, 'wip', { started_at: new Date().toISOString() });
 
       // Wake the assigned agent
       if (agentId && agentId !== 'poseidon_main') {
@@ -461,14 +475,19 @@ class TaskRunner {
       const critPart = task.acceptance_criteria
         ? `\nACCEPTANCE CRITERIA (your deliverable is judged against these):\n${String(task.acceptance_criteria).slice(0, 400)}`
         : '';
-      // Prior deliverables in the same project — build ON them, don't restart.
+      // Prior deliverables + inputs in the same project — the agent can
+      // read BOTH by default (Richard's rule): build ON them, don't restart.
       let priorPart = '';
       if (task.project_name) {
         try {
           const RegistryManager = require('./RegistryManager');
-          const pdir = path.join(AQUARIUM.PROJECTS, RegistryManager.projectFolder({ name: task.project_name }), 'output');
-          const files = (await fs.readdir(pdir).catch(() => [])).slice(-8);
-          if (files.length) priorPart = `\nExisting project deliverables in output/: ${files.join(', ')} (read them with read_file if relevant — extend, don't duplicate)`;
+          const pbase = path.join(AQUARIUM.PROJECTS, RegistryManager.projectFolder({ name: task.project_name }));
+          const outFiles = (await fs.readdir(path.join(pbase, 'output')).catch(() => [])).slice(-8);
+          const inFiles  = (await fs.readdir(path.join(pbase, 'input')).catch(() => [])).slice(-8);
+          const parts = [];
+          if (inFiles.length)  parts.push(`input/: ${inFiles.join(', ')}`);
+          if (outFiles.length) parts.push(`output/: ${outFiles.join(', ')}`);
+          if (parts.length) priorPart = `\nProject files you can read with read_file — ${parts.join(' | ')} (extend, don't duplicate)`;
         } catch {}
       }
 
@@ -589,25 +608,25 @@ class TaskRunner {
         }
 
         // Persist completion
-        const status = failed ? 'failed' : 'completed';
         const prevFails = this._failCounts.get(taskId) || 0;
         if (failed && prevFails + 1 < this.MAX_RETRIES) {
           const attempt = prevFails + 1;
           this._failCounts.set(taskId, attempt);
           const backoff = RETRY_BACKOFF[attempt] || RETRY_BACKOFF[RETRY_BACKOFF.length - 1];
           this._retryAfter.set(taskId, Date.now() + backoff);
-          await this._setStatus(taskId, 'open');
+          await this._setStatus(taskId, 'todo');
           log.warn(`✗ image ${taskId} (attempt ${attempt}/${this.MAX_RETRIES}) — retry in ${backoff/1000}s`);
         } else {
           await this._markDone(taskId);
           if (failed) { this._failCounts.set(taskId, this.MAX_RETRIES); }
           const extra = {
+            outcome:        failed ? 'failed' : 'passed',
             result_summary: output.slice(0, 500),
             completed_at:   new Date().toISOString(),
             ...(imageServeUrl ? { output_preview: imageServeUrl } : {})
           };
-          await this._setStatus(taskId, status, extra);
-          log.info(`${failed ? '✗✗' : '✓'} image ${taskId} ${status}`);
+          await this._setStatus(taskId, 'done', extra);
+          log.info(`${failed ? '✗✗' : '✓'} image ${taskId} done${failed ? ' (failed)' : ''}`);
 
           if (!failed && resolvedModelId) {
             // Auto-update Poseidon's generate_image skill with the confirmed working model id
@@ -697,16 +716,28 @@ class TaskRunner {
           }
         } catch {}
         // Poseidon BG path: same model, inject agent persona as prefix.
+        // Agent-assigned tasks run at AGENT priority (2) — above POSEIDON_BG,
+        // below CHAT/IMAGE. Matches the broker doctrine: CHAT > AGENT > BG.
         const bgToken = await this.modelService.broker.acquire(
-          PRIORITY.POSEIDON_BG, holderId,
+          PRIORITY.AGENT, holderId,
           { timeoutMs: 10 * 60 * 1000 }
         );
+        // Declared ONCE at the top of the hold — referencing it inside the
+        // phase-swap block below used to hit the temporal dead zone
+        // ("Cannot access 'bus' before initialization") and abort the swap
+        // halfway, leaving the agent on the chat-regime context.
+        const bus = global.ReasoningBus;
         try {
           // ═══ PHASE SWAP: AGENT ═══════════════════════════════════════════
           // Each phase gets its own resident model + context regime. Agent
           // work runs on the project's assigned_model_id (or Poseidon as
           // fallback) with a tight ctx (6144) — no chat KV leaks in, no
           // agent KV leaks out.
+          //
+          // QUIESCE FIRST: if a force-release handed us the broker while a
+          // generation is still in flight (observed), swapping/disposing
+          // under it crashes with "Object is disposed". Abort + wait.
+          await this.modelService.quiesceGeneration?.(15000);
           try {
             const projEntry = task.project_name
               ? (await this.rm.resolveProjectByNameOrId(task.project_name))?.entry
@@ -727,11 +758,13 @@ class TaskRunner {
           } catch (swapErr) {
             log.warn(`Phase swap to agent failed: ${swapErr.message} — continuing on current model`);
           }
-          // Dispose Poseidon session AND sequence before BG task — frees the single slot.
-          // Check both independently: session may be null but sequence still alive.
+          // Dispose Poseidon session AND sequence before the agent turn —
+          // frees the single slot. ONLY safe because we quiesced above; if
+          // a generation somehow survived the quiesce window, skip the
+          // dispose entirely (a slow turn beats a native crash).
           const poseidonId = this.modelService.poseidonModelId;
           const posEntry = poseidonId ? this.modelService.loaded.get(poseidonId) : null;
-          if (posEntry) {
+          if (posEntry && !posEntry.generating) {
             if (posEntry.session) {
               try { await posEntry.session.dispose?.(); } catch {}
               posEntry.session = null;
@@ -790,7 +823,6 @@ class TaskRunner {
           // The task will retry on the next tick once Poseidon is free.
           let preempted = false;
           toolCalls = 0;  // count real tool activity for the honesty gate
-          const bus = global.ReasoningBus;
           if (bus) bus.push({ type: 'task_start', task_id: taskId, title: task.title, agent: agentId || 'poseidon', project: task.project_name });
           // Per-agent sampling: an artist runs hot, an analyst runs cold.
           // brain_config.inference_params existed in every brain file but
@@ -843,6 +875,7 @@ class TaskRunner {
             // must not expire as a dead holder mid-run.
             if (Date.now() - _lastTouch > 10_000) { _lastTouch = Date.now(); this.modelService.broker.touch(bgToken); }
             if (ev.type === 'text')          { output += ev.chunk; bus?.push({ type: 'text', task_id: taskId, chunk: ev.chunk }); }
+            if (ev.type === 'error')         { failed = true; output += `\nExecution error: ${ev.error}`; bus?.push({ type: 'tool_result', task_id: taskId, name: 'generation', ok: false, summary: String(ev.error).slice(0, 200) }); }
             if (ev.type === 'thinking')      bus?.push({ type: 'thinking', task_id: taskId, chunk: ev.chunk });
             if (ev.type === 'thinking_start') bus?.push({ type: 'thinking_start', task_id: taskId });
             if (ev.type === 'thinking_end')   bus?.push({ type: 'thinking_end', task_id: taskId });
@@ -850,7 +883,7 @@ class TaskRunner {
             if (ev.type === 'tool_result')    bus?.push({ type: 'tool_result', task_id: taskId, name: ev.name, ok: ev.result?.ok !== false, summary: String(ev.result?.message || '').slice(0, 200) });
             if (this.modelService.broker.hasHighPriorityWaiting()) {
               preempted = true;
-              this.modelService.abortCurrentGeneration?.();
+              this.modelService.abortGeneration?.();
               break;
             }
           }
@@ -862,9 +895,11 @@ class TaskRunner {
         } finally {
           // Dispose session AND sequence independently before releasing broker.
           // CHAT acquires immediately on release — sequence must be free first.
+          // Quiesce first: never dispose under a live generation.
+          await this.modelService.quiesceGeneration?.(10000);
           const posId  = this.modelService.poseidonModelId;
           const posEnt = posId ? this.modelService.loaded.get(posId) : null;
-          if (posEnt) {
+          if (posEnt && !posEnt.generating) {
             if (posEnt.session) {
               try { await posEnt.session.dispose?.(); } catch {}
               posEnt.session = null;
@@ -893,6 +928,12 @@ class TaskRunner {
         failed = true;
       }
       } // end if (!usedAgentWorker)
+
+      // Empty output = nothing happened. Never a success.
+      if (!failed && output.trim().length === 0) {
+        failed = true;
+        output = 'Execution error: generation produced no output';
+      }
 
       // ── COMPLETION HONESTY GATE ─────────────────────────────────────────
       // A small model can end with a confident summary while having done
@@ -969,7 +1010,8 @@ class TaskRunner {
         if (!isResourceError && effectiveFails >= this.MAX_RETRIES) {
           log.warn(`✗✗ ${taskId} hit ${this.MAX_RETRIES} failures (${errType}) — permanently failed`);
           await this._markDone(taskId);
-          await this._setStatus(taskId, 'failed', {
+          await this._setStatus(taskId, 'done', {
+            outcome: 'failed',
             completed_at: new Date().toISOString(),
             output_preview: `Failed after ${prevFails} attempts [${errType}]. Last: ${output.slice(0, 200)}`
           });
@@ -983,7 +1025,7 @@ class TaskRunner {
           this._retryAfter.set(taskId, Date.now() + backoffMs);
           const label = isResourceError ? `[${errType}] resource contention` : `attempt ${prevFails}/${this.MAX_RETRIES} [${errType}]`;
           log.warn(`✗ ${taskId} ${label} — retry in ${Math.round(backoffMs/1000)}s`);
-          await this._setStatus(taskId, 'planned', {
+          await this._setStatus(taskId, 'todo', {
             output_preview: `${label}: retry in ${Math.round(backoffMs/1000)}s`
           });
           // Learning retry: the next attempt's prompt includes task.progress
@@ -997,6 +1039,112 @@ class TaskRunner {
           }
         }
       } else {
+        // ═══ PHASE REVIEW — Poseidon judges BEFORE anything is finalized ═══
+        // The workflow: agent done → agent context gone → Poseidon loaded
+        // with review as its FIRST priority action. Verdict decides:
+        //   PASS   → done (+stats, +project memory), next task in queue
+        //   REVISE → description upgraded, back to todo (same agent reruns)
+        // Previously the task was marked completed AND purged to results_log
+        // BEFORE the review ran, so a REVISE verdict landed on a purged task
+        // blocked by _done — it could never re-run. Review also ran with
+        // _skipBroker AFTER the broker release, so a chat could steal the
+        // model mid-review. Both fixed: review-first, under its own token.
+        // Unparseable verdicts default to PASS so a sloppy reviewer can
+        // never loop a task forever. Max 1 revision per task.
+        let verdict = 'PASS', fixes = '', score = null;
+        if ((task.revisions || 0) < 1) {
+          let reviewToken = null;
+          try {
+            reviewToken = await this.modelService.broker.acquire(
+              PRIORITY.AGENT, `review-${taskId}`, { timeoutMs: 10 * 60 * 1000 }
+            );
+            // ═══ PHASE SWAP: REVIEW — fresh model + fresh 10k ctx dedicated
+            // to judging this one deliverable. The agent KV is gone. Clean
+            // judgement. Quiesce first — never swap under a live generation.
+            await this.modelService.quiesceGeneration?.(10000);
+            try {
+              const projEntry = task.project_name
+                ? (await this.rm.resolveProjectByNameOrId(task.project_name))?.entry
+                : null;
+              await this.modelService.ensureLoadedFor('review', projEntry);
+            } catch (swapErr) {
+              log.warn(`Phase swap to review failed: ${swapErr.message}`);
+            }
+            const ledger2 = global.__TASK_WRITES?.get(taskId) || [];
+            // Review the actual deliverable file when one was written, else the reply.
+            let deliverable = output;
+            if (ledger2.length) {
+              const rel = ledger2[ledger2.length - 1].path || String(ledger2[ledger2.length - 1]);
+              const candidates = [
+                rel,
+                path.join(AQUARIUM.ROOT || path.dirname(AQUARIUM.TASKS), rel),
+                task.project_name ? path.join(AQUARIUM.PROJECTS, require('./RegistryManager').projectFolder({ name: task.project_name }), rel) : null,
+              ].filter(Boolean);
+              for (const cand of candidates) {
+                try { deliverable = await fs.readFile(cand, 'utf8'); break; } catch {}
+              }
+            }
+            const crit = task.acceptance_criteria
+              ? `ACCEPTANCE CRITERIA:\n${String(task.acceptance_criteria).slice(0, 400)}`
+              : 'No explicit criteria — judge on: does it fully accomplish the task title, is it concrete (no filler/placeholders), is it usable as-is.';
+            const reviewPrompt =
+              `[QUALITY REVIEW — reply with the verdict ONLY, no tools]\n` +
+              `Task: ${task.title}\n${crit}\n\nDELIVERABLE (may be truncated):\n${String(deliverable).slice(0, 2800)}\n\n` +
+              `Reply EXACTLY in this format:\nSCORE: <1-10>\nVERDICT: <PASS|REVISE>\nFIXES: <if REVISE: 2 concrete, specific fixes; if PASS: ->`;
+            let review = '';
+            let _revTouch = 0;
+            for await (const ev of this.modelService.chatWithPoseidon(reviewPrompt, [], { _skipBroker: true, _bgMode: true })) {
+              if (Date.now() - _revTouch > 10_000) { _revTouch = Date.now(); this.modelService.broker.touch(reviewToken); }
+              if (ev.type === 'text') review += ev.chunk;
+              if (review.length > 1200) break;
+            }
+            score   = parseInt((review.match(/SCORE:\s*(\d{1,2})/i) || [])[1], 10);
+            verdict = /VERDICT:\s*REVISE/i.test(review) ? 'REVISE' : 'PASS';
+            fixes   = ((review.match(/FIXES:\s*([\s\S]{0,400})/i) || [])[1] || '').trim();
+            log.info(`⭐ quality review ${taskId}: ${verdict}${Number.isFinite(score) ? ` (${score}/10)` : ''}`);
+          } catch (revErr) {
+            log.warn(`quality review skipped for ${taskId}: ${revErr.message}`);
+            verdict = 'PASS';
+          } finally {
+            // Same discipline as the agent phase: free the slot cleanly.
+            await this.modelService.quiesceGeneration?.(10000);
+            const posId2  = this.modelService.poseidonModelId;
+            const posEnt2 = posId2 ? this.modelService.loaded.get(posId2) : null;
+            if (posEnt2 && !posEnt2.generating) {
+              if (posEnt2.session) { try { await posEnt2.session.dispose?.(); } catch {} posEnt2.session = null; }
+              if (posEnt2._currentSequence) { try { await posEnt2._currentSequence.dispose?.(); } catch {} posEnt2._currentSequence = null; }
+              posEnt2.sessionTurns = 0; posEnt2.contextPct = 0; posEnt2.contextUsedTokens = 0;
+              await new Promise(r => setTimeout(r, 500));
+            }
+            if (reviewToken) this.modelService.broker.release(reviewToken);
+          }
+        }
+
+        task.review = { score: Number.isFinite(score) ? score : null, verdict, at: new Date().toISOString() };
+
+        if (verdict === 'REVISE' && fixes) {
+          // Back to todo with an UPGRADED DESCRIPTION — the revision
+          // requirements drive the re-run prompt fully; progress carries the
+          // teaching. Nothing was finalized: no _markDone, no stats, no
+          // results_log entry. The assigned agent picks it up next tick.
+          const upgradedDesc = `${task.description || ''}\n\nREVISION REQUIREMENTS (validation, attempt ${(task.revisions || 0) + 1}): ${fixes}`.slice(0, 1200);
+          await this._setStatus(taskId, 'todo', {
+            revisions: (task.revisions || 0) + 1,
+            review: task.review,
+            description: upgradedDesc,
+            progress: `QUALITY REVIEW${Number.isFinite(score) ? ` (${score}/10)` : ''} — the previous deliverable needs these SPECIFIC fixes before it is acceptable: ${fixes}. Revise the existing deliverable (read it first), do not start from scratch.`
+          });
+          await this.rm.log({
+            event_type: 'quality_review', severity: 'info',
+            actor: { type: 'system', id: 'quality_review' },
+            subject: { type: 'task', id: taskId },
+            action: `Review sent "${task.title}" back for revision${Number.isFinite(score) ? ` (${score}/10)` : ''}`,
+            context: { fixes: fixes.slice(0, 300) }
+          }).catch(() => {});
+          return; // not final — the task re-runs with the fixes
+        }
+
+        // ── PASS → finalize ───────────────────────────────────────────────
         this._failCounts.delete(taskId);
         this._retryAfter.delete(taskId);
         await this._markDone(taskId);  // persist: never re-run even after restart
@@ -1004,97 +1152,20 @@ class TaskRunner {
         // task, independent of what the model claims in its summary.
         const writes = global.__TASK_WRITES?.get(taskId) || [];
         const filesWritten = writes.map(w => w.path).slice(0, 20);
-        await this._setStatus(taskId, 'completed', {
+        await this._setStatus(taskId, 'done', {
+          outcome: 'passed',
+          review: task.review,
           completed_at: new Date().toISOString(),
           output_preview: output.slice(0, 300),
           result_summary: output.slice(0, 500),
           ...(filesWritten.length ? { files_written: filesWritten } : {})
         });
-        await this._updateProgressField(taskId, 'completed — ' + output.slice(0, 120));
         await this._notify(`[IAQUA] Task done: "${task.title}"\n${output.slice(0, 200)}`);
         // Update project memory if task belongs to a project
-        await this._updateProjectMemoryForTask(task, 'completed', output);
+        await this._updateProjectMemoryForTask(task, 'done', output);
       }
 
-      // ── QUALITY REVIEW (draft → critique → revise, max 1 revision) ──────
-      // One-shot output from a small model is mediocre; a revision pass
-      // against explicit acceptance criteria is the single biggest quality
-      // lever available on local hardware. Short prompt (~1k tok), text-only
-      // verdict — cheap even on slow models. Unparseable verdicts default to
-      // PASS so a sloppy reviewer can never loop a task forever.
-      if (!failed && output.trim().length > 0 && (task.revisions || 0) < 1) {
-        try {
-          // ═══ PHASE SWAP: REVIEW ══════════════════════════════════════════
-          // Fresh model + fresh 10k ctx dedicated to judging this one
-          // deliverable. The agent that produced it is gone; its KV is not
-          // available to the reviewer. Clean judgement.
-          try {
-            const projEntry = task.project_name
-              ? (await this.rm.resolveProjectByNameOrId(task.project_name))?.entry
-              : null;
-            await this.modelService.ensureLoadedFor('review', projEntry);
-          } catch (swapErr) {
-            log.warn(`Phase swap to review failed: ${swapErr.message}`);
-          }
-          const ledger2 = global.__TASK_WRITES?.get(taskId) || [];
-          // Review the actual deliverable file when one was written, else the reply.
-          let deliverable = output;
-          if (ledger2.length) {
-            const rel = ledger2[ledger2.length - 1].path || String(ledger2[ledger2.length - 1]);
-            const candidates = [
-              rel,
-              path.join(AQUARIUM.ROOT || path.dirname(AQUARIUM.TASKS), rel),
-              task.project_name ? path.join(AQUARIUM.PROJECTS, require('./RegistryManager').projectFolder({ name: task.project_name }), rel) : null,
-            ].filter(Boolean);
-            for (const cand of candidates) {
-              try { deliverable = await fs.readFile(cand, 'utf8'); break; } catch {}
-            }
-          }
-          const crit = task.acceptance_criteria
-            ? `ACCEPTANCE CRITERIA:\n${String(task.acceptance_criteria).slice(0, 400)}`
-            : 'No explicit criteria — judge on: does it fully accomplish the task title, is it concrete (no filler/placeholders), is it usable as-is.';
-          const reviewPrompt =
-            `[QUALITY REVIEW — reply with the verdict ONLY, no tools]\n` +
-            `Task: ${task.title}\n${crit}\n\nDELIVERABLE (may be truncated):\n${String(deliverable).slice(0, 2800)}\n\n` +
-            `Reply EXACTLY in this format:\nSCORE: <1-10>\nVERDICT: <PASS|REVISE>\nFIXES: <if REVISE: 2 concrete, specific fixes; if PASS: ->`;
-          let review = '';
-          for await (const ev of this.modelService.chatWithPoseidon(reviewPrompt, [], { _skipBroker: true, _bgMode: true })) {
-            if (ev.type === 'text') review += ev.chunk;
-            if (review.length > 1200) break;
-          }
-          const score   = parseInt((review.match(/SCORE:\s*(\d{1,2})/i) || [])[1], 10);
-          const verdict = /VERDICT:\s*REVISE/i.test(review) ? 'REVISE' : 'PASS';
-          const fixes   = ((review.match(/FIXES:\s*([\s\S]{0,400})/i) || [])[1] || '').trim();
-          task.review = { score: Number.isFinite(score) ? score : null, verdict, at: new Date().toISOString() };
-          log.info(`⭐ quality review ${taskId}: ${verdict}${Number.isFinite(score) ? ` (${score}/10)` : ''}`);
-          if (verdict === 'REVISE' && fixes) {
-            // Poseidon validation loop: the task restarts with a BETTER
-            // DESCRIPTION, not just a note — the revision requirements are
-            // appended to the description itself (drives the re-run prompt
-            // fully; progress is sliced to 200 chars) plus the progress
-            // teaching for continuity.
-            const upgradedDesc = `${task.description || ''}\n\nREVISION REQUIREMENTS (validation, attempt ${(task.revisions || 0) + 1}): ${fixes}`.slice(0, 1200);
-            await this._setStatus(taskId, 'open', {
-              revisions: (task.revisions || 0) + 1,
-              review: task.review,
-              description: upgradedDesc,
-              progress: `QUALITY REVIEW${Number.isFinite(score) ? ` (${score}/10)` : ''} — the previous deliverable needs these SPECIFIC fixes before it is acceptable: ${fixes}. Revise the existing deliverable (read it first), do not start from scratch.`
-            });
-            await this.rm.log({
-              event_type: 'quality_review', severity: 'info',
-              actor: { type: 'system', id: 'quality_review' },
-              subject: { type: 'task', id: taskId },
-              action: `Review sent "${task.title}" back for revision${Number.isFinite(score) ? ` (${score}/10)` : ''}`,
-              context: { fixes: fixes.slice(0, 300) }
-            }).catch(() => {});
-            return; // not final — the task will re-run with the fixes
-          }
-        } catch (revErr) {
-          log.warn(`quality review skipped for ${taskId}: ${revErr.message}`);
-        }
-      }
-
-      const finalStatus = failed ? 'failed' : 'completed';
+      const finalStatus = failed ? 'done(failed)' : 'done';
 
       await this.rm.log({
         event_type: 'task_completed', severity: failed ? 'warning' : 'info',
@@ -1146,9 +1217,16 @@ class TaskRunner {
       if (extra.revisions !== undefined) task.revisions = extra.revisions;
       if (extra.review    !== undefined) task.review    = extra.review;
       if (extra.description !== undefined) task.description = extra.description;
+      if (extra.outcome   !== undefined) task.outcome   = extra.outcome;
 
-      // Write to results_log BEFORE _writeTaskDetails purges terminal tasks
-      const TERMINAL_FOR_LOG = new Set(['completed', 'failed', 'cancelled']);
+      // Canonical terminal status is 'done' (+ outcome passed|failed).
+      // results_log and the cascade keep the legacy completed/failed
+      // vocabulary — it's an archive read by the client RESULTS pane and
+      // by cascadeTaskClosure's stats counters.
+      const TERMINAL_FOR_LOG = new Set(['done', 'completed', 'failed', 'cancelled']);
+      const archiveStatus = status === 'done'
+        ? (task.outcome === 'failed' ? 'failed' : 'completed')
+        : status;
       if (TERMINAL_FOR_LOG.has(status)) {
         try {
           const AQUARIUM = require('../aquarium');
@@ -1159,7 +1237,9 @@ class TaskRunner {
             task_id:        taskId,
             title:          task.title,
             task_type:      task.task_type || 'text',
-            status,
+            status:         archiveStatus,
+            outcome:        task.outcome || null,
+            review:         task.review  || null,
             result_summary: task.result_summary || extra.result_summary || null,
             result_file:    task.result_file    || extra.result_file    || null,
             output_preview: task.output_preview  || extra.output_preview || null,
@@ -1169,7 +1249,7 @@ class TaskRunner {
             duration_ms:    task.lifecycle?.started_at
               ? (Date.parse(task.completed_at || extra.completed_at || Date.now()) - Date.parse(task.lifecycle.started_at)) || null
               : null,
-            assigned_name:  task.assigned_to    || task.assigned_to || null,
+            assigned_name:  task.assigned_name  || task.assigned_to || null,
             project_name:   task.project_name   || task.context?.project_name   || null,
             project_id:     task.project_id     || task.context?.project_id     || null,
           };
@@ -1182,7 +1262,7 @@ class TaskRunner {
       // Update agent performance + project metrics (cascade)
       if (TERMINAL_FOR_LOG.has(status)) {
         try {
-          await this.rm.cascadeTaskClosure(taskId, task, status);
+          await this.rm.cascadeTaskClosure(taskId, task, archiveStatus);
         } catch (ce) { log.warn(`cascade failed for ${taskId}:`, ce.message); }
 
         // Broadcast lifecycle event for instant client notification (no 5s poll lag)
@@ -1274,8 +1354,10 @@ class TaskRunner {
 
       const pid = proj.id;
       const by  = task.assigned_name || task.assigned_to || 'poseidon';
+      const ok  = (status === 'done' && task.outcome !== 'failed') || status === 'completed';
+      const ko  = (status === 'done' && task.outcome === 'failed') || status === 'failed';
 
-      if (status === 'completed') {
+      if (ok) {
         // Add to recent achievements
         await this.rm.updateProjectMemory(pid, 'achievement',
           `[${task.task_id}] ${task.title}`, by);
@@ -1285,7 +1367,7 @@ class TaskRunner {
           await this.rm.updateProjectMemory(pid, 'agent_sync',
             `${by} completed: "${task.title}" — ${output.slice(0, 200)}`, by);
         }
-      } else if (status === 'failed') {
+      } else if (ko) {
         await this.rm.updateProjectMemory(pid, 'blocker',
           `[${task.task_id}] ${task.title} — FAILED`, by);
       }
@@ -1295,8 +1377,9 @@ class TaskRunner {
       const allProjectTasks = Object.values(reg2.tasks || {}).filter(t =>
         t.context?.project_id === pid || t.project_id === pid
       );
-      const done   = allProjectTasks.filter(t => t.lifecycle?.status === 'completed' || t.status === 'completed').length;
-      const failed = allProjectTasks.filter(t => t.lifecycle?.status === 'failed' || t.status === 'failed').length;
+      const isDone = t => normStatus(t.lifecycle?.status || t.status) === 'done';
+      const done   = allProjectTasks.filter(t => isDone(t) && t.outcome !== 'failed').length;
+      const failed = allProjectTasks.filter(t => isDone(t) && t.outcome === 'failed').length;
       await this.rm.updateProjectMemory(pid, 'progress', {
         total: allProjectTasks.length,
         done:  done + failed,

@@ -84,7 +84,7 @@ const TaskQueueUI = {
       const allTasks = Object.values(tasks);
 
       this._tasks = allTasks
-        .filter(t => !['completed', 'failed', 'cancelled', 'archived'].includes(t.lifecycle?.status || t.status))
+        .filter(t => !['done', 'completed', 'failed', 'cancelled', 'archived'].includes(t.lifecycle?.status || t.status))
         .sort((a, b) => (b.sort_order || 0) - (a.sort_order || 0));
 
       // Results come from dedicated results_log (tasks are purged from registry on completion)
@@ -130,8 +130,9 @@ const TaskQueueUI = {
           /^image[: ]/i.test(t.title || '') ||
           looksLikeImageUrl(t.output_preview);
         const getStatus = t => t.lifecycle?.status || t.status || '';
-        const imgTasks  = doneTasks.filter(t => isImg(t) && getStatus(t) === 'completed');
-        const restTasks = doneTasks.filter(t => !isImg(t) || getStatus(t) !== 'completed');
+        const isOkStatus = t => { const s = getStatus(t); return s === 'completed' || (s === 'done' && t.outcome !== 'failed'); };
+        const imgTasks  = doneTasks.filter(t => isImg(t) && isOkStatus(t));
+        const restTasks = doneTasks.filter(t => !isImg(t) || !isOkStatus(t));
         const carousel = imgTasks.length
           ? `<div class="tq-img-carousel-wrap">
                <div class="tq-carousel-head">
@@ -154,7 +155,8 @@ const TaskQueueUI = {
   },
   _makeDoneItem(t) {
     // results_log entries have flat structure: status, completed_at, assigned_name at top level
-    const ok    = (t.lifecycle?.status || t.status) === 'completed';
+    const _s    = t.lifecycle?.status || t.status;
+    const ok    = _s === 'completed' || (_s === 'done' && t.outcome !== 'failed');
     const icon  = ok ? '✓' : '✗';
     const agent = t.assigned_name || t.assigned_to || '—';
     const completedAt = t.lifecycle?.completed_at || t.completed_at;
@@ -239,9 +241,9 @@ const TaskQueueUI = {
     const workerRunning = assignee && this._workerStatuses[assignee]?.current_task_id === t.task_id
                           && this._workerStatuses[assignee]?.status === 'running';
     const isRunning   = isBrokerActive || workerRunning;
-    const isStaleRunning = status === 'in_progress' && !isRunning;   // disk says yes, reality says no
+    const isStaleRunning = ['wip','in_progress'].includes(status) && !isRunning;   // disk says yes, reality says no
 
-    const canStart    = ['open','planned','assigned','queued'].includes(status) && !isRunning;
+    const canStart    = ['todo','open','planned','assigned','queued'].includes(status) && !isRunning;
     const canStop     = isRunning;
     const isCron      = !!t.cron_schedule;
     const projectName = t.project_name || t.context?.project_id || null;
@@ -265,6 +267,8 @@ const TaskQueueUI = {
 
     // Status dot + label
     const statusDot = {
+      'todo':        { cls: 'tq-dot-planned',  label: 'to-do' },
+      'wip':         { cls: 'tq-dot-running',  label: 'running' },
       'open':        { cls: 'tq-dot-open',    label: 'queued' },
       'planned':     { cls: 'tq-dot-planned',  label: 'ready' },
       'assigned':    { cls: 'tq-dot-planned',  label: 'assigned' },
@@ -600,13 +604,13 @@ ${task.description}`
     modal.style.zIndex = '20001';
 
     const status = task.lifecycle?.status || task.status || 'unknown';
-    const isOk   = status === 'completed';
+    const isOk   = status === 'completed' || (status === 'done' && task.outcome !== 'failed');
     const completedAt = task.lifecycle?.completed_at || task.completed_at;
     const when   = completedAt ? (window.Format?.relativeTime?.(completedAt) || new Date(completedAt).toLocaleString()) : '';
     const whenAbs = completedAt ? new Date(completedAt).toLocaleString() : '';
     const agent  = task.assigned_name || task.assigned_to || '—';
 
-    const pillType = isOk ? 'success' : (status === 'failed' ? 'error' : status === 'in_progress' ? 'info' : 'muted');
+    const pillType = isOk ? 'success' : ((status === 'failed' || (status === 'done' && task.outcome === 'failed')) ? 'error' : ['wip','in_progress'].includes(status) ? 'info' : 'muted');
 
     // Full result: load from file if available
     let resultHtml = '';
@@ -708,8 +712,11 @@ ${task.description}`
     const modal = document.createElement('div');
     modal.className = 'modal tq-detail-modal';
 
-    const statusOptions = ['open','planned','in_progress','completed','failed','cancelled','archived']
-      .map(s => `<option value="${s}" ${(task.lifecycle?.status||'open')===s?'selected':''}>${s}</option>`).join('');
+    const NORM = { open:'todo', planned:'todo', queued:'todo', assigned:'todo', in_progress:'wip', running:'wip', completed:'done', failed:'done', cancelled:'done', archived:'done' };
+    const rawStatus = String(task.lifecycle?.status || task.status || 'todo').toLowerCase();
+    const curStatus = NORM[rawStatus] || rawStatus;
+    const statusOptions = ['todo','wip','done']
+      .map(s => `<option value="${s}" ${curStatus===s?'selected':''}>${s}</option>`).join('');
     const currentPriority = typeof task.priority === 'object' ? (task.priority?.label || 'medium') : (task.priority || 'medium');
     const priorityOptions = ['critical','high','medium','low']
       .map(p => `<option value="${p}" ${currentPriority===p?'selected':''}>${p}</option>`).join('');
@@ -720,7 +727,7 @@ ${task.description}`
       <div class="modal-content tq-detail-content">
         <div class="modal-header">
           <div class="tq-detail-title-row">
-            <span class="iaqua-pill ${(task.lifecycle?.status||'open') === 'completed' ? 'success' : (task.lifecycle?.status === 'failed' ? 'error' : (task.lifecycle?.status === 'in_progress' ? 'info' : 'muted'))}">${(task.lifecycle?.status||'open').replace('_',' ')}</span>
+            <span class="iaqua-pill ${curStatus === 'done' ? (task.outcome === 'failed' ? 'error' : 'success') : (curStatus === 'wip' ? 'info' : 'muted')}">${curStatus}</span>
             <span class="tq-detail-tid">${this._esc(task.task_id)}</span>
           </div>
           <button class="btn-close" onclick="this.closest('.modal').remove()">x</button>
@@ -898,7 +905,7 @@ ${task.description}`
       const r = await fetch(`/api/v2/tasks/${taskId}/status`, {
         method:  'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ status: 'in_progress' }),
+        body:    JSON.stringify({ status: 'wip' }),
       });
       const j = await r.json().catch(() => ({}));
       if (!r.ok || j?.success === false) {

@@ -976,9 +976,9 @@ My response: "${ss.last_response_preview}"${tools}
             const projectTasks = allTasks.filter(t =>
               t.project_id === projectId || t.project_name === entry.name
             );
-            const planned     = projectTasks.filter(t => t.status === 'planned');
-            const inProgress  = projectTasks.filter(t => t.status === 'in_progress');
-            const failed      = projectTasks.filter(t => t.status === 'failed');
+            const planned     = projectTasks.filter(t => ['todo','planned','open','queued'].includes(t.status));
+            const inProgress  = projectTasks.filter(t => ['wip','in_progress'].includes(t.status));
+            const failed      = projectTasks.filter(t => t.status === 'failed' || (t.status === 'done' && t.outcome === 'failed'));
 
             // 4. Completed tasks (from results_log)
             const AQUARIUM = require('../aquarium');
@@ -2328,12 +2328,19 @@ My response: "${ss.last_response_preview}"${tools}
         } catch {}
       }
 
+      // A task is ALWAYS bound to an agent. If Poseidon didn't pick one,
+      // auto-assign the least-loaded temple member (or any agent).
+      let effectiveAgentId = assigned_agent_id || null;
+      if (!effectiveAgentId) {
+        effectiveAgentId = await this.rm.pickDefaultAgent(project || null).catch(() => null);
+      }
+
       // Resolve agent name
       let agentName = null;
-      if (assigned_agent_id) {
+      if (effectiveAgentId) {
         try {
           const agentReg = await this.rm.read('AGENTS/agent_registry.json');
-          agentName = agentReg.agents?.[assigned_agent_id]?.display_name || assigned_agent_id;
+          agentName = agentReg.agents?.[effectiveAgentId]?.display_name || effectiveAgentId;
         } catch {}
       }
 
@@ -2356,11 +2363,11 @@ My response: "${ss.last_response_preview}"${tools}
         sort_order:   0,
         project_name: project || null,
         project_id:   projectId || null,
-        assigned_to:  assigned_agent_id || null,
-        assigned_name: assigned_agent_id ? (agentName || await this.rm._resolveAgentName(assigned_agent_id)) : null,
+        assigned_to:  effectiveAgentId || null,
+        assigned_name: effectiveAgentId ? (agentName || await this.rm._resolveAgentName(effectiveAgentId)) : null,
         depends_on:   deps.length ? deps : undefined,
-        status:       'planned',
-        lifecycle:    { status: 'planned', status_history: [{ status: 'planned', at: new Date().toISOString(), by: 'poseidon' }], started_at: null, completed_at: null },
+        status:       'todo',
+        lifecycle:    { status: 'todo', status_history: [{ status: 'todo', at: new Date().toISOString(), by: 'poseidon' }], started_at: null, completed_at: null },
         result_file:  null,
         result_summary: null,
         created_at:   new Date().toISOString(),
@@ -2388,7 +2395,16 @@ My response: "${ss.last_response_preview}"${tools}
       // Use getTasksRegistry() which scans both flat file AND per-folder tasks
       const reg = await this.rm.getTasksRegistry().catch(() => this.rm.read('TASKS/tasks_registry.json').catch(() => ({ tasks: {} })));
       let tasks = Object.values(reg.tasks || {});
-      if (status && status !== 'all') tasks = tasks.filter(t => (t.lifecycle?.status || t.status || 'open') === status);
+      if (status && status !== 'all') {
+        const NORM = { open:'todo', planned:'todo', queued:'todo', assigned:'todo', pending:'todo',
+                       in_progress:'wip', running:'wip',
+                       completed:'done', failed:'done', cancelled:'done', archived:'done' };
+        const want = NORM[String(status).toLowerCase()] || String(status).toLowerCase();
+        tasks = tasks.filter(t => {
+          const raw = String(t.lifecycle?.status || t.status || 'todo').toLowerCase();
+          return (NORM[raw] || raw) === want;
+        });
+      }
       if (project) tasks = tasks.filter(t => (t.project_name || '').toUpperCase() === project.toUpperCase());
       
       return {
@@ -2431,8 +2447,17 @@ My response: "${ss.last_response_preview}"${tools}
       }
       // Handle nested fields
       if (field === 'status') {
-        task.lifecycle = { ...(task.lifecycle||{}), status: new_value };
-        task.status = new_value;
+        const NORM = { open:'todo', planned:'todo', queued:'todo', assigned:'todo', pending:'todo',
+                       in_progress:'wip', running:'wip',
+                       completed:'done', failed:'done', cancelled:'done', archived:'done' };
+        const raw   = String(new_value).toLowerCase();
+        const canon = NORM[raw] || raw;
+        if (!['todo','wip','done'].includes(canon)) {
+          return { ok: false, error: `Invalid status "${new_value}". Use: todo | wip | done.` };
+        }
+        if (['failed','cancelled'].includes(raw)) task.outcome = 'failed';
+        task.lifecycle = { ...(task.lifecycle||{}), status: canon };
+        task.status = canon;
       } else if (field === 'priority')     task.priority  = { ...(task.priority||{}), label: new_value };
       else if (field === 'assigned_agent_id') {
         const newName = await this.rm._resolveAgentName(new_value);

@@ -1196,7 +1196,7 @@ class RegistryManager {
     if (!reg.metadata) reg.metadata = { next_id: 1, id_format: 'task_NNNN' };
     if (!reg.tasks)    reg.tasks    = {};
 
-    const terminalStatuses = new Set(['completed', 'cancelled', 'archived', 'failed']);
+    const terminalStatuses = new Set(['done', 'completed', 'cancelled', 'archived', 'failed']);
     const status = task.lifecycle?.status || task.status || '';
     if (terminalStatuses.has(status)) {
       // Remove terminal tasks from registry — output is in result_file on disk
@@ -1262,10 +1262,17 @@ class RegistryManager {
     const taskId = await this.generateNextId('TASKS/tasks_registry.json');
     const now = new Date().toISOString();
 
+    // A task is ALWAYS bound to an agent. If the caller didn't pick one,
+    // auto-assign: least-loaded temple member of the project, else any agent.
+    let assignedTo = taskData.assigned_to || null;
+    if (!assignedTo) {
+      assignedTo = await this.pickDefaultAgent(taskData.project_id || taskData.project_name).catch(() => null);
+    }
+
     // Denormalize agent display_name at assignment time so the UI doesn't
     // need to fetch agent_registry separately to display a friendly name.
     const assignedName = taskData.assigned_name
-      || (taskData.assigned_to ? await this._resolveAgentName(taskData.assigned_to) : null);
+      || (assignedTo ? await this._resolveAgentName(assignedTo) : null);
 
     const task = {
       task_id:        taskId,
@@ -1275,13 +1282,13 @@ class RegistryManager {
       sort_order:     taskData.sort_order ?? 0,   // queue position — lower = runs first (FIFO)
       project_id:     taskData.project_id   || null,
       project_name:   taskData.project_name || null,
-      assigned_to:    taskData.assigned_to  || null,
+      assigned_to:    assignedTo,
       assigned_name:  assignedName,
       image_params:   taskData.image_params || null,
-      status:         'planned',
+      status:         'todo',
       lifecycle: {
-        status:         'planned',
-        status_history: [{ status: 'planned', at: now, by: 'poseidon' }],
+        status:         'todo',
+        status_history: [{ status: 'todo', at: now, by: 'poseidon' }],
         started_at:     null,
         completed_at:   null,
       },
@@ -1292,6 +1299,36 @@ class RegistryManager {
 
     await this._writeTaskDetails(taskId, task);
     return task;
+  }
+
+  /**
+   * pickDefaultAgent — resolves the default agent for a new task.
+   * Priority: least-loaded temple member of the project → least-loaded
+   * agent overall → null (Poseidon executes as last resort).
+   * "Least-loaded" = fewest live (non-done) tasks currently assigned.
+   */
+  async pickDefaultAgent(projectRef = null) {
+    const areg = await this.getAgentRegistry().catch(() => ({ agents: {} }));
+    const allAgents = Object.keys(areg.agents || {}).filter(id => id !== 'poseidon_main');
+    if (!allAgents.length) return null;
+
+    let candidates = allAgents;
+    if (projectRef) {
+      try {
+        const proj = await this.resolveProjectByNameOrId(projectRef);
+        const members = (proj?.entry?.assigned_agents || []).filter(id => allAgents.includes(id));
+        if (members.length) candidates = members;
+      } catch { /* fall back to all agents */ }
+    }
+
+    // Load = live tasks assigned to the agent (todo/wip, any legacy alias)
+    const treg = await this.getTasksRegistry().catch(() => ({ tasks: {} }));
+    const load = Object.fromEntries(candidates.map(id => [id, 0]));
+    for (const t of Object.values(treg.tasks || {})) {
+      if (t.assigned_to && load[t.assigned_to] !== undefined) load[t.assigned_to]++;
+    }
+    candidates.sort((a, b) => load[a] - load[b]);
+    return candidates[0] || null;
   }
 
   /**

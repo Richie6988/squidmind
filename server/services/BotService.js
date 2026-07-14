@@ -1038,8 +1038,8 @@ class BotService extends EventEmitter {
           try {
             const tReg = await this.rm.getTasksRegistry();
             const tasks = Object.values(tReg.tasks || {});
-            const running  = tasks.filter(t => (t.lifecycle?.status || t.status) === 'in_progress').length;
-            const queued   = tasks.filter(t => ['open','planned'].includes(t.lifecycle?.status || t.status)).length;
+            const running  = tasks.filter(t => ['wip','in_progress'].includes(t.lifecycle?.status || t.status)).length;
+            const queued   = tasks.filter(t => ['todo','open','planned'].includes(t.lifecycle?.status || t.status)).length;
             const failed   = tasks.filter(t => (t.lifecycle?.status || t.status) === 'failed').length;
             lines.push(`📋 *Tasks:* ${running} running | ${queued} queued | ${failed} failed`);
           } catch {}
@@ -1120,7 +1120,7 @@ class BotService extends EventEmitter {
           for (const p of projects.slice(0, 15)) {
             const active = allTasks.filter(t =>
               (t.project_id === p.project_id || t.project_name === p.name) &&
-              ['planned', 'in_progress'].includes(t.lifecycle?.status || t.status)).length;
+              ['todo','wip','planned','in_progress'].includes(t.lifecycle?.status || t.status)).length;
             const done = p.metrics?.tasks_completed || 0;
             lines.push(`📁 *${p.name}*`);
             lines.push(`   ${done} done · ${active} active · ${(p.assigned_agents || []).length} agents`);

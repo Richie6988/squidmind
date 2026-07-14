@@ -188,13 +188,23 @@ router.patch('/tasks/:id/status', async (req, res) => {
         }
       } catch { /* non-fatal */ }
     }
-    task.lifecycle = { ...(task.lifecycle || {}), status };
-    task.status = status;
-    if (status === 'in_progress' && !task.lifecycle.started_at) task.lifecycle.started_at = new Date().toISOString();
-    if (['completed','failed','cancelled'].includes(status)) task.lifecycle.completed_at = new Date().toISOString();
+    // Normalize to canonical statuses: todo / wip / done. Old clients (and
+    // cached UIs) may still send legacy values.
+    const NORM = { open:'todo', planned:'todo', queued:'todo', assigned:'todo', pending:'todo',
+                   in_progress:'wip', running:'wip',
+                   completed:'done', failed:'done', cancelled:'done', archived:'done' };
+    const canon = NORM[String(status).toLowerCase()] || String(status).toLowerCase();
+    if (!['todo','wip','done'].includes(canon)) {
+      return res.status(400).json({ success: false, error: `invalid status "${status}" — use todo|wip|done` });
+    }
+    if (['failed','cancelled'].includes(String(status).toLowerCase())) task.outcome = 'failed';
+    task.lifecycle = { ...(task.lifecycle || {}), status: canon };
+    task.status = canon;
+    if (canon === 'wip' && !task.lifecycle.started_at) task.lifecycle.started_at = new Date().toISOString();
+    if (canon === 'done') task.lifecycle.completed_at = new Date().toISOString();
     await rm._writeTaskDetails(req.params.id, task);
     rm.invalidateCache();
-    res.json({ success: true, task_id: req.params.id, status, cancelled: cancel_running === true });
+    res.json({ success: true, task_id: req.params.id, status: canon, cancelled: cancel_running === true });
   } catch (err) { res.status(500).json({ success: false, error: err.message }); }
 });
 
@@ -678,7 +688,7 @@ router.get('/tasks/:id/stream', async (req, res) => {
 
   send('open', { task_id: taskId });
 
-  const TERMINAL = new Set(['completed', 'failed', 'cancelled', 'archived']);
+  const TERMINAL = new Set(['done', 'completed', 'failed', 'cancelled', 'archived']);
 
   // ── Catch-up path: task already done? Send saved output + close ────────────
   let task = null;

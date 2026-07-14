@@ -150,7 +150,7 @@
       for (const t of Object.values(tasks)) {
         const status = t.lifecycle?.status || t.status || 'open';
         items.push({
-          kind: 'task', icon: status === 'in_progress' ? '●' : '○',
+          kind: 'task', icon: ['wip','in_progress'].includes(status) ? '●' : '○',
           label: t.title,
           detail: 'Task · ' + status + (t.assigned_to ? ' · ' + t.assigned_to : ''),
           onActivate: () => window.TaskQueueUI?.openTaskDetail?.(t.task_id),

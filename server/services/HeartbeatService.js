@@ -28,8 +28,6 @@ class HeartbeatService {
     this.dreamCooldownMinutes = 30;    // min gap between dream cycles
     this._lastDreamSkipLogAt = 0;      // rate-limit skip-reason logs to once/60s
     this.dreamRequiresIdleSession = true;  // when true, skip dream if chat session has active turns unless idle > 45min
-    this._lastProjectAuditAt = {};     // project_id → last audit timestamp
-    this.projectAuditIntervalMs = 20 * 60 * 1000; // review each project at most every 20 min
   }
 
   setModelService(ms) { this.modelService = ms; }
@@ -188,9 +186,6 @@ class HeartbeatService {
       this._plannerTick().catch(e =>
         log.warn('[Heartbeat] Planner tick error:', e.message)
       );
-      this._projectAuditTick().catch(e =>
-        log.warn('[Heartbeat] Project audit tick error:', e.message)
-      );
     }
 
     // Daily state backup — aquarium registries/memories/projects snapshot
@@ -243,11 +238,28 @@ class HeartbeatService {
       this.rm.invalidateCache();
       const reg = await this.rm.getTasksRegistry();
       const unassigned = Object.values(reg.tasks || {}).filter(t => {
-        const s = t.lifecycle?.status || t.status || 'open';
-        return (s === 'open' || s === 'planned') && !t.assigned_to;
+        const s = String(t.lifecycle?.status || t.status || 'todo').toLowerCase();
+        return ['todo', 'open', 'planned', 'queued'].includes(s) && !t.assigned_to;
       });
 
       if (unassigned.length === 0) return;
+
+      // A task is ALWAYS bound to an agent — assignment is deterministic
+      // (least-loaded temple member), no LLM turn needed. The Poseidon nudge
+      // below only survives for the "zero agents exist" case.
+      const stillUnassigned = [];
+      for (const t of unassigned) {
+        const agentId = await this.rm.pickDefaultAgent(t.project_id || t.project_name).catch(() => null);
+        if (agentId) {
+          t.assigned_to   = agentId;
+          t.assigned_name = await this.rm._resolveAgentName(agentId).catch(() => agentId);
+          await this.rm._writeTaskDetails(t.task_id, t).catch(() => {});
+          log.info(`[Heartbeat] 📋 auto-assigned ${t.task_id} → ${t.assigned_name || agentId}`);
+        } else {
+          stillUnassigned.push(t);
+        }
+      }
+      if (stillUnassigned.length === 0) return;
 
       // Only inject nudge when broker is genuinely idle
       const broker = this.modelService.broker;
@@ -255,155 +267,22 @@ class HeartbeatService {
       const entry = this.modelService.loaded.get(this.modelService.poseidonModelId);
       if (!entry || entry.generating || entry.dreaming) return;
 
-      const taskList = unassigned.slice(0, 5)
+      const taskList = stillUnassigned.slice(0, 5)
         .map(t => `  - [${t.task_id}] ${t.title} (priority: ${t.priority?.label || 'medium'})`)
         .join('\n');
 
-      log.info(`[Heartbeat] 📋 Planner: ${unassigned.length} unassigned tasks — injecting planning nudge`);
+      log.info(`[Heartbeat] 📋 Planner: ${stillUnassigned.length} unassignable tasks (no agents exist) — injecting planning nudge`);
 
       // Store pending planner message — picked up by next Poseidon chat turn
       if (!entry._pendingPlannerNudge) {
         entry._pendingPlannerNudge = [
-          `[BACKGROUND PLANNER — ${unassigned.length} unassigned task(s) waiting]`,
+          `[BACKGROUND PLANNER — ${stillUnassigned.length} unassigned task(s), no agents exist]`,
           taskList,
           'Review these tasks. For each: either assign to an agent with dispatch_to_agent, or handle directly.',
           'If agents are not set up, handle the highest priority task yourself now.'
         ].join('\n');
       }
     } catch {}
-  }
-
-  /**
-   * _projectAuditTick — periodically triggers Poseidon to audit each active project.
-   * Runs at most once per 2h per project. Only fires when broker is idle (same guard as dream).
-   * Poseidon calls audit_project(name) and updates project_memory.next_steps.
-   */
-  async _projectAuditTick() {
-    if (!this.modelService?.poseidonModelId) return;
-    const broker = this.modelService.broker;
-    if (!broker?.isDreamAllowed()) return;
-    const entry = this.modelService.loaded.get(this.modelService.poseidonModelId);
-    if (!entry || entry.generating || entry.dreaming) return;
-    // Respect the chat-active window — don't swap Poseidon into an auto-review
-    // while the user is (or was just) chatting.
-    const tr = this.taskRunner || this.modelService.taskRunner;
-    if (tr && Date.now() < (tr._chatOpenUntil || 0)) return;
-
-    try {
-      this.rm.invalidateCache();
-      const projReg = await this.rm.getProjectRegistry();
-      const taskReg = await this.rm.getTasksRegistry();
-      const allTasks = Object.values(taskReg.tasks || {});
-      const now = Date.now();
-
-      for (const [projId, proj] of Object.entries(projReg.projects || {})) {
-        // Active/planned work in this project
-        const active = allTasks.filter(t =>
-          (t.project_id === projId || t.project_name === proj.name) &&
-          ['planned', 'in_progress'].includes(t.lifecycle?.status || t.status)
-        );
-        // Recently-completed tasks (still in the live registry OR results_log)
-        // whose output Poseidon hasn't reviewed yet. These are what we want
-        // Poseidon to judge for quality and possibly re-run.
-        let recentlyDone = [];
-        try {
-          const results = await this.rm.read('TASKS/results_log.json').catch(() => ({ results: {} }));
-          const resArr = Array.isArray(results.results) ? results.results : Object.values(results.results || {});
-          recentlyDone = resArr.filter(t =>
-            (t.project_id === projId || t.project_name === proj.name) &&
-            (t.lifecycle?.status || t.status) === 'completed' &&
-            !t._quality_reviewed
-          ).slice(0, 5);
-        } catch {}
-
-        // Nothing to do for this project
-        if (active.length === 0 && recentlyDone.length === 0) continue;
-
-        // Cooldown per project
-        const lastAudit = this._lastProjectAuditAt[projId] || 0;
-        if (now - lastAudit < this.projectAuditIntervalMs) continue;
-
-        this._lastProjectAuditAt[projId] = now;
-        log.info(`[Heartbeat] 🔍 Auto-review: ${proj.name} (${active.length} active, ${recentlyDone.length} completed to review)`);
-
-        const doneList = recentlyDone.length
-          ? recentlyDone.map(t => {
-              const files = Array.isArray(t.files_written) && t.files_written.length
-                ? ` | VERIFIED files: ${t.files_written.slice(0, 6).join(', ')}`
-                : ' | VERIFIED files: none';
-              return `  [${t.task_id}] ${t.title} → ${(t.result_summary || '(no summary)').slice(0, 100)}${files}`;
-            }).join('\n')
-          : '  (none)';
-
-        // Pull the project's goal so the review is anchored to the VISION,
-        // not just per-task quality. Without this anchor Poseidon judged
-        // tasks in isolation and kept spawning file-producing busywork that
-        // never advanced (or concluded) the project.
-        let visionLine = '', completionLine = '', nextStepsLine = '';
-        try {
-          const mem = await this.rm.getProjectMemory(projId).catch(() => null);
-          if (mem) {
-            if (mem.vision) visionLine = `GOAL / VISION: ${String(mem.vision).slice(0, 300)}`;
-            if (mem.progress?.completion) completionLine = `Current completion: ${mem.progress.completion}`;
-            if (mem.progress?.next_steps?.length) nextStepsLine = `Declared next steps: ${mem.progress.next_steps.slice(0, 4).join('; ').slice(0, 300)}`;
-          }
-        } catch {}
-
-        // Build the BG review message — a GOAL-PROGRESS DRIVER, not a
-        // generic quality pass.
-        const msg = [
-          `PROJECT GOAL REVIEW: "${proj.name}"`,
-          `No user is waiting. Your job: move this project TOWARD ITS GOAL — or conclude it.`,
-          visionLine, completionLine, nextStepsLine,
-          ``,
-          `Active/planned tasks: ${active.length}`,
-          `Recently completed tasks to evaluate:`,
-          doneList,
-          ``,
-          `Do the following, in order:`,
-          `1. Call audit_project("${proj.name}") for full status.`,
-          `2. For each completed task: judge it AGAINST THE GOAL above, not in isolation.`,
-          `   - Result advances the goal: good, note what it unlocked.`,
-          `   - Result is incomplete/wrong: create ONE follow-up that fixes it (reference the task_id).`,
-          `   - Result is scaffolding nobody integrates: do NOT extend it; plan the INTEGRATION step instead.`,
-          `3. Update project memory honestly: progress.completion (a % — be realistic), and next_steps as the`,
-          `   SHORTEST path to the goal (3 items max). Delete stale next_steps.`,
-          `4. Decide ONE of:`,
-          `   a) GOAL REACHED: set completion to 100%, log the final achievement, create NO tasks.`,
-          `   b) One clear next step exists AND active tasks < 2: create exactly ONE task for it`,
-          `      (chain with depends_on if it needs a prior task's output).`,
-          `   c) Active tasks >= 2: create NOTHING; the pipeline must drain first.`,
-          `RULES: never create more than ONE task in this review. Files are not progress — integration and`,
-          `goal advancement are. If you notice repeated file creation without integration, say so in next_steps.`
-        ].filter(Boolean).join('\n');
-
-        this.modelService.queueBgMessage?.(msg, `review_${projId}`);
-
-        // Mark these tasks as reviewed NOW (when queued). Without this the
-        // same completed tasks were re-reviewed every 20 minutes forever —
-        // an improvement loop that never converges just burns tokens. If
-        // Poseidon creates a follow-up task, that follow-up will itself get
-        // reviewed once completed, so nothing is lost by marking here.
-        if (recentlyDone.length) {
-          try {
-            const rl = await this.rm.read('TASKS/results_log.json').catch(() => null);
-            if (rl?.results) {
-              const ids = new Set(recentlyDone.map(t => t.task_id));
-              if (Array.isArray(rl.results)) {
-                for (const r of rl.results) if (ids.has(r.task_id)) r._quality_reviewed = true;
-              } else {
-                for (const id of ids) if (rl.results[id]) rl.results[id]._quality_reviewed = true;
-              }
-              await this.rm.write('TASKS/results_log.json', rl);
-              this.rm.invalidateCache();
-            }
-          } catch (e) { log.warn('[Heartbeat] could not mark reviewed:', e.message); }
-        }
-        break; // one project per tick to avoid flooding
-      }
-    } catch (e) {
-      log.warn('[Heartbeat] _projectAuditTick error:', e.message);
-    }
   }
 
   _measure() {

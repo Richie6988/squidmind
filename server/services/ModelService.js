@@ -242,6 +242,29 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
     return { ok: true, message: 'Abort requested' };
   }
 
+  /**
+   * quiesceGeneration — request abort AND WAIT until the in-flight
+   * generation has actually terminated before returning. Disposing a
+   * session/sequence/context while a generation still holds native refs
+   * is the exact "Object is disposed" crash chain seen when a phase swap
+   * (or force-release) landed under a running turn. Callers MUST quiesce
+   * before disposing anything the generation touches.
+   */
+  async quiesceGeneration(maxMs = 15000) {
+    const entry = this.poseidonModelId ? this.loaded.get(this.poseidonModelId) : null;
+    if (!entry || !entry.generating) return true;
+    entry._abortRequested = true;
+    const start = Date.now();
+    while (entry.generating && Date.now() - start < maxMs) {
+      await new Promise(r => setTimeout(r, 250));
+    }
+    if (entry.generating) {
+      log.warn(` quiesceGeneration: generation still alive after ${maxMs}ms — caller should NOT dispose`);
+      return false;
+    }
+    return true;
+  }
+
   // === LIB INITIALIZATION ===
 
   async _ensureLib() {
@@ -2195,6 +2218,10 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
           }
         } else if (!isThinking && idleMs > IDLE_TIMEOUT_MS) {
           log.warn(` generation idle timeout (${Math.round(idleMs/1000)}s) — resetting session`);
+          // BG tasks: a stalled generation is a FAILURE, not a completed
+          // turn. Without this, a 6-token stall was accepted as a finished
+          // task, marked completed, and even reviewed.
+          if (_bgMode) yield { type: 'error', error: `generation stalled — idle ${Math.round(idleMs/1000)}s, session reset` };
           yield { type: 'text', chunk: '\n\n_[Generation stalled and was reset — send your message again.]_' };
           // Reset session so next message reloads cleanly (user won't notice)
           try { if (entry.session?.dispose) await entry.session.dispose(); } catch {}
