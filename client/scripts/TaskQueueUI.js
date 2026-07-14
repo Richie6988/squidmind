@@ -225,8 +225,22 @@ const TaskQueueUI = {
       ? (t.assigned_name || this.agents.find(a => a.agent_id === assignee)?.display_name || assignee)
       : '+ assign';
 
-    const workerStatus = assignee ? (this._workerStatuses[assignee]?.status || 'idle') : null;
-    const isRunning   = status === 'in_progress' || workerStatus === 'running';
+    // Status source of truth: the LIVE broker/worker state, NOT the disk
+    // status which can be a stale 'in_progress' left behind by a killed
+    // server. Task appears Running ONLY IF one of:
+    //   - the broker is actually holding this exact task_id
+    //   - an AgentWorker for the assignee reports 'running'
+    // Disk 'in_progress' without either is treated as stale and shown as
+    // 'stale' with a dashed indicator (the periodic reset job below will
+    // flip it back to planned within ~seconds).
+    const bgOwner       = this._brokerOwner || '';
+    const bgTaskIdMatch = /task_\d+/.exec(bgOwner)?.[0];
+    const isBrokerActive = bgTaskIdMatch === t.task_id && this._brokerState !== 'IDLE';
+    const workerRunning = assignee && this._workerStatuses[assignee]?.current_task_id === t.task_id
+                          && this._workerStatuses[assignee]?.status === 'running';
+    const isRunning   = isBrokerActive || workerRunning;
+    const isStaleRunning = status === 'in_progress' && !isRunning;   // disk says yes, reality says no
+
     const canStart    = ['open','planned','assigned','queued'].includes(status) && !isRunning;
     const canStop     = isRunning;
     const isCron      = !!t.cron_schedule;
@@ -257,19 +271,18 @@ const TaskQueueUI = {
       'in_progress': { cls: 'tq-dot-running',  label: 'running' },
       'paused':      { cls: 'tq-dot-paused',   label: 'paused' },
     }[status] || { cls: 'tq-dot-open', label: status };
+    // If disk says in_progress but nothing is actually running, override
+    // the label so the user doesn't see phantom 'running' rows.
+    if (isStaleRunning) { statusDot.cls = 'tq-dot-open'; statusDot.label = 'stale'; }
 
-    // Is this the task currently held by the broker?
-    const bgOwner  = this._brokerOwner || '';
-    const bgTaskId = bgOwner.startsWith('bg_task') ? bgOwner.replace('bg_task_','') : null;
-    const isBrokerActive = bgTaskId === t.task_id && this._brokerState !== 'IDLE';
-    if (isBrokerActive) el.classList.add('tq-is-running');
+    if (isRunning) el.classList.add('tq-is-running');
 
     el.innerHTML = `
       <div class="tq-drag-handle" title="Drag to reorder">⠿</div>
       <div class="tq-body">
         <div class="tq-row1">
           <span class="tq-rank">#${idx + 1}</span>
-          <span class="tq-dot ${statusDot.cls} ${(isRunning || isBrokerActive) ? 'tq-dot-pulse' : ''}" title="${statusDot.label}">⬤</span>
+          <span class="tq-dot ${statusDot.cls} ${isRunning ? 'tq-dot-pulse' : ''}" title="${statusDot.label}">⬤</span>
           <span class="tq-title tq-title-link" title="Click to view/edit details">${this._esc(t.title)}</span>
           ${canStart ? `<button class="tq-quickact tq-play" onclick="event.stopPropagation();TaskQueueUI.quickStart('${t.task_id}')" title="Start task">▶</button>` : ''}
           ${canStop  ? `<button class="tq-quickact tq-stop" onclick="event.stopPropagation();TaskQueueUI.quickStop('${t.task_id}')" title="Stop task">■</button>` : ''}
@@ -277,14 +290,15 @@ const TaskQueueUI = {
         </div>
         <div class="tq-row2">
           ${typeBadge}
-          ${(isBrokerActive || isRunning) ? '' : `<span class="tq-status-label">${statusDot.label}</span>`}
+          ${isRunning ? '' : `<span class="tq-status-label">${statusDot.label}</span>`}
           <button class="tq-assignee ${assignee ? 'tq-assigned' : 'tq-unassigned'}"
                   onclick="TaskQueueUI.openAssignPicker('${t.task_id}', this)"
                   title="Click to assign agent">${this._esc(agentName)}</button>
         </div>
-        ${(isRunning || isBrokerActive) ? `<div class="tq-progress-bar"><div class="tq-progress-fill"></div></div>` : ''}
+        ${isRunning ? `<div class="tq-progress-bar"><div class="tq-progress-fill"></div></div>` : ''}
         ${isBrokerActive ? `<div class="tq-running-meta">⏳ Running…${t.lifecycle?.started_at ? ' · ' + TaskQueueUI._elapsed(t.lifecycle.started_at) : ''}</div>`
-          : isRunning    ? `<div class="tq-running-meta">${window.PixelIcons?.inline('bolt',10)||'▶'} Running${t.lifecycle?.started_at ? ' · ' + TaskQueueUI._elapsed(t.lifecycle.started_at) : ''}</div>`
+          : workerRunning ? `<div class="tq-running-meta">${window.PixelIcons?.inline('bolt',10)||'▶'} Running${t.lifecycle?.started_at ? ' · ' + TaskQueueUI._elapsed(t.lifecycle.started_at) : ''}</div>`
+          : isStaleRunning ? `<div class="tq-running-meta" style="color:#94a3b8;font-style:italic;">⚠ stale — will reset shortly</div>`
           : ''}
       </div>
     `;
