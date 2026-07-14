@@ -1266,9 +1266,51 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
       throw new Error('Cannot unload while generating. Try again in a moment.');
     }
 
-    try { if (entry.session) await entry.session.dispose?.(); } catch {}
-    try { if (entry.context) await entry.context.dispose(); } catch {}
-    try { if (entry.model) await entry.model.dispose(); } catch {}
+    // Mark unloading FIRST so any concurrent path bails out instead of
+    // grabbing handles we're about to dispose. Prevents the class of
+    // segfaults where a phase swap and a request race on the same entry.
+    if (entry._unloading) {
+      log.warn(` unloadModel(${modelId}): already unloading, skipping duplicate call`);
+      return { success: false, error: 'Already unloading' };
+    }
+    entry._unloading = true;
+
+    // Force-release any broker token pointing at this model. Broker holds
+    // NATIVE handles indirectly (through pending completions); disposing
+    // the model while the broker still thinks it's busy = segfault in the
+    // llama.cpp destructor when the next tick tries to touch the freed
+    // memory. This is the specific segfault the user hit during phase swap.
+    try {
+      if (this.broker?.state === 'BUSY' && this.broker._token) {
+        log.info(` unloadModel(${modelId}): force-releasing stale broker token before dispose`);
+        this.broker.release(this.broker._token);
+      }
+    } catch (e) { log.warn(` broker release during unload: ${e.message}`); }
+
+    // Dispose sequence first — it holds a native ref to the context.
+    try {
+      if (entry._currentSequence?.dispose) await entry._currentSequence.dispose();
+    } catch (e) { log.warn(` sequence dispose: ${e.message}`); }
+    entry._currentSequence = null;
+    // Yield to the event loop so native cleanup callbacks complete before
+    // we free the parent. node-llama-cpp v3 destructor chains need this
+    // gap or the model.dispose() at the bottom lands on freed sequence
+    // metadata → SIGSEGV in the native heap.
+    await new Promise(r => setImmediate(r));
+
+    try { if (entry.session?.dispose) await entry.session.dispose(); } catch (e) { log.warn(` session dispose: ${e.message}`); }
+    entry.session = null;
+    await new Promise(r => setImmediate(r));
+
+    try { if (entry.context?.dispose) await entry.context.dispose(); } catch (e) { log.warn(` context dispose: ${e.message}`); }
+    entry.context = null;
+    // Give the CUDA runtime a real tick to reclaim the KV allocations
+    // before we tell it to unload the weights. 50ms is empirical — it's
+    // what killed the segfault reliably on the test machine.
+    await new Promise(r => setTimeout(r, 50));
+
+    try { if (entry.model?.dispose) await entry.model.dispose(); } catch (e) { log.warn(` model dispose: ${e.message}`); }
+    entry.model = null;
 
     this.loaded.delete(modelId);
     if (this.poseidonModelId === modelId) this.poseidonModelId = null;
@@ -1285,7 +1327,7 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
 
     await this.rm.log({
       event_type: 'model_unloaded',
-      actor: { type: 'system', id: 'v2_model_service' },
+      actor: { type: 'system', id: 'model_service' },
       subject: { type: 'model', id: modelId },
       action: `Unloaded model ${modelId}`
     });

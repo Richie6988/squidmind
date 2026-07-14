@@ -682,9 +682,23 @@ class TaskRunner {
 
       if (!usedAgentWorker) {
       try {
+        // Broker holder id uses the AGENT display name (fallback: id) so the
+        // log line reads e.g. "MEDIA_MONITOR-task_0131" instead of the
+        // anonymous "bg_task_task_0131" — makes it obvious which agent is
+        // running when several are queued.
+        let holderId = `bg_task_${taskId}`;
+        try {
+          const areg = await this.rm.getAgentRegistry();
+          const ae = agentId ? areg.agents?.[agentId] : null;
+          if (ae) {
+            const rawName = ae.display_name || ae.agent_id || agentId;
+            const slug = String(rawName).replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 24);
+            holderId = `${slug}-${taskId}`;
+          }
+        } catch {}
         // Poseidon BG path: same model, inject agent persona as prefix.
         const bgToken = await this.modelService.broker.acquire(
-          PRIORITY.POSEIDON_BG, `bg_task_${taskId}`,
+          PRIORITY.POSEIDON_BG, holderId,
           { timeoutMs: 10 * 60 * 1000 }
         );
         try {
