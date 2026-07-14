@@ -471,12 +471,15 @@ class RegistryManager {
     }
     await this.write('AGENTS/agent_registry.json', registry);
     
-    // Remove brain file from disk
+    // Remove brain file from disk. ENOENT is NOT a problem — the desired
+    // state (file gone) is already true; only real failures deserve a warn.
     try {
       const brainPath = path.join(this.dataRoot, 'agents', brainFile);
       await fs.unlink(brainPath);
     } catch (err) {
-      log.warn(`[deleteAgent] could not delete brain file ${brainFile}:`, err.message);
+      if (err.code !== 'ENOENT') {
+        log.warn(`[deleteAgent] could not delete brain file ${brainFile}:`, err.message);
+      }
     }
     
     // Remove from any project's assigned_agents list
