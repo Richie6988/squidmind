@@ -668,6 +668,25 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
       // ── Step 1: VRAM snapshot before weights ──────────────────────────────
       let vramBefore = null;
       try { if (llama.getVramState) vramBefore = await llama.getVramState(); } catch {}
+      // BOOT-RACE GUARD: on the FIRST load of this process nothing of OURS
+      // is in VRAM, so a low reading means another process still holds it —
+      // typically the previous server instance whose CUDA memory the driver
+      // hasn't reclaimed yet (fast restart). Budgeting against that phantom
+      // snapshot produced gpuLayers=1 on an 8GB card (observed). Re-poll a
+      // few seconds and take the best reading before committing the budget.
+      if (vramBefore && vramBefore.total > 0 && this.loaded.size === 0) {
+        for (let i = 0; i < 4 && vramBefore.free / vramBefore.total < 0.55; i++) {
+          await new Promise(r => setTimeout(r, 1500));
+          try {
+            const again = await llama.getVramState();
+            if (again && again.free > vramBefore.free) vramBefore = again;
+            log.info(`  VRAM reclaim wait ${i + 1}/4: ${(vramBefore.free / (1024 ** 3)).toFixed(2)} GB free`);
+          } catch { break; }
+        }
+        if (vramBefore.free / vramBefore.total < 0.55) {
+          log.warn(`  VRAM still ${(vramBefore.free / (1024 ** 3)).toFixed(2)}/${(vramBefore.total / (1024 ** 3)).toFixed(2)} GB free after wait — another process holds VRAM; layer budget will be small`);
+        }
+      }
       const freeBeforeGb = vramBefore ? vramBefore.free  / (1024 ** 3) : 0;
       const totalGb      = vramBefore ? vramBefore.total / (1024 ** 3) : 0;
       if (vramBefore) log.info(`  VRAM before load: ${freeBeforeGb.toFixed(2)} / ${totalGb.toFixed(2)} GB free`);
@@ -757,7 +776,22 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
         await ModelService._loadKvProbeCache();
         const bytesPerLayerGb = fileSizeGb / estLayers;
         ModelService._kvProbe = ModelService._kvProbe || new Map();
-        const cachedProbe = ModelService._kvProbe.get(`${fileName}|fa=${!!config.flashAttention}`);
+        const cachedProbeRaw = ModelService._kvProbe.get(`${fileName}|fa=${!!config.flashAttention}`);
+        // A probe is only trustworthy if it was measured with a healthy GPU
+        // share: with most layers on CPU their KV lives in RAM, so the VRAM
+        // delta under-reads massively (observed: 43.2 → 22.3 KB/tok after a
+        // degraded 1-layer load) and would poison every following budget.
+        // Legacy entries without placement metadata are ignored too — the
+        // 40 KB/tok fallback is safer than an unqualified number.
+        const probeHealthy = cachedProbeRaw
+          && Number.isFinite(cachedProbeRaw.gpuLayers)
+          && Number.isFinite(cachedProbeRaw.totalLayers)
+          && cachedProbeRaw.totalLayers > 0
+          && (cachedProbeRaw.gpuLayers / cachedProbeRaw.totalLayers) >= 0.35;
+        const cachedProbe = probeHealthy ? cachedProbeRaw : null;
+        if (cachedProbeRaw && !probeHealthy) {
+          log.info(`  [auto-budget] cached KV probe ignored (measured at ${cachedProbeRaw.gpuLayers ?? '?'}/${cachedProbeRaw.totalLayers ?? '?'} GPU layers — not representative)`);
+        }
         // KV per token: use MEASURED value from a prior load if cached
         // (accurate per architecture), else 40 KB/tok — empirical from
         // measured hybrid qwen35 (was 65 → still left 1.75 GB unused,
@@ -967,7 +1001,7 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
             } else {
               const kvPerTok = rawKvPerTok;
               const fixedBytes = Math.max(0, d1 - 4096 * kvPerTok);
-              probeData = { kvPerTok, fixedBytes };
+              probeData = { kvPerTok, fixedBytes, gpuLayers: Number(config.gpuLayers) || 0, totalLayers: estLayers };
               ModelService._kvProbe.set(probeKey, probeData);
               log.info(`  KV probe (differential): ${(kvPerTok / 1024).toFixed(1)}KB/tok + ${(fixedBytes / 1024 ** 3).toFixed(2)}GB fixed buffers (d4k=${(d1 / 1024 ** 3).toFixed(2)}GB, d8k=${(d2 / 1024 ** 3).toFixed(2)}GB)`);
             }
@@ -1094,22 +1128,33 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
                 ModelService._kvProbe = ModelService._kvProbe || new Map();
                 const probeKey = `${fileName}|fa=${!!config.flashAttention}`;
                 const prev = ModelService._kvProbe.get(probeKey);
-                const entry = {
-                  kvPerTok: measuredKv,
-                  fixedBytes: prev?.fixedBytes || 0.3 * 1024 ** 3,
-                };
-                ModelService._kvProbe.set(probeKey, entry);
-                // Persist to disk so a server restart keeps ground truth
-                // instead of falling back to 40 KB/tok on every reboot.
-                try {
-                  const p = require('path').join(require('../aquarium').LOGS, 'kv_probe_cache.json');
-                  const fs = require('fs').promises;
-                  let existing = {};
-                  try { existing = JSON.parse(await fs.readFile(p, 'utf8')); } catch {}
-                  existing[probeKey] = entry;
-                  await fs.writeFile(p, JSON.stringify(existing, null, 2)).catch(() => {});
-                } catch {}
-                log.info(`  📏 measured actual KV cost: ${(ctxCostBytes / 1024 ** 3).toFixed(2)}GB for ${config.contextLength} tokens → ${(measuredKv / 1024).toFixed(1)}KB/tok (cached for next load)`);
+                const layersNow = typeof config.gpuLayers === 'number' ? config.gpuLayers : 0;
+                // Never overwrite a measurement taken with MORE GPU layers by
+                // one taken with fewer — degraded placements under-read KV
+                // (their KV sits in RAM, invisible to the VRAM delta).
+                const prevLayers = Number.isFinite(prev?.gpuLayers) ? prev.gpuLayers : -1;
+                if (layersNow >= prevLayers) {
+                  const entry = {
+                    kvPerTok: measuredKv,
+                    fixedBytes: prev?.fixedBytes || 0.3 * 1024 ** 3,
+                    gpuLayers: layersNow,
+                    totalLayers: estLayers,
+                  };
+                  ModelService._kvProbe.set(probeKey, entry);
+                  // Persist to disk so a server restart keeps ground truth
+                  // instead of falling back to 40 KB/tok on every reboot.
+                  try {
+                    const p = require('path').join(require('../aquarium').LOGS, 'kv_probe_cache.json');
+                    const fs = require('fs').promises;
+                    let existing = {};
+                    try { existing = JSON.parse(await fs.readFile(p, 'utf8')); } catch {}
+                    existing[probeKey] = entry;
+                    await fs.writeFile(p, JSON.stringify(existing, null, 2)).catch(() => {});
+                  } catch {}
+                  log.info(`  📏 measured actual KV cost: ${(ctxCostBytes / 1024 ** 3).toFixed(2)}GB for ${config.contextLength} tokens → ${(measuredKv / 1024).toFixed(1)}KB/tok at ${layersNow}/${estLayers} GPU layers (cached for next load)`);
+                } else {
+                  log.info(`  📏 KV measurement NOT cached (${layersNow} GPU layers < previous ${prevLayers} — degraded placement under-reads)`);
+                }
               }
             }
           } catch { /* best effort */ }
