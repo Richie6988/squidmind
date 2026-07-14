@@ -792,18 +792,20 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
         if (cachedProbeRaw && !probeHealthy) {
           log.info(`  [auto-budget] cached KV probe ignored (measured at ${cachedProbeRaw.gpuLayers ?? '?'}/${cachedProbeRaw.totalLayers ?? '?'} GPU layers — not representative)`);
         }
-        // KV per token: use MEASURED value from a prior load if cached
-        // (accurate per architecture), else 40 KB/tok — empirical from
-        // measured hybrid qwen35 (was 65 → still left 1.75 GB unused,
-        // measurement showed 39 KB/tok). GQA + hybrid archs are more
-        // efficient than dense-attention rules of thumb suggest.
-        const kvBytesPerTok = cachedProbe?.kvPerTok || 40 * 1024;
-        const ctxKvGb = (config.contextLength * kvBytesPerTok) / (1024 ** 3);
-        const marginGb = isMoE ? 0.85 : 0.55; // KV cache metadata + compute buffers + CUDA runtime
-        const availLayersGb = Math.max(0, freeBeforeGb - ctxKvGb - marginGb);
-        const targetLayers = Math.max(1, Math.min(estLayers, Math.floor(availLayersGb / bytesPerLayerGb)));
-        const kvSource = cachedProbe ? 'MEASURED' : 'empirical fallback';
-        log.info(`  [auto-budget] target ctx=${config.contextLength}, KV=${Math.round(kvBytesPerTok/1024)}KB/tok (${kvSource}) → gpuLayers=${targetLayers}/${estLayers} (KV ~${ctxKvGb.toFixed(1)}GB reserved + ${marginGb}GB margin, ${(targetLayers * bytesPerLayerGb).toFixed(1)}GB layers)`);
+        // KV VRAM SCALES WITH GPU LAYERS: each GPU layer holds its KV slice
+        // in VRAM; CPU layers keep theirs in RAM. The old fixed-block formula
+        // placed 28/33 layers, left 2.1GB, and the ladder shrank the user's
+        // explicit 45k ctx to 15.8k. Solve with ctx as the HARD constraint:
+        //   layers <= (free - margin) / (bytesPerLayer + ctx*kvPerLayerTok)
+        const fixedProbeGb = cachedProbe ? (cachedProbe.fixedBytes || 0) / (1024 ** 3) : 0;
+        const kvPerLayerTok = cachedProbe
+          ? Math.max(256, cachedProbe.kvPerTok / Math.max(1, cachedProbe.gpuLayers))
+          : 2.5 * 1024;  // fallback: measured hybrid-qwen ~2.0KB/tok/layer + headroom
+        const marginGb = Math.max(isMoE ? 0.85 : 0.55, fixedProbeGb + 0.25);
+        const denomGb = bytesPerLayerGb + (config.contextLength * kvPerLayerTok) / (1024 ** 3);
+        const targetLayers = Math.max(1, Math.min(estLayers, Math.floor((freeBeforeGb - marginGb) / denomGb)));
+        const kvSource = cachedProbe ? `MEASURED@${cachedProbe.gpuLayers}L` : 'fallback';
+        log.info(`  [auto-budget] ctx=${config.contextLength} (HARD), KV=${(kvPerLayerTok/1024).toFixed(1)}KB/tok/layer (${kvSource}) → gpuLayers=${targetLayers}/${estLayers} (${(targetLayers*bytesPerLayerGb).toFixed(1)}GB layers + ${((config.contextLength*kvPerLayerTok*targetLayers)/1024**3).toFixed(1)}GB KV + ${marginGb.toFixed(1)}GB margin)`);
         config.gpuLayers = targetLayers;
       } else {
         if (!explicitLayers) config.gpuLayers     = 'auto';
@@ -1123,7 +1125,8 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
             const vramNow = await llama.getVramState();
             if (vramNow && vramAfter) {
               const ctxCostBytes = Math.max(0, vramAfter.free - vramNow.free);
-              const measuredKv = Math.round(ctxCostBytes / config.contextLength);
+              const fixedGuess = (ModelService._kvProbe?.get(`${fileName}|fa=${!!config.flashAttention}`)?.fixedBytes) || 0.3 * 1024 ** 3;
+              const measuredKv = Math.round(Math.max(0, ctxCostBytes - fixedGuess) / config.contextLength);
               if (measuredKv > 512 && measuredKv < 500 * 1024) {  // sane range
                 ModelService._kvProbe = ModelService._kvProbe || new Map();
                 const probeKey = `${fileName}|fa=${!!config.flashAttention}`;
