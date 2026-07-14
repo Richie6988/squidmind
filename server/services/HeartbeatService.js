@@ -34,6 +34,7 @@ class HeartbeatService {
   setTaskRunner(tr)    { this.taskRunner = tr; }
 
   start() {
+    this._bootedAt = Date.now();
     if (this.timer) return;
     // Initial reading needs two samples for CPU delta
     this.lastCpuTimes = this._readCpuTimes();
@@ -118,7 +119,17 @@ class HeartbeatService {
         const status = this.modelService.getStatus();
         const pm = status.loaded_models.find(m => m.model_id === status.poseidon_model_id);
         let skipReason = null;
-        if (!brokerState || brokerState.state !== 'IDLE' || brokerState.queue.length > 0) {
+        // CHAT IS KING: never trigger (or auto-load for) a dream while the
+        // user is active, nor in the first 2 minutes after boot. Observed
+        // race: the autoload-dream joined the load the user's CHAT had
+        // started, then DREAM acquired the broker 2s before CHAT and queued
+        // the user behind a soul consolidation.
+        const trD = this.taskRunner || this.modelService.taskRunner;
+        if (trD && Date.now() < (trD._chatOpenUntil || 0)) {
+          skipReason = 'user chat active (chat is king)';
+        } else if (Date.now() - (this._bootedAt || 0) < 120_000) {
+          skipReason = 'boot grace (first 2min reserved for the user)';
+        } else if (!brokerState || brokerState.state !== 'IDLE' || brokerState.queue.length > 0) {
           skipReason = `broker busy (state=${brokerState?.state}, queue=${brokerState?.queue?.length})`;
         } else if (!pm) {
           // Model not loaded. Historically this skipped forever, so temp.md
