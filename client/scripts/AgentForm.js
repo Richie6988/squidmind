@@ -27,15 +27,17 @@ const AgentForm = {
     this.newSquidDraft = null;
     this.dirty = new Map();
     try {
-      const [agentRes, toolsRes, modelsRes] = await Promise.all([
+      const [agentRes, toolsRes, modelsRes, skillsRes] = await Promise.all([
         window.api.agents.get(agentId),
         window.api.tools.list(),
-        window.api.models.list()
+        window.api.models.list(),
+        window.api.skills.list().catch(() => ({ skills: [] }))
       ]);
       this.brain = agentRes.agent.brain || {};
       this.registry = agentRes.agent.registry_entry || {};
       this.toolRegistry = toolsRes.registry || {};
       this.modelRegistry = modelsRes.registry || {};
+      this.skillsRegistry = skillsRes.skills || [];
     } catch (err) {
       alert('Failed to load agent: ' + err.message);
       return;
@@ -69,15 +71,18 @@ const AgentForm = {
     };
     
     try {
-      const [toolsRes, modelsRes] = await Promise.all([
+      const [toolsRes, modelsRes, skillsRes] = await Promise.all([
         window.api.tools.list(),
-        window.api.models.list()
+        window.api.models.list(),
+        window.api.skills.list().catch(() => ({ skills: [] }))
       ]);
       this.toolRegistry = toolsRes.registry || {};
       this.modelRegistry = modelsRes.registry || {};
+      this.skillsRegistry = skillsRes.skills || [];
     } catch (err) {
       this.toolRegistry = { tools: {} };
       this.modelRegistry = { models: {} };
+      this.skillsRegistry = [];
     }
     
     this._buildModal();
@@ -270,21 +275,14 @@ const AgentForm = {
         v => this._markDirty(brainFile, 'personality.default_mood', v))
     ]);
 
-    // ===== CAPABILITIES (skills) =====
+    // ===== SKILLS — real IAQUA skills from aquarium/SKILLS/ =====
+    // Used to be a hardcoded 16-item dev list (frontend_dev, devops, etc.)
+    // that had nothing to do with the actual skills Poseidon and agents
+    // can invoke. Now shows the real registry: skill_id, name, summary,
+    // trigger count, enable/disable. Coherent with the Skills panel.
     const cap = brain.capabilities || {};
-    const skills = Object.keys(cap.skills || {});
-    const allSkillOptions = [
-      'frontend_dev', 'backend_dev', 'fullstack', 'data_analysis', 'code_review',
-      'documentation', 'ui_design', 'devops', 'testing', 'security', 'database',
-      'machine_learning', 'cloud', 'mobile', 'research', 'project_management'
-    ];
-
-    this._addSection(body, 'Skills', [
-      this._multiSelectField('Skills', skills, allSkillOptions, vals =>
-        this._markDirty(brainFile, 'capabilities.skills',
-          Object.fromEntries(vals.map(s => [s, cap.skills?.[s] || { skill_level: 0.5, tasks_completed: 0 }]))
-        ))
-    ]);
+    const enabledSkills = cap.skills || {};
+    this._addSkillsPanel(body, this.skillsRegistry || [], enabledSkills, brainFile);
 
     // ===== TOOLS GRID =====
     const allTools = Object.values(this.toolRegistry.tools || {});
@@ -557,6 +555,98 @@ const AgentForm = {
       console.warn('[preview]', e.message);
     }
   },
+  /**
+   * Skills panel — shows the REAL IAQUA skills registry (aquarium/SKILLS/*.json)
+   * with name, summary, trigger count, and an enable/disable toggle per skill.
+   * Mirrors the tools grid style for visual consistency.
+   *
+   * Data model: cap.skills is an object { [skill_id]: { skill_level, tasks_completed } }.
+   * A skill is "enabled" for an agent when its id is a key on that object.
+   */
+  _addSkillsPanel(parent, allSkills, enabledSkills, brainFile) {
+    const section = document.createElement('div');
+    section.className = 'agent-form-section';
+
+    const enabledIds = new Set(Object.keys(enabledSkills || {}));
+    const validEnabled = allSkills.filter(s => enabledIds.has(s.skill_id)).length;
+    section.innerHTML = `<h3 class="agent-form-section-title" style="display:flex;align-items:center;gap:6px;">${window.PixelIcons?.inline('skills',13)||''} Skills <span style="font-weight:400;color:var(--text-secondary);font-size:10px;">(${validEnabled} enabled / ${allSkills.length} available)</span></h3>`;
+
+    if (allSkills.length === 0) {
+      section.innerHTML += '<p class="hint" style="font-size:10px;color:var(--text-secondary);">No skills in the aquarium yet. Open the Skills panel to create some — they define reusable playbooks agents can invoke.</p>';
+      parent.appendChild(section);
+      return;
+    }
+
+    const bar = document.createElement('div');
+    bar.style.cssText = 'display:flex;gap:8px;align-items:center;margin-bottom:12px;';
+    bar.innerHTML = `
+      <span style="font-size:10px;color:var(--text-secondary);flex:1;">Click a skill to grant/revoke it. Skills are shared playbooks agents can follow.</span>
+      <button class="btn-secondary" style="font-size:9px;padding:2px 8px;" id="af-skills-all">Enable all</button>
+      <button class="btn-secondary" style="font-size:9px;padding:2px 8px;" id="af-skills-none">Clear all</button>
+    `;
+    section.appendChild(bar);
+
+    // Grid of skill cards
+    const grid = document.createElement('div');
+    grid.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px;';
+    section.appendChild(grid);
+
+    const rerender = () => {
+      const enabled = new Set(Object.keys(this._skillsWorking || enabledSkills || {}));
+      const enabledCount = allSkills.filter(s => enabled.has(s.skill_id)).length;
+      const h = section.querySelector('h3');
+      if (h) h.innerHTML = `${window.PixelIcons?.inline('skills',13)||''} Skills <span style="font-weight:400;color:var(--text-secondary);font-size:10px;">(${enabledCount} enabled / ${allSkills.length} available)</span>`;
+      grid.innerHTML = allSkills.map(s => {
+        const on = enabled.has(s.skill_id);
+        const nTriggers = Array.isArray(s.triggers) ? s.triggers.length : 0;
+        const nSteps = Array.isArray(s.steps) ? s.steps.length : 0;
+        const summary = (s.summary || s.description || '').replace(/"/g, '&quot;').slice(0, 140);
+        return `<div class="af-skill-card" data-skill-id="${s.skill_id}"
+          style="cursor:pointer;padding:8px 10px;border-radius:4px;transition:all 0.15s;
+            background:${on ? 'rgba(6,255,165,0.08)' : 'rgba(255,255,255,0.02)'};
+            border:1px solid ${on ? 'rgba(6,255,165,0.3)' : 'var(--border)'};
+            opacity:${on ? '1' : '0.75'};"
+          title="${summary}">
+          <div style="display:flex;align-items:center;gap:6px;font-size:10px;font-weight:${on ? '600' : '400'};color:${on ? 'var(--success)' : 'var(--text)'};">
+            <span style="width:8px;height:8px;border-radius:50%;background:${on ? 'var(--success)' : 'var(--border)'};"></span>
+            ${s.name || s.skill_id}
+          </div>
+          ${summary ? `<div style="font-size:9px;color:var(--text-secondary);margin-top:4px;line-height:1.4;">${summary}</div>` : ''}
+          <div style="font-size:8px;color:var(--text-secondary);margin-top:5px;font-family:'Courier New',monospace;">
+            v${s.version || 1} · ${nSteps} step${nSteps === 1 ? '' : 's'} · ${nTriggers} trigger${nTriggers === 1 ? '' : 's'}
+          </div>
+        </div>`;
+      }).join('');
+      grid.querySelectorAll('.af-skill-card').forEach(card => {
+        card.addEventListener('click', () => {
+          const id = card.dataset.skillId;
+          const cur = { ...(this._skillsWorking || enabledSkills || {}) };
+          if (cur[id]) delete cur[id];
+          else cur[id] = { skill_level: 0.5, tasks_completed: 0 };
+          this._skillsWorking = cur;
+          this._markDirty(brainFile, 'capabilities.skills', cur);
+          rerender();
+        });
+      });
+    };
+
+    section.querySelector('#af-skills-all').addEventListener('click', () => {
+      const cur = { ...(this._skillsWorking || enabledSkills || {}) };
+      allSkills.forEach(s => { if (!cur[s.skill_id]) cur[s.skill_id] = { skill_level: 0.5, tasks_completed: 0 }; });
+      this._skillsWorking = cur;
+      this._markDirty(brainFile, 'capabilities.skills', cur);
+      rerender();
+    });
+    section.querySelector('#af-skills-none').addEventListener('click', () => {
+      this._skillsWorking = {};
+      this._markDirty(brainFile, 'capabilities.skills', {});
+      rerender();
+    });
+
+    parent.appendChild(section);
+    rerender();
+  },
+
   _addToolsGrid(parent, allTools, allowedTools, brainFile) {
     const section = document.createElement('div');
     section.className = 'agent-form-section';

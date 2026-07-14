@@ -75,6 +75,12 @@ const api = {
     spec: (name) => api._fetch('/tools/' + name)
   },
 
+  // SKILLS (aquarium/SKILLS/) — real content, not the hardcoded dev list
+  skills: {
+    list: () => api._fetch('/skills'),
+    get:  (id) => api._fetch('/skills/' + id),
+  },
+
   // MODELS
   models: {
     list: () => api._fetch('/models')
