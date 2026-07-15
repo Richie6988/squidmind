@@ -1172,8 +1172,13 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
                 // Never overwrite a measurement taken with MORE GPU layers by
                 // one taken with fewer — degraded placements under-read KV
                 // (their KV sits in RAM, invisible to the VRAM delta).
+                // EXCEPTION: a v2 measurement ALWAYS supersedes v1. v1 is
+                // inflated by the fixed-buffer bug and already rejected on
+                // read; without this override the cache would never migrate
+                // (observed: 23 < 28 → refuse → stuck on pre-v2 forever).
                 const prevLayers = Number.isFinite(prev?.gpuLayers) ? prev.gpuLayers : -1;
-                if (layersNow >= prevLayers) {
+                const prevIsV1   = prev && prev.version !== 2;
+                if (prevIsV1 || layersNow >= prevLayers) {
                   const entry = {
                     version: 2,                              // measured with fixed-buffer subtraction
                     kvPerTok: measuredKv,
@@ -1724,9 +1729,16 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
     let entry = this.loaded.get(this.poseidonModelId);
     if (!entry) throw new Error('Poseidon model failed to load');
 
-    // If loaded entry has a tiny context (stale load with wrong config), evict and reload
+    // If loaded entry has a tiny context (stale load with wrong config), evict and reload.
+    // GUARD: only apply for genuine CHAT requests. A phase-swap to agent/review
+    // deliberately loads ctx=6144/10240; TaskRunner then calls this function in
+    // BG mode to drive the agent. Rejecting that as "too small" evicted the
+    // agent-regime model and reloaded at 35k, defeating the phase-swap entirely
+    // (observed: agent ran on 35k ctx with a 277-tok prompt — pure waste).
+    const isBgCall     = _bgMode === true || _skipBroker === true;
+    const inAgentPhase = entry._phase === 'agent' || entry._phase === 'review';
     const entryCtx = entry.config?.contextLength || entry.context?.contextSize || 0;
-    if (entryCtx > 0 && entryCtx < 8192) {
+    if (!isBgCall && !inAgentPhase && entryCtx > 0 && entryCtx < 8192) {
       log.info(` Entry ctx=${entryCtx} too small — evicting and reloading with VRAM-optimal ctx`);
       await this.unloadModel(this.poseidonModelId).catch(() => {});
       await this.ensureLoaded(this.poseidonModelId);
