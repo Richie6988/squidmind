@@ -132,10 +132,11 @@ class PoseidonOrchestrator {
     this.rm.invalidateCache();
     const brain = await this.rm.getPoseidonBrain();
     
-    const [agentReg, projectReg, taskReg] = await Promise.all([
+    const [agentReg, projectReg, taskReg, modelReg] = await Promise.all([
       this.rm.read('AGENTS/agent_registry.json').catch(() => ({ agents: {} })),
       this.rm.read('PROJECTS/project_registry.json').catch(() => ({ projects: {} })),
-      this.rm.read('TASKS/tasks_registry.json').catch(() => ({ tasks: {} }))
+      this.rm.read('TASKS/tasks_registry.json').catch(() => ({ tasks: {} })),
+      this.rm.read('MODELS/model_registry.json').catch(() => ({ models: {} }))
     ]);
     
     // Inject dream_memory: either a metacognition dream or an emergency reset note
@@ -195,7 +196,7 @@ My response: "${ss.last_response_preview}"${tools}
       ...(checkpointSection ? [checkpointSection] : []),
       ...(sessionStateSection ? [sessionStateSection] : []),
       ...(tempMdSection ? [tempMdSection] : []),
-      this._sectionToolsPointer(brain),
+      this._sectionToolsPointer(brain, projectReg, modelReg),
       this._sectionCurrentState(brain, agentReg, projectReg, taskReg)
     ];
     const fullPrompt = sections.join('\n\n' + '─'.repeat(60) + '\n\n');
@@ -340,20 +341,38 @@ My response: "${ss.last_response_preview}"${tools}
    * protocol - we don't need to repeat them in the prompt.
    * For the skill recipes the model calls read_my_brain('skills.X').
    */
-  _sectionToolsPointer(brain) {
-    const catalog = brain.tools_catalog || {};
+  _sectionToolsPointer(brain, projectReg = { projects: {} }, modelReg = { models: {} }) {
+    // Catalog is derived at runtime from the ACTUAL tools Poseidon exposes.
+    // The pre-existing brain.tools_catalog was seeded once with obsolete
+    // names (github_pull that never existed, log_decision, get_system_state,
+    // archive_project — all consolidated or removed). Building it here from
+    // the canonical PoseidonOrchestrator function list keeps the prompt
+    // truthful without a seed migration.
+    const CANONICAL_CATALOG = {
+      'meta / self':      ['read_my_brain', 'update_brain_field', 'write_skill', 'list_skills', 'delete_skill', 'record_skill_outcome'],
+      'agents':           ['create_agent', 'delete_agent', 'list_agents', 'update_agent_field', 'dispatch_to_agent'],
+      'projects':         ['create_project', 'list_projects', 'plan_project', 'update_project', 'update_project_memory', 'read_project_memory', 'audit_project'],
+      'tasks':            ['create_task', 'list_tasks', 'update_task', 'delete_task'],
+      'files':            ['read_file', 'write_file', 'edit_file', 'list_files'],
+      'web & fetch':      ['web_search', 'web_fetch'],
+      'git':              ['git'],
+      'media / docs':     ['generate_image', 'edit_image', 'generate_pptx', 'generate_docx', 'list_models'],
+      'comms':            ['send_email', 'list_mcp_servers', 'call_mcp_tool', 'execute_bash'],
+      'system / logs':    ['get_logs', 'update_user_context'],
+    };
+    const catalog = CANONICAL_CATALOG;
     const lines = ['# TOOLS'];
-    
+
     let totalTools = 0;
     const catSummary = [];
     for (const [cat, tools] of Object.entries(catalog)) {
       const count = Array.isArray(tools) ? tools.length : 0;
       totalTools += count;
-      catSummary.push(`${cat.replace(/_/g, ' ')} (${count})`);
+      catSummary.push(`${cat} (${count})`);
     }
-    
+
     if (totalTools === 0) {
-      lines.push('Tool catalog empty in brain.json. Function signatures still injected by runtime.');
+      lines.push('Tool catalog empty. Function signatures still injected by runtime.');
     } else {
       lines.push(`You have ${totalTools} callable functions across ${Object.keys(catalog).length} categories:`);
       lines.push(catSummary.map(s => `- ${s}`).join('\n'));
@@ -362,10 +381,9 @@ My response: "${ss.last_response_preview}"${tools}
       lines.push(`AQUARIUM: all data lives in aquarium/ — PROJECTS, AGENTS, TASKS, MODELS, LOGS, SKILLS, BRAIN, CHANNELS.`);
       lines.push(`  read_my_brain('skills')         → list all skill recipes`);
       lines.push(`  read_my_brain('skills.<name>')  → read a process step-by-step guide`);
-      lines.push(`  read_my_brain('projects')          → active projects + folders`);
-      lines.push(`  read_my_brain('agents')            → all agents + brain file paths`);
-      lines.push(`  read_my_brain('tasks')             → open tasks`);
-      lines.push(`  read_my_brain('tools_catalog')     → tools by category`);
+      lines.push(`  read_my_brain('projects')       → active projects + folders`);
+      lines.push(`  read_my_brain('agents')         → all agents + brain file paths`);
+      lines.push(`  read_my_brain('tasks')          → open tasks`);
       lines.push('');
       lines.push('KEY TOOLS:');
       lines.push('  dispatch_to_agent(agent_id, task_message, task_id?) → run agent async');
@@ -440,7 +458,15 @@ My response: "${ss.last_response_preview}"${tools}
       lines.push('');
       lines.push('  VIOLATION EXAMPLE: create_task(\"Verify and scrape all NEWS sources\") ← WRONG. Too big, not atomic.');
       lines.push('  CORRECT EXAMPLE: create_task(\"Scrape BBC News\") + create_task(\"Scrape CNN\") + create_task(\"Scrape Reuters\") ← RIGHT.');
-      lines.push('IMAGE GENERATION: call generate_image(prompt, model_id?) directly — it creates a high-priority task that jumps to front of the queue. Your LLM is evicted from VRAM automatically so sd-diffusion gets full GPU, then you reload automatically. Partial model names like "flux" are auto-resolved — you do NOT need list_models first. Never manually create_task for image gen.');
+      // Image-gen hint uses a REAL model name from the library. No lib entry
+      // = generic hint. Prevents the prompt from suggesting "flux" when the
+      // user runs on a different image family (or none at all).
+      const _imageModels = Object.values(modelReg.models || {})
+        .filter(m => (m.config?.model_type || m.model_type) === 'image');
+      const _imgHint = _imageModels[0]
+        ? `Partial model names like "${(_imageModels[0].display_name || _imageModels[0].file_name || '').split(/[-_.\s]/)[0].toLowerCase()}" are auto-resolved`
+        : 'Any partial model name is auto-resolved';
+      lines.push(`IMAGE GENERATION: call generate_image(prompt, model_id?) directly — it creates a high-priority task that jumps to front of the queue. Your LLM is evicted from VRAM automatically so the image model gets full GPU, then you reload automatically. ${_imgHint} — you do NOT need list_models first. Never manually create_task for image gen.`);
       lines.push('TASK DECOMPOSITION: when breaking work into multiple tasks, order them with depends_on. Tasks execute ONE AT A TIME (single GPU), so parallel-looking task lists are an illusion — sequence them explicitly instead: foundation/setup task first, then each dependent task with depends_on:[<foundation_id>]. Use the task_id returned by create_task to chain the next one. A task whose dependencies are unfinished stays queued automatically.');
       lines.push('UTILITY REQUESTS — LITERAL EXECUTION: when the user asks for a simple direct action ("send an email saying hello", "rename this file", "what is X"), do EXACTLY that with minimal content. Do NOT dress it up with project branding, platform announcements, or context from project memory ("Hello from the RICH Trading Platform…") unless the user explicitly asked for it. A hello email says "hello". One tool call, done.');
       lines.push('IMAGE SEARCH — MANDATORY: to FIND an existing image on the web (not generate one), call web_search(query, mode="image") which returns DIRECT image URLs. NEVER use web_search in text mode for images — it returns result-PAGE URLs (pexels.com/search/…) which render broken. Embed via the `markdown` field of the top result, or ![subject](image_url).');
@@ -468,16 +494,23 @@ My response: "${ss.last_response_preview}"${tools}
     const agentList = Object.values(agentReg.agents || {});
     const projectList = Object.values(projectReg.projects || {}).filter(p => p.status !== 'archived');
     const taskList = Object.values(taskReg.tasks || {});
-    const openTasks = taskList.filter(t => t.status !== 'completed' && t.status !== 'archived');
-    
+    const TERMINAL = new Set(['done', 'completed', 'archived', 'failed', 'cancelled']);
+    const openTasks = taskList.filter(t => !TERMINAL.has(t.lifecycle?.status || t.status));
+    // brain.current_state.tasks_* is NEVER updated by anything (was cosmetic
+    // in the prompt — always showed 0/0). Compute live from taskReg instead.
+    const wipStatuses    = new Set(['wip', 'in_progress', 'running']);
+    const queuedStatuses = new Set(['todo', 'open', 'planned', 'queued', 'assigned', 'pending']);
+    const tasksInProgress = taskList.filter(t => wipStatuses.has(t.lifecycle?.status || t.status)).length;
+    const tasksQueued     = taskList.filter(t => queuedStatuses.has(t.lifecycle?.status || t.status)).length;
+
     const lines = [
       '# CURRENT_STATE (live snapshot, refreshed each session start)',
       '',
       '## System load',
-      `- Active agents: ${brain.current_state?.active_agents_count ?? 0}`,
-      `- Sleeping agents: ${brain.current_state?.sleeping_agents_count ?? 0}`,
-      `- Tasks in progress: ${brain.current_state?.tasks_in_progress ?? 0}`,
-      `- Tasks queued: ${brain.current_state?.tasks_queued ?? 0}`,
+      `- Active agents: ${brain.current_state?.active_agents_count ?? agentList.filter(a => a.status === 'active').length}`,
+      `- Sleeping agents: ${brain.current_state?.sleeping_agents_count ?? agentList.filter(a => a.status === 'sleeping').length}`,
+      `- Tasks in progress: ${tasksInProgress}`,
+      `- Tasks queued: ${tasksQueued}`,
       `- CPU: ${Math.round(brain.current_state?.system_load?.cpu_percent ?? 0)}%`,
       `- RAM: ${Math.round(brain.current_state?.system_load?.ram_percent ?? 0)}%`
     ];
@@ -1129,7 +1162,7 @@ My response: "${ss.last_response_preview}"${tools}
       }),
 
       web_fetch: defineChatSessionFunction({
-        description: 'Read a URL. Default: returns page text (HTML stripped, ~18k char cap). extract="image" returns the best <img>/og:image URL from the page instead. save_as="filename" additionally persists the body to the current task/project output folder — one call replaces fetch_and_save.',
+        description: 'Read a URL. Default: returns page text (HTML stripped, ~18k char cap). extract="image" returns the best <img>/og:image URL from the page instead. save_as="filename" additionally persists the body to the current task/project output folder.',
         params: {
           type: 'object',
           properties: {
@@ -2684,8 +2717,11 @@ My response: "${ss.last_response_preview}"${tools}
         active_agents: Object.values(agentReg.agents || {}).filter(a => a.status === 'active').length,
         sleeping_agents: Object.values(agentReg.agents || {}).filter(a => a.status === 'sleeping').length,
         total_agents: Object.keys(agentReg.agents || {}).length,
-        open_tasks: taskValues.filter(t => t.status === 'open' || t.status === 'assigned').length,
-        completed_tasks: taskValues.filter(t => t.status === 'completed').length
+        open_tasks: taskValues.filter(t => ['todo','open','planned','queued','assigned','wip','in_progress'].includes(t.lifecycle?.status || t.status)).length,
+        completed_tasks: taskValues.filter(t => {
+          const s = t.lifecycle?.status || t.status;
+          return s === 'completed' || (s === 'done' && t.outcome !== 'failed');
+        }).length
       };
     } catch (err) {
       return { ok: false, error: err.message };
