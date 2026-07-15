@@ -2511,29 +2511,58 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
         tool_calls_this_turn: toolNames
       }).catch(() => {});
 
-      // ── PROACTIVE CONTEXT WIPE AT 75% ────────────────────────────────────
-      // When context is 75%+ full, save a continuity summary to dream_memory.json
-      // then wipe the session so the next turn starts fresh with the summary injected.
-      if (ctxPct >= 75 && !entry._checkpointPending) {
+      // ── PROACTIVE CONTEXT COMPRESSION AT 90% ─────────────────────────────
+      // At 90% we save a continuity summary and wipe the session so the
+      // next turn starts fresh. Threshold moved from 75%→90% (Richard's ask):
+      // most turns never approach saturation, and disposing at 75% forced
+      // the user to eat a system-prompt reprocess (~20s on this hardware)
+      // for no gain. 90% keeps a real safety margin — a single 4k-token
+      // response still fits without overflow. Skipped in agent/review
+      // phase: BG runs create fresh sessions per task; no cross-turn KV
+      // to preserve, so a mid-run wipe would just crash the current turn.
+      const phase = entry._phase || 'chat';
+      const compressionSkipped = phase === 'agent' || phase === 'review';
+      if (ctxPct >= 90 && !entry._checkpointPending && !compressionSkipped) {
         entry._checkpointPending = true;
-        log.info(` Context at ${ctxPct}% — saving continuity checkpoint and wiping session`);
+        log.info(` Context at ${ctxPct}% — compressing and wiping session (phase=${phase})`);
 
         // Build a compact summary for the next session
         const openTasksSnap = (() => {
           try {
             const reg = this.rm.cache?.get?.('TASKS/tasks_registry.json');
             const tasks = Object.values(reg?.tasks || {})
-              .filter(t => !['completed','failed','cancelled','archived'].includes(t.lifecycle?.status || t.status))
+              .filter(t => !['done','completed','failed','cancelled','archived'].includes(t.lifecycle?.status || t.status))
               .slice(0, 8)
               .map(t => `  [${t.task_id}] ${t.title} (${t.lifecycle?.status || t.status})${t.progress ? ' — ' + t.progress : ''}`);
             return tasks.length ? tasks.join('\n') : '  (none)';
           } catch { return '  (unknown)'; }
         })();
 
+        // Ask the model to condense the current conversation into 3-6 lines
+        // BEFORE we dispose the session — we still hold the KV cache, so
+        // the summarization turn runs on the actual history at low cost
+        // (no reprocess). Falls back to a flat dump if the summary errors.
+        let condensed = '';
+        try {
+          const sumPrompt =
+            'Summarize the conversation so far in 3-6 short lines the next Claude session must remember: ' +
+            'active goal, decisions taken, key facts/values found, and the exact next step. Facts only, no filler.';
+          if (entry.session && typeof entry.session.prompt === 'function') {
+            condensed = await Promise.race([
+              entry.session.prompt(sumPrompt, { maxTokens: 220, temperature: 0.2 }),
+              new Promise((_, rej) => setTimeout(() => rej(new Error('summary timeout')), 30_000))
+            ]);
+            condensed = String(condensed || '').trim().slice(0, 900);
+          }
+        } catch (sumErr) {
+          log.warn(` compression summary failed (${sumErr.message}) — falling back to flat dump`);
+        }
+
         const summary = [
-          `Context reached ${ctxPct}% (turn ${entry.sessionTurns}) — auto-checkpoint before overflow.`,
-          `Last user request: "${userMessage.slice(0, 200)}"`,
-          `Last response preview: "${fullResponse.slice(0, 300)}"`,
+          `Context reached ${ctxPct}% (turn ${entry.sessionTurns}) — auto-compressed before overflow.`,
+          condensed
+            ? `--- SESSION SUMMARY ---\n${condensed}`
+            : `Last user request: "${userMessage.slice(0, 200)}"\nLast response preview: "${fullResponse.slice(0, 300)}"`,
           `Open tasks at checkpoint:\n${openTasksSnap}`,
           `Resume: continue the last task exactly where left off. Check task progress fields for step tracking.`,
         ].join('\n');

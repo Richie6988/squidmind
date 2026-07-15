@@ -477,17 +477,33 @@ class TaskRunner {
         : '';
       // Prior deliverables + inputs in the same project — the agent can
       // read BOTH by default (Richard's rule): build ON them, don't restart.
+      // We list up to 8 files per side with a short keyword extract from
+      // each (first ~60 chars of the file) so the agent can decide which
+      // to actually open with read_file instead of listing them blindly.
       let priorPart = '';
       if (task.project_name) {
         try {
           const RegistryManager = require('./RegistryManager');
           const pbase = path.join(AQUARIUM.PROJECTS, RegistryManager.projectFolder({ name: task.project_name }));
-          const outFiles = (await fs.readdir(path.join(pbase, 'output')).catch(() => [])).slice(-8);
-          const inFiles  = (await fs.readdir(path.join(pbase, 'input')).catch(() => [])).slice(-8);
+          const summarize = async (dir) => {
+            const files = (await fs.readdir(dir).catch(() => [])).slice(-8);
+            const lines = [];
+            for (const f of files) {
+              try {
+                if (/\.(png|jpg|jpeg|webp|gif|pdf|zip|bin)$/i.test(f)) { lines.push(`${f}`); continue; }
+                const buf = await fs.readFile(path.join(dir, f), 'utf8').catch(() => '');
+                const kw  = String(buf).replace(/\s+/g, ' ').trim().slice(0, 60);
+                lines.push(kw ? `${f} — ${kw}${buf.length > 60 ? '…' : ''}` : f);
+              } catch { lines.push(f); }
+            }
+            return lines;
+          };
+          const outLines = await summarize(path.join(pbase, 'output'));
+          const inLines  = await summarize(path.join(pbase, 'input'));
           const parts = [];
-          if (inFiles.length)  parts.push(`input/: ${inFiles.join(', ')}`);
-          if (outFiles.length) parts.push(`output/: ${outFiles.join(', ')}`);
-          if (parts.length) priorPart = `\nProject files you can read with read_file — ${parts.join(' | ')} (extend, don't duplicate)`;
+          if (inLines.length)  parts.push(`  input/:\n    ${inLines.join('\n    ')}`);
+          if (outLines.length) parts.push(`  output/:\n    ${outLines.join('\n    ')}`);
+          if (parts.length) priorPart = `\nProject files (read_file to open — extend, don't duplicate):\n${parts.join('\n')}`;
         } catch {}
       }
 

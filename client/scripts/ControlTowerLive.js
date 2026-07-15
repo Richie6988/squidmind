@@ -301,8 +301,11 @@ const ControlTowerLive = {
     // Header: X/Y · % — always shown when a context exists (single source, no duplicates below)
     if (val) {
       if (ctxTotal > 0) {
+        // Threshold aligned with the server-side proactive compression at
+        // 90% — the bar goes red exactly when auto-compression is about to
+        // trigger on the next turn, so it stays a real signal to the user.
         val.textContent = `${(ctxUsed/1000).toFixed(1)}k / ${(ctxTotal/1000).toFixed(0)}k · ${displayPct}%`;
-        val.style.color = displayPct >= 85 ? '#ef4444' : displayPct >= 60 ? '#fbbf24' : '#cbd5e1';
+        val.style.color = displayPct >= 90 ? '#ef4444' : displayPct >= 70 ? '#fbbf24' : '#cbd5e1';
       } else {
         val.textContent = '';
       }
