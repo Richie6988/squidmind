@@ -566,28 +566,49 @@ const AgentForm = {
 
     // Header bar with select-all / clear
     const bar = document.createElement('div');
-    bar.style.cssText = 'display:flex;gap:8px;align-items:center;margin-bottom:12px;';
+    bar.style.cssText = 'display:flex;gap:8px;align-items:center;margin-bottom:6px;';
     bar.innerHTML = `
       <span style="font-size:10px;color:var(--text-secondary);flex:1;">Click a tool to enable/disable it. Hover for details.</span>
       <button class="btn-secondary" style="font-size:9px;padding:2px 8px;" id="af-tools-all">Enable all</button>
       <button class="btn-secondary" style="font-size:9px;padding:2px 8px;" id="af-tools-none">Clear all</button>
     `;
     section.appendChild(bar);
+    // Sémantique de la whitelist — visible en permanence pour lever l'ambiguïté
+    // (une liste vide n'est pas "aucun outil", c'est "défaut BG").
+    const hint = document.createElement('div');
+    hint.style.cssText = 'font-size:9px;color:var(--text-secondary);margin-bottom:10px;line-height:1.4;padding-left:2px;';
+    hint.innerHTML = `<span style="color:#94a3b8;">Empty list</span> = default BG toolset (files + web + tasks + memory + comms — ~24 tools).
+      <span style="color:#94a3b8;">One or more checked</span> = strict whitelist applied on top of the BG filter.
+      Agents inherit the BG cap: admin ops (create_agent, plan_project, git, …) stay Poseidon-only regardless.`;
+    section.appendChild(hint);
 
-    // Category icons & colors
+    // Category icons & colors. The keys mirror ToolRegistry categories, which
+    // itself mirrors PoseidonOrchestrator's live tools — a change in one MUST
+    // ripple to the others so Design → Tools stays truthful.
     const PI = window.PixelIcons;
     const catMeta = {
-      ai:                  { icon: PI?.inline('brain',13)||'◉',       color: '#7c3aed' },
-      code:                { icon: PI?.inline('code_model',13)||'<>', color: '#0ea5e9' },
-      custom:              { icon: PI?.inline('bolt',13)||'⚡',        color: '#f59e0b' },
-      filesystem:          { icon: PI?.inline('data',13)||'◈',        color: '#10b981' },
-      information_retrieval:{ icon: PI?.inline('logs',13)||'◈',       color: '#06b6d4' },
-      network:             { icon: PI?.inline('ocean',13)||'~',        color: '#3b82f6' },
-      shell:               { icon: PI?.inline('system',13)||'>_',      color: '#6b7280' },
-      version_control:     { icon: PI?.inline('create',13)||'⊕',      color: '#f97316' },
-      data:                { icon: PI?.inline('stats',13)||'◈',        color: '#ec4899' },
-      system:              { icon: PI?.inline('cpu',13)||'◈',          color: '#94a3b8' },
-      general:             { icon: PI?.inline('target',13)||'◈',       color: '#64748b' },
+      // Canonical Poseidon-aligned categories
+      meta:      { icon: PI?.inline('brain',13)||'◉',      color: '#7c3aed', label: 'Meta / Self' },
+      agents:    { icon: PI?.inline('agents',13)||'◈',      color: '#a78bfa', label: 'Agents' },
+      projects:  { icon: PI?.inline('target',13)||'◈',      color: '#06b6d4', label: 'Projects' },
+      tasks:     { icon: PI?.inline('tools',13)||'◈',       color: '#0ea5e9', label: 'Tasks' },
+      files:     { icon: PI?.inline('data',13)||'◈',        color: '#10b981', label: 'Files' },
+      web:       { icon: PI?.inline('ocean',13)||'~',       color: '#3b82f6', label: 'Web & Fetch' },
+      git:       { icon: PI?.inline('create',13)||'⊕',     color: '#f97316', label: 'Git' },
+      media:     { icon: PI?.inline('stats',13)||'◈',       color: '#ec4899', label: 'Media / Docs' },
+      comms:     { icon: PI?.inline('bolt',13)||'⚡',       color: '#f59e0b', label: 'Comms & Externals' },
+      system:    { icon: PI?.inline('system',13)||'>_',     color: '#94a3b8', label: 'System / Logs' },
+      // Legacy category keys kept for backward compat with older tool entries
+      ai:                   { icon: PI?.inline('brain',13)||'◉',       color: '#7c3aed' },
+      code:                 { icon: PI?.inline('code_model',13)||'<>', color: '#0ea5e9' },
+      custom:               { icon: PI?.inline('bolt',13)||'⚡',        color: '#f59e0b' },
+      filesystem:           { icon: PI?.inline('data',13)||'◈',        color: '#10b981' },
+      information_retrieval:{ icon: PI?.inline('logs',13)||'◈',        color: '#06b6d4' },
+      network:              { icon: PI?.inline('ocean',13)||'~',        color: '#3b82f6' },
+      shell:                { icon: PI?.inline('system',13)||'>_',      color: '#6b7280' },
+      version_control:      { icon: PI?.inline('create',13)||'⊕',      color: '#f97316' },
+      data:                 { icon: PI?.inline('stats',13)||'◈',        color: '#ec4899' },
+      general:              { icon: PI?.inline('target',13)||'◈',       color: '#64748b' },
     };
 
     // Group by category
@@ -623,7 +644,7 @@ const AgentForm = {
       const enabledInCat = tools.filter(t => allowedSet.has(t.name)).length;
       catLabel.innerHTML = `
         <span style="display:inline-flex;align-items:center;">${meta.icon}</span>
-        <span style="font-size:11px;font-weight:600;color:#e2e8f0;text-transform:capitalize;">${cat.replace(/_/g,' ')}</span>
+        <span style="font-size:11px;font-weight:600;color:#e2e8f0;text-transform:capitalize;">${meta.label || cat.replace(/_/g,' ')}</span>
         <span style="font-size:9px;color:var(--text-secondary);margin-left:auto;">${enabledInCat}/${tools.length}</span>
       `;
       catWrap.appendChild(catLabel);

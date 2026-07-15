@@ -28,488 +28,80 @@ class ToolRegistry {
    * Register all built-in tools
    */
   registerBuiltinTools() {
-    // Filesystem tools
-    this.registerTool({
-      name: 'read_file',
-      description: 'Read content from a file',
-      parameters: {
-        path: { type: 'string', required: true, description: 'File path to read' }
-      },
-      execute: async ({ path: filePath }) => {
-        try {
-          const content = await fs.readFile(filePath, 'utf8');
-          return { success: true, content };
-        } catch (error) {
-          return { success: false, error: error.message };
-        }
-      }
-    });
+    // ═══════════════════════════════════════════════════════════════════════
+    // Canonical tool manifest — mirrors PoseidonOrchestrator's live tools.
+    // This drives the AgentForm UI (Design tab → Tools section) so users can
+    // see and toggle exactly what an agent may use. Handlers here are stubs:
+    // Poseidon owns the runtime dispatch via defineChatSessionFunction; this
+    // registry is the SOURCE OF TRUTH for what exists, its category, and
+    // its human-readable description.
+    // ═══════════════════════════════════════════════════════════════════════
+    const stub = async () => ({ success: false, error: 'Dispatched by orchestrator' });
+    const T = (name, category, description) => {
+      this.registerTool({ name, category, description, execute: stub });
+    };
 
-    this.registerTool({
-      name: 'write_file',
-      description: 'Write content to a file. For project outputs, always write to the project output/ folder, never input/.',
-      parameters: {
-        path: { type: 'string', required: true, description: 'File path to write. Use project output/ folder for results.' },
-        content: { type: 'string', required: true, description: 'Content to write' }
-      },
-      execute: async ({ path: filePath, content }) => {
-        try {
-          // Guard: prevent writing to project input/ folders — redirect to output/
-          let resolvedPath = filePath;
-          const inputMatch = filePath.match(/^(.*\/(?:PROJECTS|projects)\/[^/]+)\/input\/(.+)$/i);
-          if (inputMatch) {
-            resolvedPath = inputMatch[1] + '/output/' + inputMatch[2];
-            log.warn(`Redirected from input/ to output/: ${filePath} → ${resolvedPath}`);
-          }
-          await fs.mkdir(require('path').dirname(resolvedPath), { recursive: true });
-          await fs.writeFile(resolvedPath, content, 'utf8');
-          return { success: true, message: `File written: ${resolvedPath}${inputMatch ? ' (redirected from input/ to output/)' : ''}` };
-        } catch (error) {
-          return { success: false, error: error.message };
-        }
-      }
-    });
+    // ── META (Poseidon introspection & skill authoring) ──────────────────
+    T('read_my_brain',       'meta', 'Read a section of your own brain (identity, current_state, boundaries, fine_tuning, skills, environment). Use it before big decisions.');
+    T('update_brain_field',  'meta', 'Update a leaf field in your own brain by dot-path. Rare — reserved for self-refinement.');
+    T('write_skill',         'meta', 'Author a new reusable skill (a named recipe of steps + expected output). Skills are shared platform-wide.');
+    T('list_skills',         'meta', 'List available skills across the platform. Filter by category or query.');
+    T('delete_skill',        'meta', 'Remove a broken skill by id.');
+    T('record_skill_outcome','meta', 'After using a skill: record success | partial | fail with a short note. Feeds the skill ranking.');
 
-    this.registerTool({
-      name: 'list_files',
-      description: 'List files in a directory',
-      parameters: {
-        path: { type: 'string', required: true, description: 'Directory path' },
-        recursive: { type: 'boolean', required: false, description: 'Recursive listing' }
-      },
-      execute: async ({ path: dirPath, recursive = false }) => {
-        try {
-          const files = await fs.readdir(dirPath, { withFileTypes: recursive });
-          return { 
-            success: true, 
-            files: files.map(f => f.isDirectory ? f : f.name) 
-          };
-        } catch (error) {
-          return { success: false, error: error.message };
-        }
-      }
-    });
+    // ── AGENTS (temple population) ───────────────────────────────────────
+    T('create_agent',       'agents', 'Spawn a new agent with a role, system prompt, and tool whitelist.');
+    T('delete_agent',       'agents', 'Retire an agent permanently.');
+    T('list_agents',        'agents', 'List all agents with id, name, role, status.');
+    T('update_agent_field', 'agents', 'Update an agent field by dot-path (persona.description, brain_config.system_prompt, capabilities.tools_allowed, …).');
+    T('dispatch_to_agent',  'agents', 'Hand a specific message to a named agent NOW, bypass the task queue. Use for direct 1:1 delegation.');
 
-    this.registerTool({
-      name: 'delete_file',
-      description: 'Delete a file',
-      parameters: {
-        path: { type: 'string', required: true, description: 'File path to delete' }
-      },
-      execute: async ({ path: filePath }) => {
-        try {
-          await fs.unlink(filePath);
-          return { success: true, message: `File deleted: ${filePath}` };
-        } catch (error) {
-          return { success: false, error: error.message };
-        }
-      }
-    });
+    // ── PROJECTS ─────────────────────────────────────────────────────────
+    T('create_project',        'projects', 'Create a new project with name + mission (vision).');
+    T('list_projects',         'projects', 'List projects with status, completion %, and agent count.');
+    T('plan_project',          'projects', 'THE tool for project kickoffs and restarts: generates a validated task plan with acceptance criteria and agent assignments. Use ONCE per multi-task goal.');
+    T('update_project',        'projects', 'Update a project: field=name | vision | status (active|archived|deleted) | assign_agent | unassign_agent | agent_model | review_model. One tool for the whole project lifecycle.');
+    T('update_project_memory', 'projects', 'Write to a project living memory. section=achievement | decision | blocker | resolve_blocker | next_steps | agent_sync.');
+    T('read_project_memory',   'projects', 'Read a project living memory (summary + recent achievements/decisions/blockers/next_steps).');
+    T('audit_project',         'projects', 'Deep audit of a project: task health, blocker density, agent load, next steps consistency.');
 
-    // Web tools
-    this.registerTool({
-      name: 'web_search',
-      description: 'Search the web using Brave Search API',
-      parameters: {
-        query: { type: 'string', required: true, description: 'Search query' },
-        count: { type: 'number', required: false, description: 'Number of results (default: 5, max: 20)' },
-        freshness: { type: 'string', required: false, description: 'Time filter: day, week, month, year' }
-      },
-      execute: async ({ query, count = 5, freshness = null }) => {
-        try {
-          const braveApiKey = process.env.BRAVE_API_KEY;
-          
-          // If Brave API key exists, use it (better results)
-          if (braveApiKey) {
-            const params = new URLSearchParams({
-              q: query,
-              count: Math.min(count, 20)
-            });
-            
-            if (freshness) {
-              params.append('freshness', freshness);
-            }
-            
-            const response = await axios.get(`https://api.search.brave.com/res/v1/web/search?${params}`, {
-              headers: {
-                'Accept': 'application/json',
-                'X-Subscription-Token': braveApiKey
-              }
-            });
-            
-            const results = response.data.web?.results || [];
-            return {
-              success: true,
-              provider: 'brave',
-              results: results.map(r => ({
-                title: r.title,
-                url: r.url,
-                description: r.description,
-                age: r.age
-              }))
-            };
-          }
-          
-          // Fallback to DuckDuckGo HTML scraping
-          const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
-          const response = await axios.get(url, {
-            headers: { 'User-Agent': 'Mozilla/5.0' }
-          });
-          
-          const $ = cheerio.load(response.data);
-          const results = [];
-          
-          $('.result').slice(0, count).each((i, elem) => {
-            const title = $(elem).find('.result__title').text().trim();
-            const snippet = $(elem).find('.result__snippet').text().trim();
-            const url = $(elem).find('.result__url').text().trim();
-            
-            if (title) {
-              results.push({ 
-                title, 
-                description: snippet, 
-                url 
-              });
-            }
-          });
-          
-          return { 
-            success: true,
-            provider: 'duckduckgo',
-            results 
-          };
-        } catch (error) {
-          return { success: false, error: error.message };
-        }
-      }
-    });
+    // ── TASKS ────────────────────────────────────────────────────────────
+    T('create_task',   'tasks', 'Create a task (always bound to an agent — auto-assigned if omitted).');
+    T('list_tasks',    'tasks', 'List tasks. Filter by status (todo|wip|done) and/or project.');
+    T('update_task',   'tasks', 'Update a task field by name (title, description, status, priority, acceptance_criteria, assigned_to, …). Status is normalized to todo|wip|done.');
+    T('delete_task',   'tasks', 'Delete a task permanently.');
 
-    this.registerTool({
-      name: 'web_fetch',
-      description: 'Fetch content from a URL',
-      parameters: {
-        url: { type: 'string', required: true, description: 'URL to fetch' }
-      },
-      execute: async ({ url }) => {
-        try {
-          const response = await axios.get(url, {
-            headers: { 'User-Agent': 'Mozilla/5.0' },
-            timeout: 10000
-          });
-          
-          const $ = cheerio.load(response.data);
-          
-          // Extract text content
-          const title = $('title').text();
-          const text = $('body').text().replace(/\s+/g, ' ').trim();
-          
-          return { 
-            success: true, 
-            url,
-            title,
-            content: text.substring(0, 5000), // Limit to 5k chars
-            status: response.status
-          };
-        } catch (error) {
-          return { success: false, error: error.message };
-        }
-      }
-    });
+    // ── FILES ────────────────────────────────────────────────────────────
+    T('read_file',   'files', 'Read a text file from the workspace. Path relative to workspace root.');
+    T('write_file',  'files', 'Overwrite a file (creates parent dirs). Use output/ for deliverables, work/ for intermediates.');
+    T('list_files',  'files', 'List files in a workspace folder (with PATH ALIASES like PROJECTS/NEWSROOM/output).');
+    T('edit_file',   'files', 'Search/replace inside an existing file. search_text must appear EXACTLY ONCE — include enough surrounding context.');
 
-    // Calculator tool
-    this.registerTool({
-      name: 'calculator',
-      description: 'Evaluate mathematical expressions',
-      parameters: {
-        expression: { type: 'string', required: true, description: 'Math expression to evaluate' }
-      },
-      execute: async ({ expression }) => {
-        try {
-          const result = evaluate(expression);
-          return { success: true, result, expression };
-        } catch (error) {
-          return { success: false, error: error.message };
-        }
-      }
-    });
+    // ── WEB & FETCH (consolidated: 6 → 2) ───────────────────────────────
+    T('web_search', 'web', 'Search the web. mode="text" (default) returns page results; mode="image" returns direct image URLs embeddable as ![alt](url).');
+    T('web_fetch',  'web', 'Read a URL. Default: page text (HTML stripped). extract="image" returns the best image URL. save_as="filename" persists the body to the output folder.');
 
-    // Time/Date tool
-    this.registerTool({
-      name: 'get_datetime',
-      description: 'Get current date and time',
-      parameters: {
-        timezone: { type: 'string', required: false, description: 'Timezone (default: UTC)' }
-      },
-      execute: async ({ timezone = 'UTC' }) => {
-        const now = new Date();
-        return {
-          success: true,
-          datetime: now.toISOString(),
-          timestamp: now.getTime(),
-          timezone,
-          formatted: now.toLocaleString('en-US', { timeZone: timezone })
-        };
-      }
-    });
+    // ── GIT (consolidated: 4 → 1) ───────────────────────────────────────
+    T('git', 'git', 'Git ops. action="status" | "diff" | "commit" | "push". commit takes {message, files?}, push takes {remote?, branch?}, diff takes {path?}.');
 
-    // JSON tools
-    this.registerTool({
-      name: 'json_parse',
-      description: 'Parse JSON string',
-      parameters: {
-        json_string: { type: 'string', required: true, description: 'JSON string to parse' }
-      },
-      execute: async ({ json_string }) => {
-        try {
-          const parsed = JSON.parse(json_string);
-          return { success: true, data: parsed };
-        } catch (error) {
-          return { success: false, error: error.message };
-        }
-      }
-    });
+    // ── MULTIMEDIA / GENERATION ─────────────────────────────────────────
+    T('generate_image', 'media', 'Generate an image from a prompt (SDXL or similar local model). Saves to output/.');
+    T('edit_image',     'media', 'Edit an existing image with instructions (inpaint/img2img).');
+    T('generate_pptx',  'media', 'Generate a PowerPoint deck from a structured outline.');
+    T('generate_docx',  'media', 'Generate a Word document from a markdown or structured outline.');
+    T('list_models',    'media', 'List models in the local library with id, family, size, capabilities.');
 
-    this.registerTool({
-      name: 'json_stringify',
-      description: 'Convert object to JSON string',
-      parameters: {
-        data: { type: 'object', required: true, description: 'Data to stringify' }
-      },
-      execute: async ({ data }) => {
-        try {
-          const json = JSON.stringify(data, null, 2);
-          return { success: true, json };
-        } catch (error) {
-          return { success: false, error: error.message };
-        }
-      }
-    });
+    // ── COMMS & EXTERNALS ───────────────────────────────────────────────
+    T('send_email',       'comms', 'Send an email via configured SMTP. Requires to, subject, body.');
+    T('list_mcp_servers', 'comms', 'List connected MCP servers and their tools.');
+    T('call_mcp_tool',    'comms', 'Invoke a tool exposed by an MCP server: {server, tool, args}.');
+    T('execute_bash',     'comms', 'Run a shell command in the workspace root (bounded timeout). Prefer specific tools where possible.');
 
-    // Advanced Filesystem Tools
-    const filesystemTools = require('./FilesystemTools');
-    
-    this.registerTool({
-      name: 'create_directory',
-      description: 'Create directory with parent directories',
-      category: 'filesystem',
-      parameters: {
-        path: { type: 'string', required: true, description: 'Directory path to create' }
-      },
-      execute: async ({ path }) => filesystemTools.createDirectory(path)
-    });
+    // ── LOGGING / USER CONTEXT ──────────────────────────────────────────
+    T('get_logs',            'system', 'Read recent log entries (event_type, actor, limit).');
+    T('update_user_context', 'system', 'Record a stable fact about the user (preference, role, working style). Sparingly.');
 
-    this.registerTool({
-      name: 'directory_tree',
-      description: 'Get recursive directory tree structure',
-      category: 'filesystem',
-      parameters: {
-        path: { type: 'string', required: false, description: 'Directory path (default: workspace root)' },
-        excludePatterns: { type: 'array', required: false, description: 'Patterns to exclude' }
-      },
-      execute: async ({ path = '.', excludePatterns = [] }) => filesystemTools.directoryTree(path, excludePatterns)
-    });
-
-    this.registerTool({
-      name: 'search_files',
-      description: 'Search files by pattern (glob-style)',
-      category: 'filesystem',
-      parameters: {
-        path: { type: 'string', required: false, description: 'Search root (default: workspace)' },
-        pattern: { type: 'string', required: true, description: 'Pattern (e.g., *.tsx, **/*.json)' }
-      },
-      execute: async ({ path = '.', pattern }) => filesystemTools.searchFiles(path, pattern)
-    });
-
-    this.registerTool({
-      name: 'get_file_info',
-      description: 'Get file metadata (size, dates, permissions)',
-      category: 'filesystem',
-      parameters: {
-        path: { type: 'string', required: true, description: 'File or directory path' }
-      },
-      execute: async ({ path }) => filesystemTools.getFileInfo(path)
-    });
-
-    this.registerTool({
-      name: 'move_file',
-      description: 'Move or rename file/directory',
-      category: 'filesystem',
-      parameters: {
-        source: { type: 'string', required: true, description: 'Source path' },
-        destination: { type: 'string', required: true, description: 'Destination path' }
-      },
-      execute: async ({ source, destination }) => filesystemTools.moveFile(source, destination)
-    });
-
-    this.registerTool({
-      name: 'run_javascript',
-      description: 'Execute JavaScript/Node.js code in a sandbox (timeout: 60s max). For shell commands use run_bash instead.',
-      category: 'code',
-      parameters: {
-        code: { type: 'string', required: true, description: 'JavaScript code to execute' },
-        timeout_seconds: { type: 'number', required: false, description: 'Timeout in seconds (default: 5)' }
-      },
-      execute: async ({ code, timeout_seconds = 5 }) => filesystemTools.runJavaScript(code, timeout_seconds)
-    });
-
-    this.registerTool({
-      name: 'run_bash',
-      description: 'Execute a bash/shell command directly on the machine. Use for file ops, npm/python installs, git commands, running scripts. stdout + stderr returned. Timeout max 120s.',
-      category: 'code',
-      parameters: {
-        command: { type: 'string', required: true, description: 'Shell command to run' },
-        cwd:     { type: 'string', required: false, description: 'Working directory (default: aquarium root)' },
-        timeout_seconds: { type: 'number', required: false, description: 'Timeout in seconds (default: 30, max: 120)' }
-      },
-      execute: async ({ command, cwd, timeout_seconds = 30 }) => {
-        const { execSync } = require('child_process');
-        const path = require('path');
-        const AQUARIUM = require('../aquarium');
-        const workDir = cwd ? path.resolve(cwd) : path.dirname(AQUARIUM.TASKS);
-        const timeout = Math.min(Math.max(1, timeout_seconds), 120) * 1000;
-        try {
-          const stdout = execSync(command, {
-            cwd: workDir, timeout, encoding: 'utf8',
-            maxBuffer: 2 * 1024 * 1024,
-            env: { ...process.env, PATH: process.env.PATH || '/usr/local/bin:/usr/bin:/bin' }
-          });
-          return { success: true, stdout: stdout.slice(0, 8000), stderr: '', cwd: workDir };
-        } catch (e) {
-          return {
-            success: false,
-            stdout: (e.stdout || '').slice(0, 4000),
-            stderr: (e.stderr || e.message || '').slice(0, 4000),
-            exit_code: e.status || 1
-          };
-        }
-      }
-    });
-
-    this.registerTool({
-      name: 'read_media_file',
-      description: 'Read image/audio file as base64',
-      category: 'filesystem',
-      parameters: {
-        path: { type: 'string', required: true, description: 'Media file path' }
-      },
-      execute: async ({ path }) => filesystemTools.readMediaFile(path)
-    });
-
-    // HuggingFace AI Tools
-    const hfInference = require('./HuggingFaceInference');
-    
-    this.registerTool({
-      name: 'hf_search_models',
-      description: 'Search HuggingFace models',
-      category: 'ai',
-      parameters: {
-        query: { type: 'string', required: true, description: 'Search query' },
-        task: { type: 'string', required: false, description: 'Filter by task (text-generation, etc.)' },
-        limit: { type: 'number', required: false, description: 'Number of results (default: 20)' }
-      },
-      execute: async ({ query, task = 'text-generation', limit = 20 }) => {
-        return await hfInference.searchModels(query, { task, limit });
-      }
-    });
-
-    this.registerTool({
-      name: 'hf_generate',
-      description: 'Generate text with HuggingFace Inference API',
-      category: 'ai',
-      parameters: {
-        model: { type: 'string', required: true, description: 'Model ID (e.g., mistralai/Mistral-7B-Instruct-v0.2)' },
-        input: { type: 'string', required: true, description: 'Input prompt' },
-        max_tokens: { type: 'number', required: false, description: 'Max tokens (default: 500)' },
-        temperature: { type: 'number', required: false, description: 'Temperature (default: 0.7)' }
-      },
-      execute: async ({ model, input, max_tokens = 500, temperature = 0.7 }) => {
-        try {
-          const result = await hfInference.generateText(model, input, {
-            max_new_tokens: max_tokens,
-            temperature
-          });
-          return { success: true, output: result };
-        } catch (error) {
-          return { success: false, error: error.message };
-        }
-      }
-    });
-
-    this.registerTool({
-      name: 'hf_generate_code',
-      description: 'Generate code with HuggingFace models',
-      category: 'ai',
-      parameters: {
-        prompt: { type: 'string', required: true, description: 'Code generation prompt' },
-        language: { type: 'string', required: false, description: 'Programming language (default: python)' },
-        max_tokens: { type: 'number', required: false, description: 'Max tokens (default: 1000)' }
-      },
-      execute: async ({ prompt, language = 'python', max_tokens = 1000 }) => {
-        try {
-          const result = await hfInference.generateCode(prompt, language, { max_tokens });
-          return { success: true, code: result };
-        } catch (error) {
-          return { success: false, error: error.message };
-        }
-      }
-    });
-
-    // Local Model Scanner Tools
-    const localModelScanner = require('./LocalModelScanner');
-    
-    this.registerTool({
-      name: 'scan_local_models',
-      description: 'Scan PC for GGUF/GGML models (HF cache, Ollama, LM Studio, etc.)',
-      category: 'ai',
-      parameters: {},
-      execute: async () => {
-        try {
-          const models = await localModelScanner.scanSystem();
-          return { 
-            success: true, 
-            models, 
-            count: models.length,
-            stats: localModelScanner.getStats()
-          };
-        } catch (error) {
-          return { success: false, error: error.message };
-        }
-      }
-    });
-
-    this.registerTool({
-      name: 'find_local_model',
-      description: 'Search for specific model by name',
-      category: 'ai',
-      parameters: {
-        searchTerm: { type: 'string', required: true, description: 'Model name or partial match' }
-      },
-      execute: async ({ searchTerm }) => {
-        try {
-          const models = await localModelScanner.findModel(searchTerm);
-          return { success: true, models, count: models.length };
-        } catch (error) {
-          return { success: false, error: error.message };
-        }
-      }
-    });
-
-    this.registerTool({
-      name: 'get_model_stats',
-      description: 'Get statistics about local models',
-      category: 'ai',
-      parameters: {},
-      execute: async () => {
-        try {
-          const stats = localModelScanner.getStats();
-          return { success: true, stats };
-        } catch (error) {
-          return { success: false, error: error.message };
-        }
-      }
-    });
-
-    log.info(`✅ Registered ${this.tools.size} built-in tools`);
+    log.info(`✅ Registered ${this.tools.size} canonical tools (mirrors PoseidonOrchestrator)`);
   }
 
   /**

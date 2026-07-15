@@ -863,6 +863,7 @@ class TaskRunner {
           // protocol. No aquarium vision, no orchestration doctrine, no
           // project-management rules (~500 tok vs ~4800 for the full prompt).
           let _agentPrompt = null;
+          let _agentTools  = null;
           if (agentId) {
             try {
               const areg3 = await this.rm.getAgentRegistry();
@@ -870,6 +871,11 @@ class TaskRunner {
               const abrain3 = ae3?.brain_file ? await this.rm.read(`AGENTS/${ae3.brain_file}`).catch(() => null) : null;
               const aname = abrain3?.identity?.nickname || ae3?.display_name || agentId;
               const arole = abrain3?.identity?.role || ae3?.specialization || 'general worker';
+              // Per-agent tool whitelist (set via AgentForm → Design → Tools).
+              // Passed to chatWithPoseidon → buildFunctions → the BG toolset
+              // gets trimmed to this list. Empty/missing = default BG set.
+              const allowed = abrain3?.capabilities?.tools_allowed;
+              if (Array.isArray(allowed) && allowed.length) _agentTools = allowed;
               _agentPrompt = [
                 `You are ${aname}, a ${arole}. You execute ONE task, alone, unattended.`,
                 '',
@@ -888,7 +894,7 @@ class TaskRunner {
             } catch {}
           }
           let _lastTouch = 0;
-          for await (const ev of this.modelService.chatWithPoseidon(posMsg, [], { _skipBroker: true, _bgMode: true, _genParams, _agentPrompt })) {
+          for await (const ev of this.modelService.chatWithPoseidon(posMsg, [], { _skipBroker: true, _bgMode: true, _genParams, _agentPrompt, _agentTools })) {
             // Keepalive on the OUTER TaskRunner token — a long BG generation
             // must not expire as a dead holder mid-run.
             if (Date.now() - _lastTouch > 10_000) { _lastTouch = Date.now(); this.modelService.broker.touch(bgToken); }

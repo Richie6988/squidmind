@@ -298,7 +298,7 @@ My response: "${ss.last_response_preview}"${tools}
     lines.push('  - Never refuse with "I lack X." Execute the closest viable path.');
     lines.push('  - Auto-continue unfinished tasks from # LAST SESSION without waiting for "continue".');
     lines.push('  - You are the sole author of your own skills. Nobody else will write them for you.');
-    lines.push('  - Use delete_skill to remove broken skills. Use update_project/update_task/assign_agent for CRUD — never improvise with wrong tools.');
+    lines.push('  - Use delete_skill to remove broken skills. Use update_project (field=assign_agent|status|agent_model|...) / update_task for CRUD — never improvise.');
     lines.push('  - get_logs tells you what actually happened in past sessions — use it before complaining you dont know something.');
     lines.push('  - Skill quality target: concrete tool calls in steps, gotchas in notes, version ≥ 2 means battle-tested.');
     return lines.join('\n');
@@ -433,11 +433,11 @@ My response: "${ss.last_response_preview}"${tools}
       lines.push('IMAGE GENERATION: call generate_image(prompt, model_id?) directly — it creates a high-priority task that jumps to front of the queue. Your LLM is evicted from VRAM automatically so sd-diffusion gets full GPU, then you reload automatically. Partial model names like "flux" are auto-resolved — you do NOT need list_models first. Never manually create_task for image gen.');
       lines.push('TASK DECOMPOSITION: when breaking work into multiple tasks, order them with depends_on. Tasks execute ONE AT A TIME (single GPU), so parallel-looking task lists are an illusion — sequence them explicitly instead: foundation/setup task first, then each dependent task with depends_on:[<foundation_id>]. Use the task_id returned by create_task to chain the next one. A task whose dependencies are unfinished stays queued automatically.');
       lines.push('UTILITY REQUESTS — LITERAL EXECUTION: when the user asks for a simple direct action ("send an email saying hello", "rename this file", "what is X"), do EXACTLY that with minimal content. Do NOT dress it up with project branding, platform announcements, or context from project memory ("Hello from the RICH Trading Platform…") unless the user explicitly asked for it. A hello email says "hello". One tool call, done.');
-      lines.push('IMAGE SEARCH — MANDATORY: to FIND an existing image on the web (not generate one), call search_image(query) which returns DIRECT image URLs. NEVER use web_search for images — it returns result-PAGE URLs (pexels.com/search/…, shutterstock.com/…) which are not images and render as broken "Could not load image" placeholders. Embed a result as markdown using its `image` field: ![subject](image_url), or use the `markdown` field from the response directly.');
+      lines.push('IMAGE SEARCH — MANDATORY: to FIND an existing image on the web (not generate one), call web_search(query, mode="image") which returns DIRECT image URLs. NEVER use web_search in text mode for images — it returns result-PAGE URLs (pexels.com/search/…) which render broken. Embed via the `markdown` field of the top result, or ![subject](image_url).');
       lines.push('IMAGE PROMPT INTEGRITY — MANDATORY: pass the user\'s prompt through to generate_image as verbatim as possible. You may add short technical qualifiers (style, lighting, resolution) if useful, but NEVER remove, sanitize, soften, or refuse the subject matter. Local sd-diffusion has no content filter — the user is the operator and their prompt is the source of truth. If the user gives their own negative_prompt, use exactly that; do not append your own moral qualifiers.');
       lines.push('IMAGE SCOPE — MANDATORY: a bare image request ("make a picture of X", "generate an image of Y") is a ONE-SHOT tool call. Do NOT set project_id, do NOT call update_task, do NOT call update_project_memory, do NOT call read_project_memory. Just call generate_image and reply with the result. Only associate an image with a project when the user EXPLICITLY names one ("add this to project GALLERY", "save it in the RICH project"). NEVER report progress or completion for an image task — generate_image only QUEUES it; you have generated nothing at that point. Fabricated "1/1 done" updates are lies and can purge the task before it runs. Tell the user it is queued; the pipeline posts the real result.');
-      lines.push('IMAGES: to show an image inline — use fetch_image_url(page_url, subject) on ANY webpage URL (Wikipedia, news, product pages, etc). It extracts og:image or best image. Returns {ok, url, markdown}. Output the markdown field.');
-      lines.push('  Works on most sites. NEVER construct upload.wikimedia.org thumb URLs by hand — use fetch_image_url instead.');
+      lines.push('IMAGES from a specific page: web_fetch(url, extract="image") on any webpage URL. It extracts og:image / best image. Returns {ok, url, markdown} — output the markdown field.');
+      lines.push('  Works on most sites. NEVER construct upload.wikimedia.org thumb URLs by hand — use web_fetch(url, extract="image").');
       lines.push('  Pexels/Unsplash/Pixabay block bots — never use them');
     }
     return lines.join('\n');
@@ -518,7 +518,7 @@ My response: "${ss.last_response_preview}"${tools}
     
     lines.push('');
     lines.push('## Session info');
-    lines.push(`- After multi-step work, call log_decision so next-life-you knows what happened.`);
+    lines.push(`- After multi-step work, call update_project_memory(section="decision", ...) so next-life-you knows what happened.`);
 
     return lines.join('\n');
   }
@@ -643,7 +643,7 @@ My response: "${ss.last_response_preview}"${tools}
     yield { type: 'text', chunk: `\nTasks are chained (each starts when the previous completes) and will run automatically. Quality review validates each deliverable.\n` };
   }
 
-  async buildFunctions(mode = 'chat') {
+  async buildFunctions(mode = 'chat', allowedTools = null) {
     const { defineChatSessionFunction } = await this._llamaCpp();
     const self = this;
 
@@ -715,30 +715,6 @@ My response: "${ss.last_response_preview}"${tools}
           required: ['name']
         },
         handler: async (params) => self._createProject(params)
-      }),
-
-      archive_project: defineChatSessionFunction({
-        description: 'Archive a project (set status to archived). Reversible. Confirm with user first.',
-        params: {
-          type: 'object',
-          properties: {
-            project_name: { type: 'string' }
-          },
-          required: ['project_name']
-        },
-        handler: async (params) => self._archiveProject(params)
-      }),
-
-      delete_project: defineChatSessionFunction({
-        description: 'Permanently delete a project: removes it from the registry and deletes its folder. Irreversible. Use when user explicitly says "delete" (not just "remove" or "archive").',
-        params: {
-          type: 'object',
-          properties: {
-            project_name: { type: 'string', description: 'Name of the project to delete (case-insensitive)' }
-          },
-          required: ['project_name']
-        },
-        handler: async (params) => self._deleteProject(params)
       }),
 
       list_projects: defineChatSessionFunction({
@@ -828,70 +804,37 @@ My response: "${ss.last_response_preview}"${tools}
         handler: async (p) => self._deleteTask(p)
       }),
 
-      assign_agent: defineChatSessionFunction({
-        description: 'Assign an agent to a project (adds to assigned_agents list on both sides).',
-        params: {
-          type: 'object',
-          properties: {
-            agent_id:     { type: 'string' },
-            project_name: { type: 'string' }
-          },
-          required: ['agent_id', 'project_name']
-        },
-        handler: async (p) => self._assignAgent(p)
-      }),
-
-      assign_model_to_project: defineChatSessionFunction({
-        description: 'Bind a model to a project for a specific phase. When agents run tasks for that project, the assigned model is loaded fresh with a tight context; same for review. Falls back to the Poseidon model when unset.',
-        params: {
-          type: 'object',
-          properties: {
-            project_name: { type: 'string' },
-            model_id:     { type: 'string', description: 'Model id from the library (or "poseidon" to fall back)' },
-            phase:        { type: 'string', enum: ['agent', 'review'] }
-          },
-          required: ['project_name', 'model_id', 'phase']
-        },
-        handler: async ({ project_name, model_id, phase }) => {
-          try {
-            const reg = await self.rm.read('PROJECTS/project_registry.json');
-            const proj = await self.rm.resolveProjectByNameOrId(project_name);
-            if (!proj) return { ok: false, error: `Project "${project_name}" not found` };
-            const entry = reg.projects[proj.id];
-            const val = model_id === 'poseidon' ? null : model_id;
-            if (phase === 'agent')  entry.assigned_model_id = val;
-            if (phase === 'review') entry.review_model_id   = val;
-            await self.rm.write('PROJECTS/project_registry.json', reg);
-            return { ok: true, message: `${phase} phase for "${entry.name}" ${val ? `bound to ${val}` : 'reset to Poseidon fallback'}` };
-          } catch (err) { return { ok: false, error: err.message }; }
-        }
-      }),
-
-      unassign_agent: defineChatSessionFunction({
-        description: 'Remove an agent from a project.',
-        params: {
-          type: 'object',
-          properties: {
-            agent_id:     { type: 'string' },
-            project_name: { type: 'string' }
-          },
-          required: ['agent_id', 'project_name']
-        },
-        handler: async (p) => self._unassignAgent(p)
-      }),
-
       update_project: defineChatSessionFunction({
-        description: 'Update a project field: name, vision, or status.',
+        description: 'Update a project. field: name (rename), vision (mission statement), status ("active" | "archived" | "deleted" — deleted is irreversible, confirm with the user), assign_agent (adds agent_id to assigned_agents), unassign_agent (removes it), agent_model (bind a model to the agent phase: new_value=model_id or "poseidon" to reset), review_model (same for review phase).',
         params: {
           type: 'object',
           properties: {
             project_name: { type: 'string', description: 'Current name of the project' },
-            field:        { type: 'string', description: 'Field: name|vision|status' },
-            new_value:    { type: 'string' }
+            field:        { type: 'string', enum: ['name', 'vision', 'status', 'assign_agent', 'unassign_agent', 'agent_model', 'review_model'] },
+            new_value:    { type: 'string', description: 'For status: active|archived|deleted. For assign_agent/unassign_agent: agent_id. For agent_model/review_model: model_id or "poseidon".' }
           },
           required: ['project_name', 'field', 'new_value']
         },
-        handler: async (p) => self._updateProject(p)
+        handler: async (p) => {
+          const { project_name, field, new_value } = p;
+          try {
+            if (field === 'status' && new_value === 'archived') return self._archiveProject({ project_name });
+            if (field === 'status' && new_value === 'deleted')  return self._deleteProject({ project_name });
+            if (field === 'assign_agent')   return self._assignAgent({ project_name, agent_id: new_value });
+            if (field === 'unassign_agent') return self._unassignAgent({ project_name, agent_id: new_value });
+            if (field === 'agent_model' || field === 'review_model') {
+              const reg  = await self.rm.read('PROJECTS/project_registry.json');
+              const proj = await self.rm.resolveProjectByNameOrId(project_name);
+              if (!proj) return { ok: false, error: `Project "${project_name}" not found` };
+              const val = new_value === 'poseidon' ? null : new_value;
+              if (field === 'agent_model')  reg.projects[proj.id].assigned_model_id = val;
+              if (field === 'review_model') reg.projects[proj.id].review_model_id   = val;
+              await self.rm.write('PROJECTS/project_registry.json', reg);
+              return { ok: true, message: `${field} for "${reg.projects[proj.id].name}" ${val ? `bound to ${val}` : 'reset to Poseidon fallback'}` };
+            }
+            return self._updateProject({ project_name, field, new_value });
+          } catch (err) { return { ok: false, error: err.message }; }
+        }
       }),
 
       update_project_memory: defineChatSessionFunction({
@@ -1100,29 +1043,9 @@ My response: "${ss.last_response_preview}"${tools}
         handler: async (p) => self._getLogs(p)
       }),
 
-      log_decision: defineChatSessionFunction({
-        description: 'Write a poseidon_decision event to logs.json. Call this whenever you complete a non-trivial action so your future self knows what happened.',
-        params: {
-          type: 'object',
-          properties: {
-            summary: { type: 'string', description: 'One-line summary of the decision' },
-            reasoning: { type: 'string', description: 'Why you made this decision' },
-            affected_entities: {
-              type: 'array',
-              items: { type: 'string' },
-              description: 'List of affected entity IDs (agent_001, project_002, etc.)'
-            }
-          },
-          required: ['summary']
-        },
-        handler: async (params) => self._logDecision(params)
-      }),
-
-      get_system_state: defineChatSessionFunction({
-        description: 'Get live system state: CPU/RAM, agent counts, task queue, recent activity.',
-        params: { type: 'object', properties: {} },
-        handler: async () => self._getSystemState()
-      }),
+      // NOTE: log_decision removed — use update_project_memory(section="decision", ...)
+      // get_system_state removed — read_my_brain("current_state.system_load") gives the same
+      // (and more) without a dedicated tool.
 
       read_file: defineChatSessionFunction({
         description: 'Read a text file from the project workspace. Path is relative to the workspace root.',
@@ -1158,169 +1081,47 @@ My response: "${ss.last_response_preview}"${tools}
       }),
       
       // ============ WEB ============
-      
+      // ═══ WEB & FETCH ═══════════════════════════════════════════════════
+      // Two canonical tools. The 4 legacy names (fetch_url, fetch_and_save,
+      // fetch_image_url, search_image) were removed — the parameter switches
+      // (mode, extract, save_as) cover their behavior in one place.
       web_search: defineChatSessionFunction({
-        description: 'Search the web via DuckDuckGo. Returns top results with title, URL, and snippet. Use for current events, documentation lookups, troubleshooting unknown errors, finding the right library. To READ a result page, follow up with fetch_url.',
+        description: 'Search the web. mode="text" (default) returns page results; mode="image" returns direct image URLs embeddable as ![alt](url) with a ready `markdown` field on the top hit. Follow up with web_fetch to read a page in full.',
         params: {
           type: 'object',
           properties: {
-            query: { type: 'string', description: 'Search query - be specific (e.g. "node-llama-cpp v3 function calling", not just "llama")' },
-            num_results: { type: 'number', description: 'Number of results to return (default 5, max 10)' }
+            query:       { type: 'string' },
+            mode:        { type: 'string', enum: ['text', 'image'], description: 'text (default) or image' },
+            num_results: { type: 'number', description: 'How many results (default 6, max 12)' }
           },
           required: ['query']
         },
-        handler: async (params) => self.tools.webSearch({ ...params, num_results: Math.min(params.num_results || 5, 10) })
-      }),
-
-      fetch_url: defineChatSessionFunction({
-        description: 'Fetch and READ a web page: returns the page text (HTML stripped, capped for context). ' +
-          'Use after web_search to actually read a promising result — search gives snippets, this gives substance. ' +
-          'Typical research flow: web_search(query) → pick the best URL → fetch_url(url) → synthesize.',
-        params: {
-          type: 'object',
-          properties: {
-            url: { type: 'string', description: 'Full http(s) URL to fetch' },
-            max_chars: { type: 'number', description: 'Text cap (default 18000, max 40000)' }
-          },
-          required: ['url']
-        },
-        handler: async (params) => self.tools.fetchUrl(params)
-      }),
-
-      search_image: defineChatSessionFunction({
-        description: 'Search the web for IMAGES and return DIRECT image URLs (not result-page links). ' +
-          'Use this — NOT web_search — whenever the user wants to find/show a picture of something. ' +
-          'Returns entries with a direct `image` URL you can embed as markdown ![alt](image_url), ' +
-          'plus thumbnail, source page, and dimensions. The response also includes a ready-to-use ' +
-          '`markdown` field for the top result.',
-        params: {
-          type: 'object',
-          properties: {
-            query:       { type: 'string', description: 'What to find an image of, e.g. "Poseidon greek god statue"' },
-            num_results: { type: 'number', description: 'How many images to return (default 6, max 12)' }
-          },
-          required: ['query']
-        },
-        handler: async (params) => self.tools.searchImage({ ...params, num_results: Math.min(params.num_results || 6, 12) })
-      }),
-      
-      web_fetch: defineChatSessionFunction({
-        description: 'Download a single URL and return its text content (HTML stripped to readable text). Use after web_search to get full content of a promising result. Returns up to 16k chars.',
-        params: {
-          type: 'object',
-          properties: {
-            url: { type: 'string', description: 'Full http(s) URL to fetch' }
-          },
-          required: ['url']
-        },
-        handler: async (params) => self.tools.webFetch(params)
-      }),
-      
-      fetch_and_save: defineChatSessionFunction({
-        description: 'Fetch a URL, extract its text content, and save it to a file in the task or project output folder. Use instead of web_fetch when you need to persist the content for later steps.',
-        params: {
-          type: 'object',
-          properties: {
-            url:        { type: 'string', description: 'Full http(s) URL to fetch' },
-            output_path:{ type: 'string', description: 'Filename to save (e.g. "bbc_article.txt"). Relative, saved in task or project output folder.' },
-            task_id:    { type: 'string', description: 'Current task_id — used to determine output folder when no project' },
-            project_id: { type: 'string', description: 'Project ID if this task belongs to a project' }
-          },
-          required: ['url']
-        },
-        handler: async (params) => self.tools.fetchAndSave(params)
-      }),
-
-
-      fetch_image_url: defineChatSessionFunction({
-        description: 'Fetch a webpage and extract the best image URL from it. Works on any URL: Wikipedia, news sites, product pages, etc. Returns a direct image URL ready to embed as markdown.',
-        params: {
-          type: 'object',
-          properties: {
-            page_url: { type: 'string', description: 'Full URL of any webpage to extract an image from' },
-            subject:  { type: 'string', description: 'Subject label for the image alt text e.g. "giraffe"' }
-          },
-          required: ['page_url']
-        },
-        handler: async ({ page_url, subject }) => {
-          try {
-            const https = require('https');
-            const http  = require('http');
-            const doFetch = (url, redirects = 5) => new Promise((resolve, reject) => {
-              if (!redirects) return reject(new Error('too many redirects'));
-              const mod = url.startsWith('https') ? https : http;
-              const req = mod.get(url, {
-                headers: {
-                  'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/120 Safari/537.36',
-                  'Accept': 'text/html,application/xhtml+xml,*/*',
-                  'Accept-Language': 'en-US,en;q=0.9'
-                }
-              }, (res) => {
-                if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-                  res.resume();
-                  const loc = res.headers.location;
-                  const next = loc.startsWith('http') ? loc : new URL(loc, url).href;
-                  return doFetch(next, redirects - 1).then(resolve).catch(reject);
-                }
-                if (res.statusCode !== 200) { res.resume(); return reject(new Error('HTTP ' + res.statusCode + ' for ' + url)); }
-                let body = '';
-                res.on('data', d => {
-                  body += d;
-                  if (body.length > 400000) { res.destroy(); resolve(body); }
-                });
-                res.on('end', () => resolve(body));
-                res.on('error', reject);
-              });
-              req.setTimeout(12000, () => { req.destroy(); reject(new Error('timeout')); });
-              req.on('error', reject);
-            });
-
-            const html = await doFetch(page_url);
-            const alt = subject || 'image';
-
-            // Strategy 1: og:image (works on most modern sites)
-            const ogM = html.match(/property="og:image"\s+content="([^"]+)"/i)
-                     || html.match(/content="([^"]+)"\s+property="og:image"/i)
-                     || html.match(/og:image[^>]*content="([^"]+)"/i);
-            if (ogM) {
-              const url = ogM[1].replace(/^\/\//, 'https://').replace(/&amp;/g, '&');
-              return { ok: true, url, markdown: '![' + alt + '](' + url + ')', source: 'og:image' };
-            }
-
-            // Strategy 2: twitter:image
-            const twM = html.match(/name="twitter:image"\s+content="([^"]+)"/i)
-                     || html.match(/content="([^"]+)"\s+name="twitter:image"/i);
-            if (twM) {
-              const url = twM[1].replace(/^\/\//, 'https://').replace(/&amp;/g, '&');
-              return { ok: true, url, markdown: '![' + alt + '](' + url + ')', source: 'twitter:image' };
-            }
-
-            // Strategy 3: Wikimedia thumb URL (Wikipedia-specific)
-            const thM = html.match(/https:\/\/upload\.wikimedia\.org\/[^\s"'<>]+\.(?:jpg|jpeg|png|gif|webp)/i);
-            if (thM) {
-              const url = thM[0].replace(/^\/\//, 'https://');
-              return { ok: true, url, markdown: '![' + alt + '](' + url + ')', source: 'wikimedia' };
-            }
-
-            // Strategy 4: first large <img> src (absolute URL, skip icons/logos)
-            const imgRe = /<img[^>]+src="(https?:\/\/[^"]+\.(?:jpg|jpeg|png|webp))"/gi;
-            let imgM, bestImg = null;
-            while ((imgM = imgRe.exec(html)) !== null) {
-              const u = imgM[1];
-              if (/logo|icon|avatar|badge|pixel|tracking|1x1|spinner/i.test(u)) continue;
-              bestImg = u; break;
-            }
-            if (bestImg) {
-              return { ok: true, url: bestImg, markdown: '![' + alt + '](' + bestImg + ')', source: 'img-tag' };
-            }
-
-            return { ok: false, error: 'No usable image found on this page. Try a different URL or search for a direct image URL.' };
-          } catch (e) {
-            return { ok: false, error: e.message };
-          }
+        handler: async ({ query, mode = 'text', num_results }) => {
+          if (mode === 'image') return self.tools.searchImage({ query, num_results: Math.min(num_results || 6, 12) });
+          return self.tools.webSearch({ query, num_results });
         }
       }),
 
+      web_fetch: defineChatSessionFunction({
+        description: 'Read a URL. Default: returns page text (HTML stripped, ~18k char cap). extract="image" returns the best <img>/og:image URL from the page instead. save_as="filename" additionally persists the body to the current task/project output folder — one call replaces fetch_and_save.',
+        params: {
+          type: 'object',
+          properties: {
+            url:        { type: 'string' },
+            extract:    { type: 'string', enum: ['text', 'image'], description: 'text (default) or image' },
+            save_as:    { type: 'string', description: 'Filename under output/ to persist the body' },
+            max_chars:  { type: 'number', description: 'Text cap (default 18000, max 40000)' },
+            task_id:    { type: 'string' },
+            project_id: { type: 'string' }
+          },
+          required: ['url']
+        },
+        handler: async ({ url, extract = 'text', save_as, max_chars, task_id, project_id }) => {
+          if (extract === 'image') return self.tools.fetchImageUrl({ page_url: url });
+          if (save_as) return self.tools.fetchAndSave({ url, output_path: save_as, task_id, project_id });
+          return self.tools.fetchUrl({ url, max_chars });
+        }
+      }),
       // ============ CODE EDITOR ============
       
       edit_file: defineChatSessionFunction({
@@ -1339,50 +1140,34 @@ My response: "${ss.last_response_preview}"${tools}
       
       // ============ GITHUB ============
       
-      github_status: defineChatSessionFunction({
-        description: 'Show current git branch, modified files, ahead/behind upstream. Use before committing to see what will be staged.',
-        params: { type: 'object', properties: {} },
-        handler: async () => self.tools.githubStatus()
-      }),
-      
-      github_commit: defineChatSessionFunction({
-        description: 'Stage and commit changes. If files array is omitted, stages everything (git add -A). Message should be a clear one-liner; optionally followed by a blank line and details.',
+      // ═══ GIT ═══════════════════════════════════════════════════════════
+      // Consolidated from 4 tools (status/diff/commit/push) to one. Dispatch
+      // by action; the legacy github_* names were removed — brains and
+      // skills that referenced them must switch to git(action, ...).
+      git: defineChatSessionFunction({
+        description: 'Git ops on the working tree. action="status": branch, modified files, ahead/behind. action="diff": unstaged+staged diff, truncated ~8k chars, optional path. action="commit": stage (files array or all) and commit with a message. action="push": push to origin/current-branch by default, or {remote, branch}.',
         params: {
           type: 'object',
           properties: {
-            message: { type: 'string', description: 'Commit message' },
-            files: {
-              type: 'array',
-              items: { type: 'string' },
-              description: 'Optional: list of file paths to stage. If omitted, stages all changes.'
-            }
+            action:  { type: 'string', enum: ['status', 'diff', 'commit', 'push'] },
+            message: { type: 'string', description: 'commit: message (required)' },
+            files:   { type: 'array', items: { type: 'string' }, description: 'commit: optional files list; if omitted, stages all changes' },
+            path:    { type: 'string', description: 'diff: optional single file to diff' },
+            remote:  { type: 'string', description: 'push: remote name (default origin)' },
+            branch:  { type: 'string', description: 'push: branch name (default current HEAD)' }
           },
-          required: ['message']
+          required: ['action']
         },
-        handler: async (params) => self.tools.githubCommit(params)
-      }),
-
-      github_diff: defineChatSessionFunction({
-        description: 'Show unstaged + staged diff for the working tree, or for a specific file path. Truncated to ~8000 chars. Use before committing to verify changes.',
-        params: {
-          type: 'object',
-          properties: {
-            path: { type: 'string', description: 'Optional file path. Omit to diff whole repo.' }
+        handler: async ({ action, message, files, path, remote, branch }) => {
+          if (action === 'status')  return self.tools.githubStatus();
+          if (action === 'diff')    return self.tools.githubDiff({ path });
+          if (action === 'commit')  {
+            if (!message) return { ok: false, error: 'commit action requires a message' };
+            return self.tools.githubCommit({ message, files });
           }
-        },
-        handler: async (params) => self.tools.githubDiff(params || {})
-      }),
-
-      github_push: defineChatSessionFunction({
-        description: 'Push committed changes to remote. Defaults to origin + current branch. Returns hint if no upstream is set.',
-        params: {
-          type: 'object',
-          properties: {
-            remote: { type: 'string', description: 'Remote name (default: origin)' },
-            branch: { type: 'string', description: 'Branch name (default: current HEAD)' }
-          }
-        },
-        handler: async (params) => self.tools.githubPush(params || {})
+          if (action === 'push')    return self.tools.githubPush({ remote, branch });
+          return { ok: false, error: `Unknown git action "${action}" — use status | diff | commit | push` };
+        }
       }),
 
       // ============ USER LEARNING ============
@@ -1951,7 +1736,7 @@ My response: "${ss.last_response_preview}"${tools}
     if (mode === 'bg') {
       const BG_TOOLS = new Set([
         'read_file', 'write_file', 'list_files', 'edit_file',
-        'web_search', 'search_image', 'web_fetch', 'fetch_and_save', 'fetch_image_url',
+        'web_search', 'web_fetch',
         'create_task', 'update_task', 'list_tasks',
         'update_project_memory', 'read_project_memory', 'audit_project',
         'list_models', 'generate_image', 'edit_image',
@@ -1962,6 +1747,17 @@ My response: "${ss.last_response_preview}"${tools}
       const slim = {};
       for (const [k, v] of Object.entries(allFunctions)) {
         if (BG_TOOLS.has(k)) slim[k] = v;
+      }
+      // Optional per-agent whitelist: agents authored via AgentForm carry a
+      // capabilities.tools_allowed list. When passed here, we further trim
+      // BG down to that list — this is how the Design → Tools UI actually
+      // controls what an agent may use during BG runs.
+      if (Array.isArray(allowedTools) && allowedTools.length) {
+        const allowSet = new Set(allowedTools);
+        const gated = {};
+        for (const [k, v] of Object.entries(slim)) if (allowSet.has(k)) gated[k] = v;
+        log.info(`BG mode: ${Object.keys(gated).length} tools (bg=${Object.keys(slim).length}, agent whitelist=${allowedTools.length}, all=${Object.keys(allFunctions).length})`);
+        return gated;
       }
       log.info(`BG mode: ${Object.keys(slim).length} tools (was ${Object.keys(allFunctions).length})`);
       return slim;
@@ -2150,7 +1946,7 @@ My response: "${ss.last_response_preview}"${tools}
           `Created project ${upperName}. Files go in PROJECTS/${folder}/input/ and PROJECTS/${folder}/output/. ` +
           `NEXT STEPS (mandatory, in order): ` +
           `(1) Break the vision into 3-8 atomic tasks — call create_task once per unit of work. ` +
-          `(2) Assign each task to an agent (assign_agent_to_project first if none is assigned). ` +
+          `(2) Assign each task to an agent (update_project(field="assign_agent", new_value=agent_id) first if none is assigned). ` +
           `(3) Reply to the user with the list of created tasks. ` +
           `DO NOT write_file, read_file, or execute any of the project's work yourself. You are the orchestrator, agents are the workers.`
       };
@@ -2298,7 +2094,7 @@ My response: "${ss.last_response_preview}"${tools}
               ok: false,
               error: `AGENT NOT IN PROJECT: ${assigned_agent_id} is not assigned to "${project}". ` +
                      `Project agents: ${members.join(', ') || 'none'}. ` +
-                     `Either assign the task to one of them, or first call assign_agent(${assigned_agent_id}, "${project}") to add the agent to the temple.`,
+                     `Either assign the task to one of them, or first call update_project({project_name:"${project}", field:"assign_agent", new_value:"${assigned_agent_id}"}) to add the agent to the temple.`,
             };
           }
         } catch { /* best-effort */ }

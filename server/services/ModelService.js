@@ -1691,7 +1691,7 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
     });
   }
 
-  async *chatWithPoseidon(userMessage, historyIn = [], { _skipBroker = false, _bgMode = false, _genParams = null, _agentPrompt = null } = {}) {
+  async *chatWithPoseidon(userMessage, historyIn = [], { _skipBroker = false, _bgMode = false, _genParams = null, _agentPrompt = null, _agentTools = null } = {}) {
     let history = historyIn.slice(); // mutable copy
     if (!this.poseidonModelId) {
       throw new Error('No model assigned to Poseidon. Import a model and assign it first.');
@@ -1874,7 +1874,7 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
           // fabrication detection still guard the output.
           systemPrompt = _agentPrompt || await orchestrator.buildSystemPrompt(_bgMode);
           try {
-            functions = await orchestrator.buildFunctions(_agentPrompt ? 'bg' : 'chat');
+            functions = await orchestrator.buildFunctions(_agentPrompt ? 'bg' : 'chat', _agentTools);
           } catch (err) {
             log.warn(' Function-calling setup failed:', err.message, '- continuing without functions');
             functions = undefined;
