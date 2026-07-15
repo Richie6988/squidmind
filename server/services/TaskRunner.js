@@ -677,10 +677,12 @@ class TaskRunner {
             if (needsOwnModel) {
               log.info(`▶ ${taskId} → AgentWorkerPool (agent model: ${preferredModel})`);
               usedAgentWorker = true;
+              toolCalls = 0;  // count real tool activity for the honesty gate
               const gen = await this.agentPool.dispatch(agentId, msg);
               for await (const ev of gen) {
                 if (ev.type === 'text')           output += ev.chunk;
                 if (ev.type === 'error')          { output += `\nError: ${ev.error}`; failed = true; }
+                if (ev.type === 'tool_call')      toolCalls++;
                 const bus = global.ReasoningBus;
                 if (bus) {
                   if (ev.type === 'text')          bus.push({ type: 'text',          task_id: taskId, chunk: ev.chunk });
@@ -1016,6 +1018,7 @@ class TaskRunner {
             output_preview: `Failed after ${prevFails} attempts [${errType}]. Last: ${output.slice(0, 200)}`
           });
           await this._notify(`[IAQUA] Task FAILED: "${task.title}"\n[${errType}] ${output.slice(0, 200)}`);
+          task._disposition = 'permanently failed';
         } else {
           const backoffMs = isResourceError
             ? 60_000 + Math.random() * 30_000   // 60-90s jitter for resource errors
@@ -1028,6 +1031,7 @@ class TaskRunner {
           await this._setStatus(taskId, 'todo', {
             output_preview: `${label}: retry in ${Math.round(backoffMs/1000)}s`
           });
+          task._disposition = `back to todo — retry in ${Math.round(backoffMs/1000)}s`;
           // Learning retry: the next attempt's prompt includes task.progress
           // ("Previous progress: … Resume from where you left off"). Feed the
           // failure reason into it so the agent doesn't repeat the same
@@ -1165,7 +1169,7 @@ class TaskRunner {
         await this._updateProjectMemoryForTask(task, 'done', output);
       }
 
-      const finalStatus = failed ? 'done(failed)' : 'done';
+      const finalStatus = failed ? (task._disposition || 'failed') : 'done (review passed)';
 
       await this.rm.log({
         event_type: 'task_completed', severity: failed ? 'warning' : 'info',

@@ -314,6 +314,14 @@ class AgentWorker extends EventEmitter {
       chatWrapper:     'auto',
     });
 
+    // Stamp Control-Tower KPIs on the model entry — the context bar reads
+    // system_prompt_tokens / session_mode / phase_agent_name from
+    // getStatus(); without this, agent runs kept showing the stale CHAT
+    // prompt size and mode (observed).
+    entry._lastSystemPromptChars = trimmedPrompt.length;
+    entry._sessionMode           = 'agent';
+    entry._phaseAgentName        = this.agentEntry?.display_name || this.agentId;
+
     log.info(` Session created for ${this.agentId} on model ${modelId} — ${toolsAllowed.length} tools, prompt ${Math.round(trimmedPrompt.length/4)} tok, ctx=${contextLength}`);
   }
 
@@ -339,6 +347,13 @@ class AgentWorker extends EventEmitter {
     try {
       await this._ensureSession();
     } catch (err) {
+      // _ensureSession may throw AFTER acquiring the broker (getSequence,
+      // session build...). Leaking the token here froze the broker for the
+      // full 10min EXPIRY window — nothing could run (observed).
+      if (this._brokerToken) {
+        try { this.broker.release(this._brokerToken); } catch {}
+        this._brokerToken = null;
+      }
       this.generating = false;
       this.status = 'error';
       yield { type: 'error', error: err.message };
@@ -441,7 +456,13 @@ class AgentWorker extends EventEmitter {
         this._brokerToken = null;
       }
 
-      // Null sequence so image gen eviction cannot hit a dangling pointer
+      // Free the native session/sequence slot NOW — the next task (any
+      // agent) needs it immediately. Nulling the JS ref does NOT free the
+      // llama.cpp slot: that exact leak produced "No sequences left" on the
+      // very next task and a 10min frozen broker (observed).
+      try { await this.session?.dispose?.(); } catch {}
+      this.session  = null;
+      try { await this.sequence?.dispose?.(); } catch {}
       this.sequence = null;
 
       // Reset Poseidon context stats (stale % on Control Tower after session share)
@@ -452,6 +473,9 @@ class AgentWorker extends EventEmitter {
           posEntry.contextPct        = 0;
           posEntry.contextUsedTokens = 0;
           posEntry.sessionTurns      = 0;
+          posEntry._sessionMode           = null;
+          posEntry._phaseAgentName        = null;
+          posEntry._lastSystemPromptChars = 0;
         }
       }
 
@@ -481,6 +505,9 @@ class AgentWorker extends EventEmitter {
       this._brokerToken = null;
     }
     try { await this.session?.dispose?.(); } catch {}
+    // Dispose the sequence explicitly — do NOT rely on session.dispose()
+    // defaults to free the native slot.
+    try { await this.sequence?.dispose?.(); } catch {}
     // Context belongs to Poseidon — single-context architecture, we never dispose it
     this.session       = null;
     this.sequence      = null;

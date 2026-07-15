@@ -1384,7 +1384,13 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
     entry.model = null;
 
     this.loaded.delete(modelId);
-    if (this.poseidonModelId === modelId) this.poseidonModelId = null;
+    // NOTE: unloading does NOT clear this.poseidonModelId. The assignment
+    // is a user choice that drives autoload; clearing it here meant the
+    // first phase-swap unload left the whole system headless: every later
+    // chatWithPoseidon died with "No model assigned to Poseidon", tasks
+    // were misrouted to AgentWorkerPool (agentModel != null), the dream
+    // autoload waited forever, and no task ever started again (observed).
+    // Assignment is only cleared by deleteModel / explicit reassignment.
 
     await this._registryUpsert(modelId, {
       status: 'available',

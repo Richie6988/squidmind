@@ -1434,7 +1434,7 @@ class RegistryManager {
           const total = (perf.tasks_completed || 0) + (perf.tasks_failed || 0) + (perf.tasks_cancelled || 0);
           perf.success_rate = total > 0 ? perf.tasks_completed / total : 0;
           await this.write('AGENTS/agent_registry.json', agentReg);
-          log.info(` cascade: agent ${agentId} tasks_completed=${perf.tasks_completed}`);
+          log.info(` cascade: agent ${agentId} → completed=${perf.tasks_completed} failed=${perf.tasks_failed || 0} (this task: ${status})`);
         }
       } catch (e) { log.warn(` cascadeFlat agent update failed:`, e.message); }
     }

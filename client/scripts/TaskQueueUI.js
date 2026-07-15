@@ -227,14 +227,12 @@ const TaskQueueUI = {
       ? (t.assigned_name || this.agents.find(a => a.agent_id === assignee)?.display_name || assignee)
       : '+ assign';
 
-    // Status source of truth: the LIVE broker/worker state, NOT the disk
-    // status which can be a stale 'in_progress' left behind by a killed
-    // server. Task appears Running ONLY IF one of:
-    //   - the broker is actually holding this exact task_id
-    //   - an AgentWorker for the assignee reports 'running'
-    // Disk 'in_progress' without either is treated as stale and shown as
-    // 'stale' with a dashed indicator (the periodic reset job below will
-    // flip it back to planned within ~seconds).
+    // Status source of truth: the LIVE broker/worker state for the pulse,
+    // the disk status for the column. A wip task without a live broker
+    // match still shows as WIP (matching the temple kanban) — the gaps
+    // between phase acquires (agent→review swap, poll latency) are normal
+    // and flashing 'stale' there was misleading. GENUINE stales (crashed
+    // server) are reset wip→todo by the server tick within seconds.
     const bgOwner       = this._brokerOwner || '';
     const bgTaskIdMatch = /task_\d+/.exec(bgOwner)?.[0];
     const isBrokerActive = bgTaskIdMatch === t.task_id && this._brokerState !== 'IDLE';
@@ -277,7 +275,7 @@ const TaskQueueUI = {
     }[status] || { cls: 'tq-dot-open', label: status };
     // If disk says in_progress but nothing is actually running, override
     // the label so the user doesn't see phantom 'running' rows.
-    if (isStaleRunning) { statusDot.cls = 'tq-dot-open'; statusDot.label = 'stale'; }
+    if (isStaleRunning) { statusDot.cls = 'tq-dot-running'; statusDot.label = 'wip'; }
 
     if (isRunning) el.classList.add('tq-is-running');
 
@@ -302,7 +300,7 @@ const TaskQueueUI = {
         ${isRunning ? `<div class="tq-progress-bar"><div class="tq-progress-fill"></div></div>` : ''}
         ${isBrokerActive ? `<div class="tq-running-meta">⏳ Running…${t.lifecycle?.started_at ? ' · ' + TaskQueueUI._elapsed(t.lifecycle.started_at) : ''}</div>`
           : workerRunning ? `<div class="tq-running-meta">${window.PixelIcons?.inline('bolt',10)||'▶'} Running${t.lifecycle?.started_at ? ' · ' + TaskQueueUI._elapsed(t.lifecycle.started_at) : ''}</div>`
-          : isStaleRunning ? `<div class="tq-running-meta" style="color:#94a3b8;font-style:italic;">⚠ stale — will reset shortly</div>`
+          : isStaleRunning ? `<div class="tq-running-meta" style="color:#94a3b8;">● wip — syncing…</div>`
           : ''}
       </div>
     `;
