@@ -849,7 +849,15 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
             // reclaims ~1GB from the reserve into 6 extra GPU layers
             // (observed: 25/33 → 31/33 on the qwen3.5-9B agent phase).
             let kvReserveGb = 1.55;
-            const overheadGb  = isMoE ? 0.8 : 0.5;  // MoE routing needs bigger compute buffers
+            // Overhead scales with GPU layer ratio: node-llama-cpp compute
+            // buffers (batch_size × hidden × layers × dtype) grow linearly
+            // with GPU-resident blocks. Observed on qwen3.5-9B at 33/33:
+            // formula predicted 0.5GB overhead → real ~1.5GB → 5× OOM
+            // ladder even at ctx=2048. Now: 0.4GB base + up to 1.1GB
+            // scaled — matches measured overhead across the 20→33 layer
+            // range.
+            const overheadFor = (ratio) => (isMoE ? 0.6 : 0.4) + ratio * 1.1;
+            let overheadGb = overheadFor(0.7);  // seed with a mid guess
             try {
               const probeKey = `${fileName}|fa=${!!config.flashAttention}`;
               const p = ModelService._kvProbe?.get(probeKey);
@@ -862,25 +870,41 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
                 const kvPerLayerTok = p.kvPerTok / p.gpuLayers;
                 const bpl = fileSizeGb / estLayers;
                 const denomGb = bpl + (config.contextLength * kvPerLayerTok) / (1024 ** 3);
-                const solved = Math.floor((freeBeforeGb - overheadGb) / denomGb);
-                gpuTarget = Math.max(1, Math.min(estLayers, solved));
+                // Converge overhead + layer count together (2 iters is
+                // enough — overhead is monotonic in ratio, solves in ≤3).
+                for (let iter = 0; iter < 3; iter++) {
+                  const solved = Math.floor((freeBeforeGb - overheadGb) / denomGb);
+                  gpuTarget = Math.max(1, Math.min(estLayers, solved));
+                  const nextOverhead = overheadFor(gpuTarget / estLayers);
+                  if (Math.abs(nextOverhead - overheadGb) < 0.08) break;
+                  overheadGb = nextOverhead;
+                }
+                // Safety border: keep 1 layer CPU-side unless the model is
+                // small enough to fit fully. Guards against the 33/33 edge
+                // where node-llama-cpp compute buffers spike past forecast.
+                if (gpuTarget >= estLayers && fileSizeGb + kvReserveGb + overheadGb > freeBeforeGb * 0.92) {
+                  gpuTarget = estLayers - 1;
+                }
                 kvReserveGb = (gpuTarget * config.contextLength * kvPerLayerTok) / (1024 ** 3);
                 config.gpuLayers = gpuTarget;
-                log.info(`  [auto] gpuLayers: ${gpuTarget}/${estLayers} (probe-aware for ctx=${config.contextLength}: ${(gpuTarget * bpl).toFixed(1)}GB layers + ${kvReserveGb.toFixed(2)}GB KV + ${overheadGb}GB overhead)`);
-                gpuTarget = Math.min(gpuTarget, estLayers - 1);
-                config.gpuLayers = gpuTarget;
-                break_flag: void 0; // no-op, keep block symmetric
+                log.info(`  [auto] gpuLayers: ${gpuTarget}/${estLayers} (probe-aware for ctx=${config.contextLength}: ${(gpuTarget * bpl).toFixed(1)}GB layers + ${kvReserveGb.toFixed(2)}GB KV + ${overheadGb.toFixed(2)}GB overhead)`);
               } else {
+                overheadGb = overheadFor(0.7);  // reset for non-probe path
+                gpuTarget = Math.max(1, Math.floor((freeBeforeGb - kvReserveGb - overheadGb) / bytesPerLayerGb));
+                gpuTarget = Math.min(gpuTarget, estLayers - 1);
+                // Re-estimate overhead once with the solved layer count
+                overheadGb = overheadFor(gpuTarget / estLayers);
                 gpuTarget = Math.max(1, Math.floor((freeBeforeGb - kvReserveGb - overheadGb) / bytesPerLayerGb));
                 gpuTarget = Math.min(gpuTarget, estLayers - 1);
                 config.gpuLayers = gpuTarget;
-                log.info(`  [auto] gpuLayers: ${config.gpuLayers} / ${estLayers} (model larger than VRAM — layers first: ${(gpuTarget * bytesPerLayerGb).toFixed(1)}GB layers + ${kvReserveGb}GB KV reserve + ${overheadGb}GB overhead)`);
+                log.info(`  [auto] gpuLayers: ${config.gpuLayers} / ${estLayers} (model larger than VRAM — layers first: ${(gpuTarget * bytesPerLayerGb).toFixed(1)}GB layers + ${kvReserveGb}GB KV reserve + ${overheadGb.toFixed(2)}GB overhead)`);
               }
             } catch {
+              overheadGb = overheadFor(0.7);
               gpuTarget = Math.max(1, Math.floor((freeBeforeGb - kvReserveGb - overheadGb) / bytesPerLayerGb));
               gpuTarget = Math.min(gpuTarget, estLayers - 1);
               config.gpuLayers = gpuTarget;
-              log.info(`  [auto] gpuLayers: ${config.gpuLayers} / ${estLayers} (model larger than VRAM — layers first: ${(gpuTarget * bytesPerLayerGb).toFixed(1)}GB layers + ${kvReserveGb}GB KV reserve + ${overheadGb}GB overhead)`);
+              log.info(`  [auto] gpuLayers: ${config.gpuLayers} / ${estLayers} (model larger than VRAM — layers first: ${(gpuTarget * bytesPerLayerGb).toFixed(1)}GB layers + ${kvReserveGb}GB KV reserve + ${overheadGb.toFixed(2)}GB overhead)`);
             }
           }
         } else {
@@ -2004,6 +2028,22 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
         // eats more than ~45% of the context, the context-shift compaction
         // WILL fail after a few tool calls ("did not return a history that
         // fits"). Say it now instead of crashing 30s into the turn.
+        if (ctxTokens > 0 && promptTokens > ctxTokens * 0.85) {
+          // HARD refuse: 85%+ leaves less than one round-trip of headroom
+          // and context-shift crashes on the FIRST turn (observed: 129%
+          // → LlamaChat threw synchronously → BG task marked done with
+          // no output). Emit an error event so TaskRunner records a
+          // real 'insufficient_context' failure instead of a phantom PASS.
+          log.warn(` ⛔ ctx=${ctxTokens} too small for ${promptTokens}-token prompt (${Math.round(promptTokens / ctxTokens * 100)}%) — refusing to attempt (would crash on first tool call)`);
+          yield { type: 'error', error: `insufficient_context: prompt is ${promptTokens} tokens but only ${ctxTokens} available (${Math.round(promptTokens / ctxTokens * 100)}%). Free VRAM or raise contextLength.` };
+          // Dispose so the next attempt reloads at a saner ctx.
+          try { await entry.session?.dispose?.(); } catch {}
+          try { await entry._currentSequence?.dispose?.(); } catch {}
+          entry.session = null;
+          entry._currentSequence = null;
+          entry.sessionTurns = 0;
+          return;
+        }
         if (ctxTokens > 0 && promptTokens > ctxTokens * 0.45) {
           log.warn(` ⚠ ctx=${ctxTokens} is tight for a ${promptTokens}-token prompt (${Math.round(promptTokens / ctxTokens * 100)}%) — expect context-shift failures; free VRAM or raise contextLength`);
           yield { type: 'status', message: `⚠ Context is tight (${ctxTokens} tokens, prompt uses ${Math.round(promptTokens / ctxTokens * 100)}%) — long conversations may fail. Free VRAM or raise contextLength.` };
@@ -2062,24 +2102,24 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
                 return capErr;
               }
               // ── Loop guard: fingerprint = tool name + normalised args.
-              // If the last 2 calls have the same fingerprint, this would be
-              // the 3rd → interrupt with an error result the LLM can see and
-              // (hopefully) adjust from. Prevents runaway when the model gets
-              // stuck on a failing read/write pattern.
+              // Trigger AT the 4th identical call in a row (3 previous
+              // matches). Was 3rd, which killed legitimate research flows
+              // where an agent verified 3 near-identical resources in a
+              // row (observed: web_fetch on 3 similar RSS URLs → abort).
+              // Widening the tail from 5 → 8 for the same reason.
               const fp = fnName + '|' + JSON.stringify(args || {}).slice(0, 400);
               entry._loopHistory = entry._loopHistory || [];
               const recentSame = entry._loopHistory.filter(x => x === fp).length;
               entry._loopHistory.push(fp);
-              // keep last 5 fingerprints only
-              if (entry._loopHistory.length > 5) entry._loopHistory.shift();
-              if (recentSame >= 2) {
+              if (entry._loopHistory.length > 8) entry._loopHistory.shift();
+              if (recentSame >= 3) {
                 const loopErr = {
                   ok: false,
                   error: `LOOP DETECTED — you have called ${fnName} with identical arguments ${recentSame + 1} times in a row. This attempt is BLOCKED. Change your approach: try different arguments, use a different tool, or answer the user based on what you already know. If you cannot proceed, tell the user what you tried and why it isn't working.`,
                   loop_broken: true,
                   repeat_count: recentSame + 1,
                 };
-                log.warn(`Loop guard: ${fnName} called ${recentSame + 1}× in a row — interrupting`);
+                log.warn(`Loop guard: ${fnName} called ${recentSame + 1}× with identical args — interrupting (args=${JSON.stringify(args||{}).slice(0,120)})`);
                 events.push({ type: 'tool_call',   name: fnName, args, at: callTime, loop_broken: true });
                 events.push({ type: 'tool_result', name: fnName, result: loopErr, duration_ms: 0, loop_broken: true });
                 // Also request abort so the LLM's thinking loop breaks quickly

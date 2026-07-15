@@ -1957,6 +1957,18 @@ input[type="color"]::-webkit-color-swatch {
 }
 .ti-file-size  { font-family: 'Courier New', monospace; font-size: 8px; color: var(--ui-muted); flex-shrink: 0; }
 .ti-file-mtime { font-family: 'Courier New', monospace; font-size: 8px; color: #4facfe; flex-shrink: 0; opacity: .7; }
+
+/* ── Bidirectional halo: task-card ↔ output-file linked by data-task-id ─ */
+/* When Richard hovers either surface, both light up in amber so he can see
+   'this file came out of this task' without clicking. */
+.ti-kcard.ti-halo-linked,
+.ti-file.ti-halo-linked {
+  background: rgba(251, 191, 36, 0.10) !important;
+  box-shadow: 0 0 0 1px rgba(251, 191, 36, 0.65), 0 0 12px 2px rgba(251, 191, 36, 0.35);
+  transition: box-shadow .18s ease, background .18s ease;
+}
+.ti-kcard.ti-halo-linked .ti-kcard-title,
+.ti-file.ti-halo-linked  .ti-file-name { color: #fbbf24; }
 .ti-file-taskbadge {
   display: inline-flex; align-items: center; gap: 3px;
   font-family: 'Courier New', monospace; font-size: 7px;

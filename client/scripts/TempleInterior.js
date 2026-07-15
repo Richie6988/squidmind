@@ -640,7 +640,7 @@ const TempleInterior = {
           ? `<button class="ti-file-imgact" title="Upscale 2×" onclick="event.stopPropagation();TempleInterior._upscaleImage('${this._esc(f.path||'')}','${ename}')">↑2×</button>
              <button class="ti-file-imgact" title="Edit with prompt (img2img)" onclick="event.stopPropagation();TempleInterior._editImage('${this._esc(f.path||'')}','${ename}')">✎</button>`
           : '';
-        return `<div class="ti-file" onclick="TempleInterior._openFile('${ename}','${this._esc(f.path||'')}','${type}','${folder}',${f.size||0})">
+        return `<div class="ti-file" data-task-id="${f.task_id || ''}" onmouseenter="TempleInterior._haloTask('${this._esc(f.task_id||'')}',true)" onmouseleave="TempleInterior._haloTask('${this._esc(f.task_id||'')}',false)" onclick="TempleInterior._openFile('${ename}','${this._esc(f.path||'')}','${type}','${folder}',${f.size||0})">
           ${thumb}
           <span class="ti-file-name" title="${ename}">${ename}</span>${taskBadge}${sz}${ts}
           ${imgActions}
@@ -1159,6 +1159,8 @@ const TempleInterior = {
         ? `<button class="ti-kcard-quickact stop" title="Stop task" onclick="event.stopPropagation();TempleInterior._quickStopTask('${task.task_id}')">■</button>`
         : '';
       return `<div class="ti-kcard ${cls}" data-task-id="${task.task_id}"
+          onmouseenter="TempleInterior._haloTask('${task.task_id}',true)"
+          onmouseleave="TempleInterior._haloTask('${task.task_id}',false)"
           onclick="TempleInterior._openTaskDetail('${task.task_id}')"
           title="${this._esc(task.title)} — click to open, drag the ⋮⋮ handle to move">
         <span class="ti-kcard-handle" draggable="true"
@@ -1718,6 +1720,22 @@ const TempleInterior = {
   },
 
   // ═══ IDE ═════════════════════════════════════════════════════════════════
+  /**
+   * _haloTask — bidirectional visual link between an output file and its
+   * producing task. Hovering an output card glows the matching kanban card
+   * AND every other output file that shares the same task_id, so Richard
+   * can see 'these three files came out of this one task'. Empty task_id
+   * = no-op. Cheap enough to call from onmouseenter/onmouseleave.
+   */
+  _haloTask(taskId, on) {
+    if (!taskId) return;
+    const cls = 'ti-halo-linked';
+    document.querySelectorAll(`.ti-kcard[data-task-id="${taskId}"], .ti-file[data-task-id="${taskId}"]`).forEach(el => {
+      if (on) el.classList.add(cls);
+      else    el.classList.remove(cls);
+    });
+  },
+
   _openFile(name, filepath, type, folder, serverSize = 0) {
     const existing = this._openFiles.findIndex(f => f.name === name && f.folder === folder);
     if (existing >= 0) { this._ideActivate(existing); return; }
