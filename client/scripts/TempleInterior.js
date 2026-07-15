@@ -1102,11 +1102,13 @@ const TempleInterior = {
       const isRun  = status === 'wip' || status === 'in_progress' || brokerRunningId === task.task_id;
       const isFail = status === 'failed' || status === 'cancelled' || (status === 'done' && task.outcome === 'failed');
       const isDone = status === 'completed' || (status === 'done' && task.outcome !== 'failed');
+      // Awaiting Poseidon's quality verdict — visible sub-state of wip.
+      const isReview = !!task.awaiting_review && (isRun || status === 'wip');
       const cls    = isRun ? 'prog' : isDone ? 'done' : isFail ? 'fail' : '';
       const agent  = task.assigned_name || task.assigned_to || '';
-      // Status icon
-      const statusIcon = isRun ? '●' : isDone ? '✓' : isFail ? '✗' : '○';
-      const statusColor = isRun ? '#06ffa5' : isDone ? '#4facfe' : isFail ? '#ef4444' : '#64748b';
+      // Status icon — ⭐ trumps ● when awaiting review
+      const statusIcon  = isReview ? '⭐' : isRun ? '●' : isDone ? '✓' : isFail ? '✗' : '○';
+      const statusColor = isReview ? '#fbbf24' : isRun ? '#06ffa5' : isDone ? '#4facfe' : isFail ? '#ef4444' : '#64748b';
       // Elapsed timer for in_progress
       let elapsed = '';
       if (isRun && task.lifecycle?.started_at) {
@@ -1116,9 +1118,13 @@ const TempleInterior = {
           elapsed = s < 60 ? `${s}s` : s < 3600 ? `${Math.floor(s/60)}m ${s%60}s` : `${Math.floor(s/3600)}h`;
         }
       }
-      // Progress line for in_progress tasks (from task.progress field updated by TaskRunner)
-      const progText = task.progress ? String(task.progress).slice(0, 100) : '';
-      const prog   = isRun && progText ? `<div class="ti-kcard-prog">› ${this._esc(progText)}</div>` : '';
+      // Progress line for in_progress tasks (from task.progress field updated by TaskRunner).
+      // During review, override with the review-status line so the card
+      // visibly signals the awaiting-verdict state.
+      const progText = isReview
+        ? '⭐ Poseidon reviewing deliverable…'
+        : (task.progress ? String(task.progress).slice(0, 100) : '');
+      const prog   = (isRun || isReview) && progText ? `<div class="ti-kcard-prog"${isReview ? ' style="color:#fbbf24;"' : ''}>› ${this._esc(progText)}</div>` : '';
       // Result summary for done tasks
       const summary = (isDone || isFail) && task.result_summary
         ? `<div class="ti-kcard-prog">${this._esc(String(task.result_summary).slice(0, 110))}</div>` : '';

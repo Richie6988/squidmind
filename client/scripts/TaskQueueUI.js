@@ -240,6 +240,10 @@ const TaskQueueUI = {
                           && this._workerStatuses[assignee]?.status === 'running';
     const isRunning   = isBrokerActive || workerRunning;
     const isStaleRunning = ['wip','in_progress'].includes(status) && !isRunning;   // disk says yes, reality says no
+    // Task finished its agent run and is now waiting for Poseidon's quality
+    // verdict — a distinct visible state, not "running", not "done".
+    const awaitingReview = !!t.awaiting_review && !isRunning
+                           && ['wip','in_progress'].includes(status);
 
     const canStart    = ['todo','open','planned','assigned','queued'].includes(status) && !isRunning;
     const canStop     = isRunning;
@@ -278,6 +282,7 @@ const TaskQueueUI = {
     if (isStaleRunning) { statusDot.cls = 'tq-dot-running'; statusDot.label = 'wip'; }
 
     if (isRunning) el.classList.add('tq-is-running');
+    if (awaitingReview) el.classList.add('tq-awaiting-review');
 
     el.innerHTML = `
       <div class="tq-drag-handle" title="Drag to reorder">⠿</div>
@@ -286,19 +291,21 @@ const TaskQueueUI = {
           <span class="tq-rank">#${idx + 1}</span>
           <span class="tq-dot ${statusDot.cls} ${isRunning ? 'tq-dot-pulse' : ''}" title="${statusDot.label}">⬤</span>
           <span class="tq-title tq-title-link" title="Click to view/edit details">${this._esc(t.title)}</span>
+          ${awaitingReview ? `<span class="tq-review-badge" title="Poseidon reviewing this deliverable">⭐ REVIEW</span>` : ''}
           ${canStart ? `<button class="tq-quickact tq-play" onclick="event.stopPropagation();TaskQueueUI.quickStart('${t.task_id}')" title="Start task">▶</button>` : ''}
           ${canStop  ? `<button class="tq-quickact tq-stop" onclick="event.stopPropagation();TaskQueueUI.quickStop('${t.task_id}')" title="Stop task">■</button>` : ''}
           <button class="tq-cancel" onclick="TaskQueueUI.deleteTask('${t.task_id}')" title="Delete task">✕</button>
         </div>
         <div class="tq-row2">
           ${typeBadge}
-          ${isRunning ? '' : `<span class="tq-status-label">${statusDot.label}</span>`}
+          ${isRunning ? '' : `<span class="tq-status-label">${awaitingReview ? 'awaiting review' : statusDot.label}</span>`}
           <button class="tq-assignee ${assignee ? 'tq-assigned' : 'tq-unassigned'}"
                   onclick="TaskQueueUI.openAssignPicker('${t.task_id}', this)"
                   title="Click to assign agent">${this._esc(agentName)}</button>
         </div>
-        ${isRunning ? `<div class="tq-progress-bar"><div class="tq-progress-fill"></div></div>` : ''}
-        ${isBrokerActive ? `<div class="tq-running-meta">⏳ Running…${t.lifecycle?.started_at ? ' · ' + TaskQueueUI._elapsed(t.lifecycle.started_at) : ''}</div>`
+        ${isRunning || awaitingReview ? `<div class="tq-progress-bar"><div class="tq-progress-fill"></div></div>` : ''}
+        ${awaitingReview ? `<div class="tq-running-meta" style="color:#fbbf24;">⭐ Poseidon reviewing the deliverable…</div>`
+          : isBrokerActive ? `<div class="tq-running-meta">⏳ Running…${t.lifecycle?.started_at ? ' · ' + TaskQueueUI._elapsed(t.lifecycle.started_at) : ''}</div>`
           : workerRunning ? `<div class="tq-running-meta">${window.PixelIcons?.inline('bolt',10)||'▶'} Running${t.lifecycle?.started_at ? ' · ' + TaskQueueUI._elapsed(t.lifecycle.started_at) : ''}</div>`
           : isStaleRunning ? `<div class="tq-running-meta" style="color:#94a3b8;">● wip — syncing…</div>`
           : ''}

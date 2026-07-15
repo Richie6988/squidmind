@@ -186,7 +186,9 @@ const AgentForm = {
 
     const brain = this.brain;
     const reg = this.registry;
-    const brainFile = `agents/${reg.brain_file || 'squid_brain_001.json'}`;
+    // Canonical uppercase prefix: aquarium.resolvePath() warns on legacy
+    // lowercase, and the server registry stores brain files under AGENTS/.
+    const brainFile = `AGENTS/${reg.brain_file || 'squid_brain_001.json'}`;
 
     // ===== IDENTITY =====
     this._addSection(body, 'Identity', [

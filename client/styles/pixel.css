@@ -7771,6 +7771,37 @@ h4.pc-md-h { font-size: 8px; color: #94a3b8; }
 .tq-dot-paused  { color: #f59e0b; }
 .tq-dot-pulse   { animation: tq-pulse 1.2s ease-in-out infinite; }
 
+/* ── AWAITING QUALITY REVIEW — macaron + card accent ────────────────────── */
+/* Sub-state of wip: the agent finished, Poseidon is judging the output.
+   Uses amber to distinguish clearly from running (green) and done (blue). */
+.tq-review-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-family: var(--panel-font-mono);
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  color: #fbbf24;
+  background: rgba(251, 191, 36, 0.14);
+  border: 1px solid rgba(251, 191, 36, 0.55);
+  border-radius: 2px;
+  padding: 1px 5px;
+  animation: tq-review-pulse 1.6s ease-in-out infinite;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+@keyframes tq-review-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(251, 191, 36, 0.45); }
+  50%      { box-shadow: 0 0 6px 1px rgba(251, 191, 36, 0.55); }
+}
+.task-queue-item.tq-awaiting-review {
+  border-left: 2px solid #fbbf24;
+}
+.task-queue-item.tq-awaiting-review .tq-progress-fill {
+  background: linear-gradient(90deg, #f59e0b, #fbbf24) !important;
+}
+
 .tq-status-label {
   font-size: 8px;
   color: var(--text-secondary);

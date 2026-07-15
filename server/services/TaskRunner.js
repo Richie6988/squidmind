@@ -1044,6 +1044,18 @@ class TaskRunner {
         }
       } else {
         // ═══ PHASE REVIEW — Poseidon judges BEFORE anything is finalized ═══
+        // Mark the task as awaiting_review NOW so the Control Tower / Kanban
+        // shows a distinct macaron for the ~30-60s window between the agent
+        // finishing and Poseidon's verdict landing. Without this the UI
+        // shows plain "wip" while the model is actually stopped, which
+        // makes the review phase invisible to the user.
+        try {
+          const reg0 = await this.rm.getTasksRegistry().catch(() => null);
+          if (reg0?.tasks?.[taskId]) {
+            reg0.tasks[taskId].awaiting_review = true;
+            await this.rm._writeTaskDetails(taskId, reg0.tasks[taskId]);
+          }
+        } catch {}
         // The workflow: agent done → agent context gone → Poseidon loaded
         // with review as its FIRST priority action. Verdict decides:
         //   PASS   → done (+stats, +project memory), next task in queue
@@ -1136,6 +1148,7 @@ class TaskRunner {
             revisions: (task.revisions || 0) + 1,
             review: task.review,
             description: upgradedDesc,
+            awaiting_review: false,
             progress: `QUALITY REVIEW${Number.isFinite(score) ? ` (${score}/10)` : ''} — the previous deliverable needs these SPECIFIC fixes before it is acceptable: ${fixes}. Revise the existing deliverable (read it first), do not start from scratch.`
           });
           await this.rm.log({
@@ -1159,6 +1172,7 @@ class TaskRunner {
         await this._setStatus(taskId, 'done', {
           outcome: 'passed',
           review: task.review,
+          awaiting_review: false,
           completed_at: new Date().toISOString(),
           output_preview: output.slice(0, 300),
           result_summary: output.slice(0, 500),
@@ -1222,6 +1236,7 @@ class TaskRunner {
       if (extra.review    !== undefined) task.review    = extra.review;
       if (extra.description !== undefined) task.description = extra.description;
       if (extra.outcome   !== undefined) task.outcome   = extra.outcome;
+      if (extra.awaiting_review !== undefined) task.awaiting_review = extra.awaiting_review;
 
       // Canonical terminal status is 'done' (+ outcome passed|failed).
       // results_log and the cascade keep the legacy completed/failed

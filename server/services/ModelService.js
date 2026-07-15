@@ -784,13 +784,17 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
         // Legacy entries without placement metadata are ignored too — the
         // 40 KB/tok fallback is safer than an unqualified number.
         const probeHealthy = cachedProbeRaw
+          && cachedProbeRaw.version === 2                    // pre-v2 entries were measured before the fixed-buffer subtraction fix → inflated ~30%
           && Number.isFinite(cachedProbeRaw.gpuLayers)
           && Number.isFinite(cachedProbeRaw.totalLayers)
           && cachedProbeRaw.totalLayers > 0
           && (cachedProbeRaw.gpuLayers / cachedProbeRaw.totalLayers) >= 0.35;
         const cachedProbe = probeHealthy ? cachedProbeRaw : null;
         if (cachedProbeRaw && !probeHealthy) {
-          log.info(`  [auto-budget] cached KV probe ignored (measured at ${cachedProbeRaw.gpuLayers ?? '?'}/${cachedProbeRaw.totalLayers ?? '?'} GPU layers — not representative)`);
+          const reason = cachedProbeRaw.version !== 2
+            ? 'pre-v2 entry (inflated by fixed-buffer bug)'
+            : `measured at ${cachedProbeRaw.gpuLayers ?? '?'}/${cachedProbeRaw.totalLayers ?? '?'} GPU layers — not representative`;
+          log.info(`  [auto-budget] cached KV probe ignored (${reason})`);
         }
         // KV VRAM SCALES WITH GPU LAYERS: each GPU layer holds its KV slice
         // in VRAM; CPU layers keep theirs in RAM. The old fixed-block formula
@@ -839,12 +843,45 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
             // hybrid archs where the CPU-side layers are mostly linear
             // attention (fast) and every extra tool call takes 1-2k tokens.
             // On dense archs this simply pushes an ~11k session to ~14k.
-            const kvReserveGb = 1.55;
+            // PROBE-AWARE PATH: when a v2 probe exists AND we know the real
+            // ctx (phase override sets it — agent 6144, review 10240), size
+            // the KV reserve to the actual demand. On a 6144-ctx agent this
+            // reclaims ~1GB from the reserve into 6 extra GPU layers
+            // (observed: 25/33 → 31/33 on the qwen3.5-9B agent phase).
+            let kvReserveGb = 1.55;
             const overheadGb  = isMoE ? 0.8 : 0.5;  // MoE routing needs bigger compute buffers
-            gpuTarget = Math.max(1, Math.floor((freeBeforeGb - kvReserveGb - overheadGb) / bytesPerLayerGb));
-            gpuTarget = Math.min(gpuTarget, estLayers - 1);
-            config.gpuLayers = gpuTarget;
-            log.info(`  [auto] gpuLayers: ${config.gpuLayers} / ${estLayers} (model larger than VRAM — layers first: ${(gpuTarget * bytesPerLayerGb).toFixed(1)}GB layers + ${kvReserveGb}GB KV reserve + ${overheadGb}GB overhead)`);
+            try {
+              const probeKey = `${fileName}|fa=${!!config.flashAttention}`;
+              const p = ModelService._kvProbe?.get(probeKey);
+              const probeUsable = p && p.version === 2 && p.gpuLayers > 0 && p.totalLayers > 0
+                                    && (p.gpuLayers / p.totalLayers) >= 0.35;
+              if (probeUsable && Number.isFinite(config.contextLength) && config.contextLength > 0) {
+                // The probe measures TOTAL KV at its layer count. Rescale to
+                // "per GPU layer × ctx" and solve jointly with layer count
+                // to avoid the fixed-reserve dead weight.
+                const kvPerLayerTok = p.kvPerTok / p.gpuLayers;
+                const bpl = fileSizeGb / estLayers;
+                const denomGb = bpl + (config.contextLength * kvPerLayerTok) / (1024 ** 3);
+                const solved = Math.floor((freeBeforeGb - overheadGb) / denomGb);
+                gpuTarget = Math.max(1, Math.min(estLayers, solved));
+                kvReserveGb = (gpuTarget * config.contextLength * kvPerLayerTok) / (1024 ** 3);
+                config.gpuLayers = gpuTarget;
+                log.info(`  [auto] gpuLayers: ${gpuTarget}/${estLayers} (probe-aware for ctx=${config.contextLength}: ${(gpuTarget * bpl).toFixed(1)}GB layers + ${kvReserveGb.toFixed(2)}GB KV + ${overheadGb}GB overhead)`);
+                gpuTarget = Math.min(gpuTarget, estLayers - 1);
+                config.gpuLayers = gpuTarget;
+                break_flag: void 0; // no-op, keep block symmetric
+              } else {
+                gpuTarget = Math.max(1, Math.floor((freeBeforeGb - kvReserveGb - overheadGb) / bytesPerLayerGb));
+                gpuTarget = Math.min(gpuTarget, estLayers - 1);
+                config.gpuLayers = gpuTarget;
+                log.info(`  [auto] gpuLayers: ${config.gpuLayers} / ${estLayers} (model larger than VRAM — layers first: ${(gpuTarget * bytesPerLayerGb).toFixed(1)}GB layers + ${kvReserveGb}GB KV reserve + ${overheadGb}GB overhead)`);
+              }
+            } catch {
+              gpuTarget = Math.max(1, Math.floor((freeBeforeGb - kvReserveGb - overheadGb) / bytesPerLayerGb));
+              gpuTarget = Math.min(gpuTarget, estLayers - 1);
+              config.gpuLayers = gpuTarget;
+              log.info(`  [auto] gpuLayers: ${config.gpuLayers} / ${estLayers} (model larger than VRAM — layers first: ${(gpuTarget * bytesPerLayerGb).toFixed(1)}GB layers + ${kvReserveGb}GB KV reserve + ${overheadGb}GB overhead)`);
+            }
           }
         } else {
           config.gpuLayers = 0;
@@ -1003,7 +1040,7 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
             } else {
               const kvPerTok = rawKvPerTok;
               const fixedBytes = Math.max(0, d1 - 4096 * kvPerTok);
-              probeData = { kvPerTok, fixedBytes, gpuLayers: Number(config.gpuLayers) || 0, totalLayers: estLayers };
+              probeData = { version: 2, kvPerTok, fixedBytes, gpuLayers: Number(config.gpuLayers) || 0, totalLayers: estLayers };
               ModelService._kvProbe.set(probeKey, probeData);
               log.info(`  KV probe (differential): ${(kvPerTok / 1024).toFixed(1)}KB/tok + ${(fixedBytes / 1024 ** 3).toFixed(2)}GB fixed buffers (d4k=${(d1 / 1024 ** 3).toFixed(2)}GB, d8k=${(d2 / 1024 ** 3).toFixed(2)}GB)`);
             }
@@ -1138,6 +1175,7 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
                 const prevLayers = Number.isFinite(prev?.gpuLayers) ? prev.gpuLayers : -1;
                 if (layersNow >= prevLayers) {
                   const entry = {
+                    version: 2,                              // measured with fixed-buffer subtraction
                     kvPerTok: measuredKv,
                     fixedBytes: prev?.fixedBytes || 0.3 * 1024 ** 3,
                     gpuLayers: layersNow,
