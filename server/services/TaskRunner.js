@@ -891,6 +891,33 @@ class TaskRunner {
                 '# HONESTY',
                 'Never state that something was done unless YOU called the tool this turn and saw its real result. Your output is verified against the actual files written.',
               ].join('\n');
+
+              // ── PERSONALITY (Design → Personality sliders) ──────────────
+              // These fields USED to only affect the AgentWorker path (which
+              // fires rarely — only when preferred_model_id diverges from
+              // Poseidon). In the standard BG path they were cosmetic. Now
+              // appended when set so the sliders actually shape behavior.
+              const traits = abrain3?.personality?.traits;
+              const style  = abrain3?.personality?.communication_style;
+              const mood   = abrain3?.personality?.default_mood;
+              const persoBits = [];
+              if (traits && Object.keys(traits).length) {
+                const lines = ['# PERSONALITY (0-1 scale, shapes how you work)'];
+                const hint = { curiosity:'explore deeply before concluding', thoroughness:'double-check; be exhaustive', creativity:'propose novel approaches', assertiveness:'make clear recommendations', empathy:'consider human impact' };
+                for (const [k, v] of Object.entries(traits)) {
+                  const pct = Math.round((Number(v) || 0) * 100);
+                  const tag = pct >= 80 ? 'Very high' : pct >= 60 ? 'High' : pct >= 40 ? 'Moderate' : 'Low';
+                  lines.push(`- ${k} ${pct}% (${tag}) — ${hint[k] || k}`);
+                }
+                persoBits.push(lines.join('\n'));
+              }
+              if (style || mood) {
+                const lines = ['# COMMUNICATION'];
+                if (style) lines.push(`Style: ${style}`);
+                if (mood)  lines.push(`Mood: ${mood}`);
+                persoBits.push(lines.join('\n'));
+              }
+              if (persoBits.length) _agentPrompt += '\n\n' + persoBits.join('\n\n');
             } catch {}
           }
           let _lastTouch = 0;
