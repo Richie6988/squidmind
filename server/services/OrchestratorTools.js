@@ -777,16 +777,22 @@ class OrchestratorTools {
       return { ok: false, error: 'url must start with http(s)://' };
     }
     try {
-      // Fetch and clean
-      const fetchResult = await this.webFetch({ url });
+      // Fetch UNTRUNCATED: the on-disk file must hold the full page. The
+      // default webFetch caps at 16k for context safety — that cap belongs
+      // in the model's context, not on disk. We ask for the full body here.
+      const fetchResult = await this.webFetch({ url, max_chars: 5_000_000 });
       if (!fetchResult.ok) return fetchResult;
 
       const content = fetchResult.content;
 
-      // Resolve output path
+      // Resolve output path — and force .md over .txt so previews stay
+      // readable (Richard's rule: .txt files were shown truncated in the UI
+      // preview even when the file itself was fine).
       const AQUARIUM = require('../aquarium');
       const path = require('path');
       const fs   = require('fs').promises;
+      const _mdify = (p) => (typeof p === 'string' && p.toLowerCase().endsWith('.txt')) ? p.slice(0, -4) + '.md' : p;
+      output_path = _mdify(output_path);
       let savePath;
 
       if (output_path && path.isAbsolute(output_path)) {
@@ -798,20 +804,22 @@ class OrchestratorTools {
           const folder = proj?.folder || project_id;
           const outDir = path.join(AQUARIUM.PROJECTS, folder, 'output');
           await fs.mkdir(outDir, { recursive: true });
-          const fname = output_path || `fetch_${Date.now()}.txt`;
+          const fname = output_path || `fetch_${Date.now()}.md`;
           savePath = path.join(outDir, path.basename(fname));
         } catch {
           // Last-resort fallback — flat TASKS/OUTPUT/, no per-task folder.
           await fs.mkdir(AQUARIUM.OUTPUT, { recursive: true });
-          const ext = (output_path || 'fetch.txt').split('.').pop().toLowerCase();
-          savePath = path.join(AQUARIUM.OUTPUT, `${task_id || 'tmp_' + Date.now()}.${ext}`);
+          const raw = output_path || 'fetch.md';
+          const ext = raw.split('.').pop().toLowerCase();
+          savePath = path.join(AQUARIUM.OUTPUT, `${task_id || 'tmp_' + Date.now()}.${ext === 'txt' ? 'md' : ext}`);
         }
       } else if (task_id) {
         // Flat layout — single file in TASKS/OUTPUT named after the task ID.
         // No per-task folder. Multiple fetches under the same task overwrite.
         await fs.mkdir(AQUARIUM.OUTPUT, { recursive: true });
-        const ext = (output_path || 'fetch.txt').split('.').pop().toLowerCase();
-        savePath = path.join(AQUARIUM.OUTPUT, `${task_id}.${ext}`);
+        const raw = output_path || 'fetch.md';
+        const ext = raw.split('.').pop().toLowerCase();
+        savePath = path.join(AQUARIUM.OUTPUT, `${task_id}.${ext === 'txt' ? 'md' : ext}`);
       } else {
         return { ok: false, error: 'Provide task_id or project_id so the file has a destination' };
       }

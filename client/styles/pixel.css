@@ -1957,6 +1957,17 @@ input[type="color"]::-webkit-color-swatch {
 }
 .ti-file-size  { font-family: 'Courier New', monospace; font-size: 8px; color: var(--ui-muted); flex-shrink: 0; }
 .ti-file-mtime { font-family: 'Courier New', monospace; font-size: 8px; color: #4facfe; flex-shrink: 0; opacity: .7; }
+.ti-file-taskbadge {
+  display: inline-flex; align-items: center; gap: 3px;
+  font-family: 'Courier New', monospace; font-size: 7px;
+  padding: 1px 5px; border-radius: 2px; cursor: pointer; flex-shrink: 0;
+  background: rgba(79,172,254,0.10); border: 1px solid rgba(79,172,254,0.4); color: #4facfe;
+  transition: background .12s, color .12s;
+}
+.ti-file-taskbadge:hover { background: rgba(79,172,254,0.22); color: #cbd5e1; }
+.ti-file-review { padding: 0 3px; border-radius: 1px; font-weight: 700; }
+.ti-file-review-pass   { background: rgba(16,185,129,0.15); color: #10b981; }
+.ti-file-review-revise { background: rgba(251,191,36,0.15); color: #fbbf24; }
 .ti-file-del {
   font-family: var(--panel-font);
   font-size: 6px;
@@ -7609,6 +7620,36 @@ h4.pc-md-h { font-size: 8px; color: #94a3b8; }
   border-radius: 3px; padding: 8px; font-size: 9px; color: var(--text-secondary);
   line-height: 1.5; max-height: 80px; overflow-y: auto;
 }
+
+/* ── Quality review banner (Poseidon verdict) ── */
+.tq-detail-review {
+  display: flex; gap: 8px; align-items: center;
+  padding: 6px 10px; border-radius: 3px; font-family: 'Courier New', monospace;
+  font-size: 9px;
+}
+.tq-detail-review.tq-review-pass   { background: rgba(16,185,129,0.10); border: 1px solid rgba(16,185,129,0.45); }
+.tq-detail-review.tq-review-revise { background: rgba(251,191,36,0.10); border: 1px solid rgba(251,191,36,0.55); }
+.tq-review-verdict { font-weight: 700; letter-spacing: .5px; }
+.tq-review-pass  .tq-review-verdict { color: #10b981; }
+.tq-review-revise .tq-review-verdict { color: #fbbf24; }
+.tq-review-score { color: #cbd5e1; }
+.tq-review-at    { color: var(--text-secondary); margin-left: auto; font-size: 8px; }
+
+/* ── Files written list (clickable) ── */
+.tq-detail-files {
+  display: flex; flex-direction: column; gap: 3px;
+  background: rgba(0,0,0,0.3); border: 1px solid var(--border);
+  border-radius: 3px; padding: 6px; max-height: 130px; overflow-y: auto;
+}
+.tq-detail-file {
+  display: flex; gap: 6px; align-items: baseline;
+  padding: 3px 6px; border-radius: 2px; text-decoration: none;
+  font-size: 9px; color: #cbd5e1; transition: background .12s;
+}
+.tq-detail-file:hover { background: rgba(79,172,254,0.10); color: #4facfe; }
+.tq-file-ico  { font-size: 10px; }
+.tq-file-name { font-family: 'Courier New', monospace; }
+.tq-file-path { color: var(--text-secondary); font-family: 'Courier New', monospace; font-size: 8px; margin-left: auto; }
 
 /* ── Task queue completed/results section ── */
 .tq-busy-banner {

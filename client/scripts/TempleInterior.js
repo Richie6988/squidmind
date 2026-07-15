@@ -625,6 +625,16 @@ const TempleInterior = {
         const sz    = f.size ? `<span class="ti-file-size">${this._fmtSize(f.size)}</span>` : '';
         const ts    = (type === 'output' && f.mtime)
           ? `<span class="ti-file-mtime" title="${f.mtime}">${this._relTime(f.mtime)}</span>` : '';
+        // Task badge (output only): click opens the task modal directly.
+        // Shows the review verdict/score as a color pill when Poseidon
+        // graded it — cuts the mental round-trip Richard was doing.
+        let taskBadge = '';
+        if (type === 'output' && f.task_id) {
+          const v = f.task_review?.verdict;
+          const s = f.task_review?.score;
+          const rev = v ? `<span class="ti-file-review ti-file-review-${(v||'').toLowerCase()}">${v}${Number.isFinite(s) ? ' ' + s : ''}</span>` : '';
+          taskBadge = `<span class="ti-file-taskbadge" onclick="event.stopPropagation();TaskQueueUI.openDetail && TaskQueueUI.openDetail('${this._esc(f.task_id)}')" title="${this._esc(f.task_title||'')}">${this._esc(f.task_id)}${rev}</span>`;
+        }
         // Image quick-actions — UPSCALE (2× hi-res pass) + EDIT (img2img with prompt)
         const imgActions = (isImg && type === 'output')
           ? `<button class="ti-file-imgact" title="Upscale 2×" onclick="event.stopPropagation();TempleInterior._upscaleImage('${this._esc(f.path||'')}','${ename}')">↑2×</button>
@@ -632,7 +642,7 @@ const TempleInterior = {
           : '';
         return `<div class="ti-file" onclick="TempleInterior._openFile('${ename}','${this._esc(f.path||'')}','${type}','${folder}',${f.size||0})">
           ${thumb}
-          <span class="ti-file-name" title="${ename}">${ename}</span>${sz}${ts}
+          <span class="ti-file-name" title="${ename}">${ename}</span>${taskBadge}${sz}${ts}
           ${imgActions}
           <button class="ti-file-del" onclick="event.stopPropagation();TempleInterior._deleteFile('${folder}','${ename}','${type}')">X</button>
         </div>`;

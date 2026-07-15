@@ -881,7 +881,7 @@ class TaskRunner {
                 '',
                 '# EXECUTION',
                 'The plan is already decided. Do NOT restate, re-plan or analyze the task — start calling tools immediately and produce the deliverable.',
-                'Write every deliverable file under output/ with write_file. A reply without a written file is NOT a completed task (unless the task explicitly asks for analysis only).',
+                'Write every deliverable file under output/ with write_file. USE .md, NOT .txt — the UI shows .md complete and previews .txt truncated. A reply without a written file is NOT a completed task (unless the task explicitly asks for analysis only).',
                 'NOBODY is present: never ask questions. Decide everything yourself; open with one short "Assumptions:" line if you made choices.',
                 '',
                 '# TOOLS — CALL THEM, NEVER WRITE THEM',
@@ -1060,6 +1060,20 @@ class TaskRunner {
 
         if (!isResourceError && effectiveFails >= this.MAX_RETRIES) {
           log.warn(`✗✗ ${taskId} hit ${this.MAX_RETRIES} failures (${errType}) — permanently failed`);
+          // Delete any partial files this task wrote — a permanently failed
+          // task never produced a usable artifact; leaving drafts around
+          // pollutes output/ (Richard: 'files not qualitative should be
+          // deleted otherwise it creates garbage').
+          const ledger = global.__TASK_WRITES?.get(taskId) || [];
+          for (const w of ledger) {
+            try {
+              const rel = w.path || String(w);
+              const abs = path.isAbsolute(rel) ? rel : path.join(AQUARIUM.ROOT || path.dirname(AQUARIUM.TASKS), rel);
+              await fs.unlink(abs).catch(() => {});
+            } catch {}
+          }
+          if (ledger.length) log.info(`  garbage cleanup: ${ledger.length} partial file(s) removed for failed ${taskId}`);
+          global.__TASK_WRITES?.delete(taskId);
           await this._markDone(taskId);
           await this._setStatus(taskId, 'done', {
             outcome: 'failed',
@@ -1192,6 +1206,23 @@ class TaskRunner {
           // requirements drive the re-run prompt fully; progress carries the
           // teaching. Nothing was finalized: no _markDone, no stats, no
           // results_log entry. The assigned agent picks it up next tick.
+          //
+          // GARBAGE CLEANUP: on a very low score (≤ 3/10) the deliverable
+          // is worse than a fresh start — delete it so the next run doesn't
+          // 'improve' a broken artifact. Above 3 we keep it as a reference
+          // for the revision prompt ("read the existing deliverable first").
+          if (Number.isFinite(score) && score <= 3) {
+            const ledger = global.__TASK_WRITES?.get(taskId) || [];
+            for (const w of ledger) {
+              try {
+                const rel = w.path || String(w);
+                const abs = path.isAbsolute(rel) ? rel : path.join(AQUARIUM.ROOT || path.dirname(AQUARIUM.TASKS), rel);
+                await fs.unlink(abs).catch(() => {});
+              } catch {}
+            }
+            global.__TASK_WRITES?.delete(taskId);
+            log.info(`  garbage cleanup: ${ledger.length} low-quality file(s) removed for task_${taskId} (score ${score}/10)`);
+          }
           const upgradedDesc = `${task.description || ''}\n\nREVISION REQUIREMENTS (validation, attempt ${(task.revisions || 0) + 1}): ${fixes}`.slice(0, 1200);
           await this._setStatus(taskId, 'todo', {
             revisions: (task.revisions || 0) + 1,

@@ -46,6 +46,31 @@ function buildProjectFileRoutes({ rm }) {
           try { const s = fs.statSync(fp); size = s.size; mtime = s.mtime.toISOString(); } catch {}
           return { name: e.name, path: fp, size, mtime };
         });
+
+        // Attach the owning task: file appears in task.files_written, or
+        // its name embeds an id like "task_0234" — either binds it to a
+        // real card so the UI can jump straight to context.
+        try {
+          const treg  = await rm.getTasksRegistry().catch(() => ({ tasks: {} }));
+          const rlog  = await rm.read('LOGS/results_log.json').catch(() => ({ results: {} }));
+          const allTasks = { ...(treg.tasks || {}), ...(rlog.results || {}) };
+          const byFile = new Map();
+          for (const t of Object.values(allTasks)) {
+            for (const w of (t.files_written || [])) byFile.set(w.split('/').pop(), t);
+          }
+          for (const f of files) {
+            const t = byFile.get(f.name) || Object.values(allTasks).find(x => f.name.startsWith(String(x.task_id || '')));
+            if (t) {
+              f.task_id    = t.task_id;
+              f.task_title = t.title;
+              f.task_status = t.lifecycle?.status || t.status || null;
+              f.task_review = t.review || null;
+            }
+          }
+        } catch { /* linking is best-effort */ }
+
+        // Sort by mtime desc so newest work is at the top — Richard's ask.
+        files.sort((a, b) => (b.mtime || '').localeCompare(a.mtime || ''));
         res.json({ success: true, files, dir: outputDir });
       } catch {
         res.json({ success: true, files: [], dir: outputDir });

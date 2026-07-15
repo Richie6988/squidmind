@@ -791,6 +791,28 @@ ${task.description}`
             </div>
             <div class="tq-detail-result" id="tqd-result-box">${task.result_summary ? this._esc(task.result_summary) : '<em style="opacity:.5">Click to load full result</em>'}</div>
           </div>` : ''}
+          ${task.review ? `
+          <div class="tq-detail-field">
+            <label>Quality review by Poseidon</label>
+            <div class="tq-detail-review ${task.review.verdict === 'PASS' ? 'tq-review-pass' : 'tq-review-revise'}">
+              <span class="tq-review-verdict">${task.review.verdict}</span>
+              ${Number.isFinite(task.review.score) ? `<span class="tq-review-score">${task.review.score}/10</span>` : ''}
+              ${task.review.at ? `<span class="tq-review-at">${new Date(task.review.at).toLocaleString()}</span>` : ''}
+            </div>
+          </div>` : ''}
+          ${Array.isArray(task.files_written) && task.files_written.length ? `
+          <div class="tq-detail-field">
+            <label>Files written (${task.files_written.length})</label>
+            <div class="tq-detail-files">
+              ${task.files_written.map(f => `
+                <a class="tq-detail-file" href="/api/v2/file/${encodeURIComponent(f).replace(/%2F/g,'/')}" target="_blank" rel="noopener" title="Open ${this._esc(f)}">
+                  <span class="tq-file-ico">${/\.(png|jpe?g|webp|gif|svg)$/i.test(f) ? '🖼' : /\.(md|txt)$/i.test(f) ? '📄' : /\.(pptx|docx|pdf)$/i.test(f) ? '📎' : '📁'}</span>
+                  <span class="tq-file-name">${this._esc(f.split('/').pop())}</span>
+                  <span class="tq-file-path">${this._esc(f.replace(/[^/]+$/, '').replace(/\/$/, ''))}</span>
+                </a>
+              `).join('')}
+            </div>
+          </div>` : ''}
           ${task.created_at ? `<div class="tq-detail-meta">Created: ${new Date(task.created_at).toLocaleString()} by ${this._esc(task.created_by||'?')}</div>` : ''}
         </div>
         <div class="agent-form-footer">
