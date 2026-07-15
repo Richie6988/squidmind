@@ -375,12 +375,22 @@ My response: "${ss.last_response_preview}"${tools}
       lines.push('  read_my_brain("skills.<id>") → read a specific skill steps');
       lines.push('NOTE: file paths use aquarium layout: MODELS/, AGENTS/, PROJECTS/, TASKS/, BRAIN/, SKILLS/, CHANNELS/');
       lines.push('PATH ALIASES (use these with list_files / read_file / write_file):');
-      lines.push('  Project folder = PROJECTS/<NAME>/ where NAME = uppercase project name (e.g. PROJECTS/CRYPTO_ANALYSIS/)');
-      lines.push('  list_files("PROJECTS/CRYPTO_ANALYSIS")         → browse project folder');
-      lines.push('  list_files("PROJECTS/CRYPTO_ANALYSIS/input")   → input files');
-      lines.push('  list_files("PROJECTS/CRYPTO_ANALYSIS/output")  → output files');
-      lines.push('  read_file("PROJECTS/CRYPTO_ANALYSIS/project_memory.json") → project memory');
-      lines.push('  write_file("PROJECTS/CRYPTO_ANALYSIS/output/report.md", content) → save output');
+      // Pick a REAL project as the example so the prompt never suggests a
+      // phantom name. If nothing exists yet, use a neutral placeholder that
+      // the model won't confuse with an actual project.
+      const _RM = require('./RegistryManager');
+      const _activeProjects = Object.values(projectReg.projects || {})
+        .filter(p => (p.status || 'active') === 'active' && p.name);
+      const _exampleName   = _activeProjects[0]?.name || 'YOUR_PROJECT_NAME';
+      const _exampleFolder = _activeProjects[0]
+        ? _RM.projectFolder(_activeProjects[0])
+        : 'YOUR_PROJECT_NAME';
+      lines.push(`  Project folder = PROJECTS/<NAME>/ where NAME = uppercase project name (folder for "${_exampleName}" is PROJECTS/${_exampleFolder}/)`);
+      lines.push(`  list_files("PROJECTS/${_exampleFolder}")         → browse project folder`);
+      lines.push(`  list_files("PROJECTS/${_exampleFolder}/input")   → input files`);
+      lines.push(`  list_files("PROJECTS/${_exampleFolder}/output")  → output files`);
+      lines.push(`  read_file("PROJECTS/${_exampleFolder}/project_memory.json") → project memory`);
+      lines.push(`  write_file("PROJECTS/${_exampleFolder}/output/report.md", content) → save output`);
       lines.push('  list_files("TASKS/OUTPUT")              → task outputs (no project)');
       lines.push('  list_files("PROJECTS")                  → list all project folders');
       lines.push('CRITICAL: folder name = project NAME not project_id. Use list_files("PROJECTS") to see all folders.');
@@ -650,21 +660,37 @@ My response: "${ss.last_response_preview}"${tools}
     // ── Full toolset (used in chat) ───────────────────────────────────────
     const allFunctions = {
       create_agent: defineChatSessionFunction({
-        description: 'Create a new agent. The specialization is a CONCRETE TEMPLATE — it seeds sampling temperature, personality traits (curiosity/thoroughness/creativity/assertiveness/empathy), communication style, default mood, a persona-flavored system prompt, and the tool whitelist that matters for that job. e.g. researcher = high curiosity + high thoroughness + web+docs tools; security = high assertiveness + audit tools only. Override any of these later with update_agent_field if needed.',
+        description: 'Create a new agent. Two ways to seed the profile: (1) name a KNOWN specialization from the hint list — you get a preset template (traits, tools, style, mood, persona). (2) name ANY specialization ("finance_specialist", "legal_analyst", "poet"…) and pass the profile fields explicitly — this is preferred for domains not in the preset list. Preset + explicit overrides work: e.g. specialization="researcher" but traits={curiosity:0.99, empathy:0.2} keeps the researcher tools/style/mood, only overrides the two traits. AgentForm can further edit any field later.',
         params: {
           type: 'object',
           properties: {
             display_name: { type: 'string', description: 'Display name shown in the aquarium (e.g. "Backend Bob")' },
             specialization: {
               type: 'string',
-              enum: ['frontend_specialist', 'backend_specialist', 'fullstack_dev', 'data_analyst',
-                     'devops', 'qa_tester', 'designer', 'researcher', 'ml_engineer',
-                     'security', 'documentation', 'general'],
-              description: 'Agent specialization'
+              description: 'Free-form specialization label. Preset templates available: frontend_specialist, backend_specialist, fullstack_dev, data_analyst, devops, qa_tester, designer, researcher, ml_engineer, security, documentation, general. Any other label (finance_specialist, legal_analyst, marketing_strategist, biologist, translator, …) is accepted — pair it with explicit traits/tools_allowed/persona params.'
             },
             role: { type: 'string', description: 'One-line description of what this agent does' },
             primary_color: { type: 'string', description: 'Hex color like #FF6B9D for the agent body' },
-            temperature: { type: 'number', description: 'Optional sampling temperature 0.1-1.2. Defaults by specialization: designer/creative ≈ 0.95, researcher/analyst/security ≈ 0.4, coding ≈ 0.35, general 0.7.' }
+            temperature: { type: 'number', description: 'Sampling temperature 0.1-1.2. Cold (0.3-0.4) for rigor, hot (0.9+) for creative work.' },
+            persona: { type: 'string', description: 'One-line personality hint that seeds the system prompt — e.g. for a finance specialist: "Anchor every claim to a filing or a datum; distrust round numbers; call out survivorship bias explicitly."' },
+            traits: {
+              type: 'object',
+              description: 'Personality traits 0-1. curiosity=explore-vs-execute, thoroughness=double-check-vs-ship, creativity=novel-vs-standard, assertiveness=push-vs-defer, empathy=user-vs-tech. Provide the 3-5 that MATTER for the job; missing ones inherit from the specialization preset or general defaults.',
+              properties: {
+                curiosity:      { type: 'number' },
+                thoroughness:   { type: 'number' },
+                creativity:     { type: 'number' },
+                assertiveness:  { type: 'number' },
+                empathy:        { type: 'number' }
+              }
+            },
+            tools_allowed: {
+              type: 'array',
+              items: { type: 'string' },
+              description: 'Tool names the agent may call during BG runs. Empty = default BG toolset (24 tools). Otherwise a strict whitelist. Pick from: read_file, write_file, edit_file, list_files, web_search, web_fetch, execute_bash, generate_image, edit_image, generate_pptx, generate_docx, update_project_memory, read_project_memory, list_skills, record_skill_outcome, list_models, send_email, list_mcp_servers, call_mcp_tool, create_task, update_task, list_tasks, audit_project.'
+            },
+            communication_style: { type: 'string', description: 'e.g. technical, analytical, direct, expressive, clear, professional' },
+            default_mood: { type: 'string', description: 'e.g. focused, curious, vigilant, inspired, analytical, attentive, engaged' }
           },
           required: ['display_name', 'specialization']
         },
@@ -1770,18 +1796,17 @@ My response: "${ss.last_response_preview}"${tools}
   // HANDLERS - actual implementations
   // ===================================================================
 
-  async _createAgent({ display_name, specialization, role, primary_color, temperature }) {
+  async _createAgent({ display_name, specialization, role, primary_color, temperature,
+                       persona, traits, tools_allowed, communication_style, default_mood }) {
     try {
       // ═══════════════════════════════════════════════════════════════════
-      // SPECIALIZATION PROFILES — a spec is a concrete template, not just
-      // a label. Each entry ships the sampling temperature, personality
-      // traits (0-1), communication style, default mood, a persona-flavored
-      // system prompt seed, and the tool whitelist that MATTERS for the
-      // job. This is the difference between "created 12 agents that all
-      // behave identically" and "created 12 agents that actually do
-      // different things well".
+      // Base = preset for the specialization (12 archetypes below) OR
+      // 'general' if the label is unknown. Poseidon can then override any
+      // field explicitly via the tool params — that path is what enables
+      // in-situ customization for domains outside the preset list
+      // (finance_specialist, legal_analyst, marketing_strategist, poet…).
+      // Explicit overrides always win over the preset.
       // ═══════════════════════════════════════════════════════════════════
-      // Core tool sets — composed below per spec
       const CODE_TOOLS    = ['read_file', 'write_file', 'edit_file', 'list_files', 'execute_bash', 'web_search', 'web_fetch', 'list_skills', 'record_skill_outcome'];
       const RESEARCH_TOOLS= ['web_search', 'web_fetch', 'read_file', 'write_file', 'list_files', 'update_project_memory', 'read_project_memory', 'generate_docx', 'list_skills'];
       const CREATIVE_TOOLS= ['read_file', 'write_file', 'edit_file', 'list_files', 'generate_image', 'edit_image', 'web_search', 'web_fetch', 'list_skills'];
@@ -1791,7 +1816,7 @@ My response: "${ss.last_response_preview}"${tools}
       const QA_TOOLS      = ['read_file', 'write_file', 'list_files', 'execute_bash', 'web_search', 'update_project_memory', 'list_skills'];
 
       const SPEC_PROFILES = {
-        // key: temp, traits(curiosity/thoroughness/creativity/assertiveness/empathy), style, mood, tools
+        // preset templates — one line per archetype, Poseidon overrides any field it wants
         frontend_specialist: { temp: 0.45, tr: [0.65, 0.6,  0.8,  0.5,  0.75], style: 'expressive',  mood: 'user-focused', tools: [...CREATIVE_TOOLS, 'execute_bash'] },
         backend_specialist:  { temp: 0.35, tr: [0.5,  0.85, 0.5,  0.7,  0.4],  style: 'technical',   mood: 'focused',      tools: CODE_TOOLS },
         fullstack_dev:       { temp: 0.4,  tr: [0.7,  0.7,  0.6,  0.6,  0.55], style: 'technical',   mood: 'engaged',      tools: CODE_TOOLS },
@@ -1803,9 +1828,9 @@ My response: "${ss.last_response_preview}"${tools}
         devops:              { temp: 0.35, tr: [0.55, 0.95, 0.4,  0.75, 0.35], style: 'direct',      mood: 'focused',      tools: OPS_TOOLS },
         designer:            { temp: 0.95, tr: [0.8,  0.5,  0.95, 0.6,  0.7],  style: 'expressive',  mood: 'inspired',     tools: CREATIVE_TOOLS },
         documentation:       { temp: 0.55, tr: [0.65, 0.8,  0.55, 0.4,  0.9],  style: 'clear',       mood: 'attentive',    tools: DOCS_TOOLS },
-        general:             { temp: 0.7,  tr: [0.7,  0.7,  0.6,  0.6,  0.6],  style: 'professional',mood: 'focused',      tools: [] },  // empty = default BG set (24 tools)
+        general:             { temp: 0.7,  tr: [0.7,  0.7,  0.6,  0.6,  0.6],  style: 'professional',mood: 'focused',      tools: [] },
       };
-      const PERSONA_HINTS = {
+      const PRESET_PERSONAS = {
         frontend_specialist: 'Ship pixel-honest UI. Weigh accessibility and perceived latency. Prefer boring, working components over novel ones.',
         backend_specialist:  'API contracts first. Idempotency, error paths, and data invariants over cleverness.',
         fullstack_dev:       'Cut across the stack pragmatically; keep the seam between frontend and backend clean.',
@@ -1817,13 +1842,38 @@ My response: "${ss.last_response_preview}"${tools}
         devops:              'Automate what you did twice. Idempotent, reversible, observed. Never a manual step on prod.',
         designer:            'Concept before pixels; typography and spacing over decoration. One idea per screen.',
         documentation:       'Write for the reader who is stuck. Examples over prose; task-completion over completeness.',
-        general:             'Do the task cleanly. Ask for nothing; decide and act.',
       };
 
-      const p = SPEC_PROFILES[specialization] || SPEC_PROFILES.general;
-      const temp = (Number.isFinite(temperature) && temperature >= 0.1 && temperature <= 1.2) ? temperature : p.temp;
-      const [curiosity, thoroughness, creativity, assertiveness, empathy] = p.tr;
-      const persona = PERSONA_HINTS[specialization] || PERSONA_HINTS.general;
+      const preset  = SPEC_PROFILES[specialization] || SPEC_PROFILES.general;
+      const isKnown = !!SPEC_PROFILES[specialization];
+
+      // ─── Resolve every field: explicit override > preset > sane default ──
+      const temp = (Number.isFinite(temperature) && temperature >= 0.1 && temperature <= 1.2)
+                     ? temperature : preset.temp;
+
+      // Traits: merge Poseidon overrides on top of the preset vector
+      const [pc, pt, pcr, pa, pe] = preset.tr;
+      const mergedTraits = {
+        curiosity:     Number.isFinite(traits?.curiosity)     ? traits.curiosity     : pc,
+        thoroughness:  Number.isFinite(traits?.thoroughness)  ? traits.thoroughness  : pt,
+        creativity:    Number.isFinite(traits?.creativity)    ? traits.creativity    : pcr,
+        assertiveness: Number.isFinite(traits?.assertiveness) ? traits.assertiveness : pa,
+        empathy:       Number.isFinite(traits?.empathy)       ? traits.empathy       : pe,
+      };
+
+      // Tools: explicit list wins; else preset; empty preset = inherit BG (24 tools)
+      const finalTools = Array.isArray(tools_allowed)
+                          ? Array.from(new Set(tools_allowed))
+                          : Array.from(new Set(preset.tools));
+
+      const style = communication_style || preset.style;
+      const mood  = default_mood        || preset.mood;
+
+      // Persona (system prompt seed): explicit > preset (if known) > minimal
+      const finalPersona = persona
+        || PRESET_PERSONAS[specialization]
+        || (isKnown ? '' : `Own the ${specialization.replace(/_/g, ' ')} domain: apply the standards of that field with rigor, and be explicit about the tradeoffs you make.`);
+
       const brain = {
         identity: {
           role: role || `${specialization.replace(/_/g, ' ')} specialist`,
@@ -1838,17 +1888,17 @@ My response: "${ss.last_response_preview}"${tools}
         },
         brain_config: {
           model_binding: { preferred_model_id: null },
-          system_prompt: `You are ${display_name}, a ${specialization.replace(/_/g, ' ')} specialist. ${persona}${role ? ' ' + role : ''}`,
+          system_prompt: `You are ${display_name}, a ${specialization.replace(/_/g, ' ')} specialist.${finalPersona ? ' ' + finalPersona : ''}${role ? ' ' + role : ''}`,
           inference_params: { temperature: temp, top_p: temp >= 0.8 ? 0.95 : 0.9, top_k: 40, repeat_penalty: 1.1, max_tokens_per_response: 2048 }
         },
         personality: {
-          traits: { curiosity, thoroughness, creativity, assertiveness, empathy },
-          communication_style: p.style,
-          default_mood: p.mood
+          traits: mergedTraits,
+          communication_style: style,
+          default_mood: mood
         },
         capabilities: {
           skills: {},
-          tools_allowed: Array.from(new Set(p.tools))  // dedup safety (spread composites)
+          tools_allowed: finalTools
         },
         memory: { context_retention: 0.7, long_term_capacity: 100, persist_across_sessions: true },
         lifecycle: { max_concurrent_tasks: 1, auto_sleep: 'after_30min' }
@@ -1856,11 +1906,18 @@ My response: "${ss.last_response_preview}"${tools}
       const result = await this.rm.createAgent({
         display_name, specialization, status: 'sleeping', brain, created_by: 'poseidon_main'
       });
+      const source = isKnown
+        ? (traits || tools_allowed || persona || communication_style || default_mood
+            ? `preset "${specialization}" with overrides`
+            : `preset "${specialization}"`)
+        : (traits || tools_allowed || persona
+            ? `custom profile for "${specialization}"`
+            : `unknown spec "${specialization}" — fell back to general defaults`);
       return {
         ok: true,
         agent_id: result.agent_id,
         display_name,
-        message: `Created agent ${result.agent_id} (${display_name}) as ${specialization} — ${p.tools.length ? p.tools.length + ' tools whitelisted' : 'default BG toolset'}, temp=${temp}, style=${p.style}, mood=${p.mood}.`
+        message: `Created agent ${result.agent_id} (${display_name}) — ${source}. ${finalTools.length ? finalTools.length + ' tools whitelisted' : 'default BG toolset'}, temp=${temp}, style=${style}, mood=${mood}.`
       };
     } catch (err) {
       return { ok: false, error: err.message };
