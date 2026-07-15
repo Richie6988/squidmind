@@ -650,7 +650,7 @@ My response: "${ss.last_response_preview}"${tools}
     // ── Full toolset (used in chat) ───────────────────────────────────────
     const allFunctions = {
       create_agent: defineChatSessionFunction({
-        description: 'Create a new agent (AI worker) with a fresh brain file. Returns the new agent_id.',
+        description: 'Create a new agent. The specialization is a CONCRETE TEMPLATE — it seeds sampling temperature, personality traits (curiosity/thoroughness/creativity/assertiveness/empathy), communication style, default mood, a persona-flavored system prompt, and the tool whitelist that matters for that job. e.g. researcher = high curiosity + high thoroughness + web+docs tools; security = high assertiveness + audit tools only. Override any of these later with update_agent_field if needed.',
         params: {
           type: 'object',
           properties: {
@@ -1772,19 +1772,61 @@ My response: "${ss.last_response_preview}"${tools}
 
   async _createAgent({ display_name, specialization, role, primary_color, temperature }) {
     try {
-      // Sampling defaults BY ROLE — an artist needs heat, an analyst needs
-      // rigor. Explicit temperature (0.1-1.2) wins over the table.
-      const SPEC_TEMP = {
-        designer: 0.95, documentation: 0.55, general: 0.7, researcher: 0.4,
-        data_analyst: 0.4, ml_engineer: 0.5, security: 0.35, qa_tester: 0.4,
-        frontend_specialist: 0.45, backend_specialist: 0.35,
-        fullstack_dev: 0.4, devops: 0.35,
+      // ═══════════════════════════════════════════════════════════════════
+      // SPECIALIZATION PROFILES — a spec is a concrete template, not just
+      // a label. Each entry ships the sampling temperature, personality
+      // traits (0-1), communication style, default mood, a persona-flavored
+      // system prompt seed, and the tool whitelist that MATTERS for the
+      // job. This is the difference between "created 12 agents that all
+      // behave identically" and "created 12 agents that actually do
+      // different things well".
+      // ═══════════════════════════════════════════════════════════════════
+      // Core tool sets — composed below per spec
+      const CODE_TOOLS    = ['read_file', 'write_file', 'edit_file', 'list_files', 'execute_bash', 'web_search', 'web_fetch', 'list_skills', 'record_skill_outcome'];
+      const RESEARCH_TOOLS= ['web_search', 'web_fetch', 'read_file', 'write_file', 'list_files', 'update_project_memory', 'read_project_memory', 'generate_docx', 'list_skills'];
+      const CREATIVE_TOOLS= ['read_file', 'write_file', 'edit_file', 'list_files', 'generate_image', 'edit_image', 'web_search', 'web_fetch', 'list_skills'];
+      const DOCS_TOOLS    = ['read_file', 'write_file', 'edit_file', 'list_files', 'generate_docx', 'generate_pptx', 'web_search', 'web_fetch', 'list_skills'];
+      const AUDIT_TOOLS   = ['read_file', 'list_files', 'execute_bash', 'web_search', 'web_fetch', 'update_project_memory', 'list_skills'];
+      const OPS_TOOLS     = ['read_file', 'write_file', 'edit_file', 'list_files', 'execute_bash', 'web_search', 'web_fetch', 'list_skills'];
+      const QA_TOOLS      = ['read_file', 'write_file', 'list_files', 'execute_bash', 'web_search', 'update_project_memory', 'list_skills'];
+
+      const SPEC_PROFILES = {
+        // key: temp, traits(curiosity/thoroughness/creativity/assertiveness/empathy), style, mood, tools
+        frontend_specialist: { temp: 0.45, tr: [0.65, 0.6,  0.8,  0.5,  0.75], style: 'expressive',  mood: 'user-focused', tools: [...CREATIVE_TOOLS, 'execute_bash'] },
+        backend_specialist:  { temp: 0.35, tr: [0.5,  0.85, 0.5,  0.7,  0.4],  style: 'technical',   mood: 'focused',      tools: CODE_TOOLS },
+        fullstack_dev:       { temp: 0.4,  tr: [0.7,  0.7,  0.6,  0.6,  0.55], style: 'technical',   mood: 'engaged',      tools: CODE_TOOLS },
+        data_analyst:        { temp: 0.4,  tr: [0.75, 0.9,  0.4,  0.6,  0.4],  style: 'analytical',  mood: 'analytical',   tools: [...RESEARCH_TOOLS, 'execute_bash'] },
+        researcher:          { temp: 0.4,  tr: [0.95, 0.9,  0.5,  0.6,  0.5],  style: 'analytical',  mood: 'curious',      tools: RESEARCH_TOOLS },
+        ml_engineer:         { temp: 0.5,  tr: [0.85, 0.75, 0.7,  0.6,  0.4],  style: 'technical',   mood: 'curious',      tools: [...CODE_TOOLS, 'list_models'] },
+        security:            { temp: 0.35, tr: [0.7,  0.95, 0.4,  0.9,  0.3],  style: 'direct',      mood: 'vigilant',     tools: AUDIT_TOOLS },
+        qa_tester:           { temp: 0.4,  tr: [0.7,  0.95, 0.4,  0.8,  0.5],  style: 'direct',      mood: 'vigilant',     tools: QA_TOOLS },
+        devops:              { temp: 0.35, tr: [0.55, 0.95, 0.4,  0.75, 0.35], style: 'direct',      mood: 'focused',      tools: OPS_TOOLS },
+        designer:            { temp: 0.95, tr: [0.8,  0.5,  0.95, 0.6,  0.7],  style: 'expressive',  mood: 'inspired',     tools: CREATIVE_TOOLS },
+        documentation:       { temp: 0.55, tr: [0.65, 0.8,  0.55, 0.4,  0.9],  style: 'clear',       mood: 'attentive',    tools: DOCS_TOOLS },
+        general:             { temp: 0.7,  tr: [0.7,  0.7,  0.6,  0.6,  0.6],  style: 'professional',mood: 'focused',      tools: [] },  // empty = default BG set (24 tools)
       };
-      const temp = (Number.isFinite(temperature) && temperature >= 0.1 && temperature <= 1.2)
-        ? temperature : (SPEC_TEMP[specialization] ?? 0.7);
+      const PERSONA_HINTS = {
+        frontend_specialist: 'Ship pixel-honest UI. Weigh accessibility and perceived latency. Prefer boring, working components over novel ones.',
+        backend_specialist:  'API contracts first. Idempotency, error paths, and data invariants over cleverness.',
+        fullstack_dev:       'Cut across the stack pragmatically; keep the seam between frontend and backend clean.',
+        data_analyst:        'Every number cites its query. Assumptions explicit. Prefer the honest chart over the flattering one.',
+        researcher:          'Read primary sources; distinguish claim, evidence, and inference. When uncertain, say what would settle it.',
+        ml_engineer:         'Reproducibility, evals, and calibration before flash. Small wins that generalize beat big ones that don’t.',
+        security:            'Assume breach. Threat-model before code. Say "no" clearly and offer a workable path.',
+        qa_tester:           'Break it before users do. Tests are the deliverable, coverage is a byproduct.',
+        devops:              'Automate what you did twice. Idempotent, reversible, observed. Never a manual step on prod.',
+        designer:            'Concept before pixels; typography and spacing over decoration. One idea per screen.',
+        documentation:       'Write for the reader who is stuck. Examples over prose; task-completion over completeness.',
+        general:             'Do the task cleanly. Ask for nothing; decide and act.',
+      };
+
+      const p = SPEC_PROFILES[specialization] || SPEC_PROFILES.general;
+      const temp = (Number.isFinite(temperature) && temperature >= 0.1 && temperature <= 1.2) ? temperature : p.temp;
+      const [curiosity, thoroughness, creativity, assertiveness, empathy] = p.tr;
+      const persona = PERSONA_HINTS[specialization] || PERSONA_HINTS.general;
       const brain = {
         identity: {
-          role: role || `${specialization} agent`,
+          role: role || `${specialization.replace(/_/g, ' ')} specialist`,
           nickname: display_name,
           created_at: new Date().toISOString()
         },
@@ -1796,15 +1838,18 @@ My response: "${ss.last_response_preview}"${tools}
         },
         brain_config: {
           model_binding: { preferred_model_id: null },
-          system_prompt: `You are ${display_name}, a ${specialization} specialist agent. ${role || ''}`,
+          system_prompt: `You are ${display_name}, a ${specialization.replace(/_/g, ' ')} specialist. ${persona}${role ? ' ' + role : ''}`,
           inference_params: { temperature: temp, top_p: temp >= 0.8 ? 0.95 : 0.9, top_k: 40, repeat_penalty: 1.1, max_tokens_per_response: 2048 }
         },
         personality: {
-          traits: { curiosity: 0.7, thoroughness: temp <= 0.45 ? 0.85 : 0.7, creativity: temp >= 0.8 ? 0.9 : 0.5, assertiveness: 0.5, empathy: 0.6 },
-          communication_style: 'professional',
-          default_mood: 'focused'
+          traits: { curiosity, thoroughness, creativity, assertiveness, empathy },
+          communication_style: p.style,
+          default_mood: p.mood
         },
-        capabilities: { skills: {}, tools_allowed: [] },
+        capabilities: {
+          skills: {},
+          tools_allowed: Array.from(new Set(p.tools))  // dedup safety (spread composites)
+        },
         memory: { context_retention: 0.7, long_term_capacity: 100, persist_across_sessions: true },
         lifecycle: { max_concurrent_tasks: 1, auto_sleep: 'after_30min' }
       };
@@ -1815,7 +1860,7 @@ My response: "${ss.last_response_preview}"${tools}
         ok: true,
         agent_id: result.agent_id,
         display_name,
-        message: `Created agent ${result.agent_id} (${display_name}) as ${specialization}. Status: sleeping.`
+        message: `Created agent ${result.agent_id} (${display_name}) as ${specialization} — ${p.tools.length ? p.tools.length + ' tools whitelisted' : 'default BG toolset'}, temp=${temp}, style=${p.style}, mood=${p.mood}.`
       };
     } catch (err) {
       return { ok: false, error: err.message };
