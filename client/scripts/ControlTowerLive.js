@@ -33,7 +33,12 @@ const ControlTowerLive = {
       if (libRes.status === 'fulfilled') this._renderModel(libRes.value);
       if (statusRes.status === 'fulfilled') {
         this._renderContextBar(statusRes.value);
-        this._renderPhase(statusRes.value);   // agentic state — always visible
+        // _renderPhase was intentionally removed — Richard's context bar
+        // already carries the holder name (Poseidon | agent name) + its
+        // system-prompt size in the legend row, and the live phase is
+        // visible via the "loaded model" tile just above (green Poseidon
+        // pill or agent name). A second CHAT/generating chip on the right
+        // duplicated that information without adding anything actionable.
       }
       if (brokerRes.status === 'fulfilled' && brokerRes.value) this._renderBroker(brokerRes.value.state);
     } catch (err) {
@@ -42,11 +47,17 @@ const ControlTowerLive = {
   },
 
   /**
-   * Render the current agentic phase: what the model is doing right now,
-   * which task/project/agent if in BG. This is the panel the user was
-   * missing — every phase transition is loud and visible.
+   * _renderPhase used to render a "CHAT · generating / N ctx · N turns"
+   * chip on the right of the context bar. Removed — see the call-site
+   * comment above. The stub below just tears down any leftover DOM the
+   * old build may have created before this deploy, then no-ops.
    */
-  _renderPhase(status) {
+  _renderPhase() {
+    const stale = document.getElementById('phase-panel');
+    if (stale) stale.remove();
+  },
+
+  _renderPhase_unused_original(status) {
     const model = (status.loaded_models || [])[0];
     let panel = document.getElementById('phase-panel');
     if (!panel) {
