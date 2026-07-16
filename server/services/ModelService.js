@@ -2049,6 +2049,15 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
         // If still stuck after dispose: force unload+reload the context entirely.
         let sequence;
         const _acquireSequence = async () => {
+          // Guard: a prior crash may have nulled entry.context. In that state
+          // every getSequence() throws "Cannot read properties of null" and
+          // the model is dead until unloaded. Unload here so the next chat
+          // request auto-reloads via the top-of-function ensureLoaded path.
+          if (!entry.context) {
+            log.warn(' _acquireSequence: entry.context is null (prior crash) — unloading to force fresh reload');
+            try { await this.unloadModel(this.poseidonModelId); } catch {}
+            throw new Error('context lost — model unloaded, retry your message');
+          }
           for (let attempt = 0; attempt < 3; attempt++) {
             try { return entry.context.getSequence(); } catch (e) {
               if (!/no sequences/i.test(e.message)) throw e;
@@ -2060,22 +2069,33 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
                 entry.session = null; entry._currentSequence = null;
                 await new Promise(r => setTimeout(r, 400));
               } else if (attempt === 1) {
-                // Slot still held — force unload and recreate the context
+                // Slot still held — force unload and recreate the context.
+                // createContext can fail with "too large for VRAM" when the
+                // llama.cpp allocator hasn't yet reclaimed the just-disposed
+                // KV buffers. Self-heal: unload the whole model so the next
+                // chat request auto-reloads cleanly at the configured ctx.
                 log.warn(' Sequence slot still stuck — unloading model to recover');
                 try { if (entry.context?.dispose) await entry.context.dispose(); } catch {}
                 entry.context = null;
-                // Recreate context
-                const newCtx = await entry.model.createContext({
-                  contextSize:    entry.config.contextLength,
-                  batchSize:      entry.config.batchSize,
-                  threads:        entry.config.cpuThreads,
-                  sequences:      1,
-                  flashAttention: entry.config.flashAttention
-                });
-                entry.context = newCtx;
-                entry.config.contextLength = newCtx.contextSize;
-                log.info(` Context recreated: ctx=${newCtx.contextSize}`);
-                await new Promise(r => setTimeout(r, 200));
+                // Longer wait: give CUDA time to actually free KV pages
+                await new Promise(r => setTimeout(r, 500));
+                try {
+                  const newCtx = await entry.model.createContext({
+                    contextSize:    entry.config.contextLength,
+                    batchSize:      entry.config.batchSize,
+                    threads:        entry.config.cpuThreads,
+                    sequences:      1,
+                    flashAttention: entry.config.flashAttention
+                  });
+                  entry.context = newCtx;
+                  entry.config.contextLength = newCtx.contextSize;
+                  log.info(` Context recreated: ctx=${newCtx.contextSize}`);
+                  await new Promise(r => setTimeout(r, 200));
+                } catch (recreateErr) {
+                  log.error(` Context recreate failed (${recreateErr.message}) — full model unload to recover`);
+                  try { await this.unloadModel(this.poseidonModelId); } catch {}
+                  throw new Error(`context recreate failed (${recreateErr.message}) — model unloaded, retry your message`);
+                }
               } else {
                 throw e;
               }
@@ -2765,7 +2785,7 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
       // Session wipe done (or not needed)
     } catch (err) {
       // Log every error — 0s broker release with no log makes debugging impossible
-      const isKnown = /no sequences|sequence|context|too long|compress|prompt|system message|checkpoint|max position|position mismatch/i.test(err.message);
+      const isKnown = /no sequences|sequence|context|too long|compress|prompt|system message|checkpoint|max position|position mismatch|getSequence|context lost|recreate failed/i.test(err.message);
       log.error(` chatWithPoseidon error (${isKnown ? 'session' : 'unknown'}):`, err.message);
       if (!isKnown) log.error(err.stack?.split('\n').slice(0,4).join('\n'));
       // Catch all session/context/prompt errors and reset session state fully
