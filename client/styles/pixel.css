@@ -2428,6 +2428,43 @@ input[type="color"]::-webkit-color-swatch {
   text-shadow: 1px 1px 0 rgba(0,0,0,0.8);
 }
 .ti-kcard-prog  { font-family: 'Courier New', monospace; font-size: 8px; color: var(--ui-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 3px; }
+
+/* Output-file chips on done/failed kanban cards — click opens preview */
+.ti-kcard-files {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  margin: 3px 0 2px 0;
+}
+.ti-kcard-file {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-family: 'Courier New', monospace;
+  font-size: 8px;
+  color: #4facfe;
+  background: rgba(79,172,254,0.08);
+  border: 1px solid rgba(79,172,254,0.22);
+  border-radius: 3px;
+  padding: 1px 5px;
+  cursor: pointer;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: background 0.12s, border-color 0.12s;
+}
+.ti-kcard-file:hover {
+  background: rgba(79,172,254,0.20);
+  border-color: rgba(79,172,254,0.55);
+  color: #7dc7ff;
+}
+.ti-kcard-file-more {
+  font-family: 'Courier New', monospace;
+  font-size: 8px;
+  color: var(--ui-muted);
+  padding: 1px 4px;
+}
 .ti-kcard-foot  { display: flex; align-items: center; justify-content: space-between; margin-top: 4px; gap: 6px; }
 .ti-kcard-foot-right {
   display: flex;

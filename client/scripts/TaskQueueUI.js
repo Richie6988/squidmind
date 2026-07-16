@@ -238,7 +238,21 @@ const TaskQueueUI = {
     const isBrokerActive = bgTaskIdMatch === t.task_id && this._brokerState !== 'IDLE';
     const workerRunning = assignee && this._workerStatuses[assignee]?.current_task_id === t.task_id
                           && this._workerStatuses[assignee]?.status === 'running';
-    const isRunning   = isBrokerActive || workerRunning;
+    // Image tasks acquire the broker under the generic 'image_gen' owner
+    // (no task_id in the string) because ImageService serves multiple queued
+    // requests through one owner. Without this branch, image tasks show up
+    // as "stale/syncing" the whole time they run — no pulse, no ⏳ counter.
+    // Signal: broker BUSY with image_gen owner AND this row is an image task
+    // AND this task is the wip one on disk (only one image runs at a time).
+    const isImageTaskRow =
+      t.task_type === 'image_generation' ||
+      t.task_type === 'image_gen' ||
+      /^image[: ]/i.test(t.title || '');
+    const brokerIsImage = /image_gen/i.test(bgOwner) && this._brokerState !== 'IDLE';
+    const isImageRunning = isImageTaskRow
+                           && ['wip','in_progress'].includes(status)
+                           && brokerIsImage;
+    const isRunning   = isBrokerActive || workerRunning || isImageRunning;
     const isStaleRunning = ['wip','in_progress'].includes(status) && !isRunning;   // disk says yes, reality says no
     // Task finished its agent run and is now waiting for Poseidon's quality
     // verdict — a distinct visible state, not "running", not "done".

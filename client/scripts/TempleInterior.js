@@ -1138,6 +1138,25 @@ const TempleInterior = {
       // Result summary for done tasks
       const summary = (isDone || isFail) && task.result_summary
         ? `<div class="ti-kcard-prog">${this._esc(String(task.result_summary).slice(0, 110))}</div>` : '';
+      // Output file chips for done/failed tasks — click opens the file in
+      // the main preview panel (same _openFile path used by the output list).
+      let outputChips = '';
+      if ((isDone || isFail) && Array.isArray(task.files_written) && task.files_written.length) {
+        const chips = task.files_written.slice(0, 6).map(fp => {
+          const bn  = String(fp).split(/[\/\\]/).pop() || fp;
+          // Detect type from the path: output/ vs work/ vs temp/. Default output.
+          const ftype = /[\/\\]work[\/\\]/i.test(fp) ? 'work'
+                      : /[\/\\]temp[\/\\]/i.test(fp) ? 'temp'
+                      : 'output';
+          const isImg = /\.(png|jpe?g|gif|webp|svg|bmp)$/i.test(bn);
+          const icon = isImg ? '🖼' : /\.(md|txt|log)$/i.test(bn) ? '📄'
+                     : /\.(json|ya?ml|toml|csv|tsv)$/i.test(bn) ? '{}'
+                     : /\.(js|ts|py|rb|go|rs|java|cpp|c|sh)$/i.test(bn) ? '</>' : '·';
+          return `<span class="ti-kcard-file" onclick="event.stopPropagation();TempleInterior._openKanbanFile('${this._esc(bn)}','${this._esc(fp)}','${ftype}')" title="Open ${this._esc(bn)}">${icon} ${this._esc(bn.length > 26 ? bn.slice(0, 24) + '…' : bn)}</span>`;
+        }).join('');
+        const more = task.files_written.length > 6 ? `<span class="ti-kcard-file-more">+${task.files_written.length - 6}</span>` : '';
+        outputChips = `<div class="ti-kcard-files">${chips}${more}</div>`;
+      }
       // Progress bar (animated for running)
       const bar    = isRun ? `<div class="ti-kcard-bar"><div class="ti-kcard-bar-fill"></div></div>` : '';
       const agentBadge = agent
@@ -1172,7 +1191,7 @@ const TempleInterior = {
           <div class="ti-kcard-title">
             <span style="color:${statusColor};margin-right:5px;">${statusIcon}</span>${this._esc(task.title)}
           </div>
-          ${prog}${summary}${bar}
+          ${prog}${summary}${outputChips}${bar}
           <div class="ti-kcard-foot">
             ${agentBadge}
             ${depBadge}
@@ -2746,6 +2765,16 @@ const TempleInterior = {
     return String(s).replace(/[<>&"]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'})[c]);
   },
   _escape(s) { return this._esc(s); },
+
+  // Open a file that was clicked on a done/failed kanban card. Routes to the
+  // same _openFile the output-list uses so the preview panel takes over.
+  _openKanbanFile(name, filepath, ftype) {
+    // Switch to the files tab so the IDE panel is visible, then open.
+    if (this._leftTab !== 'files') this._switchLeft('files');
+    // type param: _openFile uses 'output' vs 'input'; treat work/temp as output-adjacent
+    const type = ftype === 'input' ? 'input' : 'output';
+    this._openFile(name, filepath, type, this._folder());
+  },
 
   // ═══ LEGACY COMPAT ═══════════════════════════════════════════════════════
   populateResources()    { this._switchLeft('files'); },
