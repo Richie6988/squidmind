@@ -49,14 +49,30 @@ const aquarium = {
   async updateSquidsStatus() {
     try {
       const agents = await api.agents.flat();
-      // Update existing squids with fresh data
-      agents.forEach(agentData => {
-        const squid = this.squids.find(s => s.id === (agentData.agent_id || agentData.id));
-        if (squid) {
-          squid.status = agentData.status;
-          squid.current_thought = agentData.current_thought;
-        }
-      });
+      // Delta detection: squids created by Poseidon (via chat tool call) are
+      // written to the registry but nothing on the client tells the aquarium
+      // to reload — the poll below only mutated existing squids' status, so
+      // new agents stayed invisible until a full page refresh. Compare id sets
+      // and full-reload on mismatch (add OR remove).
+      const registryIds = new Set(agents.map(a => a.agent_id || a.id));
+      const currentIds  = new Set(this.squids.map(s => s.agent_id || s.id));
+      let mismatch = registryIds.size !== currentIds.size;
+      if (!mismatch) {
+        for (const id of registryIds) { if (!currentIds.has(id)) { mismatch = true; break; } }
+      }
+      if (mismatch) {
+        console.log('[OCEAN] squid set changed — reloading aquarium');
+        await this.loadSquids();
+      } else {
+        // Update existing squids with fresh data
+        agents.forEach(agentData => {
+          const squid = this.squids.find(s => s.id === (agentData.agent_id || agentData.id));
+          if (squid) {
+            squid.status = agentData.status;
+            squid.current_thought = agentData.current_thought;
+          }
+        });
+      }
       // Reset error guard on success — next outage will log once again.
       this._statusErrLogged = false;
     } catch (error) {

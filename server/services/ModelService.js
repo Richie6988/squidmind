@@ -1226,7 +1226,31 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
         config.contextLength = perSeq;
       }
       const ctxLadder = (() => {
-        const target = config.contextLength;
+        let target = config.contextLength;
+
+        // PRE-CLIP: if the user's explicit target obviously can't fit in the
+        // VRAM left after weights, don't burn 3 OOM retries proving it. We
+        // already have vramAfter and the disk-cached KV probe in scope; use
+        // them to compute a practical ceiling and clip the ladder start.
+        // Auto mode already does this — this path is for [explicit] override.
+        try {
+          if (vramAfter && freeAfterGb > 0.8) {
+            const probeKey = `${fileName}|fa=${!!config.flashAttention}`;
+            const probe = (ModelService._kvProbe || new Map()).get(probeKey);
+            const kvPerTok = probe?.kvPerTok
+              || (headerKvBytesPerTok > 0 ? Math.round(headerKvBytesPerTok * 1.08) : 0);
+            const fixedGb = probe ? probe.fixedBytes / 1024 ** 3 : 0.35;
+            if (kvPerTok > 0) {
+              const availGb = Math.max(0, freeAfterGb - fixedGb - 0.25); // safety pad
+              const practicalMax = Math.floor(availGb * 1024 ** 3 / kvPerTok / 1024) * 1024;
+              if (practicalMax >= ModelService.MIN_VIABLE_CTX && target > practicalMax) {
+                log.warn(`  [pre-clip] target ctx=${target} exceeds VRAM budget (${availGb.toFixed(2)}GB free after weights, ${Math.round(kvPerTok/1024)}KB/tok${probe ? ' MEASURED' : ' header'}) → starting ladder at ${practicalMax} to avoid 3 wasted OOM retries`);
+                target = Math.min(target, practicalMax);
+              }
+            }
+          }
+        } catch { /* best effort — ladder still protects */ }
+
         // Ladder must be STRICTLY DECREASING — 4096 after 3072 wasted a
         // retry with a size we already knew wouldn't fit. Build a decreasing
         // series, dedupe, floor at 2048, cap at trainCtx.
