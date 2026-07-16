@@ -1092,6 +1092,15 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
       const freeAfterGb = vramAfter ? vramAfter.free / (1024 ** 3) : 0;
       if (vramAfter) log.info(`  VRAM after weights: ${freeAfterGb.toFixed(2)} GB free`);
 
+      // Auto-shrink batchSize when VRAM is tight. batch=1024 costs ~200-400MB
+      // of compute buffers on 9B+ models — the difference between "3840 ctx
+      // and OOM" and "16k ctx works". LM Studio does this silently; matching.
+      // Only reduce if user is on the default (1024) — respect explicit choices.
+      if (vramAfter && freeAfterGb < 2.0 && config.batchSize === 1024) {
+        log.info(`  [auto] batchSize 1024 → 512 (${freeAfterGb.toFixed(2)}GB free — saves ~250MB compute buffer for larger ctx)`);
+        config.batchSize = 512;
+      }
+
       // ── Step 4: Compute contextLength from REAL remaining VRAM ─────────
       // Recompute ONLY when the user left contextLength on 'auto'. When they
       // set a number (25000, 45000…) the whole computation is skipped:
@@ -1159,16 +1168,35 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
             log.warn(`  KV probe failed (${probeErr.message}) — falling back to estimates`);
           }
         }
-        const measuredKvPerTok = probeData?.kvPerTok || 0;
-        const measuredFixedGb  = probeData ? probeData.fixedBytes / 1024 ** 3 : 0;
+        // Sanity: reject a cached probe kvPerTok if it disagrees with the
+        // GGUF header by more than 2x (same test as the pre-clip / post-hoc
+        // paths). A contaminated cache would otherwise silently poison the
+        // auto branch and force a ~4x undersized context.
+        const gpuLnow = Number(config.gpuLayers) || 0;
+        const headerKvOnGpu = (headerKvBytesPerTok > 0 && estLayers > 0 && gpuLnow > 0)
+          ? headerKvBytesPerTok * Math.min(1, gpuLnow / estLayers)
+          : (headerKvBytesPerTok || 0);
+        const probeInflated = probeData?.kvPerTok
+          && headerKvOnGpu > 0
+          && probeData.kvPerTok > headerKvOnGpu * 2;
+        if (probeInflated) {
+          log.warn(`  [auto] cached probe ${(probeData.kvPerTok/1024).toFixed(1)}KB/tok >2x header ${(headerKvOnGpu/1024).toFixed(1)}KB/tok — ignoring, using header`);
+        }
+        const measuredKvPerTok = probeInflated ? 0 : (probeData?.kvPerTok || 0);
+        const measuredFixedGb  = probeData && !probeInflated ? probeData.fixedBytes / 1024 ** 3 : 0;
         const bytesPerTok = measuredKvPerTok > 0
           ? Math.round(measuredKvPerTok * 1.05)      // measured + 5% safety
           : headerKvBytesPerTok > 0
-            ? Math.round(headerKvBytesPerTok * 1.08) // header estimate (dense archs)
+            ? Math.round(headerKvOnGpu * 1.10)       // header estimate scaled to GPU-layer share
             : (config.flashAttention ? (isGQA ? 38 * 1024 : 60 * 1024) : 100 * 1024);
-        // Margin: when the fixed compute buffer was MEASURED, subtract it plus
-        // a small CUDA-runtime pad; otherwise fall back to the blanket 650MB.
-        const margin = measuredFixedGb > 0 ? measuredFixedGb + 0.25 : 0.65;
+        // Margin (fixed compute + batch buffers): the flat 0.65 GB default
+        // massively underestimates at high gpuLayer ratios and batch=1024.
+        // Empirical: batch buffers ~200 MB per full 1024-token layer block
+        // on GPU + ~500 MB CUDA fixed. At 30/33 on GPU, real fixed ≈ 1 GB
+        // (matches post-hoc measurement). Scale with fileSizeGb and layer share.
+        const layerShareForMargin = estLayers > 0 && gpuLnow > 0 ? Math.min(1, gpuLnow / estLayers) : 1;
+        const emp = Math.min(1.3, Math.max(0.5, fileSizeGb * 0.13 + layerShareForMargin * 0.5));
+        const margin = measuredFixedGb > 0 ? measuredFixedGb + 0.25 : emp;
 
         // Cap ctx when a big share of layers runs on CPU: each prompt token
         // crosses every CPU layer, so a 60k context on a mostly-CPU model
