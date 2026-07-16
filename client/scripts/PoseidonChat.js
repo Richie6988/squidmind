@@ -530,6 +530,13 @@ const PoseidonChat = {
     }
     if (type === 'tool_result') {
       this._resolveToolCall(el, p.name, p.ok, p.summary, p.duration_ms);
+      // Immediate aquarium refresh on agent-mutating tools — waiting until
+      // stream-end kept a deleted squid on-screen while Poseidon kept
+      // typing its confirmation. Same for creates: new squid appears the
+      // moment Poseidon says "Created Warren" instead of after full reply.
+      if (p.ok && (p.name === 'create_agent' || p.name === 'delete_agent' || p.name === 'update_agent_field')) {
+        window.aquarium?.loadSquids?.();
+      }
       return;
     }
     // image event

@@ -1524,7 +1524,13 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
    * discipline you asked for.
    */
   async ensureLoadedFor(phase, projectEntry = null) {
-    const CTX_BY_PHASE = { chat: null, agent: 6144, review: 10240 };
+    // Phase context regimes: 6144 for agent was too tight for real work — a
+    // slim BG toolset alone eats ~1200 tok, the task description + linked
+    // input files often hit 3-4k, leaving nothing for the agent's output.
+    // Bumped to 12288 (agent) and 14336 (review) which fits comfortably at
+    // gpuLayers 27-32 on 8GB with the header-first KV calc. The OOM ladder
+    // still steps down if VRAM can't fit it.
+    const CTX_BY_PHASE = { chat: null, agent: 12288, review: 14336 };
     const phaseCtx = CTX_BY_PHASE[phase] ?? null;
 
     // Which model does this phase want? Fall back to Poseidon.
@@ -2279,6 +2285,13 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
       // before the HARD loop guard could catch it, _loopHistory stayed
       // empty, no abort ever fired.
       const GROOM_CAP = { update_project_memory: 2, read_project_memory: 2, read_my_brain: 4, list_tasks: 6 };
+      // For update_project_memory, count per-SECTION rather than total: a
+      // legit workflow often calls it once per section (decision + next_steps
+      // + achievement in one turn), and capping at 2 total forces abort on
+      // the 3rd DIFFERENT section. Counting per-section keeps the anti-spam
+      // teeth (2× same section is still spam) while allowing distinct
+      // orchestration events to be recorded in one turn.
+      const upmSectionCounts = {};   // { 'decision': 2, 'next_steps': 1 }
       // Per-turn counter of budget/loop rejections that came back with
       // identical args — 3 consecutive identical rejections means the
       // model is stuck and won't read the corrective message. Abort.
@@ -2336,17 +2349,33 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
               // fit a kickoff pattern. Also feeds sameRejectCount so 3
               // identical rejections in a row abort the generation — the
               // model is clearly ignoring the correction.
-              if (GROOM_CAP[fnName] && turnToolCounts[fnName] > GROOM_CAP[fnName]) {
+              // For update_project_memory, budget PER SECTION: 2 same-section
+              // calls is spam, but 4 calls across 4 different sections is a
+              // legit end-of-workflow log. That fixes the observed abort where
+              // the model was doing archive+next_steps+decision and got hit
+              // on the 3rd distinct section.
+              let sectionCap = null, sectionCount = null;
+              if (fnName === 'update_project_memory' && args?.section) {
+                const sec = String(args.section);
+                upmSectionCounts[sec] = (upmSectionCounts[sec] || 0) + 1;
+                sectionCap = 2;
+                sectionCount = upmSectionCounts[sec];
+              }
+              const overBudget = sectionCap
+                ? sectionCount > sectionCap
+                : (GROOM_CAP[fnName] && turnToolCounts[fnName] > GROOM_CAP[fnName]);
+              if (overBudget) {
                 const queryTool = fnName === 'list_tasks' || fnName === 'read_project_memory' || fnName === 'read_my_brain';
                 const guidance = queryTool
                   ? `You already have the full result from the previous ${GROOM_CAP[fnName]} calls. Read your own output above instead of re-querying. Answer the user directly, or make a distinct query with different arguments if you truly need more data.`
-                  : `Organizing is not progress. If this is a project kickoff/restart: call create_task NOW for each phase (execution-ready description + acceptance_criteria + assigned_agent_id). Project memory can be updated ONCE at the END, after the tasks exist.`;
-                const capErr = {
-                  ok: false,
-                  error: `TURN BUDGET SPENT — ${fnName} already called ${GROOM_CAP[fnName]}× this turn. ${guidance}`,
-                  budget_exceeded: true,
-                };
-                log.warn(`Turn budget: ${fnName} exceeded ${GROOM_CAP[fnName]} calls — ${queryTool ? 'redirect to answer' : 'redirect to action'}`);
+                  : sectionCap
+                    ? `You already logged section "${args.section}" ${sectionCap}× this turn. Move on: either log a DIFFERENT section (achievement, blocker, resolve_blocker, agent_sync) or take action (create_task, write_file, dispatch_to_agent).`
+                    : `Organizing is not progress. If this is a project kickoff/restart: call create_task NOW for each phase (execution-ready description + acceptance_criteria + assigned_agent_id). Project memory can be updated ONCE at the END, after the tasks exist.`;
+                const capMsg = sectionCap
+                  ? `TURN BUDGET SPENT — update_project_memory(section="${args.section}") already called ${sectionCap}× this turn. ${guidance}`
+                  : `TURN BUDGET SPENT — ${fnName} already called ${GROOM_CAP[fnName]}× this turn. ${guidance}`;
+                const capErr = { ok: false, error: capMsg, budget_exceeded: true };
+                log.warn(`Turn budget: ${fnName}${sectionCap ? `(section="${args.section}")` : ''} exceeded ${sectionCap || GROOM_CAP[fnName]} calls`);
                 events.push({ type: 'tool_call',   name: fnName, args, at: callTime, budget_exceeded: true });
                 events.push({ type: 'tool_result', name: fnName, result: capErr, duration_ms: 0, budget_exceeded: true });
                 // Same rejected call twice in a row + a third time → abort.
