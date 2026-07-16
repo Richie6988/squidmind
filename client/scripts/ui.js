@@ -176,7 +176,10 @@ ui._lmPickDrop = function(wrapId, hiddenId, item, label, reload) {
 
 // Close dropdowns on outside click
 document.addEventListener('click', function(e) {
-  if (!e.target.closest('.lm-drop-wrap')) {
+  const t = e.target;
+  const el = (t && typeof t.closest === 'function') ? t : (t && t.parentElement);
+  if (!el) return;
+  if (!el.closest('.lm-drop-wrap')) {
     document.querySelectorAll('.lm-drop-wrap').forEach(w => w.classList.remove('lm-drop-open'));
   }
 });
@@ -495,30 +498,42 @@ function _smCloseAllVisiblePanels() {
 }
 
 document.addEventListener('mousedown', function(e) {
+  // e.target can be a Text node, Document, or Window depending on where
+  // the mousedown lands (SVG text, scrollbar, iframe boundary…). Those
+  // don't expose .closest and would throw the whole listener. Coalesce
+  // to the nearest Element ancestor before dispatching the panel logic.
+  const t = e.target;
+  const el = (t && typeof t.closest === 'function')
+    ? t
+    : (t && t.parentElement)              // Text node → parent Element
+      || (t && t.nodeType === 9 && t.documentElement)  // Document → root
+      || null;
+  if (!el || typeof el.closest !== 'function') return;
+
   // Skip if clicking on something that OPENS panels (these have their own toggle)
-  if (e.target.closest('.header-nav') || 
-      e.target.closest('.btn-new-project') ||
-      e.target.closest('.btn-new-project-card') ||
-      e.target.closest('#right-panel') ||
-      e.target.closest('.projects-container') ||
-      e.target.closest('canvas')) {
+  if (el.closest('.header-nav') || 
+      el.closest('.btn-new-project') ||
+      el.closest('.btn-new-project-card') ||
+      el.closest('#right-panel') ||
+      el.closest('.projects-container') ||
+      el.closest('canvas')) {
     return;
   }
 
   // Skip if click is INSIDE any panel/modal/dropdown content
-  if (e.target.closest('.panel') ||
-      e.target.closest('.modal-content') ||
-      e.target.closest('.modal') ||
-      e.target.closest('.context-menu') ||
-      e.target.closest('[data-modal]')) {
+  if (el.closest('.panel') ||
+      el.closest('.modal-content') ||
+      el.closest('.modal') ||
+      el.closest('.context-menu') ||
+      el.closest('[data-modal]')) {
     // ONLY close if the exact target is the .modal backdrop (not a child element)
     // This prevents accidental closes when clicking inside modal-content
-    if (e.target.classList && e.target.classList.contains('modal')) {
+    if (el.classList && el.classList.contains('modal')) {
       // Skip modals that explicitly opt out of backdrop-close (e.g. ModelLoader panel)
-      if (e.target.dataset.noBackdropClose) return;
+      if (el.dataset && el.dataset.noBackdropClose) return;
       // Verify this is a true backdrop click: no modal-content ancestor
-      if (!e.target.querySelector(':scope > .modal-content')?.contains(e.target)) {
-        e.target.classList.add('hidden');
+      if (!el.querySelector?.(':scope > .modal-content')?.contains(el)) {
+        el.classList.add('hidden');
       }
     }
     return;

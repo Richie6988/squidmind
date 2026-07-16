@@ -282,7 +282,7 @@ const ModelLoader = {
     }
     // Close HF dropdowns on outside click
     this.modal.addEventListener('click', (e) => {
-      if (!e.target.closest('.ml-hf-drop')) {
+      if (!e.target.closest?.('.ml-hf-drop')) {
         this.modal.querySelectorAll('.ml-hf-drop').forEach(d => d.classList.remove('ml-hf-drop-open'));
       }
     });
