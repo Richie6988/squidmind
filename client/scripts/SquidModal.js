@@ -52,14 +52,28 @@ const SquidModal = {
     });
   },
 
-  prompt(title, placeholder, defaultValue) {
+  // Accepts either the legacy positional signature (title, placeholder, defaultValue)
+  // or an options object as first arg: { title, placeholder, defaultValue, multiline }
+  prompt(titleOrOpts, placeholder, defaultValue) {
+    const opts = (typeof titleOrOpts === 'object' && titleOrOpts !== null)
+      ? titleOrOpts
+      : { title: titleOrOpts, placeholder, defaultValue };
+    const title = opts.title || '';
+    const ph    = opts.placeholder || '';
+    const dv    = opts.defaultValue || '';
+    const multi = !!opts.multiline;
     return new Promise(resolve => {
+      const inputHtml = multi
+        ? `<textarea class="squid-modal-input" rows="4"
+             placeholder="${this._esc(ph)}"
+             style="width:100%;box-sizing:border-box;background:var(--ocean-deep,#020810);border:1px solid var(--border,#1e3a5f);color:var(--text-primary,#e2e8f0);border-radius:4px;padding:6px 8px;font-size:11px;margin-bottom:10px;outline:none;font-family:inherit;resize:vertical;">${this._esc(dv)}</textarea>`
+        : `<input class="squid-modal-input" type="text"
+             placeholder="${this._esc(ph)}"
+             value="${this._esc(dv)}"
+             style="width:100%;box-sizing:border-box;background:var(--ocean-deep,#020810);border:1px solid var(--border,#1e3a5f);color:var(--text-primary,#e2e8f0);border-radius:4px;padding:6px 8px;font-size:11px;margin-bottom:10px;outline:none;">`;
       const el = this._make(`
-        <p class="squid-modal-msg">${this._esc(title)}</p>
-        <input class="squid-modal-input" type="text"
-          placeholder="${this._esc(placeholder || '')}"
-          value="${this._esc(defaultValue || '')}"
-          style="width:100%;box-sizing:border-box;background:var(--ocean-deep,#020810);border:1px solid var(--border,#1e3a5f);color:var(--text-primary,#e2e8f0);border-radius:4px;padding:6px 8px;font-size:11px;margin-bottom:10px;outline:none;">
+        <p class="squid-modal-msg" style="white-space:pre-line;">${this._esc(title)}</p>
+        ${inputHtml}
         <div class="squid-modal-actions">
           <button class="btn-secondary squid-modal-no">Cancel</button>
           <button class="btn-primary squid-modal-ok">OK</button>
@@ -69,11 +83,12 @@ const SquidModal = {
       el.querySelector('.squid-modal-ok').onclick  = () => { el.remove(); resolve(input.value || null); };
       el.querySelector('.squid-modal-no').onclick  = () => { el.remove(); resolve(null); };
       el.addEventListener('keydown', e => {
-        if (e.key === 'Enter')  { el.remove(); resolve(input.value || null); }
+        // In multiline mode Enter should insert a newline; only Ctrl/Cmd+Enter submits.
+        if (e.key === 'Enter' && (!multi || e.ctrlKey || e.metaKey)) { el.remove(); resolve(input.value || null); }
         if (e.key === 'Escape') { el.remove(); resolve(null); }
       });
       input.focus();
-      input.select();
+      if (!multi) input.select();
     });
   },
 

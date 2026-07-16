@@ -139,9 +139,12 @@ class ImageGenerationService {
         '--cfg-scale', String(cfg),
         '--seed',   String(seed),
       ];
-      // img2img: sd-diffusion accepts --init-img + --strength (0..1, 1=noise, 0=input)
+      // img2img: sd-diffusion accepts --init-img + --strength (0..1, 1=noise, 0=input).
+      // Since the recent sd-diffusion update, mode="img2img" no longer exists;
+      // valid modes are [img_gen, vid_gen, convert, upscale, metadata].
+      // img2img is now driven by --init-img on a normal img_gen run.
       if (initImage && fs2.existsSync(initImage)) {
-        args.push('--mode', 'img2img');
+        args.push('--mode', 'img_gen');
         args.push('--init-img', initImage);
         args.push('--strength', String(strength ?? 0.75));
       }

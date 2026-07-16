@@ -730,7 +730,11 @@ const TempleInterior = {
 
   async _editImage(filepath, name) {
     if (!filepath) return;
-    const prompt = window.prompt(`Edit "${name}" — describe what to change:\n(strength 0.6 = moderate rework; leave blank to cancel)`, '');
+    const prompt = await SquidModal.prompt({
+      title: `Edit "${name}"\nDescribe what to change (Ctrl+Enter to submit)\nStrength 0.6 = moderate rework`,
+      placeholder: 'e.g. "make it night, add fog, cinematic lighting"',
+      multiline: true,
+    });
     if (!prompt || !prompt.trim()) return;
     this._setStatus(`Queueing edit of ${name}…`);
     try {

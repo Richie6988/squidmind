@@ -586,7 +586,11 @@ ${task.description}`
   async editResult(taskId) {
     const src = await this._resolveImagePath(taskId);
     if (!src) return SquidModal.alert('Could not resolve the source image path.');
-    const prompt = window.prompt('Edit this image — describe the change (strength 0.6):', '');
+    const prompt = await SquidModal.prompt({
+      title: 'Edit this image\nDescribe the change (Ctrl+Enter to submit)\nStrength 0.6 = moderate rework',
+      placeholder: 'e.g. "sunset lighting, warmer colors"',
+      multiline: true,
+    });
     if (!prompt || !prompt.trim()) return;
     const toast = this._showLoadingToast('Editing image… generating');
     try {
