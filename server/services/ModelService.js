@@ -1258,36 +1258,34 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
 
         // PRE-CLIP: if the user's explicit target obviously can't fit in the
         // VRAM left after weights, don't burn 3 OOM retries proving it.
-        // We compute a practical ceiling from a KV-cost estimate that
-        // PREFERS the GGUF header theoretical value (exact for the arch)
-        // scaled by the fraction of layers on GPU. The post-hoc probe is
-        // often inflated 2-3x by fixed compute buffers being amortized
-        // into per-token cost (fixedGuess default of 0.3 GB is way too low
-        // for 9B+ models). LM Studio hits 25k on this same card by trusting
-        // header math — we now match that.
+        // KEY TRADE-OFF: header math for some archs (notably Qwen3.5) is 1.8x
+        // reality — llama.cpp uses Q8_0 KV cache or shared-KV mechanisms that
+        // the theoretical formula can't see. If we clip based on header alone,
+        // we UNDER-SIZE ctx forever (until a measurement lands in cache).
+        // Rule: pre-clip aggressively only when we have EMPIRICAL evidence
+        // (a sane cached probe). Header-only pre-clip may still fire but only
+        // if the target is dramatically over (>2x) the estimate — cost is at
+        // most one wasted OOM retry (~10s) but we protect the user from
+        // permanently under-sized ctx like the 22000→8192 collapse.
         try {
           if (vramAfter && freeAfterGb > 0.8) {
             const probeKey = `${fileName}|fa=${!!config.flashAttention}`;
             const probe = (ModelService._kvProbe || new Map()).get(probeKey);
             const gpuL  = Number(config.gpuLayers) || 0;
             const layerShare = estLayers > 0 && gpuL > 0 ? Math.min(1, gpuL / estLayers) : 1;
-            // Header KV (across ALL layers) scaled by GPU-layer share =
-            // exactly the KV that lands in VRAM. 1.10x safety for alignment.
+            // Header KV (across ALL layers) scaled by GPU-layer share.
             const headerKvPerTok = headerKvBytesPerTok > 0
               ? Math.round(headerKvBytesPerTok * layerShare * 1.10)
               : 0;
-            // Trust the probe only when it's within 2x of the header estimate.
-            // Beyond that it's contaminated by fixed compute buffer overhead
-            // being wrongly billed per-token (the 131 KB/tok trap).
+            // Trust probe only when it's within 2x of header (guards against
+            // the old inflated 131 KB/tok contamination). A LOWER probe is
+            // GOOD news — arch uses less memory than theoretical.
             const probeSane = probe?.kvPerTok
               && headerKvPerTok > 0
               && probe.kvPerTok <= headerKvPerTok * 2;
             const kvPerTok = probeSane
               ? probe.kvPerTok
               : (headerKvPerTok || probe?.kvPerTok || 0);
-            // Fixed compute buffers scale with model size, not with default
-            // 0.3 GB. Rough empirical: ~80-100 MB per B params for llama.cpp
-            // compute buffers. Use the probe's fixedBytes when available.
             const fixedGb = probe?.fixedBytes
               ? probe.fixedBytes / 1024 ** 3
               : Math.min(1.2, Math.max(0.4, fileSizeGb * 0.15));
@@ -1295,9 +1293,18 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
               const availGb = Math.max(0, freeAfterGb - fixedGb - 0.20);
               const practicalMax = Math.floor(availGb * 1024 ** 3 / kvPerTok / 1024) * 1024;
               const kvSource = probeSane ? 'probe' : (headerKvPerTok ? 'header' : 'probe-fallback');
-              if (practicalMax >= ModelService.MIN_VIABLE_CTX && target > practicalMax) {
-                log.warn(`  [pre-clip] target ctx=${target} exceeds VRAM budget (${availGb.toFixed(2)}GB free after ${fixedGb.toFixed(2)}GB fixed buffers, ${Math.round(kvPerTok/1024)}KB/tok ${kvSource}, ${gpuL}/${estLayers} layers on GPU) → starting ladder at ${practicalMax}`);
-                target = Math.min(target, practicalMax);
+              // Threshold: if we have a REAL probe, clip whenever target > estimate.
+              // If we only have HEADER, only clip when target is way over —
+              // header often overestimates and we'd waste ctx forever.
+              const clipThreshold = probeSane ? practicalMax : practicalMax * 2;
+              if (practicalMax >= ModelService.MIN_VIABLE_CTX && target > clipThreshold) {
+                // Even here, don't crash all the way to practicalMax when it's
+                // header-based — give the ladder a chance at 1.5x practicalMax.
+                const clipTo = probeSane
+                  ? practicalMax
+                  : Math.max(practicalMax, Math.min(target, Math.floor(practicalMax * 1.5 / 1024) * 1024));
+                log.warn(`  [pre-clip] target ctx=${target} well over budget (${availGb.toFixed(2)}GB free after ${fixedGb.toFixed(2)}GB fixed buffers, ${Math.round(kvPerTok/1024)}KB/tok ${kvSource}, ${gpuL}/${estLayers} layers on GPU) → starting ladder at ${clipTo}${probeSane ? '' : ' (header may overestimate — ladder will step down if OOM)'}`);
+                target = Math.min(target, clipTo);
               } else if (practicalMax >= target) {
                 log.info(`  [pre-clip] target ctx=${target} fits (${kvSource}: ~${Math.round(kvPerTok/1024)}KB/tok, ${availGb.toFixed(2)}GB KV budget → up to ~${practicalMax})`);
               }
