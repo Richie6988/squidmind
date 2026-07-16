@@ -798,12 +798,6 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
         const bytesPerLayerGb = fileSizeGb / estLayers;
         ModelService._kvProbe = ModelService._kvProbe || new Map();
         const cachedProbeRaw = ModelService._kvProbe.get(`${fileName}|fa=${!!config.flashAttention}`);
-        // A probe is only trustworthy if it was measured with a healthy GPU
-        // share: with most layers on CPU their KV lives in RAM, so the VRAM
-        // delta under-reads massively (observed: 43.2 → 22.3 KB/tok after a
-        // degraded 1-layer load) and would poison every following budget.
-        // Legacy entries without placement metadata are ignored too — the
-        // 40 KB/tok fallback is safer than an unqualified number.
         const probeHealthy = cachedProbeRaw
           && cachedProbeRaw.version === 2                    // pre-v2 entries were measured before the fixed-buffer subtraction fix → inflated ~30%
           && Number.isFinite(cachedProbeRaw.gpuLayers)
@@ -817,20 +811,50 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
             : `measured at ${cachedProbeRaw.gpuLayers ?? '?'}/${cachedProbeRaw.totalLayers ?? '?'} GPU layers — not representative`;
           log.info(`  [auto-budget] cached KV probe ignored (${reason})`);
         }
-        // KV VRAM SCALES WITH GPU LAYERS: each GPU layer holds its KV slice
-        // in VRAM; CPU layers keep theirs in RAM. The old fixed-block formula
-        // placed 28/33 layers, left 2.1GB, and the ladder shrank the user's
-        // explicit 45k ctx to 15.8k. Solve with ctx as the HARD constraint:
-        //   layers <= (free - margin) / (bytesPerLayer + ctx*kvPerLayerTok)
+        // HEADER-FIRST KV: the GGUF header gives us the exact theoretical
+        // KV cost per token (2 × n_layers × n_kv_heads × (K_dim+V_dim) bytes
+        // at fp16). Real observed on Qwen3.5: header says ~2 KB/tok/layer,
+        // probe reported 7.9 KB/tok/layer — the probe was inflating by
+        // ~4× because it absorbs compute buffer allocation. Using probe
+        // here placed 16/33 layers when Richard's 8GB card had room for
+        // 22-24 with 2.5GB VRAM sitting unused (screenshot: VRAM at 69%).
+        // Safety factor 1.15 covers cache-alignment padding and dtype
+        // rounding. If header parsing failed we fall through to probe or
+        // the 2.5 KB/tok/layer conservative empirical fallback.
+        const headerKvPerLayerTok = (headerKvBytesPerTok > 0 && estLayers > 0)
+                                      ? headerKvBytesPerTok / estLayers
+                                      : 0;
         const fixedProbeGb = cachedProbe ? (cachedProbe.fixedBytes || 0) / (1024 ** 3) : 0;
-        const kvPerLayerTok = cachedProbe
-          ? Math.max(256, cachedProbe.kvPerTok / Math.max(1, cachedProbe.gpuLayers))
-          : 2.5 * 1024;  // fallback: measured hybrid-qwen ~2.0KB/tok/layer + headroom
-        const marginGb = Math.max(isMoE ? 0.85 : 0.55, fixedProbeGb + 0.25);
+        const kvPerLayerTok = headerKvPerLayerTok > 0
+                                ? headerKvPerLayerTok * 1.15
+                                : (cachedProbe
+                                     ? Math.max(256, cachedProbe.kvPerTok / Math.max(1, cachedProbe.gpuLayers))
+                                     : 2.5 * 1024);
+        const kvSource = headerKvPerLayerTok > 0 ? 'HEADER'
+                        : cachedProbe ? `PROBE@${cachedProbe.gpuLayers}L`
+                        : 'fallback';
+        // Overhead scales with GPU-layer ratio (compute buffers grow linearly
+        // with GPU-resident blocks). Solve jointly with layer count: 3 iters
+        // is enough since overhead is monotonic in the ratio.
+        const overheadFor = (ratio) => (isMoE ? 0.65 : 0.5) + ratio * 1.35;
         const denomGb = bytesPerLayerGb + (config.contextLength * kvPerLayerTok) / (1024 ** 3);
-        const targetLayers = Math.max(1, Math.min(estLayers, Math.floor((freeBeforeGb - marginGb) / denomGb)));
-        const kvSource = cachedProbe ? `MEASURED@${cachedProbe.gpuLayers}L` : 'fallback';
-        log.info(`  [auto-budget] ctx=${config.contextLength} (HARD), KV=${(kvPerLayerTok/1024).toFixed(1)}KB/tok/layer (${kvSource}) → gpuLayers=${targetLayers}/${estLayers} (${(targetLayers*bytesPerLayerGb).toFixed(1)}GB layers + ${((config.contextLength*kvPerLayerTok*targetLayers)/1024**3).toFixed(1)}GB KV + ${marginGb.toFixed(1)}GB margin)`);
+        let overheadGb = overheadFor(0.7);
+        let targetLayers = 1;
+        for (let iter = 0; iter < 3; iter++) {
+          const safetyReserve = Math.max(fixedProbeGb + 0.25, 0);
+          const solved = Math.floor((freeBeforeGb - overheadGb - safetyReserve) / denomGb);
+          targetLayers = Math.max(1, Math.min(estLayers, solved));
+          const nextOverhead = overheadFor(targetLayers / estLayers);
+          if (Math.abs(nextOverhead - overheadGb) < 0.08) break;
+          overheadGb = nextOverhead;
+        }
+        // Safety border: keep 1 layer CPU-side when placement is on the edge
+        if (targetLayers >= estLayers && fileSizeGb + overheadGb + (targetLayers * config.contextLength * kvPerLayerTok) / (1024 ** 3) > freeBeforeGb * 0.92) {
+          targetLayers = estLayers - 1;
+        }
+        const kvGb     = (targetLayers * config.contextLength * kvPerLayerTok) / (1024 ** 3);
+        const layersGb = targetLayers * bytesPerLayerGb;
+        log.info(`  [auto-budget] ctx=${config.contextLength} (HARD), KV=${(kvPerLayerTok/1024).toFixed(2)}KB/tok/layer (${kvSource}) → gpuLayers=${targetLayers}/${estLayers} (${layersGb.toFixed(1)}GB layers + ${kvGb.toFixed(2)}GB KV + ${overheadGb.toFixed(2)}GB overhead)`);
         config.gpuLayers = targetLayers;
       } else {
         if (!explicitLayers) config.gpuLayers     = 'auto';
@@ -869,26 +893,49 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
             // the KV reserve to the actual demand. On a 6144-ctx agent this
             // reclaims ~1GB from the reserve into 6 extra GPU layers
             // (observed: 25/33 → 31/33 on the qwen3.5-9B agent phase).
-            let kvReserveGb = 1.55;
             // Overhead scales with GPU layer ratio: node-llama-cpp compute
-            // buffers (batch_size × hidden × layers × dtype) grow linearly
-            // with GPU-resident blocks. Observed on qwen3.5-9B at 33/33:
-            // formula predicted 0.5GB overhead → real ~1.5GB → 5× OOM
-            // ladder even at ctx=2048. Now: 0.4GB base + up to 1.1GB
-            // scaled — matches measured overhead across the 20→33 layer
-            // range.
-            const overheadFor = (ratio) => (isMoE ? 0.6 : 0.4) + ratio * 1.1;
+            // buffers (batch × hidden × layers × dtype) grow linearly with
+            // GPU-resident blocks. Calibrated against Richard's real load
+            // at 16/33 GPU layers, ctx=25088: after-weights 3.60GB free
+            // means overhead ≈ 1.37GB. formula 0.5 + 1.35×ratio → 0.5 +
+            // 0.65 = 1.15GB @ 16/33 (still slightly under real; wraps up
+            // conservatively as the ratio grows).
+            const overheadFor = (ratio) => (isMoE ? 0.65 : 0.5) + ratio * 1.35;
             let overheadGb = overheadFor(0.7);  // seed with a mid guess
             try {
+              // PRIMARY SOURCE OF TRUTH: the GGUF header. For a known arch
+              // the exact KV cost is deterministic from n_kv_heads, head_dim
+              // and dtype — no measurement noise, no probe pollution. This
+              // catches the exact bug Richard just hit: probe measured at
+              // 31 layers came out at 7.9 KB/tok/layer (× ~4 vs theory)
+              // because the fixed-buffer subtraction underestimated the
+              // compute buffers, so KV was inflated. The formula then
+              // placed only 16/33 layers when 28-30 would fit.
+              //
+              // headerKvBytesPerTok is TOTAL KV across all layers at fp16.
+              // Divide by estLayers to get per-layer, then optionally scale
+              // for KV cache dtype other than fp16 (llama.cpp defaults f16;
+              // f8 flash-attn would halve it — future hook).
+              const headerKvPerLayerTok = (headerKvBytesPerTok > 0 && estLayers > 0)
+                                            ? (headerKvBytesPerTok / estLayers)
+                                            : 0;
+              // FALLBACK: probe cache (post-load measurement). Kept for
+              // archs the header can't describe, but no longer authoritative.
               const probeKey = `${fileName}|fa=${!!config.flashAttention}`;
               const p = ModelService._kvProbe?.get(probeKey);
               const probeUsable = p && p.version === 2 && p.gpuLayers > 0 && p.totalLayers > 0
                                     && (p.gpuLayers / p.totalLayers) >= 0.35;
-              if (probeUsable && Number.isFinite(config.contextLength) && config.contextLength > 0) {
-                // The probe measures TOTAL KV at its layer count. Rescale to
-                // "per GPU layer × ctx" and solve jointly with layer count
-                // to avoid the fixed-reserve dead weight.
-                const kvPerLayerTok = p.kvPerTok / p.gpuLayers;
+              // Prefer header when we have it — accurate to the byte.
+              // A "1.08" safety factor allows for llama.cpp compute buffers
+              // that share the KV allocation on some builds.
+              const kvPerLayerTok = headerKvPerLayerTok > 0
+                                     ? headerKvPerLayerTok * 1.08
+                                     : (probeUsable ? p.kvPerTok / p.gpuLayers : 0);
+              const kvSourceLabel = headerKvPerLayerTok > 0 ? 'HEADER'
+                                  : probeUsable ? `PROBE@${p.gpuLayers}L`
+                                  : 'fallback';
+              let kvReserveGb = 1.55;  // fallback constant, overwritten if solved
+              if (kvPerLayerTok > 0 && Number.isFinite(config.contextLength) && config.contextLength > 0) {
                 const bpl = fileSizeGb / estLayers;
                 const denomGb = bpl + (config.contextLength * kvPerLayerTok) / (1024 ** 3);
                 // Converge overhead + layer count together (2 iters is
@@ -908,7 +955,7 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
                 }
                 kvReserveGb = (gpuTarget * config.contextLength * kvPerLayerTok) / (1024 ** 3);
                 config.gpuLayers = gpuTarget;
-                log.info(`  [auto] gpuLayers: ${gpuTarget}/${estLayers} (probe-aware for ctx=${config.contextLength}: ${(gpuTarget * bpl).toFixed(1)}GB layers + ${kvReserveGb.toFixed(2)}GB KV + ${overheadGb.toFixed(2)}GB overhead)`);
+                log.info(`  [auto] gpuLayers: ${gpuTarget}/${estLayers} — KV=${(kvPerLayerTok/1024).toFixed(2)}KB/tok/layer (${kvSourceLabel}) for ctx=${config.contextLength}: ${(gpuTarget * bpl).toFixed(1)}GB layers + ${kvReserveGb.toFixed(2)}GB KV + ${overheadGb.toFixed(2)}GB overhead`);
               } else {
                 overheadGb = overheadFor(0.7);  // reset for non-probe path
                 gpuTarget = Math.max(1, Math.floor((freeBeforeGb - kvReserveGb - overheadGb) / bytesPerLayerGb));
@@ -921,6 +968,7 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
                 log.info(`  [auto] gpuLayers: ${config.gpuLayers} / ${estLayers} (model larger than VRAM — layers first: ${(gpuTarget * bytesPerLayerGb).toFixed(1)}GB layers + ${kvReserveGb}GB KV reserve + ${overheadGb.toFixed(2)}GB overhead)`);
               }
             } catch {
+              const kvReserveGb = 1.55;
               overheadGb = overheadFor(0.7);
               gpuTarget = Math.max(1, Math.floor((freeBeforeGb - kvReserveGb - overheadGb) / bytesPerLayerGb));
               gpuTarget = Math.min(gpuTarget, estLayers - 1);
