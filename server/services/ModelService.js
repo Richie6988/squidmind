@@ -138,6 +138,27 @@ class ModelService {
     this._libPromise = null;
     this.orchestrator = null;                // wired in by index.js after construction
     this.dreamModelId  = null;                // optional small model for async metacognition
+    this._memlockLimitBytes = null;           // lazily probed on first load
+  }
+
+  /**
+   * Read the process's RLIMIT_MEMLOCK soft limit in bytes. Called at most
+   * once per process (cached). Returns Infinity for 'unlimited', 0 on
+   * failure (safer default: assume mlock will fail unless proven otherwise).
+   * When the limit is smaller than the weights buffer, node-llama-cpp
+   * emits an ugly boot warning AND silently falls back to no-mlock —
+   * detecting it upfront lets us skip the noise and the wasted syscall.
+   */
+  _getMemlockLimit() {
+    if (this._memlockLimitBytes !== null) return this._memlockLimitBytes;
+    try {
+      const { execSync } = require('child_process');
+      const raw = execSync('bash -c "ulimit -l"', { encoding: 'utf8', timeout: 1000 }).trim();
+      this._memlockLimitBytes = raw === 'unlimited' ? Infinity : (parseInt(raw, 10) || 0) * 1024;
+    } catch {
+      this._memlockLimitBytes = 0;
+    }
+    return this._memlockLimitBytes;
   }
   
   /**
@@ -936,11 +957,29 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
         try {
           if (li > 0) log.info(`  [load retry ${li}] gpuLayers ${config.gpuLayers} → ${tryLayers} (VRAM/alloc failure on previous attempt)`);
           config.gpuLayers = tryLayers;
+          // mlock guard: if the caller asked for mlock but the process
+          // RLIMIT_MEMLOCK is smaller than the weights buffer, node-llama-cpp
+          // prints an ugly boot warning and falls back to no-mlock silently.
+          // Detect that upfront and skip the syscall entirely. Warned once
+          // per process to make the situation discoverable without spam.
+          let effectiveUseMlock = config.useMlock;
+          if (config.useMlock) {
+            const limit = this._getMemlockLimit();
+            const fileBytes = fileSizeGb * (1024 ** 3);
+            if (limit < fileBytes) {
+              effectiveUseMlock = false;
+              if (!ModelService._mlockWarned) {
+                ModelService._mlockWarned = true;
+                const humanLimit = limit === 0 ? '0 (probe failed)' : limit === Infinity ? 'unlimited' : `${(limit / 1024 ** 2).toFixed(0)}MB`;
+                log.info(`  mlock disabled: RLIMIT_MEMLOCK=${humanLimit} < ${fileSizeGb.toFixed(1)}GB weights — add 'ulimit -l unlimited' to enable page-pinning`);
+              }
+            }
+          }
           model = await llama.loadModel({
             modelPath:  fullPath,
             gpuLayers:  tryLayers,
             useMmap:    config.useMmap,
-            useMlock:   config.useMlock,
+            useMlock:   effectiveUseMlock,
             defaultContextFlashAttention: config.flashAttention,
             // Last rung (gpuLayers 0 = pure CPU + mmap): node-llama-cpp's
             // pre-load memory estimator can VETO the load with a

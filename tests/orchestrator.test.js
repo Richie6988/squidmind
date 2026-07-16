@@ -696,32 +696,40 @@ async function main() {
   log('buildFunctions(chat) returns an object', chatTools && typeof chatTools === 'object');
   log('buildFunctions(bg) returns an object',   bgTools && typeof bgTools === 'object');
 
+  // 40 canonical tools — post-consolidation:
+  //   - web/fetch 6→2 (fetch_url + fetch_and_save + fetch_image_url +
+  //     search_image folded into web_search+web_fetch mode/extract/save_as)
+  //   - github 4→1 (status/diff/commit/push → git action=...)
+  //   - project/agent lifecycle merged into update_project (field=status
+  //     covers archive/delete; field=assign_agent/unassign_agent/agent_model/
+  //     review_model absorb the standalone tools)
+  //   - log_decision → update_project_memory(section='decision')
+  //   - get_system_state → read_my_brain('current_state.system_load')
   const expectedChatTools = [
     // agents
     'create_agent', 'delete_agent', 'list_agents', 'update_agent_field',
-    // projects
-    'create_project', 'archive_project', 'delete_project', 'list_projects',
+    // projects (archive/delete/assign_agent/unassign_agent/assign_model_to_project all folded into update_project)
+    'create_project', 'list_projects',
     'update_project', 'update_project_memory', 'read_project_memory', 'audit_project',
     // tasks
     'create_task', 'list_tasks', 'update_task', 'delete_task',
-    'assign_agent', 'unassign_agent',
     // skills
     'list_skills', 'delete_skill', 'record_skill_outcome', 'write_skill',
-    // logs / brain / state
-    'get_logs', 'log_decision', 'get_system_state',
+    // logs / brain (log_decision, get_system_state removed — see comment above)
+    'get_logs',
     'update_user_context', 'update_brain_field', 'read_my_brain',
     // files
     'read_file', 'write_file', 'list_files', 'edit_file',
-    // web
-    'web_search', 'web_fetch', 'fetch_and_save', 'fetch_image_url',
-    // github
-    'github_status', 'github_commit', 'github_diff', 'github_push',
+    // web (fetch_url, fetch_and_save, fetch_image_url, search_image all folded)
+    'web_search', 'web_fetch',
+    // git (was: github_status, github_diff, github_commit, github_push)
+    'git',
     // models / images / dispatch / structured planning
-    'list_models', 'generate_image', 'dispatch_to_agent', 'plan_project', 'assign_model_to_project',
+    'list_models', 'generate_image', 'dispatch_to_agent', 'plan_project',
     // shipped after this list was written (comms, docs, exec, images, MCP)
-    'send_email', 'search_image', 'edit_image',
+    'send_email', 'edit_image',
     'generate_docx', 'generate_pptx',
-    'execute_bash', 'fetch_url',
+    'execute_bash',
     'call_mcp_tool', 'list_mcp_servers',
   ];
 
@@ -733,24 +741,27 @@ async function main() {
       missingChat.length === 0 && extraChat.length === 0,
       `missing=[${missingChat.join(',')}] extra=[${extraChat.join(',')}]`);
 
-  // Spot-check the additions made in this audit (regression guards)
-  log('chat surface includes github_diff (pack #1 fix)',         'github_diff' in chatTools);
-  log('chat surface includes github_push (pack #1 fix)',         'github_push' in chatTools);
-  log('chat surface includes record_skill_outcome (pack #2)',    'record_skill_outcome' in chatTools);
+  // Spot-check the additions made in this audit (regression guards).
+  // The github_* / archive_project checks were replaced by their canonical
+  // consolidated names — the check is now that consolidation held.
+  log('chat surface includes git (consolidated github_*)',      'git' in chatTools);
+  log('chat surface no longer exposes github_status (folded)',  !('github_status' in chatTools));
+  log('chat surface no longer exposes fetch_url (folded)',      !('fetch_url' in chatTools));
+  log('chat surface no longer exposes archive_project (folded)',!('archive_project' in chatTools));
+  log('chat surface includes record_skill_outcome',             'record_skill_outcome' in chatTools);
 
-  // BG mode whitelist — locks what background tasks can call
+  // BG mode whitelist — locks what background tasks can call.
+  // Post-consolidation: 27 → 24 tools (search_image / fetch_and_save /
+  // fetch_image_url folded into web_search+web_fetch).
   const expectedBgTools = [
     'read_file', 'write_file', 'list_files', 'edit_file',
-    'web_search', 'web_fetch', 'fetch_and_save', 'fetch_image_url',
+    'web_search', 'web_fetch',
     'create_task', 'update_task', 'list_tasks',
     'update_project_memory', 'read_project_memory', 'audit_project',
-    'list_models', 'generate_image',
+    'list_models', 'generate_image', 'edit_image',
+    'send_email', 'list_mcp_servers', 'call_mcp_tool',
+    'execute_bash', 'generate_pptx', 'generate_docx',
     'list_skills', 'read_my_brain', 'record_skill_outcome',
-    // shipped after this list was written
-    'send_email', 'search_image', 'edit_image',
-    'generate_docx', 'generate_pptx',
-    'execute_bash',
-    'call_mcp_tool', 'list_mcp_servers',
   ];
   const bgNames = Object.keys(bgTools).sort();
   const expectedBgSorted = [...expectedBgTools].sort();
