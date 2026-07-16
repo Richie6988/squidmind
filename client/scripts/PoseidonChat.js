@@ -534,7 +534,8 @@ const PoseidonChat = {
       // stream-end kept a deleted squid on-screen while Poseidon kept
       // typing its confirmation. Same for creates: new squid appears the
       // moment Poseidon says "Created Warren" instead of after full reply.
-      if (p.ok && (p.name === 'create_agent' || p.name === 'delete_agent' || p.name === 'update_agent_field')) {
+      if (p.ok && (p.name === 'create_agent' || p.name === 'delete_agent' || p.name === 'update_agent_field'
+                 || p.name === 'update_project' || p.name === 'update_task' || p.name === 'create_task')) {
         window.aquarium?.loadSquids?.();
       }
       return;

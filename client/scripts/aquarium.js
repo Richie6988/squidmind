@@ -104,6 +104,17 @@ const aquarium = {
   async loadSquids() {
     try {
       const agents = await api.agents.flat();
+      // Capture prior assignment state per agent BEFORE recreating squids —
+      // we need it to decide whether to animate (transition) or snap (first
+      // load). Map: agentId → templeName they were inside, or null.
+      const priorAssignments = new Map();
+      for (const s of (this.squids || [])) {
+        const aid = s.agent_id || s.id;
+        if (aid) priorAssignments.set(aid, s.insideTemple || null);
+      }
+      const isInitialLoad = !this._loadedOnce;
+      this._loadedOnce = true;
+
       this.squids = agents.map(agent => {
         const squid = new Squid(agent, this.canvas);
         // Enhance with interactions
@@ -120,18 +131,73 @@ const aquarium = {
       // First-time onboarding: show welcome overlay if no agents
       if (window.Onboarding) window.Onboarding.maybeShow(this.squids.length);
 
-      // Restore project assignments from project registry
+      // Restore project assignments from project registry AND from active
+      // task assignments (an agent assigned to a task in project X should
+      // physically be inside temple X, even if proj.assigned_agents doesn't
+      // list them). This makes the UI reflect Richard's request: "when an
+      // agent is assigned to a task in a temple it shall automatically be
+      // teleported there".
       try {
-        const pr = await fetch('/api/v2/projects').then(r => r.json());
+        const [pr, tr] = await Promise.all([
+          fetch('/api/v2/projects').then(r => r.json()).catch(() => ({ registry: {} })),
+          fetch('/api/v2/tasks').then(r => r.json()).catch(() => ({ registry: {} })),
+        ]);
         const projects = Object.values(pr.registry?.projects || {});
+        const projectByName = new Map(projects.map(p => [p.name, p]));
+        // Build agent → templeName map for the CURRENT state.
+        const currentAssignments = new Map();
         for (const proj of projects) {
           for (const agentId of (proj.assigned_agents || [])) {
-            const squid = this.squids.find(s => (s.agent_id || s.id) === agentId);
-            if (squid) {
-              squid.currentProject = proj.name;
-              squid.insideTemple   = proj.name;
-              squid.alpha          = 0; // hide from aquarium - they're inside temple
+            currentAssignments.set(agentId, proj.name);
+          }
+        }
+        // Overlay task-level assignments: an agent working an active task in
+        // project X → in temple X. Active = todo/wip/in_progress (not done).
+        const tasks = Object.values(tr.registry?.tasks || {});
+        for (const t of tasks) {
+          const status = t.lifecycle?.status || t.status;
+          if (['done', 'completed', 'failed', 'cancelled', 'archived'].includes(status)) continue;
+          const agentId = t.assigned_to;
+          if (!agentId) continue;
+          // Resolve project name from t.project_id / t.context?.project_id
+          const projName = t.project_name
+            || (projects.find(p => p.project_id === (t.project_id || t.context?.project_id))?.name)
+            || null;
+          if (projName && projectByName.has(projName)) {
+            // Task-level assignment wins if agent isn't already in a temple;
+            // if already there, it's the same temple usually — keep it.
+            if (!currentAssignments.has(agentId)) currentAssignments.set(agentId, projName);
+          }
+        }
+        for (const squid of this.squids) {
+          const aid = squid.agent_id || squid.id;
+          const nowTemple  = currentAssignments.get(aid) || null;
+          const wasTemple  = priorAssignments.get(aid) || null;
+
+          if (nowTemple) {
+            squid.currentProject = nowTemple;
+            if (isInitialLoad || wasTemple === nowTemple) {
+              // Initial page load OR already inside this temple → snap hidden.
+              squid.insideTemple = nowTemple;
+              squid.alpha        = 0;
+            } else {
+              // Assignment changed to a new temple → animate the swim.
+              // Don't set insideTemple yet — the teleport method sets it on
+              // arrival so the squid stays visible during the swim.
+              if (typeof squid.teleportToTemple === 'function') {
+                squid.teleportToTemple(nowTemple);
+              } else {
+                squid.insideTemple = nowTemple;
+                squid.alpha        = 0;
+              }
             }
+          } else if (wasTemple) {
+            // Unassigned — squid should reappear at the temple and swim out.
+            if (typeof squid.teleportFromTemple === 'function') {
+              squid.teleportFromTemple(wasTemple);
+            }
+            // Otherwise the default constructor already places them at a
+            // random canvas spot with alpha=1 — nothing to do.
           }
         }
       } catch {}

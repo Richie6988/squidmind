@@ -199,7 +199,43 @@ class Squid {
         this.y += dy * speed;
       }
     }
-    
+
+    // ── Teleport animation to/from a temple ──────────────────────────────
+    // Set by teleportToTemple / teleportFromTemple. During the swim we hard-
+    // steer toward the target (overrides wander) and fade alpha on arrival.
+    if (this._teleporting) {
+      const tx = this._teleportTargetX;
+      const ty = this._teleportTargetY;
+      const tdx = tx - this.x;
+      const tdy = ty - this.y;
+      const tdist = Math.sqrt(tdx * tdx + tdy * tdy);
+      // Aim the wander target at the temple so the existing swim code moves us
+      this.targetX = tx;
+      this.targetY = ty;
+      if (this._teleporting === 'to') {
+        // Fade OUT as we approach the temple. Full alpha until ~100px, then linear.
+        const fadeStart = 120;
+        if (tdist < fadeStart) this.alpha = Math.max(0, tdist / fadeStart);
+        if (tdist < 8) {
+          this.insideTemple    = this._teleportTempleName;
+          this.currentProject  = this._teleportTempleName;
+          this.alpha           = 0;
+          this._teleporting    = null;
+        }
+      } else if (this._teleporting === 'from') {
+        // Fade IN as we swim away from the temple.
+        const fadeEnd = 120;
+        if (tdist > this._teleportInitialDist - fadeEnd) this.alpha = 0;
+        else this.alpha = Math.min(1, (this._teleportInitialDist - tdist - fadeEnd) / fadeEnd);
+        if (tdist < 10 || this.alpha >= 1) {
+          this._teleporting    = null;
+          this.alpha           = 1;
+        }
+      }
+      // While teleporting, skip the wander target-update block
+      this.wanderTimer = 0;
+    }
+
     // Update heart particles
     this.heartParticles = this.heartParticles.filter(p => {
       p.y -= 2;
@@ -218,6 +254,74 @@ class Squid {
         return p.life > 0;
       });
     }
+  }
+
+  // ── Teleport toward a temple's DOM card (visible swim across canvas) ───
+  // Looks up the .temple-card by data-project-name, converts its centre to
+  // canvas coords, and sets a teleport target. Alpha fades near arrival.
+  teleportToTemple(templeName) {
+    const target = this._templeCanvasCoords(templeName);
+    if (!target) {
+      // Fallback: snap hidden if we can't find the DOM (temple not rendered)
+      this.insideTemple = templeName; this.currentProject = templeName; this.alpha = 0;
+      return;
+    }
+    this._teleporting        = 'to';
+    this._teleportTargetX    = target.x;
+    this._teleportTargetY    = target.y;
+    this._teleportTempleName = templeName;
+    this.alpha               = 1;
+    // Wake the squid so it swims — sleep would freeze it mid-teleport
+    this.isSleeping          = false;
+    this.timeSinceActivity   = 0;
+  }
+
+  // Reverse teleport: appear at the temple, swim into the aquarium.
+  teleportFromTemple(templeName) {
+    const start = this._templeCanvasCoords(templeName);
+    const canvas = this.aquarium?.canvas || (window.aquarium?.canvas);
+    if (!start || !canvas) {
+      this.insideTemple = null; this.currentProject = null; this.alpha = 1;
+      return;
+    }
+    // Pick a random point IN the aquarium as our arrival
+    const w  = canvas.width, h = canvas.height, sz = 40 * (this.baseSize || 1);
+    const mx = sz + 40, my = sz + 20;
+    const arriveX = mx + Math.random() * (w - mx * 2);
+    const arriveY = my + Math.random() * (h - my * 2);
+    // Position squid AT the temple, then swim toward arrival
+    this.x = start.x;
+    this.y = start.y;
+    this.alpha = 0;
+    this.insideTemple    = null;
+    this.currentProject  = null;
+    this._teleporting          = 'from';
+    this._teleportTargetX      = arriveX;
+    this._teleportTargetY      = arriveY;
+    this._teleportInitialDist  = Math.sqrt((arriveX - start.x) ** 2 + (arriveY - start.y) ** 2);
+    this.isSleeping            = false;
+    this.timeSinceActivity     = 0;
+  }
+
+  _templeCanvasCoords(templeName) {
+    const card = document.querySelector(`.temple-card[data-project-name="${CSS.escape(templeName)}"]`);
+    const canvas = this.aquarium?.canvas || (window.aquarium?.canvas);
+    if (!card || !canvas) return null;
+    const cardR = card.getBoundingClientRect();
+    const canR  = canvas.getBoundingClientRect();
+    if (canR.width === 0 || canR.height === 0) return null;
+    // Convert page coords to canvas coords, accounting for canvas resolution
+    // vs its rendered size (CSS scale).
+    const scaleX = canvas.width  / canR.width;
+    const scaleY = canvas.height / canR.height;
+    const x = (cardR.left + cardR.width  / 2 - canR.left) * scaleX;
+    const y = (cardR.top  + cardR.height / 2 - canR.top ) * scaleY;
+    // Clamp inside canvas — temples rendered outside the canvas bounds fall
+    // back to the nearest edge so the squid still animates toward them.
+    return {
+      x: Math.max(0, Math.min(canvas.width,  x)),
+      y: Math.max(0, Math.min(canvas.height, y)),
+    };
   }
 
   draw(ctx) {

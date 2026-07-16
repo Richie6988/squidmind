@@ -462,6 +462,8 @@ const TaskQueueUI = {
         })
       });
       await this._render();
+      // Trigger squid teleport to the temple containing this task
+      if (window.aquarium?.loadSquids) window.aquarium.loadSquids();
     } catch (err) {
       await SquidModal.alert('Assign failed: ' + err.message);
     }

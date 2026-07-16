@@ -347,20 +347,9 @@ My response: "${ss.last_response_preview}"${tools}
     // names (github_pull that never existed, log_decision, get_system_state,
     // archive_project — all consolidated or removed). Building it here from
     // the canonical PoseidonOrchestrator function list keeps the prompt
-    // truthful without a seed migration.
-    const CANONICAL_CATALOG = {
-      'meta / self':      ['read_my_brain', 'update_brain_field', 'write_skill', 'list_skills', 'delete_skill', 'record_skill_outcome'],
-      'agents':           ['create_agent', 'delete_agent', 'list_agents', 'update_agent_field', 'dispatch_to_agent'],
-      'projects':         ['create_project', 'list_projects', 'plan_project', 'update_project', 'update_project_memory', 'read_project_memory', 'audit_project'],
-      'tasks':            ['create_task', 'list_tasks', 'update_task', 'delete_task'],
-      'files':            ['read_file', 'write_file', 'edit_file', 'list_files'],
-      'web & fetch':      ['web_search', 'web_fetch'],
-      'git':              ['git'],
-      'media / docs':     ['generate_image', 'edit_image', 'generate_pptx', 'generate_docx', 'list_models'],
-      'comms':            ['send_email', 'list_mcp_servers', 'call_mcp_tool', 'execute_bash'],
-      'system / logs':    ['get_logs', 'update_user_context'],
-    };
-    const catalog = CANONICAL_CATALOG;
+    // truthful without a seed migration. Shared with read_my_brain('tools_
+    // catalog') via PoseidonOrchestrator.CANONICAL_TOOL_CATALOG.
+    const catalog = PoseidonOrchestrator.CANONICAL_TOOL_CATALOG;
     const lines = ['# TOOLS'];
 
     let totalTools = 0;
@@ -3055,6 +3044,28 @@ My response: "${ss.last_response_preview}"${tools}
           `${t.task_id}: ${t.title} | ${t.lifecycle?.status||'?'} | agent: ${t.assigned_to||'unassigned'}`
         ).join('\n') || '(no open tasks)' };
       }
+      // tools_catalog: return the LIVE canonical catalog from
+      // _sectionToolsPointer, not the stale brain.json field. The stored
+      // brain.tools_catalog was seeded once with obsolete names (some post-
+      // consolidation tools missing, deleted tools still present) — reading
+      // it made the model see ~20 tools when 40 are actually defined.
+      if (section_path === 'tools_catalog' || section_path.startsWith('tools_catalog.')) {
+        const catalog = PoseidonOrchestrator.CANONICAL_TOOL_CATALOG;
+        // Sub-path support: tools_catalog.projects → just the projects array
+        const parts = section_path.split('.').slice(1);
+        let node = catalog;
+        for (const p of parts) {
+          if (node && typeof node === 'object' && p in node) node = node[p];
+          else return { ok: false, error: `Path "${section_path}" not found in tools_catalog. Categories: ${Object.keys(catalog).join(', ')}` };
+        }
+        const totalTools = Object.values(catalog).reduce((n, arr) => n + arr.length, 0);
+        return {
+          ok: true, section_path,
+          total_tools: totalTools,
+          categories: Object.keys(catalog).length,
+          content: JSON.stringify(node, null, 2),
+        };
+      }
 
       // ── Brain JSON fallback ──────────────────────────────────────────────
       this.rm.invalidateCache();
@@ -3090,5 +3101,23 @@ My response: "${ss.last_response_preview}"${tools}
     return palette[Math.floor(Math.random() * palette.length)];
   }
 }
+
+// ── CANONICAL_TOOL_CATALOG ──────────────────────────────────────────────
+// Single source of truth for tool categorisation. Referenced by both
+// _sectionToolsPointer (system prompt) and _readMyBrain('tools_catalog').
+// Keep in sync with the function definitions in getPoseidonFunctions().
+// Total: 40 tools across 10 categories.
+PoseidonOrchestrator.CANONICAL_TOOL_CATALOG = {
+  'meta / self':      ['read_my_brain', 'update_brain_field', 'write_skill', 'list_skills', 'delete_skill', 'record_skill_outcome'],
+  'agents':           ['create_agent', 'delete_agent', 'list_agents', 'update_agent_field', 'dispatch_to_agent'],
+  'projects':         ['create_project', 'list_projects', 'plan_project', 'update_project', 'update_project_memory', 'read_project_memory', 'audit_project'],
+  'tasks':            ['create_task', 'list_tasks', 'update_task', 'delete_task'],
+  'files':            ['read_file', 'write_file', 'edit_file', 'list_files'],
+  'web & fetch':      ['web_search', 'web_fetch'],
+  'git':              ['git'],
+  'media / docs':     ['generate_image', 'edit_image', 'generate_pptx', 'generate_docx', 'list_models'],
+  'comms':            ['send_email', 'list_mcp_servers', 'call_mcp_tool', 'execute_bash'],
+  'system / logs':    ['get_logs', 'update_user_context'],
+};
 
 module.exports = PoseidonOrchestrator;
