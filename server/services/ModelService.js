@@ -2114,7 +2114,17 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
       // args. Overflow returns a teaching error that names the expected
       // action instead of just blocking.
       const turnToolCounts = {};
-      const GROOM_CAP = { update_project_memory: 2, read_project_memory: 2, read_my_brain: 4, list_tasks: 3 };
+      // list_tasks: 6 lets an audit hit todo/wip/done + per-project drills.
+      // Previous 3 caused a spam loop when the model re-queried the same
+      // status=all shape after the budget cap: the SOFT budget returned
+      // before the HARD loop guard could catch it, _loopHistory stayed
+      // empty, no abort ever fired.
+      const GROOM_CAP = { update_project_memory: 2, read_project_memory: 2, read_my_brain: 4, list_tasks: 6 };
+      // Per-turn counter of budget/loop rejections that came back with
+      // identical args — 3 consecutive identical rejections means the
+      // model is stuck and won't read the corrective message. Abort.
+      let sameRejectCount = 0;
+      let lastRejectFp    = null;
       if (entry._functions) {
         wrappedFunctions = {};
         for (const [fnName, fnDef] of Object.entries(entry._functions)) {
@@ -2127,25 +2137,12 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
             handler: async (args) => {
               const callTime = Date.now();
               turnToolCounts[fnName] = (turnToolCounts[fnName] || 0) + 1;
-              if (GROOM_CAP[fnName] && turnToolCounts[fnName] > GROOM_CAP[fnName]) {
-                const capErr = {
-                  ok: false,
-                  error: `TURN BUDGET SPENT — ${fnName} already called ${GROOM_CAP[fnName]}× this turn. Organizing is not progress. ` +
-                    `If this is a project kickoff/restart: call create_task NOW for each phase (execution-ready description + acceptance_criteria + assigned_agent_id). ` +
-                    `Project memory can be updated ONCE at the END, after the tasks exist.`,
-                  budget_exceeded: true,
-                };
-                log.warn(`Turn budget: ${fnName} exceeded ${GROOM_CAP[fnName]} calls — redirecting to action`);
-                events.push({ type: 'tool_call',   name: fnName, args, at: callTime, budget_exceeded: true });
-                events.push({ type: 'tool_result', name: fnName, result: capErr, duration_ms: 0, budget_exceeded: true });
-                return capErr;
-              }
-              // ── Loop guard: fingerprint = tool name + normalised args.
-              // Trigger AT the 4th identical call in a row (3 previous
-              // matches). Was 3rd, which killed legitimate research flows
-              // where an agent verified 3 near-identical resources in a
-              // row (observed: web_fetch on 3 similar RSS URLs → abort).
-              // Widening the tail from 5 → 8 for the same reason.
+
+              // ── Loop guard runs FIRST so every call — including those
+              // rejected by the budget below — feeds the fingerprint history.
+              // Previously the budget short-circuited the loop guard: rejected
+              // calls never entered _loopHistory, so 7+ identical spam calls
+              // could pile up without ever triggering abort.
               const fp = fnName + '|' + JSON.stringify(args || {}).slice(0, 400);
               entry._loopHistory = entry._loopHistory || [];
               const recentSame = entry._loopHistory.filter(x => x === fp).length;
@@ -2161,10 +2158,41 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
                 log.warn(`Loop guard: ${fnName} called ${recentSame + 1}× with identical args — interrupting (args=${JSON.stringify(args||{}).slice(0,120)})`);
                 events.push({ type: 'tool_call',   name: fnName, args, at: callTime, loop_broken: true });
                 events.push({ type: 'tool_result', name: fnName, result: loopErr, duration_ms: 0, loop_broken: true });
-                // Also request abort so the LLM's thinking loop breaks quickly
                 entry._abortRequested = true;
                 return loopErr;
               }
+
+              // ── Turn budget for organizing tools. Message is now
+              // context-aware: coaches toward "answer the user" for query
+              // tools, toward "call create_task" for organizing tools that
+              // fit a kickoff pattern. Also feeds sameRejectCount so 3
+              // identical rejections in a row abort the generation — the
+              // model is clearly ignoring the correction.
+              if (GROOM_CAP[fnName] && turnToolCounts[fnName] > GROOM_CAP[fnName]) {
+                const queryTool = fnName === 'list_tasks' || fnName === 'read_project_memory' || fnName === 'read_my_brain';
+                const guidance = queryTool
+                  ? `You already have the full result from the previous ${GROOM_CAP[fnName]} calls. Read your own output above instead of re-querying. Answer the user directly, or make a distinct query with different arguments if you truly need more data.`
+                  : `Organizing is not progress. If this is a project kickoff/restart: call create_task NOW for each phase (execution-ready description + acceptance_criteria + assigned_agent_id). Project memory can be updated ONCE at the END, after the tasks exist.`;
+                const capErr = {
+                  ok: false,
+                  error: `TURN BUDGET SPENT — ${fnName} already called ${GROOM_CAP[fnName]}× this turn. ${guidance}`,
+                  budget_exceeded: true,
+                };
+                log.warn(`Turn budget: ${fnName} exceeded ${GROOM_CAP[fnName]} calls — ${queryTool ? 'redirect to answer' : 'redirect to action'}`);
+                events.push({ type: 'tool_call',   name: fnName, args, at: callTime, budget_exceeded: true });
+                events.push({ type: 'tool_result', name: fnName, result: capErr, duration_ms: 0, budget_exceeded: true });
+                // Same rejected call twice in a row + a third time → abort.
+                // Otherwise the model keeps spamming past the cap, filling
+                // the chat with the same red bubble.
+                if (lastRejectFp === fp) sameRejectCount += 1;
+                else                     { sameRejectCount = 1; lastRejectFp = fp; }
+                if (sameRejectCount >= 3) {
+                  log.warn(`Turn budget: ${fnName} spammed ${sameRejectCount}× post-cap with identical args — aborting generation`);
+                  entry._abortRequested = true;
+                }
+                return capErr;
+              }
+
               events.push({ type: 'tool_call', name: fnName, args, at: callTime });
               try {
                 const result = await originalHandler(args);
