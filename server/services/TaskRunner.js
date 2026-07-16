@@ -881,7 +881,11 @@ class TaskRunner {
                 '',
                 '# EXECUTION',
                 'The plan is already decided. Do NOT restate, re-plan or analyze the task — start calling tools immediately and produce the deliverable.',
-                'Write every deliverable file under output/ with write_file. USE .md, NOT .txt — the UI shows .md complete and previews .txt truncated. A reply without a written file is NOT a completed task (unless the task explicitly asks for analysis only).',
+                'Write every FINAL deliverable file under output/ with write_file, using .md format. USE .md, NOT .txt — the UI shows .md complete and previews .txt truncated. A reply without a written file in output/ is NOT a completed task (unless the task explicitly asks for analysis only).',
+                'FOLDER RULES:',
+                '  • output/  — FINAL, validated, human-quality deliverables (structured .md with clear sections, no raw dumps)',
+                '  • temp/    — raw fetches, drafts, intermediate work. web_fetch(save_as=...) writes here automatically. Read from temp/ to build the final output/. Auto-cleaned when task archives.',
+                '  Never write a raw fetch or an unpolished draft directly to output/. If you fetched 3 pages then synthesised — the fetches go to temp/, the synthesis goes to output/.',
                 'NOBODY is present: never ask questions. Decide everything yourself; open with one short "Assumptions:" line if you made choices.',
                 '',
                 '# TOOLS — CALL THEM, NEVER WRITE THEM',
@@ -998,12 +1002,24 @@ class TaskRunner {
       // so attempt 2 knows exactly what to fix.
       if (!failed && output.trim().length > 0) {
         const ledger = global.__TASK_WRITES?.get(taskId) || [];
+        // Delivery ledger — writes that actually landed in output/ (NOT
+        // temp/). A raw web_fetch save doesn't count as a deliverable
+        // even though it's a write: it goes to temp/ automatically, and
+        // the agent has to write_file into output/ to produce the final
+        // artifact. This is the whole point of the temp/output split.
+        const deliverables = ledger.filter(w => {
+          const p = (w.path || String(w)).toLowerCase();
+          return !p.includes('/temp/') && !p.includes('\\temp\\');
+        });
         const claimsFile =
           /\b(sav|wrot|writ|creat|generat|export)\w*\b[^.\n]{0,80}\.(md|txt|json|csv|html|png|jpg|docx|pptx|xlsx|pdf)\b/i.test(output)
           || /\boutput\/[\w.-]+/i.test(output);
-        if (claimsFile && ledger.length === 0) {
+        if (claimsFile && deliverables.length === 0) {
           failed = true;
-          output = `HONESTY GATE: the reply claims a file was written but NO write_file/edit_file call happened during this task. Actually CREATE the deliverable with write_file (path under output/) — do not describe it. Claimed reply was: ${output.slice(0, 300)}`;
+          const teaser = ledger.length
+            ? `Only temp files were written (${ledger.length}) — raw fetches don't count as a deliverable. Synthesize them into a polished .md and write_file to output/.`
+            : `No write_file/edit_file call happened during this task.`;
+          output = `HONESTY GATE: the reply claims a file was written but NO deliverable landed in output/. ${teaser} Reply was: ${output.slice(0, 300)}`;
         } else if (/\|\|\s*[a-z_]{3,}\s*\(/i.test(output)) {
           // Pseudo tool-calls written as TEXT ("||create_task({...})" in a
           // code fence) — the model narrated the syntax instead of calling
@@ -1246,9 +1262,21 @@ class TaskRunner {
         this._retryAfter.delete(taskId);
         await this._markDone(taskId);  // persist: never re-run even after restart
         // Verified deliverables — what the tools ACTUALLY wrote during this
-        // task, independent of what the model claims in its summary.
+        // task, independent of what the model claims in its summary. Exclude
+        // temp/ writes from files_written: those are drafts, not deliverables.
         const writes = global.__TASK_WRITES?.get(taskId) || [];
-        const filesWritten = writes.map(w => w.path).slice(0, 20);
+        const isTemp = (p) => /[\/\\]temp[\/\\]/i.test(p || '');
+        const filesWritten = writes.filter(w => !isTemp(w.path)).map(w => w.path).slice(0, 20);
+        // Delete any temp/ files this task produced. They served their
+        // purpose (fed the synthesis), and leaving them clutters the
+        // project. Explicit rule Richard asked for: temp = ephemeral.
+        for (const w of writes) {
+          if (isTemp(w.path)) {
+            try { await fs.unlink(w.path); } catch {}
+          }
+        }
+        const tempCount = writes.filter(w => isTemp(w.path)).length;
+        if (tempCount) log.info(`  temp cleanup: ${tempCount} draft(s) removed for ${taskId}`);
         await this._setStatus(taskId, 'done', {
           outcome: 'passed',
           review: task.review,

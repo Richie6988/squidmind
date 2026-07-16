@@ -2173,6 +2173,14 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
       // model is stuck and won't read the corrective message. Abort.
       let sameRejectCount = 0;
       let lastRejectFp    = null;
+      // Total rejections per tool this turn — the identical-consecutive
+      // guard misses alternation patterns (Poseidon flipping between
+      // section='decision' and section='next_steps' on update_project_
+      // memory: same tool, different args, no consecutive match, so
+      // 8+ rejections stacked before the hard loop guard fired at 4×
+      // one-side identical). 4 total rejections on the same TOOL now
+      // abort regardless of args alternation.
+      const rejectCountByTool = {};
       if (entry._functions) {
         wrappedFunctions = {};
         for (const [fnName, fnDef] of Object.entries(entry._functions)) {
@@ -2234,8 +2242,15 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
                 // the chat with the same red bubble.
                 if (lastRejectFp === fp) sameRejectCount += 1;
                 else                     { sameRejectCount = 1; lastRejectFp = fp; }
-                if (sameRejectCount >= 3) {
-                  log.warn(`Turn budget: ${fnName} spammed ${sameRejectCount}× post-cap with identical args — aborting generation`);
+                // Count total rejections on this TOOL across the turn,
+                // regardless of arg permutations. Catches the alternation
+                // case (decision ↔ next_steps).
+                rejectCountByTool[fnName] = (rejectCountByTool[fnName] || 0) + 1;
+                if (sameRejectCount >= 3 || rejectCountByTool[fnName] >= 4) {
+                  const cause = sameRejectCount >= 3
+                    ? `${sameRejectCount}× post-cap with identical args`
+                    : `${rejectCountByTool[fnName]}× post-cap total (arg alternation)`;
+                  log.warn(`Turn budget: ${fnName} spammed ${cause} — aborting generation`);
                   entry._abortRequested = true;
                 }
                 return capErr;

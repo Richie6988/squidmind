@@ -1176,7 +1176,32 @@ My response: "${ss.last_response_preview}"${tools}
           required: ['url']
         },
         handler: async ({ url, extract = 'text', save_as, max_chars, task_id, project_id }) => {
-          if (extract === 'image') return self.tools.fetchImageUrl({ page_url: url });
+          if (extract === 'image') {
+            // Fetch raw HTML then extract the best cover image. Priority:
+            // og:image → twitter:image → first srcset with 'large' → first
+            // absolute <img src>. Returns {ok, url, markdown} so the model
+            // can drop `markdown` straight into a reply / doc.
+            try {
+              const res = await self.tools.fetchUrl({ url, max_chars: 40000 });
+              if (!res.ok) return res;
+              const html  = res.content || '';
+              const first = (re) => { const m = html.match(re); return m ? m[1] : null; };
+              const abs   = (u) => {
+                if (!u) return null;
+                if (/^https?:/i.test(u)) return u;
+                try { return new URL(u, url).href; } catch { return null; }
+              };
+              let img = abs(first(/<meta[^>]+property=["']og:image(?::secure_url)?["'][^>]+content=["']([^"']+)["']/i))
+                     || abs(first(/<meta[^>]+name=["']twitter:image["'][^>]+content=["']([^"']+)["']/i))
+                     || abs(first(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image["']/i))
+                     || abs(first(/<link[^>]+rel=["']image_src["'][^>]+href=["']([^"']+)["']/i))
+                     || abs(first(/<img[^>]+src=["']([^"']+\.(?:png|jpe?g|webp))["']/i));
+              if (!img) return { ok: false, error: `No image found on ${url}` };
+              return { ok: true, url: img, markdown: `![${extract}](${img})` };
+            } catch (err) {
+              return { ok: false, error: `image extract failed: ${err.message}` };
+            }
+          }
           if (save_as) return self.tools.fetchAndSave({ url, output_path: save_as, task_id, project_id });
           return self.tools.fetchUrl({ url, max_chars });
         }
@@ -2028,9 +2053,15 @@ My response: "${ss.last_response_preview}"${tools}
       const folder = upperName.replace(/[^A-Z0-9_-]/g, '_').slice(0, 48);
       const projectDir = AQUARIUM.projects(folder);
 
-      // Create folder structure: <NAME>/input/, <NAME>/output/, <NAME>/project_memory.json
+      // Create folder structure:
+      //   <NAME>/input/   — reference material given at kickoff
+      //   <NAME>/output/  — FINAL validated deliverables only (visible by default)
+      //   <NAME>/temp/    — drafts, raw fetches, intermediate work — hidden
+      //                     from the file panel unless the user opts in.
+      //                     Auto-cleaned when tasks archive (PASS or fail).
       await fs.mkdir(path.join(projectDir, 'input'),  { recursive: true });
       await fs.mkdir(path.join(projectDir, 'output'), { recursive: true });
+      await fs.mkdir(path.join(projectDir, 'temp'),   { recursive: true });
 
       const memory = {
         schema_version: '2.0.0', schema_type: 'project_memory',

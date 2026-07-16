@@ -802,9 +802,17 @@ class OrchestratorTools {
           const reg  = await this.rm.read('PROJECTS/project_registry.json').catch(() => ({ projects: {} }));
           const proj = reg.projects?.[project_id];
           const folder = proj?.folder || project_id;
-          const outDir = path.join(AQUARIUM.PROJECTS, folder, 'output');
+          // ROUTING RULE — raw web fetches are drafts, not deliverables.
+          // They land in <project>/temp/ by default. The agent has to
+          // deliberately write_file() into output/ to produce the FINAL
+          // artifact — that gates 'is this actually a deliverable?' at
+          // the write step. Honors an explicit 'output/' prefix if the
+          // caller genuinely wants the raw fetch in output/.
+          const explicitOutput = /^(?:output|OUTPUT)\//.test(output_path || '');
+          const targetDir = explicitOutput ? 'output' : 'temp';
+          const outDir = path.join(AQUARIUM.PROJECTS, folder, targetDir);
           await fs.mkdir(outDir, { recursive: true });
-          const fname = output_path || `fetch_${Date.now()}.md`;
+          const fname = (output_path || `fetch_${Date.now()}.md`).replace(/^(?:output|OUTPUT|temp|TEMP)\//, '');
           savePath = path.join(outDir, path.basename(fname));
         } catch {
           // Last-resort fallback — flat TASKS/OUTPUT/, no per-task folder.
