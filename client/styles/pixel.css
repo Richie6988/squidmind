@@ -1128,6 +1128,115 @@ button:active, .btn:active {
   font-size: 10px;
 }
 
+/* ═════════════════════════════════════════════════════════════════════════
+   MODEL + CONTEXT PANEL (mm-panel)
+   Replaces the stat-row "Model:" pill + inline-styled ctx bar. Single
+   sematic container, clear vertical hierarchy:
+     1. NAME  (primary, ellipsis, dot on left)
+     2. BAR   (visible even at 0% via 15% track opacity + right-side KPI)
+     3. HOLDER  (Poseidon / agent name — same amber accent as the bar's
+                system segment so eye can connect "who holds context")
+   ═════════════════════════════════════════════════════════════════════════ */
+.mm-panel {
+  margin-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.mm-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.mm-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  transition: background .2s, box-shadow .2s;
+}
+.mm-dot-on   { background: #06ffa5; box-shadow: 0 0 6px rgba(6,255,165,.55); }
+.mm-dot-lazy { background: #64748b; box-shadow: none; }
+.mm-dot-off  { background: rgba(255,255,255,.15); box-shadow: none; }
+.mm-name {
+  font-family: 'Courier New', monospace;
+  font-size: 9px;
+  color: #e2e8f0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* ── Bar row: track + KPI aligned, single line ─────────────────────────── */
+.mm-bar-wrap[hidden] { display: none; }
+.mm-bar-line {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.mm-bar-track {
+  flex: 1 1 auto;
+  height: 8px;
+  background: rgba(255,255,255,.12);          /* was .08 — invisible at 0% */
+  border-radius: 3px;
+  overflow: hidden;
+  display: flex;
+  min-width: 40px;
+}
+.mm-bar-sys {
+  height: 100%;
+  background: #4facfe;
+  transition: width .35s ease;
+  flex: 0 0 auto;
+}
+.mm-bar-fill {
+  height: 100%;
+  transition: width .35s ease, background .35s ease;
+  flex: 0 0 auto;
+}
+.mm-bar-val {
+  font-family: 'Courier New', monospace;
+  font-size: 9px;
+  font-weight: 600;
+  color: #cbd5e1;
+  flex-shrink: 0;
+  min-width: 82px;                             /* keeps the bar length stable while numbers change */
+  text-align: right;
+}
+.mm-bar-val[data-state="warn"] { color: #fbbf24; }
+.mm-bar-val[data-state="crit"] { color: #ef4444; }
+
+/* ── Holder line: who owns the context right now ───────────────────────── */
+.mm-holder {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: 'Courier New', monospace;
+  font-size: 8px;
+  color: #94a3b8;
+  line-height: 1;
+}
+.mm-holder-swatch {
+  width: 8px; height: 8px;
+  background: #4facfe;                         /* same blue as the sys segment — visual anchor */
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+.mm-holder-label {
+  color: #cbd5e1;
+  font-weight: 600;
+}
+.mm-holder-sys {
+  color: #64748b;
+}
+.mm-holder-sys:not(:empty)::before {
+  content: '· ';
+  color: #475569;
+  margin-right: 2px;
+}
+
 /* Empty Message */
 .empty-message {
   text-align: center;

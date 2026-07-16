@@ -96,9 +96,25 @@
               </div>
               <span id="monitor-vram-value" class="stat-value">--</span>
             </div>
-            <div class="stat-row" style="margin-top:4px;">
-              <span>Model:</span>
-              <span id="monitor-model-pill" style="font-size:8px; color:var(--text-secondary);">none</span>
+            <div id="mm-panel" class="mm-panel">
+              <div class="mm-head">
+                <span id="mm-dot" class="mm-dot mm-dot-off" title="Model not loaded"></span>
+                <span id="mm-name" class="mm-name" title="No model assigned">none</span>
+              </div>
+              <div id="mm-bar-wrap" class="mm-bar-wrap" hidden>
+                <div class="mm-bar-line">
+                  <div id="mm-bar-track" class="mm-bar-track">
+                    <div id="mm-bar-sys"  class="mm-bar-sys"></div>
+                    <div id="mm-bar-fill" class="mm-bar-fill"></div>
+                  </div>
+                  <span id="mm-bar-val" class="mm-bar-val"></span>
+                </div>
+                <div class="mm-holder">
+                  <span class="mm-holder-swatch"></span>
+                  <span id="mm-holder-label" class="mm-holder-label">Poseidon</span>
+                  <span id="mm-holder-sys" class="mm-holder-sys"></span>
+                </div>
+              </div>
             </div>
           </div>
         </div>

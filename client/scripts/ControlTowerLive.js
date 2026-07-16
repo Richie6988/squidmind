@@ -57,42 +57,6 @@ const ControlTowerLive = {
     if (stale) stale.remove();
   },
 
-  _renderPhase_unused_original(status) {
-    const model = (status.loaded_models || [])[0];
-    let panel = document.getElementById('phase-panel');
-    if (!panel) {
-      const monitorHost = document.getElementById('monitor-model-pill')?.parentElement;
-      if (!monitorHost) return;
-      panel = document.createElement('div');
-      panel.id = 'phase-panel';
-      panel.style.cssText = 'margin-top:10px;padding:8px 10px;background:rgba(6,255,165,0.04);border:1px solid rgba(6,255,165,0.15);border-radius:4px;font-size:9px;';
-      monitorHost.appendChild(panel);
-    }
-    if (!model) {
-      panel.innerHTML = `<div style="color:#64748b;">No model loaded</div>`;
-      return;
-    }
-    const phase = model.phase || (model.generating ? 'chat' : 'idle');
-    const phaseColor = phase === 'agent' ? '#fbbf24' : phase === 'review' ? '#a78bfa' : phase === 'chat' ? '#06ffa5' : '#64748b';
-    const phaseLabel = { chat: 'CHAT', agent: 'AGENT', review: 'REVIEW', idle: 'IDLE' }[phase] || phase.toUpperCase();
-    const busy = model.generating ? '● generating' : '○ idle';
-    let subline = '';
-    if (phase === 'agent' && model.phase_task_id) {
-      subline = `task ${model.phase_task_id}${model.phase_project ? ` · ${model.phase_project}` : ''}${model.phase_agent ? ` · ${model.phase_agent}` : ''}`;
-    } else if (phase === 'review' && model.phase_task_id) {
-      subline = `reviewing ${model.phase_task_id}`;
-    } else if (phase === 'chat') {
-      subline = `${(model.context_total_tokens/1000).toFixed(0)}k ctx · ${model.session_turns || 0} turns`;
-    }
-    panel.innerHTML = `
-      <div style="display:flex;justify-content:space-between;align-items:center;font-family:'Courier New',monospace;">
-        <span style="color:${phaseColor};font-weight:700;letter-spacing:0.1em;">${phaseLabel}</span>
-        <span style="color:#94a3b8;font-size:8px;">${busy}</span>
-      </div>
-      ${subline ? `<div style="color:#94a3b8;font-size:8px;font-family:'Courier New',monospace;margin-top:3px;">${subline}</div>` : ''}
-    `;
-  },
-  
   _renderResources(brain) {
     const load = brain.current_state?.system_load || {};
     const cpu = load.cpu_percent ?? 0;
@@ -227,92 +191,72 @@ const ControlTowerLive = {
   },
 
   _renderModel(library) {
-    const pill = document.getElementById('monitor-model-pill');
-    if (!pill) return;
+    const dot   = document.getElementById('mm-dot');
+    const name  = document.getElementById('mm-name');
+    if (!dot || !name) return;
     if (library.poseidon_model_id) {
       const inMem  = library.currently_loaded.includes(library.poseidon_model_id);
       const mid    = library.poseidon_model_id;
       const mEntry = (library.models || []).find(m => m.model_id === mid);
       const label  = mEntry?.display_name || mid;
-      pill.innerHTML = `
-        <div style="font-size:9px;color:#c8d8f0;word-break:break-all;line-height:1.4;">${label}</div>
-        <div style="font-size:8px;color:${inMem ? '#06ffa5' : '#64748b'};margin-top:2px;">${inMem ? '&#9679; LOADED IN VRAM' : '&#9675; NOT LOADED (lazy)'}</div>`;
+      name.textContent = label;
+      name.title       = label;
+      dot.className    = inMem ? 'mm-dot mm-dot-on' : 'mm-dot mm-dot-lazy';
+      dot.title        = inMem ? 'Loaded in VRAM' : 'Registered but not loaded (lazy)';
     } else {
-      pill.textContent = 'none assigned';
-      pill.style.color = 'var(--text-secondary)';
+      name.textContent = 'none assigned';
+      name.title       = 'No model assigned to Poseidon';
+      dot.className    = 'mm-dot mm-dot-off';
+      dot.title        = 'No model assigned';
     }
   },
   
   _renderContextBar(statusData) {
     const poseidonId = statusData?.poseidon_model_id;
-    if (!poseidonId) return;
+    const wrap  = document.getElementById('mm-bar-wrap');
+    if (!wrap) return;
+    if (!poseidonId) { wrap.hidden = true; return; }
     const model = (statusData?.loaded_models || []).find(m => m.model_id === poseidonId);
-    if (!model) return;
+    if (!model) { wrap.hidden = true; return; }
+    wrap.hidden = false;
 
     const pct      = model.context_pct    || 0;
-    const turns    = model.session_turns  || 0;
     const ctxUsed  = model.context_used_tokens  || 0;
     const ctxTotal = model.context_total_tokens || 0;
-    const tokens   = model.total_tokens_generated || 0;
 
-    let barWrap = document.getElementById('ctx-bar-wrap');
-    if (!barWrap) {
-      const pill = document.getElementById('monitor-model-pill');
-      if (!pill) return;
-      barWrap = document.createElement('div');
-      barWrap.id = 'ctx-bar-wrap';
-      barWrap.style.cssText = 'margin-top:8px;';
-      barWrap.innerHTML = `
-        <div style="display:flex;justify-content:space-between;align-items:baseline;font-size:8px;color:#94a3b8;letter-spacing:.04em;margin-bottom:4px;">
-          <span>CONTEXT</span>
-          <span id="ctx-bar-val" style="font-family:'Courier New',monospace;color:#cbd5e1;font-size:9px;"></span>
-        </div>
-        <div id="ctx-bar-track" title="" style="height:6px;background:rgba(255,255,255,0.08);border-radius:2px;overflow:hidden;display:flex;">
-          <div id="ctx-bar-sys"  style="height:100%;background:#4facfe;transition:width 0.4s;flex:0 0 auto;"></div>
-          <div id="ctx-bar-fill" style="height:100%;transition:width 0.4s,background 0.4s;flex:0 0 auto;"></div>
-        </div>
-        <div id="ctx-bar-legend" style="display:flex;align-items:center;gap:8px;font-size:8px;font-family:'Courier New',monospace;color:#94a3b8;margin-top:5px;line-height:1;">
-          <span id="ctx-legend-sys" style="display:inline-flex;align-items:center;gap:4px;"><span style="width:6px;height:6px;background:#4facfe;border-radius:1px;"></span><span></span></span>
-        </div>`;
-      pill.parentNode.insertBefore(barWrap, pill.nextSibling);
-    }
-
-    const fill    = document.getElementById('ctx-bar-fill');
-    const sysFill = document.getElementById('ctx-bar-sys');
-    const track   = document.getElementById('ctx-bar-track');
-    const val     = document.getElementById('ctx-bar-val');
-    const legSys  = document.getElementById('ctx-legend-sys')?.lastElementChild;
+    const fill    = document.getElementById('mm-bar-fill');
+    const sysFill = document.getElementById('mm-bar-sys');
+    const track   = document.getElementById('mm-bar-track');
+    const val     = document.getElementById('mm-bar-val');
+    const holderLabel = document.getElementById('mm-holder-label');
+    const holderSys   = document.getElementById('mm-holder-sys');
 
     // BLUE segment = fixed system+tools; GREEN/AMBER/RED = conversation.
-    const sysTok = model.system_prompt_tokens || 0;
-    const displayPct = pct || (ctxTotal > 0 ? Math.round(ctxUsed / ctxTotal * 100) : 0);
-    const sysPct  = ctxTotal > 0 ? Math.min(100, (sysTok / ctxTotal) * 100) : 0;
-    const convPct = Math.max(0, Math.min(100 - sysPct, displayPct - sysPct));
-    const convColor = displayPct < 60 ? '#06ffa5' : displayPct < 85 ? '#fbbf24' : '#ef4444';
+    const sysTok      = model.system_prompt_tokens || 0;
+    const displayPct  = pct || (ctxTotal > 0 ? Math.round(ctxUsed / ctxTotal * 100) : 0);
+    const sysPct      = ctxTotal > 0 ? Math.min(100, (sysTok / ctxTotal) * 100) : 0;
+    const convPct     = Math.max(0, Math.min(100 - sysPct, displayPct - sysPct));
+    const convColor   = displayPct < 60 ? '#06ffa5' : displayPct < 85 ? '#fbbf24' : '#ef4444';
     if (sysFill) sysFill.style.width = sysPct.toFixed(1) + '%';
-    if (fill) { fill.style.width = convPct.toFixed(1) + '%'; fill.style.background = convColor; }
-    if (track) track.title = `System+tools ${sysTok} tok · conversation ${Math.max(0, ctxUsed - sysTok)} tok · free ${Math.max(0, ctxTotal - ctxUsed)} tok`;
+    if (fill)  { fill.style.width  = convPct.toFixed(1) + '%'; fill.style.background = convColor; }
+    if (track) track.title = `System + tools ${sysTok} tok · conversation ${Math.max(0, ctxUsed - sysTok)} tok · free ${Math.max(0, ctxTotal - ctxUsed)} tok`;
 
-    // Session label = who actually holds the context (real agent name, not a generic mode)
+    // Session label = who actually holds the context (real agent name)
     const modeName = model.session_mode === 'agent' ? (model.phase_agent_name || model.phase_agent || 'Agent')
                     : model.session_mode === 'bg' ? (model.phase_agent_name || 'BG')
                     : 'Poseidon';
-
-    // Header: X/Y · % — always shown when a context exists (single source, no duplicates below)
+    // KPI right of the bar — same colour hierarchy as before but bolder.
     if (val) {
       if (ctxTotal > 0) {
-        // Threshold aligned with the server-side proactive compression at
-        // 90% — the bar goes red exactly when auto-compression is about to
-        // trigger on the next turn, so it stays a real signal to the user.
-        val.textContent = `${(ctxUsed/1000).toFixed(1)}k / ${(ctxTotal/1000).toFixed(0)}k · ${displayPct}%`;
-        val.style.color = displayPct >= 90 ? '#ef4444' : displayPct >= 70 ? '#fbbf24' : '#cbd5e1';
+        val.textContent = `${(ctxUsed / 1000).toFixed(1)}k / ${(ctxTotal / 1000).toFixed(0)}k · ${displayPct}%`;
+        val.dataset.state = displayPct >= 90 ? 'crit' : displayPct >= 70 ? 'warn' : 'ok';
       } else {
         val.textContent = '';
+        delete val.dataset.state;
       }
     }
-
-    // Single legend line: holder name + its system prompt size
-    if (legSys) legSys.textContent = sysTok ? `${modeName} · sys ${sysTok}` : modeName;
+    if (holderLabel) holderLabel.textContent = modeName;
+    if (holderSys)   holderSys.textContent   = sysTok ? `sys ${sysTok}` : '';
   },
 
   stop() {
