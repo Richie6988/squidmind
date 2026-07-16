@@ -1756,7 +1756,7 @@ My response: "${ss.last_response_preview}"${tools}
               const dup = Object.values(reg.tasks || {}).find(t =>
                 t.title === title &&
                 t.assigned_to === agent_id &&
-                !['completed', 'failed', 'cancelled', 'archived'].includes(t.status) &&
+                !['done', 'completed', 'failed', 'cancelled', 'archived'].includes(t.lifecycle?.status || t.status) &&
                 Date.now() - new Date(t.created_at || 0).getTime() < 120_000
               );
               if (dup) {
@@ -2185,22 +2185,31 @@ My response: "${ss.last_response_preview}"${tools}
 
   async _createTask({ title, description, acceptance_criteria, project, assigned_agent_id, priority, depends_on, _pipeline = false }) {
     try {
-      // IDEMPOTENT CREATION — an open task with the same title in the same
-      // project is THE task, not a new one. This idempotence is now the
-      // SOLE anti-loop guard (WIP LIMIT was removed): a model retrying
-      // its own already-created task after an OOM or context reset gets
-      // the existing id back instead of forking a duplicate.
+      // IDEMPOTENT CREATION — a task with the same title in the same
+      // project is THE task, not a new one, whether it's still open OR
+      // already done. Anti-loop: session-13 logs showed 'Verify RSS/API
+      // for CNN' being created, going done, then re-created 3 turns
+      // later because 'done' wasn't in the filter — the model didn't
+      // realize it had just been handled. Task+project uniqueness now
+      // holds across the full lifecycle; a legitimate re-verification
+      // must use a cron_schedule (which spawns fresh instances) or a
+      // different title (e.g. 'Re-verify CNN 2026-Q3').
       let regCache = null;
+      let alreadyDone = false;
       try {
         regCache = await this.rm.getTasksRegistry();
         const existing = Object.values(regCache.tasks || {}).find(t =>
           t.title === title &&
-          (!project || t.project_name === project || t.project_id === project) &&
-          !['completed', 'failed', 'cancelled', 'archived'].includes(t.lifecycle?.status || t.status || 'open')
+          (!project || t.project_name === project || t.project_id === project)
         );
         if (existing) {
-          return { ok: true, task_id: existing.task_id, title, existing: true,
-            message: `Task "${title}" already exists as ${existing.task_id} — NOT duplicated. It will run automatically.` };
+          const st = existing.lifecycle?.status || existing.status || 'todo';
+          alreadyDone = ['done', 'completed'].includes(st);
+          const detail = alreadyDone
+            ? `already ${st === 'done' && existing.outcome === 'failed' ? 'DONE (failed)' : 'DONE'}${existing.review?.verdict ? ` — review: ${existing.review.verdict}${Number.isFinite(existing.review.score) ? ' ' + existing.review.score + '/10' : ''}` : ''}. To re-run the check, either use a different title (e.g. append a date) or attach a cron_schedule to this one.`
+            : `still ${st} — it will run automatically.`;
+          return { ok: true, task_id: existing.task_id, title, existing: true, already_done: alreadyDone,
+            message: `Task "${title}" already exists as ${existing.task_id} — NOT duplicated. ${detail}` };
         }
       } catch { /* best-effort */ }
       return await this._createTaskInner({ title, description, acceptance_criteria, project, assigned_agent_id, priority, depends_on, _pipeline, regCache });

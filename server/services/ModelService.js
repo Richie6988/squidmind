@@ -2734,6 +2734,7 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
     if (!dreamBrokerToken) { log.info(' 💤 Dream skipped — could not acquire slot'); return; }
 
     entry.dreaming = true;
+    entry.lastUsedAt = Date.now();  // ceinture: TTL sees us as active
     log.info(' 💤 Poseidon entering dream cycle — soul consolidation');
 
     try {
@@ -3001,8 +3002,17 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
 
   async checkTtl() {
     const now = Date.now();
+    const brokerBusy = this.broker?.getState?.().state === 'BUSY';
     for (const [modelId, entry] of this.loaded.entries()) {
       if (entry.generating) continue;
+      // Dream in progress → don't unload out from under it. The TTL race
+      // observed at 18:44:17 (session-13 log): dream had just acquired the
+      // broker and was mid-generate when 15min idle fired → unload → dream
+      // hit 'Object is disposed' on its next tool call.
+      if (entry.dreaming) continue;
+      // Broker BUSY = another consumer holds the model; disposing under
+      // them would crash the same way.
+      if (brokerBusy) continue;
       const idleMinutes = (now - entry.lastUsedAt) / 60000;
       if (idleMinutes >= entry.config.autoUnloadIdleMinutes) {
         log.info(` TTL: unloading ${modelId} after ${idleMinutes.toFixed(1)} min idle`);
