@@ -2326,6 +2326,7 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
                 events.push({ type: 'tool_call',   name: fnName, args, at: callTime, loop_broken: true });
                 events.push({ type: 'tool_result', name: fnName, result: loopErr, duration_ms: 0, loop_broken: true });
                 entry._abortRequested = true;
+                try { entry._abortController?.abort(); } catch {}
                 return loopErr;
               }
 
@@ -2363,6 +2364,7 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
                     : `${rejectCountByTool[fnName]}× post-cap total (arg alternation)`;
                   log.warn(`Turn budget: ${fnName} spammed ${cause} — aborting generation`);
                   entry._abortRequested = true;
+                  try { entry._abortController?.abort(); } catch {}
                 }
                 return capErr;
               }
@@ -2481,6 +2483,17 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
         maxTokens
       };
       if (wrappedFunctions) promptOpts.functions = wrappedFunctions;
+
+      // Wire an AbortController into session.prompt so the wrapped tool
+      // handler can actually STOP the internal node-llama-cpp tool loop.
+      // Before this: budget/loop guards set entry._abortRequested=true but
+      // node-llama-cpp kept looping tool_calls internally — the flag was
+      // only consulted in our outer event loop AFTER the whole batch
+      // yielded, so 5-7 identical "TURN BUDGET SPENT" red bubbles piled up
+      // before we ever broke out. The signal aborts the loop mid-flight.
+      const abortController = new AbortController();
+      entry._abortController = abortController;
+      promptOpts.signal = abortController.signal;
 
       // PRE-FLIGHT compaction — the context-shift strategy of node-llama-cpp
       // crashes when history + system prompt > ctx. Reset the chat history
@@ -2875,6 +2888,26 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
       }
       // Session wipe done (or not needed)
     } catch (err) {
+      // Intentional abort from budget/loop guard — treat as clean turn end,
+      // not as an error. Session state is preserved (already got the coach
+      // message via tool_result), no stack spam, no upstream throw.
+      const isIntentionalAbort = /aborted|AbortError|The operation was aborted/i.test(err.message)
+        && entry._abortController?.signal?.aborted;
+      if (isIntentionalAbort) {
+        log.info(` Generation aborted by guard — session preserved, turn ended cleanly`);
+        yield { type: 'text', chunk: '\n\n_[Guard triggered — the same tool was called too many times, so I stopped this turn. Try a different approach.]_' };
+        // Still dispose the session because node-llama-cpp's internal state
+        // after abort can be inconsistent (partial tool loop mid-flight).
+        // Preserving KV isn't worth a hung next turn.
+        try { if (entry.session?.dispose) await entry.session.dispose(); } catch {}
+        try { if (entry._currentSequence?.dispose) await entry._currentSequence.dispose(); } catch {}
+        entry.session          = null;
+        entry._currentSequence = null;
+        entry.sessionTurns     = 0;
+        entry._thinkBuf        = '';
+        entry._inThink         = false;
+        return;  // clean exit of the generator
+      }
       // Log every error — 0s broker release with no log makes debugging impossible
       const isKnown = /no sequences|sequence|context|too long|compress|prompt|system message|checkpoint|max position|position mismatch|getSequence|context lost|recreate failed/i.test(err.message);
       log.error(` chatWithPoseidon error (${isKnown ? 'session' : 'unknown'}):`, err.message);
