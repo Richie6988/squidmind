@@ -1229,23 +1229,49 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
         let target = config.contextLength;
 
         // PRE-CLIP: if the user's explicit target obviously can't fit in the
-        // VRAM left after weights, don't burn 3 OOM retries proving it. We
-        // already have vramAfter and the disk-cached KV probe in scope; use
-        // them to compute a practical ceiling and clip the ladder start.
-        // Auto mode already does this — this path is for [explicit] override.
+        // VRAM left after weights, don't burn 3 OOM retries proving it.
+        // We compute a practical ceiling from a KV-cost estimate that
+        // PREFERS the GGUF header theoretical value (exact for the arch)
+        // scaled by the fraction of layers on GPU. The post-hoc probe is
+        // often inflated 2-3x by fixed compute buffers being amortized
+        // into per-token cost (fixedGuess default of 0.3 GB is way too low
+        // for 9B+ models). LM Studio hits 25k on this same card by trusting
+        // header math — we now match that.
         try {
           if (vramAfter && freeAfterGb > 0.8) {
             const probeKey = `${fileName}|fa=${!!config.flashAttention}`;
             const probe = (ModelService._kvProbe || new Map()).get(probeKey);
-            const kvPerTok = probe?.kvPerTok
-              || (headerKvBytesPerTok > 0 ? Math.round(headerKvBytesPerTok * 1.08) : 0);
-            const fixedGb = probe ? probe.fixedBytes / 1024 ** 3 : 0.35;
+            const gpuL  = Number(config.gpuLayers) || 0;
+            const layerShare = estLayers > 0 && gpuL > 0 ? Math.min(1, gpuL / estLayers) : 1;
+            // Header KV (across ALL layers) scaled by GPU-layer share =
+            // exactly the KV that lands in VRAM. 1.10x safety for alignment.
+            const headerKvPerTok = headerKvBytesPerTok > 0
+              ? Math.round(headerKvBytesPerTok * layerShare * 1.10)
+              : 0;
+            // Trust the probe only when it's within 2x of the header estimate.
+            // Beyond that it's contaminated by fixed compute buffer overhead
+            // being wrongly billed per-token (the 131 KB/tok trap).
+            const probeSane = probe?.kvPerTok
+              && headerKvPerTok > 0
+              && probe.kvPerTok <= headerKvPerTok * 2;
+            const kvPerTok = probeSane
+              ? probe.kvPerTok
+              : (headerKvPerTok || probe?.kvPerTok || 0);
+            // Fixed compute buffers scale with model size, not with default
+            // 0.3 GB. Rough empirical: ~80-100 MB per B params for llama.cpp
+            // compute buffers. Use the probe's fixedBytes when available.
+            const fixedGb = probe?.fixedBytes
+              ? probe.fixedBytes / 1024 ** 3
+              : Math.min(1.2, Math.max(0.4, fileSizeGb * 0.15));
             if (kvPerTok > 0) {
-              const availGb = Math.max(0, freeAfterGb - fixedGb - 0.25); // safety pad
+              const availGb = Math.max(0, freeAfterGb - fixedGb - 0.20);
               const practicalMax = Math.floor(availGb * 1024 ** 3 / kvPerTok / 1024) * 1024;
+              const kvSource = probeSane ? 'probe' : (headerKvPerTok ? 'header' : 'probe-fallback');
               if (practicalMax >= ModelService.MIN_VIABLE_CTX && target > practicalMax) {
-                log.warn(`  [pre-clip] target ctx=${target} exceeds VRAM budget (${availGb.toFixed(2)}GB free after weights, ${Math.round(kvPerTok/1024)}KB/tok${probe ? ' MEASURED' : ' header'}) → starting ladder at ${practicalMax} to avoid 3 wasted OOM retries`);
+                log.warn(`  [pre-clip] target ctx=${target} exceeds VRAM budget (${availGb.toFixed(2)}GB free after ${fixedGb.toFixed(2)}GB fixed buffers, ${Math.round(kvPerTok/1024)}KB/tok ${kvSource}, ${gpuL}/${estLayers} layers on GPU) → starting ladder at ${practicalMax}`);
                 target = Math.min(target, practicalMax);
+              } else if (practicalMax >= target) {
+                log.info(`  [pre-clip] target ctx=${target} fits (${kvSource}: ~${Math.round(kvPerTok/1024)}KB/tok, ${availGb.toFixed(2)}GB KV budget → up to ~${practicalMax})`);
               }
             }
           }
@@ -1300,10 +1326,22 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
               const fixedGuess = (ModelService._kvProbe?.get(`${fileName}|fa=${!!config.flashAttention}`)?.fixedBytes) || 0.3 * 1024 ** 3;
               const measuredKv = Math.round(Math.max(0, ctxCostBytes - fixedGuess) / config.contextLength);
               if (measuredKv > 512 && measuredKv < 500 * 1024) {  // sane range
+                // ADDITIONAL SANITY: reject if post-hoc measurement disagrees
+                // with the GGUF header theoretical calc by more than 2x. That
+                // gap means the fixedGuess subtraction was wrong (9B models
+                // have ~800MB-1.2GB fixed buffers, not the 300MB default) and
+                // the measurement is contaminated. Trust the header instead.
+                const layersNow = typeof config.gpuLayers === 'number' ? config.gpuLayers : 0;
+                const headerKvOnGpu = (headerKvBytesPerTok > 0 && estLayers > 0 && layersNow > 0)
+                  ? headerKvBytesPerTok * (layersNow / estLayers)
+                  : 0;
+                const inflated = headerKvOnGpu > 0 && measuredKv > headerKvOnGpu * 2;
+                if (inflated) {
+                  log.warn(`  📏 REJECTED post-hoc KV: measured ${(measuredKv/1024).toFixed(1)}KB/tok vs header ${(headerKvOnGpu/1024).toFixed(1)}KB/tok — fixedGuess was too low, refusing to cache inflated value`);
+                } else {
                 ModelService._kvProbe = ModelService._kvProbe || new Map();
                 const probeKey = `${fileName}|fa=${!!config.flashAttention}`;
                 const prev = ModelService._kvProbe.get(probeKey);
-                const layersNow = typeof config.gpuLayers === 'number' ? config.gpuLayers : 0;
                 // Never overwrite a measurement taken with MORE GPU layers by
                 // one taken with fewer — degraded placements under-read KV
                 // (their KV sits in RAM, invisible to the VRAM delta).
@@ -1335,6 +1373,7 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
                   log.info(`  📏 measured actual KV cost: ${(ctxCostBytes / 1024 ** 3).toFixed(2)}GB for ${config.contextLength} tokens → ${(measuredKv / 1024).toFixed(1)}KB/tok at ${layersNow}/${estLayers} GPU layers (cached for next load)`);
                 } else {
                   log.info(`  📏 KV measurement NOT cached (${layersNow} GPU layers < previous ${prevLayers} — degraded placement under-reads)`);
+                }
                 }
               }
             }
