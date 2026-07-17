@@ -937,22 +937,43 @@ class TaskRunner {
             } catch {}
           }
           let _lastTouch = 0;
+          // REPLAY TIMELINE — compact event log for the temple "film mode".
+          // Tool calls/results with relative timestamps + text milestones
+          // (every ~400 chars). Capped at 120 entries so a runaway loop
+          // can't bloat the task file.
+          const _tl = [];
+          const _t0 = Date.now();
+          let _txtAcc = 0;
+          const _tlPush = (e) => { if (_tl.length < 120) _tl.push({ t: Date.now() - _t0, ...e }); };
           for await (const ev of this.modelService.chatWithPoseidon(posMsg, [], { _skipBroker: true, _bgMode: true, _genParams, _agentPrompt, _agentTools })) {
             // Keepalive on the OUTER TaskRunner token — a long BG generation
             // must not expire as a dead holder mid-run.
             if (Date.now() - _lastTouch > 10_000) { _lastTouch = Date.now(); this.modelService.broker.touch(bgToken); }
-            if (ev.type === 'text')          { output += ev.chunk; bus?.push({ type: 'text', task_id: taskId, chunk: ev.chunk }); }
-            if (ev.type === 'error')         { failed = true; output += `\nExecution error: ${ev.error}`; bus?.push({ type: 'tool_result', task_id: taskId, name: 'generation', ok: false, summary: String(ev.error).slice(0, 200) }); }
+            if (ev.type === 'text')          { output += ev.chunk; bus?.push({ type: 'text', task_id: taskId, chunk: ev.chunk });
+                                               _txtAcc += ev.chunk.length;
+                                               if (_txtAcc > 400) { _tlPush({ k: 'text', n: _txtAcc }); _txtAcc = 0; } }
+            if (ev.type === 'error')         { failed = true; output += `\nExecution error: ${ev.error}`; bus?.push({ type: 'tool_result', task_id: taskId, name: 'generation', ok: false, summary: String(ev.error).slice(0, 200) }); _tlPush({ k: 'error', m: String(ev.error).slice(0, 80) }); }
             if (ev.type === 'thinking')      bus?.push({ type: 'thinking', task_id: taskId, chunk: ev.chunk });
-            if (ev.type === 'thinking_start') bus?.push({ type: 'thinking_start', task_id: taskId });
+            if (ev.type === 'thinking_start') { bus?.push({ type: 'thinking_start', task_id: taskId }); _tlPush({ k: 'think' }); }
             if (ev.type === 'thinking_end')   bus?.push({ type: 'thinking_end', task_id: taskId });
-            if (ev.type === 'tool_call')      { toolCalls++; bus?.push({ type: 'tool_call', task_id: taskId, name: ev.name, args: ev.args }); }
-            if (ev.type === 'tool_result')    bus?.push({ type: 'tool_result', task_id: taskId, name: ev.name, ok: ev.result?.ok !== false, summary: String(ev.result?.message || '').slice(0, 200) });
+            if (ev.type === 'tool_call')      { toolCalls++; bus?.push({ type: 'tool_call', task_id: taskId, name: ev.name, args: ev.args }); _tlPush({ k: 'call', name: ev.name }); }
+            if (ev.type === 'tool_result')    { bus?.push({ type: 'tool_result', task_id: taskId, name: ev.name, ok: ev.result?.ok !== false, summary: String(ev.result?.message || '').slice(0, 200) }); _tlPush({ k: 'result', name: ev.name, ok: ev.result?.ok !== false }); }
             if (this.modelService.broker.hasHighPriorityWaiting()) {
               preempted = true;
               this.modelService.abortGeneration?.();
               break;
             }
+          }
+          // Persist the timeline on the task (survives restarts, feeds replay).
+          if (_tl.length) {
+            try {
+              const regT = await this.rm.getTasksRegistry().catch(() => null);
+              if (regT?.tasks?.[taskId]) {
+                regT.tasks[taskId].timeline = _tl;
+                await this.rm._writeTaskDetails(taskId, regT.tasks[taskId]);
+              }
+              task.timeline = _tl;
+            } catch {}
           }
           if (bus) bus.push({ type: 'task_end', task_id: taskId });
           if (preempted) {

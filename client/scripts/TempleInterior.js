@@ -1161,6 +1161,13 @@ const TempleInterior = {
         const more = task.files_written.length > 6 ? `<span class="ti-kcard-file-more">+${task.files_written.length - 6}</span>` : '';
         outputChips = `<div class="ti-kcard-files">${chips}${more}</div>`;
       }
+      // Replay "film mode": ▶ chip on cards that captured a timeline.
+      if ((isDone || isFail) && Array.isArray(task.timeline) && task.timeline.length) {
+        const replayChip = `<span class="ti-kcard-file ti-kcard-replay" onclick="event.stopPropagation();TempleInterior._replayTask('${this._esc(task.task_id)}')" title="Replay this task's execution">▶ replay</span>`;
+        outputChips = outputChips
+          ? outputChips.replace('</div>', `${replayChip}</div>`)
+          : `<div class="ti-kcard-files">${replayChip}</div>`;
+      }
       // Progress bar (animated for running)
       const bar    = isRun ? `<div class="ti-kcard-bar"><div class="ti-kcard-bar-fill"></div></div>` : '';
       const agentBadge = agent
@@ -2778,6 +2785,81 @@ const TempleInterior = {
     // type param: _openFile uses 'output' vs 'input'; treat work/temp as output-adjacent
     const type = ftype === 'input' ? 'input' : 'output';
     this._openFile(name, filepath, type, this._folder());
+  },
+
+  // ── REPLAY "FILM MODE" ────────────────────────────────────────────────
+  // Plays the task.timeline captured during execution: tool calls appear
+  // one by one at compressed time, text milestones tick a counter, errors
+  // flash. 10x speed by default (a 3-min task replays in ~18s), max step
+  // gap clamped to 1.2s so long thinking pauses don't bore the viewer.
+  async _replayTask(taskId) {
+    try {
+      const r = await fetch(`/api/v2/tasks`).then(x => x.json()).catch(() => null);
+      const task = r?.registry?.tasks?.[taskId] || Object.values(r?.registry?.tasks || {}).find(t => t.task_id === taskId);
+      if (!task?.timeline?.length) { SquidModal.alert('No timeline recorded for this task.'); return; }
+      const esc = s => this._esc(s);
+      // Build overlay
+      const ov = document.createElement('div');
+      ov.className = 'ti-replay-overlay';
+      ov.innerHTML = `
+        <div class="ti-replay-box">
+          <div class="ti-replay-head">
+            <span>▶ REPLAY — ${esc(task.title || taskId)}</span>
+            <span class="ti-replay-close" title="Close">✕</span>
+          </div>
+          <div class="ti-replay-meta">${esc(task.assigned_name || task.assigned_to || 'agent')} · ${task.timeline.length} events · ${Math.round((task.timeline[task.timeline.length-1].t || 0)/1000)}s real time</div>
+          <div class="ti-replay-feed"></div>
+          <div class="ti-replay-bar"><div class="ti-replay-bar-fill"></div></div>
+        </div>`;
+      document.body.appendChild(ov);
+      const feed = ov.querySelector('.ti-replay-feed');
+      const fill = ov.querySelector('.ti-replay-bar-fill');
+      let stopped = false;
+      const close = () => { stopped = true; ov.remove(); };
+      ov.querySelector('.ti-replay-close').onclick = close;
+      ov.addEventListener('click', e => { if (e.target === ov) close(); });
+
+      const tl = task.timeline;
+      const totalT = tl[tl.length - 1].t || 1;
+      const SPEED = 10;
+      let prevT = 0;
+      let textCount = 0;
+      for (let i = 0; i < tl.length && !stopped; i++) {
+        const e = tl[i];
+        const gap = Math.min(1200, Math.max(60, (e.t - prevT) / SPEED));
+        prevT = e.t;
+        await new Promise(r2 => setTimeout(r2, gap));
+        if (stopped) break;
+        fill.style.width = `${Math.round((e.t / totalT) * 100)}%`;
+        let row = null;
+        if (e.k === 'call') {
+          row = `<div class="ti-replay-row"><span class="ti-replay-t">${(e.t/1000).toFixed(1)}s</span> <span class="ti-replay-call">⚙ ${esc(e.name)}</span> <span class="ti-replay-dots">…</span></div>`;
+        } else if (e.k === 'result') {
+          row = `<div class="ti-replay-row"><span class="ti-replay-t">${(e.t/1000).toFixed(1)}s</span> <span class="${e.ok ? 'ti-replay-ok' : 'ti-replay-ko'}">${e.ok ? '✓' : '✗'} ${esc(e.name)}</span></div>`;
+        } else if (e.k === 'think') {
+          row = `<div class="ti-replay-row ti-replay-dim"><span class="ti-replay-t">${(e.t/1000).toFixed(1)}s</span> 💭 thinking…</div>`;
+        } else if (e.k === 'text') {
+          textCount += e.n || 0;
+          row = `<div class="ti-replay-row ti-replay-dim"><span class="ti-replay-t">${(e.t/1000).toFixed(1)}s</span> ✍ writing (${textCount} chars total)</div>`;
+        } else if (e.k === 'error') {
+          row = `<div class="ti-replay-row"><span class="ti-replay-t">${(e.t/1000).toFixed(1)}s</span> <span class="ti-replay-ko">⚠ ${esc(e.m || 'error')}</span></div>`;
+        }
+        if (row) {
+          feed.insertAdjacentHTML('beforeend', row);
+          feed.scrollTop = feed.scrollHeight;
+        }
+      }
+      if (!stopped) {
+        fill.style.width = '100%';
+        const verdictBit = task.review?.verdict
+          ? ` · review ${task.review.verdict}${Number.isFinite(task.review.score) ? ` ${task.review.score}/10` : ''}${task.review.unverified ? ' 👻' : ''}`
+          : '';
+        feed.insertAdjacentHTML('beforeend', `<div class="ti-replay-row ti-replay-end">■ ${task.outcome === 'failed' ? 'FAILED' : 'DONE'}${verdictBit}</div>`);
+        feed.scrollTop = feed.scrollHeight;
+      }
+    } catch (e) {
+      console.warn('[REPLAY]', e);
+    }
   },
 
   // ═══ LEGACY COMPAT ═══════════════════════════════════════════════════════

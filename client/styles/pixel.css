@@ -2465,6 +2465,55 @@ input[type="color"]::-webkit-color-swatch {
   color: var(--ui-muted);
   padding: 1px 4px;
 }
+
+/* ── Replay "film mode" overlay ── */
+.ti-replay-overlay {
+  position: fixed; inset: 0; z-index: 25000;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(0, 0, 0, 0.72);
+}
+.ti-replay-box {
+  width: 460px; max-width: 92vw; max-height: 70vh;
+  background: var(--ocean-deep, #041220);
+  border: 2px solid rgba(79,172,254,0.45);
+  border-radius: 6px;
+  display: flex; flex-direction: column;
+  box-shadow: 0 0 40px rgba(79,172,254,0.25);
+}
+.ti-replay-head {
+  display: flex; justify-content: space-between; align-items: center;
+  font-family: 'Press Start 2P', monospace; font-size: 9px;
+  color: #4facfe; padding: 10px 12px;
+  border-bottom: 1px solid rgba(79,172,254,0.2);
+}
+.ti-replay-close { cursor: pointer; color: var(--ui-muted); font-size: 12px; }
+.ti-replay-close:hover { color: #f87171; }
+.ti-replay-meta {
+  font-family: 'Courier New', monospace; font-size: 10px;
+  color: var(--ui-muted); padding: 6px 12px 0 12px;
+}
+.ti-replay-feed {
+  flex: 1; overflow-y: auto; padding: 8px 12px;
+  font-family: 'Courier New', monospace; font-size: 11px; line-height: 1.7;
+  min-height: 180px; max-height: 46vh;
+}
+.ti-replay-row  { color: var(--text-primary, #e2e8f0); }
+.ti-replay-t    { color: var(--ui-muted); font-size: 9px; margin-right: 6px; }
+.ti-replay-call { color: #4facfe; }
+.ti-replay-ok   { color: #06ffa5; }
+.ti-replay-ko   { color: #f87171; }
+.ti-replay-dim  { opacity: 0.55; }
+.ti-replay-end  { color: #FFD700; margin-top: 6px; font-weight: bold; }
+.ti-replay-bar  {
+  height: 4px; background: rgba(79,172,254,0.12);
+  border-radius: 0 0 4px 4px; overflow: hidden;
+}
+.ti-replay-bar-fill {
+  height: 100%; width: 0%;
+  background: linear-gradient(90deg, #4facfe, #06ffa5);
+  transition: width 0.25s linear;
+}
+
 .ti-kcard-foot  { display: flex; align-items: center; justify-content: space-between; margin-top: 4px; gap: 6px; }
 .ti-kcard-foot-right {
   display: flex;
