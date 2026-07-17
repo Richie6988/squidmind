@@ -139,14 +139,51 @@ class Poseidon {
   drawPoseidon(ctx) {
     const scale = this.hovered ? 1.1 : 1;
     ctx.scale(scale, scale);
-    
-    // Divine aura (larger!)
-    const glow = ctx.createRadialGradient(0, 0, 0, 0, 0, this.size * 1.3);
-    glow.addColorStop(0, 'rgba(30, 144, 255, 0.6)');
-    glow.addColorStop(0.5, 'rgba(255, 215, 0, 0.3)');
-    glow.addColorStop(1, 'rgba(30, 144, 255, 0)');
+
+    // ── AMBIENT SYSTEM STATE ──────────────────────────────────────────────
+    // Poseidon IS the status indicator: read the shared 5s poll from the
+    // aquarium. loaded → trident lit; generating → aura pulses with energy;
+    // dreaming → dim violet aura; nothing loaded → sleepy grey + Zzz.
+    const sys = (typeof window !== 'undefined' && window.aquarium?._sysState) || null;
+    const tNow = Date.now() / 1000;
+    this._sysLoaded     = !!sys?.loaded;
+    this._sysGenerating = !!sys?.generating;
+    this._sysDreaming   = !!sys?.dreaming;
+
+    // Divine aura — mood follows the system
+    let a0 = 'rgba(30, 144, 255, 0.6)', a1 = 'rgba(255, 215, 0, 0.3)', a2 = 'rgba(30, 144, 255, 0)';
+    let auraR = this.size * 1.3;
+    if (this._sysDreaming) {
+      a0 = 'rgba(140, 90, 220, 0.45)'; a1 = 'rgba(60, 40, 130, 0.25)'; a2 = 'rgba(60, 40, 130, 0)';
+    } else if (this._sysGenerating) {
+      const pulse = 0.75 + 0.25 * Math.sin(tNow * 5.5);
+      a0 = `rgba(60, 200, 255, ${0.65 * pulse})`; a1 = `rgba(255, 230, 80, ${0.35 * pulse})`;
+      auraR = this.size * (1.3 + 0.12 * Math.sin(tNow * 5.5));
+    } else if (!this._sysLoaded) {
+      a0 = 'rgba(110, 125, 150, 0.30)'; a1 = 'rgba(70, 80, 100, 0.15)'; a2 = 'rgba(70, 80, 100, 0)';
+    }
+    const glow = ctx.createRadialGradient(0, 0, 0, 0, 0, auraR);
+    glow.addColorStop(0, a0);
+    glow.addColorStop(0.5, a1);
+    glow.addColorStop(1, a2);
     ctx.fillStyle = glow;
-    ctx.fillRect(-this.size * 1.3, -this.size * 1.3, this.size * 2.6, this.size * 2.6);
+    ctx.fillRect(-auraR, -auraR, auraR * 2, auraR * 2);
+
+    // Sleepy Zzz when no model is loaded — the god naps, the system is cold.
+    if (!this._sysLoaded && !this._sysDreaming) {
+      ctx.fillStyle = 'rgba(180, 195, 220, 0.75)';
+      ctx.font = `${Math.round(this.size * 0.22)}px "Press Start 2P", monospace`;
+      ctx.textAlign = 'left';
+      for (let i = 0; i < 3; i++) {
+        const zt = (tNow * 0.6 + i * 0.9) % 2.7;
+        const zy = -this.size * 0.85 - zt * this.size * 0.28;
+        const zx = this.size * 0.55 + Math.sin(zt * 2.2) * this.size * 0.10 + i * 5;
+        ctx.globalAlpha = Math.max(0, 0.8 - zt * 0.3);
+        ctx.fillText('z', zx, zy);
+      }
+      ctx.globalAlpha = 1;
+      ctx.textAlign = 'center';
+    }
     
     // Body (divine robes - ocean blue with gold trim)
     ctx.fillStyle = '#1E90FF';
@@ -228,16 +265,31 @@ class Poseidon {
       ctx.stroke();
     }
     
-    // TRIDENT (ICONIC!)
+    // TRIDENT (ICONIC!) — lit when the model is loaded, sparking while
+    // generating, dull steel when the system is cold. One glance = status.
     ctx.save();
     ctx.translate(this.size * 0.6, 0);
     const s = this.size;
+    const lit  = this._sysLoaded;
+    const busy = this._sysGenerating;
+    const GOLD_HI = lit ? '#FFD700' : '#8a8f9c';
+    const GOLD_LO = lit ? '#B8860B' : '#5a5f6c';
 
-    // Shaft (golden, slight gradient for depth)
+    // Glow behind the head when lit
+    if (lit) {
+      const litPulse = busy ? 0.55 + 0.35 * Math.sin(tNow * 6) : 0.35;
+      const tg = ctx.createRadialGradient(0, -s * 0.48, 0, 0, -s * 0.48, s * 0.45);
+      tg.addColorStop(0, `rgba(120, 220, 255, ${litPulse})`);
+      tg.addColorStop(1, 'rgba(120, 220, 255, 0)');
+      ctx.fillStyle = tg;
+      ctx.fillRect(-s * 0.45, -s * 0.95, s * 0.9, s * 0.9);
+    }
+
+    // Shaft (slight gradient for depth)
     const shaftGrad = ctx.createLinearGradient(-2, 0, 3, 0);
-    shaftGrad.addColorStop(0, '#B8860B');
-    shaftGrad.addColorStop(0.5, '#FFD700');
-    shaftGrad.addColorStop(1, '#B8860B');
+    shaftGrad.addColorStop(0, GOLD_LO);
+    shaftGrad.addColorStop(0.5, GOLD_HI);
+    shaftGrad.addColorStop(1, GOLD_LO);
     ctx.strokeStyle = shaftGrad;
     ctx.lineWidth = 5;
     ctx.lineCap = 'round';
@@ -247,7 +299,7 @@ class Poseidon {
     ctx.stroke();
 
     // Crossbar — the base the three prongs rise from
-    ctx.strokeStyle = '#FFD700';
+    ctx.strokeStyle = GOLD_HI;
     ctx.lineWidth = 4;
     ctx.beginPath();
     ctx.moveTo(-s * 0.18, -s * 0.30);
@@ -265,7 +317,7 @@ class Poseidon {
     // chained three arc() calls in a single path: canvas draws connecting
     // chords between chained arcs, and the fill produced a stray triangle
     // on the central spike.)
-    ctx.fillStyle = '#FFD700';
+    ctx.fillStyle = GOLD_HI;
     const tip = (x, yBase, h) => {
       ctx.beginPath();
       ctx.moveTo(x - s * 0.045, yBase);

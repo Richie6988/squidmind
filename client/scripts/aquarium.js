@@ -36,6 +36,8 @@ const aquarium = {
     
     // Poll for updates every 2 seconds
     setInterval(() => this.updateSquidsStatus(), 2000);
+    this._pollSystemState();
+    setInterval(() => this._pollSystemState(), 5000);
     
     console.log('[OCEAN] Aquarium initialized');
   },
@@ -292,13 +294,27 @@ const aquarium = {
     const t = Date.now() / 1000;
     const cx = this.ctx;
 
-    // Deep ocean gradient
+    // Deep ocean gradient, tinted by real time of day. The aquarium lives
+    // in your timezone: warm dawn, clear day, purple dusk, deep night.
+    // During the dream cycle the water darkens further and moon rays appear.
+    const hour = new Date().getHours() + new Date().getMinutes() / 60;
+    const dreaming = this._sysState?.dreaming;
+    let top = '#0c1e38', mid = '#071528', bot = '#030c1a';
+    if (dreaming)                    { top = '#060a1e'; mid = '#04071a'; bot = '#020411'; }
+    else if (hour >= 6 && hour < 9)  { top = '#1a2a44'; mid = '#0d1a30'; bot = '#04101f'; }   // dawn
+    else if (hour >= 9 && hour < 18) { top = '#0e2242'; mid = '#08182e'; bot = '#030e1e'; }   // day
+    else if (hour >= 18 && hour < 22){ top = '#141c3e'; mid = '#0a122c'; bot = '#040918'; }   // dusk
+    else                             { top = '#080f26'; mid = '#050a1c'; bot = '#020610'; }   // night
     const grad = cx.createLinearGradient(0, 0, 0, H);
-    grad.addColorStop(0,    '#0c1e38');
-    grad.addColorStop(0.5,  '#071528');
-    grad.addColorStop(1,    '#030c1a');
+    grad.addColorStop(0, top);
+    grad.addColorStop(0.5, mid);
+    grad.addColorStop(1, bot);
     cx.fillStyle = grad;
     cx.fillRect(0, 0, W, H);
+
+    // God rays — slow-swaying translucent light shafts from the surface.
+    // Moonlight (cooler, dimmer) at night or while dreaming.
+    this._bgLightRays(W, H, t, dreaming || hour < 6 || hour >= 22);
 
     // Depth-layered colorful bubbles (replace seaweed)
     this._bgBubbles(W, H, t);
@@ -308,6 +324,49 @@ const aquarium = {
     vig.addColorStop(0, 'rgba(0,0,0,0)');
     vig.addColorStop(1, 'rgba(1,4,10,0.55)');
     cx.fillStyle = vig; cx.fillRect(0, 0, W, H);
+  },
+
+  _bgLightRays(W, H, t, moonlight) {
+    const cx = this.ctx;
+    cx.save();
+    cx.globalCompositeOperation = 'lighter';
+    const color = moonlight ? '190,210,255' : '120,190,255';
+    const baseAl = moonlight ? 0.030 : 0.045;
+    for (let i = 0; i < 4; i++) {
+      const seed = i * 1.7;
+      const x0 = W * (0.12 + i * 0.24) + Math.sin(t * 0.07 + seed) * W * 0.04;
+      const sway = Math.sin(t * 0.11 + seed * 2) * W * 0.10;
+      const wTop = W * 0.015, wBot = W * (0.06 + 0.02 * Math.sin(t * 0.05 + seed));
+      const al = baseAl * (0.7 + 0.3 * Math.sin(t * 0.23 + seed * 3));
+      const g = cx.createLinearGradient(0, 0, 0, H * 0.9);
+      g.addColorStop(0, `rgba(${color},${al})`);
+      g.addColorStop(1, `rgba(${color},0)`);
+      cx.fillStyle = g;
+      cx.beginPath();
+      cx.moveTo(x0 - wTop, 0);
+      cx.lineTo(x0 + wTop, 0);
+      cx.lineTo(x0 + sway + wBot, H * 0.9);
+      cx.lineTo(x0 + sway - wBot, H * 0.9);
+      cx.closePath();
+      cx.fill();
+    }
+    cx.restore();
+  },
+
+  // System-state poll (5s) — feeds Poseidon's ambient reactivity and the
+  // day/night dream tint. One poll, shared: Poseidon reads window.aquarium.
+  async _pollSystemState() {
+    try {
+      const ms = await window.api._fetch('/models/status');
+      const m = (ms?.loaded_models || [])[0] || null;
+      this._sysState = {
+        loaded:     !!m,
+        generating: !!m?.generating,
+        phase:      m?.phase || 'idle',
+        dreaming:   /dream/i.test(ms?.broker?.owner || ''),
+        ctx_pct:    m?.context_pct || 0,
+      };
+    } catch { this._sysState = null; }
   },
 
   _bgHexGrid(W, H, t) {
