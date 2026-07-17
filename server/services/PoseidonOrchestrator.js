@@ -823,6 +823,7 @@ My response: "${ss.last_response_preview}"${tools}
             project: { type: 'string', description: 'Project name to attach this task to' },
             assigned_agent_id: { type: 'string', description: 'Optional agent_id to assign immediately' },
             priority: { type: 'string', enum: ['low', 'medium', 'high', 'critical'], description: 'Default: medium' },
+            challenge: { type: 'boolean', description: 'true = adversarial mode: a devil\'s-advocate pass attacks the deliverable before review. Use for high-stakes analysis/strategy/finance tasks where hidden assumptions are costly.' },
             depends_on: { type: 'array', items: { type: 'string' }, description: 'Task ids that must COMPLETE before this one can start (e.g. ["task_0042"])' }
           },
           required: ['title']
@@ -2221,7 +2222,7 @@ My response: "${ss.last_response_preview}"${tools}
     }
   }
 
-  async _createTask({ title, description, acceptance_criteria, project, assigned_agent_id, priority, depends_on, _pipeline = false }) {
+  async _createTask({ title, description, acceptance_criteria, project, assigned_agent_id, priority, depends_on, challenge = false, _pipeline = false }) {
     try {
       // IDEMPOTENT CREATION — a task with the same title in the same
       // project is THE task, not a new one, whether it's still open OR
@@ -2250,11 +2251,11 @@ My response: "${ss.last_response_preview}"${tools}
             message: `Task "${title}" already exists as ${existing.task_id} — NOT duplicated. ${detail}` };
         }
       } catch { /* best-effort */ }
-      return await this._createTaskInner({ title, description, acceptance_criteria, project, assigned_agent_id, priority, depends_on, _pipeline, regCache });
+      return await this._createTaskInner({ title, description, acceptance_criteria, project, assigned_agent_id, priority, depends_on, challenge, _pipeline, regCache });
     } catch (err) { return { ok: false, error: err.message }; }
   }
 
-  async _createTaskInner({ title, description, acceptance_criteria, project, assigned_agent_id, priority, depends_on, _pipeline = false, regCache = null }) {
+  async _createTaskInner({ title, description, acceptance_criteria, project, assigned_agent_id, priority, depends_on, challenge = false, _pipeline = false, regCache = null }) {
     try {
       // (No WIP limit — user directive.) The anti-loop safety net is the
       // IDEMPOTENT-BY-TITLE guard in the outer _createTask: two attempts
@@ -2344,6 +2345,7 @@ My response: "${ss.last_response_preview}"${tools}
         assigned_to:  effectiveAgentId || null,
         assigned_name: effectiveAgentId ? (agentName || await this.rm._resolveAgentName(effectiveAgentId)) : null,
         depends_on:   deps.length ? deps : undefined,
+        ...(challenge ? { challenge: true } : {}),
         status:       'todo',
         lifecycle:    { status: 'todo', status_history: [{ status: 'todo', at: new Date().toISOString(), by: 'poseidon' }], started_at: null, completed_at: null },
         result_file:  null,

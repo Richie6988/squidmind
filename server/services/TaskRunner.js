@@ -1152,6 +1152,71 @@ class TaskRunner {
             await this.rm._writeTaskDetails(taskId, reg0.tasks[taskId]);
           }
         } catch {}
+        // ═══ PHASE CHALLENGE (opt-in) — adversarial pass before review ═══
+        // task.challenge=true → a devil's-advocate pass attacks the
+        // deliverable's assumptions BEFORE the quality review. The critique
+        // is stored on the task and fed into the review prompt: if it
+        // exposes real flaws, the reviewer sends the task back (REVISE)
+        // with those exact fixes — the existing revision loop closes the
+        // debate. Sequential under its own broker token, review ctx regime.
+        // Runs once (skipped on revision reruns — critique already stored).
+        if (task.challenge && !task.challenge_critique && (task.revisions || 0) === 0) {
+          let chalToken = null;
+          try {
+            chalToken = await this.modelService.broker.acquire(
+              PRIORITY.AGENT, `challenge-${taskId}`, { timeoutMs: 10 * 60 * 1000 }
+            );
+            await this.modelService.quiesceGeneration?.(10000);
+            try {
+              const projEntryC = task.project_name
+                ? (await this.rm.resolveProjectByNameOrId(task.project_name))?.entry
+                : null;
+              await this.modelService.ensureLoadedFor('review', projEntryC);
+            } catch (swapErr) { log.warn(`Phase swap to challenge failed: ${swapErr.message}`); }
+            const chalPrompt =
+              `[ADVERSARIAL CHALLENGE — reply with the critique ONLY, no tools]\n` +
+              `You are a rigorous devil's advocate. Attack this deliverable: hidden assumptions, ` +
+              `factual weaknesses, missing cases, overclaims. Be SPECIFIC — vague doubts are useless.\n` +
+              `Task: ${task.title}\n\nDELIVERABLE (may be truncated):\n${String(output).slice(0, 2400)}\n\n` +
+              `Reply EXACTLY in this format:\nSEVERITY: <LOW|MEDIUM|HIGH>\nCRITIQUE: <2-4 specific, concrete weaknesses; or "none found" if genuinely solid>`;
+            let critique = '';
+            let _chTouch = 0;
+            for await (const ev of this.modelService.chatWithPoseidon(chalPrompt, [], { _skipBroker: true, _bgMode: true })) {
+              if (Date.now() - _chTouch > 10_000) { _chTouch = Date.now(); this.modelService.broker.touch(chalToken); }
+              if (ev.type === 'text') critique += ev.chunk;
+              if (critique.length > 1000) break;
+            }
+            const severity = ((critique.match(/SEVERITY:\s*(LOW|MEDIUM|HIGH)/i) || [])[1] || 'LOW').toUpperCase();
+            const body     = ((critique.match(/CRITIQUE:\s*([\s\S]{0,600})/i) || [])[1] || '').trim();
+            if (body && !/^none found/i.test(body)) {
+              task.challenge_critique = { severity, critique: body, at: new Date().toISOString() };
+              try {
+                const regC = await this.rm.getTasksRegistry().catch(() => null);
+                if (regC?.tasks?.[taskId]) {
+                  regC.tasks[taskId].challenge_critique = task.challenge_critique;
+                  await this.rm._writeTaskDetails(taskId, regC.tasks[taskId]);
+                }
+              } catch {}
+              log.info(`⚔ challenge ${taskId}: ${severity} — ${body.slice(0, 100)}`);
+            } else {
+              log.info(`⚔ challenge ${taskId}: no substantive critique`);
+            }
+          } catch (chalErr) {
+            log.warn(`challenge pass skipped for ${taskId}: ${chalErr.message}`);
+          } finally {
+            await this.modelService.quiesceGeneration?.(10000);
+            const posIdC  = this.modelService.poseidonModelId;
+            const posEntC = posIdC ? this.modelService.loaded.get(posIdC) : null;
+            if (posEntC && !posEntC.generating) {
+              if (posEntC.session) { try { await posEntC.session.dispose?.(); } catch {} posEntC.session = null; }
+              if (posEntC._currentSequence) { try { await posEntC._currentSequence.dispose?.(); } catch {} posEntC._currentSequence = null; }
+              posEntC.sessionTurns = 0;
+              await new Promise(r => setTimeout(r, 500));
+            }
+            if (chalToken) this.modelService.broker.release(chalToken);
+          }
+        }
+
         // The workflow: agent done → agent context gone → Poseidon loaded
         // with review as its FIRST priority action. Verdict decides:
         //   PASS   → done (+stats, +project memory), next task in queue
@@ -1199,9 +1264,15 @@ class TaskRunner {
             const crit = task.acceptance_criteria
               ? `ACCEPTANCE CRITERIA:\n${String(task.acceptance_criteria).slice(0, 400)}`
               : 'No explicit criteria — judge on: does it fully accomplish the task title, is it concrete (no filler/placeholders), is it usable as-is.';
+            // Adversarial critique from the challenge pass, if one ran. The
+            // reviewer weighs it: real flaws → REVISE with those fixes;
+            // nitpicks on a solid deliverable → PASS anyway.
+            const chalPart = task.challenge_critique?.critique
+              ? `\nADVERSARIAL CRITIQUE (${task.challenge_critique.severity}) — weigh it, don't rubber-stamp it:\n${String(task.challenge_critique.critique).slice(0, 500)}`
+              : '';
             const reviewPrompt =
               `[QUALITY REVIEW — reply with the verdict ONLY, no tools]\n` +
-              `Task: ${task.title}\n${crit}\n\nDELIVERABLE (may be truncated):\n${String(deliverable).slice(0, 2800)}\n\n` +
+              `Task: ${task.title}\n${crit}${chalPart}\n\nDELIVERABLE (may be truncated):\n${String(deliverable).slice(0, 2800)}\n\n` +
               `Reply EXACTLY in this format:\nSCORE: <1-10>\nVERDICT: <PASS|REVISE>\nFIXES: <if REVISE: 2 concrete, specific fixes; if PASS: ->`;
             let review = '';
             let _revTouch = 0;
