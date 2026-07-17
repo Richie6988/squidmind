@@ -754,10 +754,12 @@ class Squid {
         ctx.arc(0, 0, size * 0.5, Math.PI, 0);
         ctx.stroke();
         
-        // Ear cups
+        // Ear cups — one path per cup (chained arcs fill a chord bar between them)
         ctx.fillStyle = '#FF1744';
         ctx.beginPath();
         ctx.arc(-size * 0.5, 0, 8, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
         ctx.arc(size * 0.5, 0, 8, 0, Math.PI * 2);
         ctx.fill();
         break;

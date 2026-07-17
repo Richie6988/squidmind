@@ -157,34 +157,39 @@ class Poseidon {
     ctx.fill();
     ctx.stroke();
     
-    // CROWN (three points - classic god crown)
+    // CROWN — proper three-point silhouette. (The old path went base →
+    // shoulder → middle → shoulder with no valleys, which renders as ONE
+    // spike with slanted sides, not a crown.)
     ctx.fillStyle = '#FFD700';
     ctx.strokeStyle = '#FFA500';
     ctx.lineWidth = 2;
     ctx.beginPath();
-    // Base of crown
-    ctx.moveTo(-this.size * 0.4, -this.size * 0.45);
-    ctx.lineTo(this.size * 0.4, -this.size * 0.45);
-    // Left point
-    ctx.lineTo(this.size * 0.3, -this.size * 0.65);
-    // Middle point (tallest)
-    ctx.lineTo(0, -this.size * 0.75);
-    // Right point
-    ctx.lineTo(-this.size * 0.3, -this.size * 0.65);
+    const cw = this.size;                    // shorthand
+    ctx.moveTo(-cw * 0.40, -cw * 0.45);      // base left
+    ctx.lineTo(-cw * 0.30, -cw * 0.68);      // ▲ left point
+    ctx.lineTo(-cw * 0.15, -cw * 0.52);      // ▽ valley
+    ctx.lineTo(0,          -cw * 0.78);      // ▲ middle point (tallest)
+    ctx.lineTo( cw * 0.15, -cw * 0.52);      // ▽ valley
+    ctx.lineTo( cw * 0.30, -cw * 0.68);      // ▲ right point
+    ctx.lineTo( cw * 0.40, -cw * 0.45);      // base right
     ctx.closePath();
     ctx.fill();
     ctx.stroke();
     
-    // Crown gems
+    // Crown gem — centered in the middle spike (at -0.68 it overflowed the
+    // spike edges; at -0.60 the spike half-width ≈ 0.10 > gem radius 0.08)
     ctx.fillStyle = '#FF1493'; // Pink gem
     ctx.beginPath();
-    ctx.arc(0, -this.size * 0.68, this.size * 0.08, 0, Math.PI * 2);
+    ctx.arc(0, -this.size * 0.60, this.size * 0.08, 0, Math.PI * 2);
     ctx.fill();
     
-    // Eyes (wise and powerful)
+    // Eyes (wise and powerful) — one path per eye: chained arcs in a single
+    // path draw a filled chord bar between them (same bug as the trident tips).
     ctx.fillStyle = '#FFD700';
     ctx.beginPath();
     ctx.arc(-this.size * 0.2, -this.size * 0.1, this.size * 0.12, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
     ctx.arc(this.size * 0.2, -this.size * 0.1, this.size * 0.12, 0, Math.PI * 2);
     ctx.fill();
     
@@ -192,6 +197,8 @@ class Poseidon {
     ctx.fillStyle = '#000080';
     ctx.beginPath();
     ctx.arc(-this.size * 0.2, -this.size * 0.1, this.size * 0.05, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
     ctx.arc(this.size * 0.2, -this.size * 0.1, this.size * 0.05, 0, Math.PI * 2);
     ctx.fill();
     
@@ -224,40 +231,58 @@ class Poseidon {
     // TRIDENT (ICONIC!)
     ctx.save();
     ctx.translate(this.size * 0.6, 0);
-    
-    // Trident shaft (golden)
-    ctx.strokeStyle = '#FFD700';
+    const s = this.size;
+
+    // Shaft (golden, slight gradient for depth)
+    const shaftGrad = ctx.createLinearGradient(-2, 0, 3, 0);
+    shaftGrad.addColorStop(0, '#B8860B');
+    shaftGrad.addColorStop(0.5, '#FFD700');
+    shaftGrad.addColorStop(1, '#B8860B');
+    ctx.strokeStyle = shaftGrad;
     ctx.lineWidth = 5;
+    ctx.lineCap = 'round';
     ctx.beginPath();
-    ctx.moveTo(0, -this.size * 0.3);
-    ctx.lineTo(0, this.size * 0.9);
+    ctx.moveTo(0, -s * 0.30);
+    ctx.lineTo(0, s * 0.9);
     ctx.stroke();
-    
-    // Trident prongs (three sharp points)
+
+    // Crossbar — the base the three prongs rise from
     ctx.strokeStyle = '#FFD700';
     ctx.lineWidth = 4;
     ctx.beginPath();
-    // Middle prong (longest)
-    ctx.moveTo(0, -this.size * 0.6);
-    ctx.lineTo(0, -this.size * 0.3);
-    // Left prong
-    ctx.moveTo(-this.size * 0.15, -this.size * 0.5);
-    ctx.lineTo(-this.size * 0.15, -this.size * 0.25);
-    ctx.lineTo(0, -this.size * 0.3);
-    // Right prong
-    ctx.moveTo(this.size * 0.15, -this.size * 0.5);
-    ctx.lineTo(this.size * 0.15, -this.size * 0.25);
-    ctx.lineTo(0, -this.size * 0.3);
+    ctx.moveTo(-s * 0.18, -s * 0.30);
+    ctx.lineTo( s * 0.18, -s * 0.30);
     ctx.stroke();
-    
-    // Prong tips (sharp!)
-    ctx.fillStyle = '#FFD700';
+
+    // Three prongs — verticals from the crossbar. Middle one longer.
     ctx.beginPath();
-    ctx.arc(0, -this.size * 0.6, this.size * 0.05, 0, Math.PI * 2);
-    ctx.arc(-this.size * 0.15, -this.size * 0.5, this.size * 0.05, 0, Math.PI * 2);
-    ctx.arc(this.size * 0.15, -this.size * 0.5, this.size * 0.05, 0, Math.PI * 2);
+    ctx.moveTo(-s * 0.15, -s * 0.30); ctx.lineTo(-s * 0.15, -s * 0.52);
+    ctx.moveTo(0,         -s * 0.30); ctx.lineTo(0,         -s * 0.62);
+    ctx.moveTo( s * 0.15, -s * 0.30); ctx.lineTo( s * 0.15, -s * 0.52);
+    ctx.stroke();
+
+    // Sharp triangular tips — ONE beginPath per triangle. (The old version
+    // chained three arc() calls in a single path: canvas draws connecting
+    // chords between chained arcs, and the fill produced a stray triangle
+    // on the central spike.)
+    ctx.fillStyle = '#FFD700';
+    const tip = (x, yBase, h) => {
+      ctx.beginPath();
+      ctx.moveTo(x - s * 0.045, yBase);
+      ctx.lineTo(x + s * 0.045, yBase);
+      ctx.lineTo(x, yBase - h);
+      ctx.closePath();
+      ctx.fill();
+    };
+    tip(-s * 0.15, -s * 0.52, s * 0.10);
+    tip(0,         -s * 0.62, s * 0.12);
+    tip( s * 0.15, -s * 0.52, s * 0.10);
+
+    // Butt cap at the bottom of the shaft
+    ctx.beginPath();
+    ctx.arc(0, s * 0.9, s * 0.045, 0, Math.PI * 2);
     ctx.fill();
-    
+
     ctx.restore();
   }
 
