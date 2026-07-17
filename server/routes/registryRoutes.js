@@ -22,6 +22,20 @@ router.get('/poseidon', async (req, res) => {
   } catch (err) { res.status(500).json({ success: false, error: err.message }); }
 });
 
+// MORNING BRIEF — written by the dream cycle (BRAIN/morning_brief.json).
+// On-demand fallback: ?fresh=1 rebuilds from registries right now (no LLM
+// suggestions in that path — those only come from the dream).
+router.get('/brief', async (req, res) => {
+  try {
+    if (req.query.fresh === '1' && servicesRef?.modelService?._buildMorningBrief) {
+      const brief = await servicesRef.modelService._buildMorningBrief('');
+      return res.json({ success: true, brief, fresh: true });
+    }
+    const brief = await rm.read('BRAIN/morning_brief.json').catch(() => null);
+    res.json({ success: true, brief: brief || null });
+  } catch (err) { res.status(500).json({ success: false, error: err.message }); }
+});
+
 router.post('/poseidon/wake', async (req, res) => {
   try {
     const result = await rm.wakeUp();

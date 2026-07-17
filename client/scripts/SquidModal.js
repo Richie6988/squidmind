@@ -52,6 +52,23 @@ const SquidModal = {
     });
   },
 
+  /** Rich-content modal: caller provides TRUSTED, pre-escaped HTML.
+   *  Used by the morning brief and other app-generated panels. Never pass
+   *  user-typed strings here without escaping them first. */
+  custom(html, { okLabel = 'OK' } = {}) {
+    return new Promise(resolve => {
+      const el = this._make(`
+        <div class="squid-modal-msg" style="text-align:left;">${html}</div>
+        <div class="squid-modal-actions">
+          <button class="btn-primary squid-modal-ok">${this._esc(okLabel)}</button>
+        </div>
+      `);
+      el.querySelector('.squid-modal-ok').onclick = () => { el.remove(); resolve(); };
+      el.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === 'Escape') { el.remove(); resolve(); } });
+      el.querySelector('.squid-modal-ok').focus();
+    });
+  },
+
   // Accepts either the legacy positional signature (title, placeholder, defaultValue)
   // or an options object as first arg: { title, placeholder, defaultValue, multiline }
   prompt(titleOrOpts, placeholder, defaultValue) {

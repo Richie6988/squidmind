@@ -270,6 +270,43 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
     return this.poseidonModelId ? this.loaded.get(this.poseidonModelId) : null;
   }
 
+  /** Deterministic morning-brief digest from registries + optional LLM
+   *  suggestions parsed from the dream response. Never hallucinates data. */
+  async _buildMorningBrief(dreamResponse = '') {
+    const now = Date.now();
+    const dayAgo = now - 24 * 3600_000;
+    const reg = await this.rm.getTasksRegistry().catch(() => ({ tasks: {} }));
+    const tasks = Object.values(reg.tasks || {});
+    const done24 = tasks.filter(t => {
+      const st = t.lifecycle?.status || t.status;
+      const at = Date.parse(t.completed_at || t.lifecycle?.completed_at || 0);
+      return ['done', 'completed'].includes(st) && at > dayAgo;
+    }).map(t => ({
+      task_id: t.task_id, title: t.title, project: t.project_name || null,
+      agent: t.assigned_name || t.assigned_to || null,
+      outcome: t.outcome || 'ok',
+      review: t.review ? { verdict: t.review.verdict, score: t.review.score, unverified: !!t.review.unverified } : null,
+    }));
+    const blockers = tasks.filter(t => {
+      const st = t.lifecycle?.status || t.status;
+      return ['failed', 'blocked'].includes(st) || (t.outcome === 'failed' && st === 'done' && Date.parse(t.completed_at || 0) > dayAgo);
+    }).slice(0, 10).map(t => ({ task_id: t.task_id, title: t.title, project: t.project_name || null }));
+    const open = tasks.filter(t => ['todo', 'wip', 'in_progress'].includes(t.lifecycle?.status || t.status));
+    const unverified = done24.filter(t => t.review?.unverified).length;
+    // Suggestions: parse "SUGGEST:" lines the dream response may contain.
+    // Purely optional — an empty list is fine, data above never hallucinates.
+    const suggestions = [...String(dreamResponse).matchAll(/^SUGGEST:\s*(.{10,160})$/gm)]
+      .slice(0, 3).map(m => m[1].trim());
+    return {
+      generated_at: new Date().toISOString(),
+      tasks_done_24h: done24,
+      blockers,
+      open_count: open.length,
+      unverified_reviews: unverified,
+      suggestions,
+    };
+  }
+
   /**
    * quiesceGeneration — request abort AND WAIT until the in-flight
    * generation has actually terminated before returning. Disposing a
@@ -3257,6 +3294,8 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
         '',
         'Execute the dream protocol. Output the updated soul.json in a ```json block.',
         'Then list any SKILL_UPDATE lines. Triage UNRELIABLE skills before anything else.',
+        'Finally, based on the interaction log, output up to 3 lines starting with "SUGGEST: " —',
+        'concrete next steps for the user tomorrow (one short sentence each). Skip if nothing stands out.',
       ].join('\n');
 
       // ── 5. Get a dream sequence ───────────────────────────────────────────
@@ -3374,6 +3413,32 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
       }).catch(() => {});
 
       log.info('[Dream] 💤 Dream cycle complete');
+
+      // ── 10. MORNING BRIEF — deterministic digest built from registries ────
+      // Generated at the end of every dream so it's fresh at wake-up. Data
+      // section is CODE-BUILT (never hallucinated); the LLM only contributes
+      // optional next-step suggestions, best-effort. Served via
+      // GET /api/v2/brief and shown once per day in the client.
+      try {
+        const brief = await this._buildMorningBrief(dreamResponse);
+        await this.rm.write('BRAIN/morning_brief.json', brief).catch(() => {});
+        log.info(`[Dream] ☀ Morning brief written (${brief.tasks_done_24h.length} done, ${brief.blockers.length} blockers, ${brief.unverified_reviews} unverified reviews)`);
+        // Telegram push if the bot is wired — silent no-op otherwise.
+        try {
+          if (this.botService?.notify) {
+            const lines = [
+              `☀ *IAQUA morning brief*`,
+              `Done (24h): ${brief.tasks_done_24h.length}` + (brief.tasks_done_24h.length ? ` — ${brief.tasks_done_24h.slice(0, 3).map(t => t.title).join(', ')}${brief.tasks_done_24h.length > 3 ? '…' : ''}` : ''),
+              brief.blockers.length ? `⚠ Blockers: ${brief.blockers.map(b => b.title).join(', ')}` : null,
+              brief.unverified_reviews ? `👻 ${brief.unverified_reviews} phantom-pass review(s) to double-check` : null,
+              brief.suggestions.length ? `→ ${brief.suggestions.join('\n→ ')}` : null,
+            ].filter(Boolean);
+            await this.botService.notify(lines.join('\n'));
+          }
+        } catch { /* bot optional */ }
+      } catch (briefErr) {
+        log.warn('[Dream] morning brief failed:', briefErr.message);
+      }
     } catch (err) {
       log.error('[Dream] Dream error:', err.message);
       // Surface failed dreams in the Logs UI too — a silent dream failure

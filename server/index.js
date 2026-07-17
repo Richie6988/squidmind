@@ -162,6 +162,7 @@ poseidonOrchestrator.setAgentWorkerPool(agentWorkerPool);
 const BotService = require('./services/BotService');
 const { buildCommsRoutes } = require('./routes/commsRoutes');
 const botService = new BotService(sharedRm, modelService);
+modelService.botService = botService;  // dream cycle pushes the morning brief via notify()
 app.use('/api/v2/comms', buildCommsRoutes(botService, sharedRm));
 // Start bots after server is listening (wired below in app.listen callback)
 

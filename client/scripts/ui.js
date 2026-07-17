@@ -9,6 +9,43 @@ const ui = {
     
     // Setup periodic updates
     setInterval(() => this.updateStats(), 5000);
+
+    // Morning brief: shown at most once per calendar day, only if the dream
+    // cycle produced one since the last time we showed it.
+    this._maybeShowMorningBrief().catch(() => {});
+  },
+
+  async _maybeShowMorningBrief() {
+    const today = new Date().toISOString().slice(0, 10);
+    // Per-day guard persisted in the URL-scoped storage the app already uses.
+    if ((window.localStorage?.getItem('iaqua_brief_seen') || '') === today) return;
+    const r = await fetch('/api/v2/brief').then(x => x.json()).catch(() => null);
+    const b = r?.brief;
+    if (!b || !b.generated_at) return;
+    // Only show briefs generated in the last 20h — a stale brief from three
+    // days ago is noise, not news.
+    if (Date.now() - Date.parse(b.generated_at) > 20 * 3600_000) return;
+    try { window.localStorage?.setItem('iaqua_brief_seen', today); } catch {}
+    const esc = s => String(s ?? '').replace(/[<>&"]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'})[c]);
+    const doneRows = (b.tasks_done_24h || []).slice(0, 6).map(t =>
+      `<div style="padding:2px 0;">✓ ${esc(t.title)}${t.agent ? ` <span style="opacity:.6">· ${esc(t.agent)}</span>` : ''}${t.review?.unverified ? ' <span style="color:#f59e0b" title="review defaulted — no parseable verdict">👻</span>' : (Number.isFinite(t.review?.score) ? ` <span style="opacity:.6">${t.review.score}/10</span>` : '')}</div>`
+    ).join('') || '<div style="opacity:.6">Nothing finished in the last 24h.</div>';
+    const blockRows = (b.blockers || []).slice(0, 4).map(t =>
+      `<div style="padding:2px 0;color:#f87171;">⚠ ${esc(t.title)}</div>`).join('');
+    const suggRows = (b.suggestions || []).map(s =>
+      `<div style="padding:2px 0;color:#4facfe;">→ ${esc(s)}</div>`).join('');
+    const html = `
+      <div style="font-family:'Courier New',monospace;font-size:11px;line-height:1.5;max-width:420px;">
+        <div style="font-family:'Press Start 2P',monospace;font-size:10px;margin-bottom:10px;">☀ MORNING BRIEF</div>
+        <div style="margin-bottom:8px;"><b>Done (24h)</b> — ${(b.tasks_done_24h || []).length} task(s)</div>
+        ${doneRows}
+        ${blockRows ? `<div style="margin-top:8px;"><b>Blockers</b></div>${blockRows}` : ''}
+        ${b.unverified_reviews ? `<div style="margin-top:8px;color:#f59e0b;">👻 ${b.unverified_reviews} review(s) passed by default — worth a manual check</div>` : ''}
+        ${suggRows ? `<div style="margin-top:8px;"><b>Suggestions</b></div>${suggRows}` : ''}
+        <div style="margin-top:8px;opacity:.5;">${(b.open_count ?? 0)} task(s) still open</div>
+      </div>`;
+    if (window.SquidModal?.custom) SquidModal.custom(html, { okLabel: 'Let\'s go' });
+    else if (window.SquidModal?.alert) SquidModal.alert(html.replace(/<[^>]+>/g, ' '));
   },
 
   showPanel(panelId) {
