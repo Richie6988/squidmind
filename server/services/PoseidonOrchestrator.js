@@ -793,9 +793,12 @@ My response: "${ss.last_response_preview}"${tools}
             const entry = self.modelService.getPoseidonEntry();
             if (entry) {
               entry._planPipelineTrigger = true;
-              // Give node-llama-cpp a beat to attach the tool_result to the
-              // conversation, then abort so the pipeline takes over.
-              setTimeout(() => { try { entry._abortController?.abort(); } catch {} }, 50);
+              // RACE GUARD: capture THIS turn's controller now. If the turn
+              // ends before the timeout fires (fast decode), dereferencing
+              // entry._abortController at fire time would abort the NEXT
+              // turn's controller — killing an innocent unrelated generation.
+              const ctrl = entry._abortController;
+              setTimeout(() => { try { if (ctrl && !ctrl.signal.aborted) ctrl.abort(); } catch {} }, 50);
             }
           }
           return { ok: true, message: `Structured planning pipeline engaged for "${project}". Generating the plan now — task list follows in this reply.` };

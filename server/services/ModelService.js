@@ -2597,6 +2597,23 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
             entry._lastBrokerTouch = Date.now();
             this.broker.touch(brokerToken);
           }
+          // LIVE context gauge: contextUsedTokens used to be written ONCE
+          // after the whole generation — the Control Tower bar stayed frozen
+          // at 0 (or the previous turn's value) during the entire reflexion.
+          // Read the sequence's real KV position while streaming, throttled
+          // to 1/s so the property read doesn't tax the event loop.
+          if (Date.now() - (entry._lastCtxGaugeAt || 0) > 1000) {
+            entry._lastCtxGaugeAt = Date.now();
+            try {
+              const liveUsed = entry._currentSequence?.nextTokenIndex ?? 0;
+              if (liveUsed > 0) {
+                const liveTotal = entry.config?.contextLength || 4096;
+                entry.contextUsedTokens  = liveUsed;
+                entry.contextTotalTokens = liveTotal;
+                entry.contextPct         = Math.min(100, Math.round((liveUsed / liveTotal) * 100));
+              }
+            } catch {}
+          }
           if (ev.type === 'text') {
             entry.totalTokensGenerated += Math.ceil(ev.chunk.length / 4);
             turnText += ev.chunk;

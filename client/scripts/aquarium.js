@@ -107,10 +107,22 @@ const aquarium = {
       // Capture prior assignment state per agent BEFORE recreating squids —
       // we need it to decide whether to animate (transition) or snap (first
       // load). Map: agentId → templeName they were inside, or null.
+      // ALSO capture position/animation state: loadSquids can fire multiple
+      // times in quick succession (tool_result hooks + 2s poll) and naively
+      // recreating Squid objects teleports everyone to random spawn points
+      // and kills in-flight teleport animations.
       const priorAssignments = new Map();
+      const priorState = new Map();
       for (const s of (this.squids || [])) {
         const aid = s.agent_id || s.id;
-        if (aid) priorAssignments.set(aid, s.insideTemple || null);
+        if (!aid) continue;
+        priorAssignments.set(aid, s.insideTemple || null);
+        priorState.set(aid, {
+          x: s.x, y: s.y, targetX: s.targetX, targetY: s.targetY, alpha: s.alpha,
+          _teleporting: s._teleporting, _teleportTargetX: s._teleportTargetX,
+          _teleportTargetY: s._teleportTargetY, _teleportTempleName: s._teleportTempleName,
+          _teleportInitialDist: s._teleportInitialDist,
+        });
       }
       const isInitialLoad = !this._loadedOnce;
       this._loadedOnce = true;
@@ -121,6 +133,9 @@ const aquarium = {
         if (typeof SquidInteractions !== 'undefined') {
           SquidInteractions.enhance(squid);
         }
+        // Restore continuity: same position and any in-flight teleport.
+        const prev = priorState.get(agent.agent_id || agent.id);
+        if (prev) Object.assign(squid, prev);
         return squid;
       });
       console.log(`Loaded ${this.squids.length} squids`);
