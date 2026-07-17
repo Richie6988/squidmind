@@ -181,6 +181,12 @@ const MissionControl = require('./services/MissionControl');
 const missionControl = new MissionControl(sharedRm, modelService, poseidonOrchestrator);
 poseidonOrchestrator.missionControl = missionControl;
 missionControl.start();
+// ToolForge: builtin names are reserved — a forged tool must never shadow one
+try {
+  const ToolForge = require('./services/ToolForge');
+  const builtins = Object.values(PoseidonOrchestrator.CANONICAL_TOOL_CATALOG || {}).flat();
+  ToolForge.setReservedNames(builtins);
+} catch (e) { console.warn('[ToolForge] reserved-name wiring failed:', e.message); }
 servicesRef.taskRunner = taskRunner;
 modelService.taskRunner = taskRunner;   // let chat route refresh the BG-pause window
 heartbeat.setTaskRunner(taskRunner);

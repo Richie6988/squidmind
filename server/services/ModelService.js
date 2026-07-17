@@ -2114,6 +2114,19 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
       // vision, slim toolset — user directive). Poseidon chat↔bg keep the
       // shared full-prompt session (KV reuse).
       const wantMode = _agentPrompt ? 'agent' : (_bgMode ? 'bg' : 'chat');
+      // Forge hook: a freshly forged tool only enters the function set at
+      // session creation. forge_tool sets this flag; we rebuild ONCE here,
+      // at the safe point before session reuse — never mid-generation.
+      if (entry.session && entry._forceSessionRebuild) {
+        entry._forceSessionRebuild = false;
+        log.info(' Session rebuild forced (forged tool registered) — next session includes it');
+        try { if (entry.session?.dispose) await entry.session.dispose(); } catch {}
+        try { if (entry._currentSequence?.dispose) await entry._currentSequence.dispose(); } catch {}
+        await new Promise(r => setTimeout(r, 100));
+        entry.session = null;
+        entry._currentSequence = null;
+        entry.sessionTurns = 0;
+      }
       if (entry.session && entry._sessionMode && entry._sessionMode !== wantMode) {
         const crossingAgent = entry._sessionMode === 'agent' || wantMode === 'agent';
         if (crossingAgent) {

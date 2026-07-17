@@ -839,6 +839,32 @@ My response: "${ss.last_response_preview}"${tools}
         }
       }),
 
+      forge_tool: defineChatSessionFunction({
+        description: 'SELF-EXTENSION: write a NEW permanent tool in JavaScript, test it live, register it. Use when a capability is missing and would be reused (API clients, converters, parsers, calculators). action=create needs: name (snake_case), description (what the CALLING model will read), params_properties (JSON-schema properties object), code (ONLY the async handler body — you receive (args, ctx), ctx.aquarium is the data root, node builtins via require(), fetch is global; RETURN a JSON-serializable value), test_args (real test input — the tool only registers if this test run passes). Same name = update (versioned, old version survives a failed update). Other actions: list, delete, enable, disable (name required). Runs out-of-process, 30s hard timeout, auto-disabled after 5 consecutive failures.',
+        params: {
+          type: 'object',
+          properties: {
+            action: { type: 'string', enum: ['create', 'list', 'delete', 'enable', 'disable'], description: 'Default: create' },
+            name: { type: 'string', description: 'snake_case, 3-31 chars' },
+            description: { type: 'string', description: 'What the tool does + what it returns. The calling model only sees THIS.' },
+            params_properties: { type: 'object', description: 'JSON-schema properties, e.g. {"city":{"type":"string","description":"city name"}}' },
+            required: { type: 'array', items: { type: 'string' } },
+            code: { type: 'string', description: 'Async handler BODY only. Example: "const r = await fetch(`https://api.example.com/${args.city}`); const j = await r.json(); return { temp: j.temp };"' },
+            test_args: { type: 'object', description: 'Real args for the registration test run' }
+          }
+        },
+        handler: async ({ action = 'create', name, description, params_properties, required, code, test_args } = {}) => {
+          const forge = require('./ToolForge');
+          if (action === 'list')    return await forge.list();
+          if (action === 'delete')  { const r = await forge.remove(name); self._flagSessionRebuild(); return r; }
+          if (action === 'enable')  return await forge.setEnabled(name, true);
+          if (action === 'disable') return await forge.setEnabled(name, false);
+          const r = await forge.forge({ name, description, params_properties, required, code, test_args });
+          if (r.ok) self._flagSessionRebuild();
+          return r;
+        }
+      }),
+
       create_task: defineChatSessionFunction({
         description: 'Create a task in the tasks registry. Optionally assign to a specific agent. ' +
           'If you set assigned_agent_id, the task is ALREADY assigned and will run automatically — do NOT also call dispatch_to_agent for it (that creates a duplicate). ' +
@@ -1855,6 +1881,25 @@ My response: "${ss.last_response_preview}"${tools}
       })
     };
 
+    // ── FORGED TOOLS — Poseidon's self-authored arsenal ───────────────────
+    // Merged into the set BEFORE bg filtering so both chat and BG agents can
+    // use them (BG whitelist still gates per-agent). Each handler routes to
+    // the out-of-process ToolForge runner; a broken forged tool can fail its
+    // call but can never take the server down.
+    try {
+      const forge = require('./ToolForge');
+      const forged = await forge.enabledTools();
+      for (const t of forged) {
+        if (allFunctions[t.name]) continue;   // never shadow a builtin
+        allFunctions[t.name] = defineChatSessionFunction({
+          description: `[forged v${t.version}] ${t.description}`,
+          params: t.params && Object.keys(t.params.properties || {}).length ? t.params : { type: 'object', properties: {} },
+          handler: async (args) => await forge.run(t.name, args),
+        });
+      }
+      if (forged.length) log.info(`⚒ ${forged.length} forged tool(s) in the set`);
+    } catch (e) { log.warn(`forged tools merge failed: ${e.message}`); }
+
     // ── Background task mode: slim toolset to save context tokens ─────────
     // BG tasks only need execution + file + web + project memory tools.
     // Removes all admin/meta tools (create/delete agent, list_agents, skills,
@@ -1870,9 +1915,14 @@ My response: "${ss.last_response_preview}"${tools}
         'execute_bash', 'generate_pptx', 'generate_docx',
         'list_skills', 'read_my_brain', 'record_skill_outcome',
       ]);
+      // Forged tools are BG-allowed by design: agents are their main users.
+      // (forge_tool itself stays chat-only — self-extension is Poseidon's
+      // decision, not something a task loop should trigger.)
+      let forgedNames = new Set();
+      try { forgedNames = new Set((await require('./ToolForge').enabledTools()).map(t => t.name)); } catch {}
       const slim = {};
       for (const [k, v] of Object.entries(allFunctions)) {
-        if (BG_TOOLS.has(k)) slim[k] = v;
+        if (BG_TOOLS.has(k) || forgedNames.has(k)) slim[k] = v;
       }
       // Optional per-agent whitelist: agents authored via AgentForm carry a
       // capabilities.tools_allowed list. When passed here, we further trim
@@ -3156,13 +3206,21 @@ My response: "${ss.last_response_preview}"${tools}
   }
 }
 
+/** Ask ModelService to rebuild the chat session at the next safe point so
+ *  freshly forged/deleted tools enter (or leave) the function set. */
+PoseidonOrchestrator.prototype._flagSessionRebuild = function () {
+  try {
+    const entry = this.modelService?.getPoseidonEntry?.();
+    if (entry) entry._forceSessionRebuild = true;
+  } catch {}
+};
+
 // ── CANONICAL_TOOL_CATALOG ──────────────────────────────────────────────
 // Single source of truth for tool categorisation. Referenced by both
 // _sectionToolsPointer (system prompt) and _readMyBrain('tools_catalog').
 // Keep in sync with the function definitions in getPoseidonFunctions().
-// Total: 40 tools across 10 categories.
 PoseidonOrchestrator.CANONICAL_TOOL_CATALOG = {
-  'meta / self':      ['read_my_brain', 'update_brain_field', 'write_skill', 'list_skills', 'delete_skill', 'record_skill_outcome'],
+  'meta / self':      ['read_my_brain', 'update_brain_field', 'write_skill', 'list_skills', 'delete_skill', 'record_skill_outcome', 'forge_tool'],
   'agents':           ['create_agent', 'delete_agent', 'list_agents', 'update_agent_field', 'dispatch_to_agent'],
   'projects':         ['create_project', 'list_projects', 'plan_project', 'update_project', 'update_project_memory', 'read_project_memory', 'audit_project', 'launch_mission', 'mission_status'],
   'tasks':            ['create_task', 'list_tasks', 'update_task', 'delete_task'],
