@@ -504,6 +504,18 @@ class TaskRunner {
           if (inLines.length)  parts.push(`  input/:\n    ${inLines.join('\n    ')}`);
           if (outLines.length) parts.push(`  output/:\n    ${outLines.join('\n    ')}`);
           if (parts.length) priorPart = `\nProject files (read_file to open — extend, don't duplicate):\n${parts.join('\n')}`;
+          // BM25 mini-RAG: the 2 chunks most relevant to THIS task, as
+          // inline excerpts — saves the agent a blind read_file round-trip
+          // and keeps the tight agent ctx spent on signal, not directory
+          // listings. Index cached per project (mtime fingerprint).
+          try {
+            const { retrieve } = require('./ProjectRetriever');
+            const hits = await retrieve(pbase, `${task.title} ${task.description || ''}`, { topK: 2, excerptChars: 280 });
+            if (hits.length) {
+              priorPart += `\nRELEVANT EXCERPTS (BM25 — read the full file before modifying):\n` +
+                hits.map(h => `  [${h.file}] ${h.excerpt}…`).join('\n');
+            }
+          } catch {}
         } catch {}
       }
 
@@ -523,7 +535,7 @@ class TaskRunner {
         'FILES: write ONLY final deliverables to output/, intermediate files to work/. ' +
         'Do NOT create other folders. Do NOT save thoughts/notes/plans as files — condense them into ' +
         'update_project_memory (sections: decision, notes, achievement). When done, log the achievement and end with a summary.'
-      ].join('').trim().slice(0, 1600);  // cap covers the files contract
+      ].join('').trim().slice(0, 2600);  // cap raised with agent ctx 6k→12k; covers files contract + BM25 excerpts
 
       let output = '';
       let failed = false;
