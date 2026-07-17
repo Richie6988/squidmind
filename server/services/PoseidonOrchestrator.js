@@ -783,7 +783,22 @@ My response: "${ss.last_response_preview}"${tools}
         },
         handler: async ({ goal, project }) => {
           self.pendingPlan = { goal, project };
-          return { ok: true, message: `Structured planning pipeline engaged for "${project}". The REAL task list (with real ids) will be generated and printed automatically right after your reply. Say ONE short sentence ("Building the plan for ${project}…") and STOP — do NOT invent a task table, do NOT write task ids, no other tool calls.` };
+          // Mark this session for immediate abort after this handler returns.
+          // Small models routinely IGNORE the "STOP — no other tool calls"
+          // instruction and keep looping (observed: read_my_brain → list_tasks
+          // → read_project_memory ×5 until budget guard kills the turn). The
+          // ModelService abort catch checks pendingPlan and runs the pipeline
+          // itself — the model doesn't get to interfere.
+          if (self.modelService?.getPoseidonEntry) {
+            const entry = self.modelService.getPoseidonEntry();
+            if (entry) {
+              entry._planPipelineTrigger = true;
+              // Give node-llama-cpp a beat to attach the tool_result to the
+              // conversation, then abort so the pipeline takes over.
+              setTimeout(() => { try { entry._abortController?.abort(); } catch {} }, 50);
+            }
+          }
+          return { ok: true, message: `Structured planning pipeline engaged for "${project}". Generating the plan now — task list follows in this reply.` };
         }
       }),
 

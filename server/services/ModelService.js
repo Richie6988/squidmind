@@ -263,6 +263,13 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
     return { ok: true, message: 'Abort requested' };
   }
 
+  /** Currently-loaded Poseidon entry (or null). Used by orchestrator handlers
+   *  that need to signal the ongoing generation (e.g. plan_project aborts the
+   *  turn immediately so the model can't keep looping). */
+  getPoseidonEntry() {
+    return this.poseidonModelId ? this.loaded.get(this.poseidonModelId) : null;
+  }
+
   /**
    * quiesceGeneration — request abort AND WAIT until the in-flight
    * generation has actually terminated before returning. Disposing a
@@ -2930,6 +2937,46 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
       const isIntentionalAbort = /aborted|AbortError|The operation was aborted/i.test(err.message)
         && entry._abortController?.signal?.aborted;
       if (isIntentionalAbort) {
+        // plan_project sets _planPipelineTrigger and calls abort so the model
+        // can't disobey the STOP instruction. Run the pipeline here BEFORE
+        // returning — otherwise we'd swallow both the abort AND the plan.
+        if (entry._planPipelineTrigger && this.orchestrator?.pendingPlan) {
+          entry._planPipelineTrigger = false;
+          const pp = this.orchestrator.pendingPlan;
+          this.orchestrator.pendingPlan = null;
+          log.info(` Generation aborted by plan_project — running pipeline for ${pp.project}`);
+          yield { type: 'text', chunk: `\n\nBuilding the plan for ${pp.project}…\n` };
+          yield { type: 'status', message: `Generating structured plan for ${pp.project}…` };
+          try {
+            // Fresh AbortController for the pipeline (previous one is aborted).
+            entry._abortController = new AbortController();
+            entry._abortRequested  = false;
+            // Session state after mid-loop abort can hold partial tool-call
+            // frames. Reset chat history (keeps the system prompt) so the
+            // pipeline's grammar-constrained prompt.session runs on a clean
+            // conversation. Costs one prefill on the next chat turn, but
+            // that's cheaper than a hung session.
+            if (entry.session?.resetChatHistory) {
+              try { await entry.session.resetChatHistory(); } catch {}
+            }
+            for await (const ev of this.orchestrator.runPlanPipeline({ session: entry.session, llama: this.llama, ...pp })) {
+              yield ev;
+            }
+          } catch (planErr) {
+            log.warn(` plan pipeline failed after abort: ${planErr.message}`);
+            yield { type: 'text', chunk: `\n\n_[Plan pipeline failed: ${planErr.message} — no tasks created.]_` };
+          }
+          // Dispose the session anyway — its state is inconsistent after the
+          // mid-loop abort, and the pipeline may have added grammar tokens.
+          try { if (entry.session?.dispose) await entry.session.dispose(); } catch {}
+          try { if (entry._currentSequence?.dispose) await entry._currentSequence.dispose(); } catch {}
+          entry.session          = null;
+          entry._currentSequence = null;
+          entry.sessionTurns     = 0;
+          entry._thinkBuf        = '';
+          entry._inThink         = false;
+          return;
+        }
         log.info(` Generation aborted by guard — session preserved, turn ended cleanly`);
         yield { type: 'text', chunk: '\n\n_[Guard triggered — the same tool was called too many times, so I stopped this turn. Try a different approach.]_' };
         // Still dispose the session because node-llama-cpp's internal state
