@@ -1098,6 +1098,11 @@ class TaskRunner {
           });
           await this._notify(`[IAQUA] Task FAILED: "${task.title}"\n[${errType}] ${output.slice(0, 200)}`);
           task._disposition = 'permanently failed';
+          // XP: permanent failures still count the attempt (small gain) so
+          // the stats reflect reality — fail_count is visible on the squid.
+          if (agentId && agentId !== 'poseidon_main') {
+            await this.rm.recordAgentOutcome(agentId, { outcome: 'failed', score: null });
+          }
         } else {
           const backoffMs = isResourceError
             ? 60_000 + Math.random() * 30_000   // 60-90s jitter for resource errors
@@ -1269,6 +1274,11 @@ class TaskRunner {
             action: `Review sent "${task.title}" back for revision${Number.isFinite(score) ? ` (${score}/10)` : ''}`,
             context: { fixes: fixes.slice(0, 300) }
           }).catch(() => {});
+          // XP: a revise still earns some — the work happened, it just needs
+          // another pass. No score contribution (the final PASS will carry it).
+          if (agentId && agentId !== 'poseidon_main') {
+            await this.rm.recordAgentOutcome(agentId, { outcome: 'revised', score: null });
+          }
           return; // not final — the task re-runs with the fixes
         }
 
@@ -1302,6 +1312,14 @@ class TaskRunner {
           ...(filesWritten.length ? { files_written: filesWritten } : {})
         });
         await this._notify(`[IAQUA] Task done: "${task.title}"\n${output.slice(0, 200)}`);
+        // XP / leveling — phantom-pass (unverified) reviews grant the pass
+        // XP but NO score bonus and don't count toward the average.
+        if (agentId && agentId !== 'poseidon_main') {
+          const xpScore = (task.review && !task.review.unverified && Number.isFinite(task.review.score))
+            ? task.review.score : null;
+          const lvl = await this.rm.recordAgentOutcome(agentId, { outcome: 'passed', score: xpScore });
+          if (lvl?.leveled_up) await this._notify(`⭐ ${task.assigned_name || agentId} leveled up → LVL ${lvl.level}!`);
+        }
         // Update project memory if task belongs to a project
         await this._updateProjectMemoryForTask(task, 'done', output);
       }

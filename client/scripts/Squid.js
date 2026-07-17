@@ -62,13 +62,20 @@ class Squid {
       experience: 0
     };
     
-    // V2: tasks_completed lives in registry_entry.performance_summary
-    // Level formula: 1 task = lv 1, 4 tasks = lv 2, 9 = lv 3 (perfect squares).
-    // This makes early gains feel fast and rewards experienced squids.
-    const tasksCompleted = data.performance_summary?.tasks_completed
+    // XP SYSTEM (server-authoritative): agent.stats now carries xp/level/
+    // pass_count/avg_score written by RegistryManager.recordAgentOutcome on
+    // every task completion. When present it wins over the legacy heuristic.
+    const tasksCompleted = data.stats?.tasks_done
+                        ?? data.performance_summary?.tasks_completed
                         ?? data.tasks_completed
                         ?? 0;
-    if (tasksCompleted > 0) {
+    if (Number.isFinite(data.stats?.xp)) {
+      this.stats.level      = data.stats.level || 1;
+      this.stats.experience = data.stats.xp;
+      this.stats.avg_score  = data.stats.avg_score ?? null;
+      this.stats.pass_count = data.stats.pass_count || 0;
+    } else if (tasksCompleted > 0) {
+      // Legacy fallback: level from perfect squares of tasks_completed.
       this.stats.level = Math.max(1, Math.floor(Math.sqrt(tasksCompleted)) + 1);
       this.stats.experience = tasksCompleted;
     }
@@ -376,6 +383,15 @@ class Squid {
       if (this.accessories.outfit) SquidAccessories.drawOutfit(ctx, this.accessories.outfit, size, this.animFrame || 0);
       if (this.accessories.hat) SquidAccessories.drawHat(ctx, this.accessories.hat, size);
       if (this.accessories.glasses) SquidAccessories.drawGlasses(ctx, this.accessories.glasses, size);
+    }
+
+    // === XP UNLOCKS — earned headwear, only when the user hasn't set one ===
+    // Lv5+ wears the crown, Lv8+ the halo. A deliberate user choice always
+    // wins; the unlock only fills the empty slot. Attachment through growth.
+    if (typeof SquidAccessories !== 'undefined' && !(this.accessories?.hat) && !this.outfit?.hat) {
+      const lvl = this.stats?.level || 1;
+      if (lvl >= 8)      SquidAccessories.drawHat(ctx, 'halo', size);
+      else if (lvl >= 5) SquidAccessories.drawHat(ctx, 'crown', size);
     }
     
     // Legacy outfit accessories (older format)
@@ -924,10 +940,11 @@ class Squid {
     ctx.textAlign = 'center';
     ctx.fillText(this.nickname, 0, -2);
 
-    // Level indicator (computed from tasks_completed)
+    // Level indicator (server XP when available, legacy heuristic otherwise)
     ctx.fillStyle = '#FFD700';
     ctx.font = levelFont;
-    ctx.fillText(`Lv.${this.stats.level} (${this.stats.tasks_completed || 0} tasks)`, 0, 8);
+    const scoreBit = Number.isFinite(this.stats.avg_score) ? ` ★${this.stats.avg_score}` : '';
+    ctx.fillText(`Lv.${this.stats.level} (${this.stats.tasks_completed || 0} tasks)${scoreBit}`, 0, 8);
     
     // Thinking text if available
     if (this.current_thought && this.status === 'thinking') {

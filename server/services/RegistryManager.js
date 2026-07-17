@@ -839,6 +839,49 @@ class RegistryManager {
     }
   }
 
+  /** XP / leveling — called by TaskRunner on task completion.
+   *  outcome: 'passed' | 'revised' | 'failed'
+   *  score:   review score 1-10 or null. UNVERIFIED (phantom-pass) reviews
+   *  must be passed with score=null so they never inflate averages.
+   *  XP: passed=100 (+10×score bonus), revised=40, failed=10 (showing up
+   *  counts a little). Level = floor(sqrt(xp/100)) — 1 task = lvl1,
+   *  4 = lvl2, 9 = lvl3, 25 = lvl5… slows down naturally. */
+  async recordAgentOutcome(agentId, { outcome = 'passed', score = null } = {}) {
+    if (!agentId || agentId === 'poseidon_main') return null;
+    try {
+      const reg = await this.getAgentRegistry();
+      const agent = reg.agents?.[agentId];
+      if (!agent) return null;
+      const s = agent.stats = agent.stats || {
+        tasks_done: 0, pass_count: 0, revise_count: 0, fail_count: 0,
+        score_sum: 0, score_n: 0, xp: 0, level: 1,
+      };
+      s.tasks_done += 1;
+      let gained = 10;
+      if (outcome === 'passed')  { s.pass_count += 1;   gained = 100 + (Number.isFinite(score) ? score * 10 : 0); }
+      if (outcome === 'revised') { s.revise_count += 1; gained = 40; }
+      if (outcome === 'failed')  { s.fail_count += 1;   gained = 10; }
+      if (Number.isFinite(score)) { s.score_sum += score; s.score_n += 1; }
+      s.xp += gained;
+      const newLevel = Math.max(1, Math.floor(Math.sqrt(s.xp / 100)));
+      const leveledUp = newLevel > (s.level || 1);
+      s.level = newLevel;
+      s.avg_score = s.score_n ? Math.round((s.score_sum / s.score_n) * 10) / 10 : null;
+      await this.write('AGENTS/agent_registry.json', reg);
+      if (leveledUp) {
+        await this.log({
+          event_type: 'agent_levelup',
+          action: `${agent.display_name || agentId} reached level ${newLevel} (${s.xp} XP)`,
+          actor: { type: 'agent', id: agentId },
+        }).catch(() => {});
+      }
+      return { xp: s.xp, level: s.level, leveled_up: leveledUp, gained };
+    } catch (e) {
+      log.warn(` recordAgentOutcome(${agentId}) failed:`, e.message);
+      return null;
+    }
+  }
+
 
 
   async getProjectRegistry() {
