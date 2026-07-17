@@ -177,6 +177,10 @@ heartbeat.setModelService(modelService);
 // Task auto-runner — fires on every heartbeat tick
 const TaskRunner = require('./services/TaskRunner');
 const taskRunner = new TaskRunner(sharedRm, modelService, agentWorkerPool, botService);
+const MissionControl = require('./services/MissionControl');
+const missionControl = new MissionControl(sharedRm, modelService, poseidonOrchestrator);
+poseidonOrchestrator.missionControl = missionControl;
+missionControl.start();
 servicesRef.taskRunner = taskRunner;
 modelService.taskRunner = taskRunner;   // let chat route refresh the BG-pause window
 heartbeat.setTaskRunner(taskRunner);

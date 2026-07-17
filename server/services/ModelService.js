@@ -297,12 +297,25 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
     // Purely optional — an empty list is fine, data above never hallucinates.
     const suggestions = [...String(dreamResponse).matchAll(/^SUGGEST:\s*(.{10,160})$/gm)]
       .slice(0, 3).map(m => m[1].trim());
+    // Autonomous missions — the brief is where overnight autonomy reports in.
+    let missions = [];
+    try {
+      const mreg = await this.rm.read('BRAIN/missions.json').catch(() => null);
+      const all = Object.values(mreg?.missions || {});
+      missions = all
+        .filter(m => m.status === 'active' || Date.parse(m.log?.[m.log.length - 1]?.at || 0) > dayAgo)
+        .slice(-6)
+        .map(m => ({ mission_id: m.mission_id, project: m.project, status: m.status,
+          iteration: `${m.iteration}/${m.max_iterations}`, tasks: `${m.tasks_created.length}/${m.max_tasks}`,
+          goal: m.goal.slice(0, 100) }));
+    } catch {}
     return {
       generated_at: new Date().toISOString(),
       tasks_done_24h: done24,
       blockers,
       open_count: open.length,
       unverified_reviews: unverified,
+      missions,
       suggestions,
     };
   }

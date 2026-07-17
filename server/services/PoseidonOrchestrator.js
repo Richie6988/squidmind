@@ -805,6 +805,40 @@ My response: "${ss.last_response_preview}"${tools}
         }
       }),
 
+      launch_mission: defineChatSessionFunction({
+        description: 'AUTONOMOUS MISSION MODE. Give a goal + budget: the system plans, executes, audits its own result, and RE-PLANS in a loop — no user approval inside the bounds. Use when the user wants something achieved end-to-end (\"fais-le en autonomie\", \"pendant la nuit\", \"débrouille-toi\"). Hard bounds enforced in code: max_tasks (≤20), max_iterations (≤6), deadline_hours (≤48). Final report lands in the project output/. One active mission per project.',
+        params: {
+          type: 'object',
+          properties: {
+            goal:    { type: 'string', description: 'The mission goal, complete and verifiable, in the user\'s words' },
+            project: { type: 'string', description: 'Project name (created first with create_project if needed)' },
+            max_tasks:      { type: 'number', description: 'Total task budget (default 8, max 20)' },
+            max_iterations: { type: 'number', description: 'Plan→execute→audit cycles (default 3, max 6)' },
+            deadline_hours: { type: 'number', description: 'Wall-clock kill switch (default 12, max 48)' }
+          },
+          required: ['goal', 'project']
+        },
+        handler: async (params) => self.missionControl
+          ? await self.missionControl.launch(params)
+          : { ok: false, error: 'MissionControl not wired' }
+      }),
+
+      mission_status: defineChatSessionFunction({
+        description: 'Status of autonomous missions. No arg = all active + recent. With mission_id = full detail (iterations, tasks, timeline). Use abort:true with a mission_id to stop an active mission.',
+        params: {
+          type: 'object',
+          properties: {
+            mission_id: { type: 'string' },
+            abort: { type: 'boolean', description: 'true = abort this mission (requires mission_id)' }
+          }
+        },
+        handler: async ({ mission_id, abort } = {}) => {
+          if (!self.missionControl) return { ok: false, error: 'MissionControl not wired' };
+          if (abort && mission_id) return await self.missionControl.abort(mission_id);
+          return await self.missionControl.status(mission_id);
+        }
+      }),
+
       create_task: defineChatSessionFunction({
         description: 'Create a task in the tasks registry. Optionally assign to a specific agent. ' +
           'If you set assigned_agent_id, the task is ALREADY assigned and will run automatically — do NOT also call dispatch_to_agent for it (that creates a duplicate). ' +
@@ -3130,7 +3164,7 @@ My response: "${ss.last_response_preview}"${tools}
 PoseidonOrchestrator.CANONICAL_TOOL_CATALOG = {
   'meta / self':      ['read_my_brain', 'update_brain_field', 'write_skill', 'list_skills', 'delete_skill', 'record_skill_outcome'],
   'agents':           ['create_agent', 'delete_agent', 'list_agents', 'update_agent_field', 'dispatch_to_agent'],
-  'projects':         ['create_project', 'list_projects', 'plan_project', 'update_project', 'update_project_memory', 'read_project_memory', 'audit_project'],
+  'projects':         ['create_project', 'list_projects', 'plan_project', 'update_project', 'update_project_memory', 'read_project_memory', 'audit_project', 'launch_mission', 'mission_status'],
   'tasks':            ['create_task', 'list_tasks', 'update_task', 'delete_task'],
   'files':            ['read_file', 'write_file', 'edit_file', 'list_files'],
   'web & fetch':      ['web_search', 'web_fetch'],
