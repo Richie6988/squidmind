@@ -2968,25 +2968,52 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
             // Fresh AbortController for the pipeline (previous one is aborted).
             entry._abortController = new AbortController();
             entry._abortRequested  = false;
-            // Session state after mid-loop abort can hold partial tool-call
-            // frames. Reset chat history (keeps the system prompt) so the
-            // pipeline's grammar-constrained prompt.session runs on a clean
-            // conversation. Costs one prefill on the next chat turn, but
-            // that's cheaper than a hung session.
-            if (entry.session?.resetChatHistory) {
-              try { await entry.session.resetChatHistory(); } catch {}
+            // RISK MITIGATION: do NOT reuse the aborted chat session for the
+            // grammar-constrained plan prompt. Its native state after a
+            // mid-tool-loop abort can be inconsistent (partial tool frames,
+            // stale KV positions) and a grammar prompt on it can throw or
+            // hang. Dispose it FIRST, then build a minimal fresh session on
+            // a fresh sequence — same pattern as the dream cycle.
+            try { if (entry.session?.dispose) await entry.session.dispose(); } catch {}
+            try { if (entry._currentSequence?.dispose) await entry._currentSequence.dispose(); } catch {}
+            entry.session          = null;
+            entry._currentSequence = null;
+            await new Promise(r => setTimeout(r, 150));  // let llama.cpp release the slot
+            let planSeq = null;
+            const seqDeadline = Date.now() + 15_000;
+            while (Date.now() < seqDeadline) {
+              try { planSeq = entry.context.getSequence(); break; } catch {}
+              await new Promise(r => setTimeout(r, 500));
             }
-            for await (const ev of this.orchestrator.runPlanPipeline({ session: entry.session, llama: this.llama, ...pp })) {
-              yield ev;
+            if (!planSeq) throw new Error('no free sequence for plan session');
+            const llamaCpp = await import('node-llama-cpp');
+            const planSession = new llamaCpp.LlamaChatSession({
+              contextSequence: planSeq,
+              systemPrompt: 'You are a precise project planner. Output only what is asked.',
+              chatWrapper: 'auto',
+            });
+            try {
+              for await (const ev of this.orchestrator.runPlanPipeline({ session: planSession, llama: this.llama, ...pp })) {
+                yield ev;
+                // RISK MITIGATION: honor the user's Stop button mid-pipeline.
+                // Task creation stops at the next yield boundary; tasks
+                // already created stay (they're valid), nothing half-written.
+                if (entry._abortRequested) {
+                  entry._abortRequested = false;
+                  yield { type: 'text', chunk: '\n\n_[Plan interrupted by user — tasks already created remain valid.]_' };
+                  break;
+                }
+              }
+            } finally {
+              try { if (planSession.dispose) await planSession.dispose(); } catch {}
+              try { if (planSeq.dispose) await planSeq.dispose(); } catch {}
             }
           } catch (planErr) {
             log.warn(` plan pipeline failed after abort: ${planErr.message}`);
             yield { type: 'text', chunk: `\n\n_[Plan pipeline failed: ${planErr.message} — no tasks created.]_` };
           }
-          // Dispose the session anyway — its state is inconsistent after the
-          // mid-loop abort, and the pipeline may have added grammar tokens.
-          try { if (entry.session?.dispose) await entry.session.dispose(); } catch {}
-          try { if (entry._currentSequence?.dispose) await entry._currentSequence.dispose(); } catch {}
+          // Session already disposed above — just make sure state is clean
+          // for the next chat turn (fresh session with checkpoint injection).
           entry.session          = null;
           entry._currentSequence = null;
           entry.sessionTurns     = 0;

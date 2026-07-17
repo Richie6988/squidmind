@@ -1194,12 +1194,25 @@ class TaskRunner {
               if (review.length > 1200) break;
             }
             score   = parseInt((review.match(/SCORE:\s*(\d{1,2})/i) || [])[1], 10);
+            const hadVerdictLine = /VERDICT:\s*(PASS|REVISE)/i.test(review);
             verdict = /VERDICT:\s*REVISE/i.test(review) ? 'REVISE' : 'PASS';
             fixes   = ((review.match(/FIXES:\s*([\s\S]{0,400})/i) || [])[1] || '').trim();
-            log.info(`⭐ quality review ${taskId}: ${verdict}${Number.isFinite(score) ? ` (${score}/10)` : ''}`);
+            // PHANTOM-PASS mitigation: when the reviewer produced NO parseable
+            // verdict (empty output, crash mid-review, truncation), the PASS
+            // is a DEFAULT, not a judgement. Keep the anti-loop behavior
+            // (still PASS — a broken reviewer must never block the queue),
+            // but record it as unverified so the UI/audit can distinguish
+            // "reviewed and passed" from "review never really happened".
+            this._reviewUnverified = !hadVerdictLine;
+            if (!hadVerdictLine) {
+              log.warn(`⭐ quality review ${taskId}: PHANTOM PASS — no parseable verdict in ${review.length} chars of review output (defaulted, unverified)`);
+            } else {
+              log.info(`⭐ quality review ${taskId}: ${verdict}${Number.isFinite(score) ? ` (${score}/10)` : ''}`);
+            }
           } catch (revErr) {
             log.warn(`quality review skipped for ${taskId}: ${revErr.message}`);
             verdict = 'PASS';
+            this._reviewUnverified = true;  // review crashed — PASS is a default, not a judgement
           } finally {
             // Same discipline as the agent phase: free the slot cleanly.
             await this.modelService.quiesceGeneration?.(10000);
@@ -1215,7 +1228,9 @@ class TaskRunner {
           }
         }
 
-        task.review = { score: Number.isFinite(score) ? score : null, verdict, at: new Date().toISOString() };
+        task.review = { score: Number.isFinite(score) ? score : null, verdict, at: new Date().toISOString(),
+                        ...(this._reviewUnverified ? { unverified: true } : {}) };
+        this._reviewUnverified = false;
 
         if (verdict === 'REVISE' && fixes) {
           // Back to todo with an UPGRADED DESCRIPTION — the revision
