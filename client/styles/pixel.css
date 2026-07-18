@@ -2460,6 +2460,12 @@ input[type="color"]::-webkit-color-swatch {
 }
 
 /* ── Manual RUN (python console + html render) ── */
+.ti-autoanalyze-btn.on {
+  color: #06ffa5;
+  border-color: rgba(6,255,165,0.5);
+  background: rgba(6,255,165,0.10);
+  text-shadow: 0 0 6px rgba(6,255,165,0.45);
+}
 .ti-file-run {
   color: #06ffa5 !important;
   border-color: rgba(6,255,165,0.35) !important;

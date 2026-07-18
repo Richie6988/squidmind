@@ -582,8 +582,10 @@ const TempleInterior = {
     const c = container || document.getElementById('ti-left-body');
     if (!c) return;
     const folder = this._folder();
+    this._syncAutoAnalyzeBtn();
     c.innerHTML = `
 <div class="ti-sec">INPUT FILES
+  <span class="ti-sec-btn ti-autoanalyze-btn" id="ti-autoanalyze" style="cursor:pointer;" onclick="TempleInterior._toggleAutoAnalyze(this)" title="Auto-analyze: every NEW file dropped in input/ spawns an analysis task (existing files are not touched)">◉ AUTO</span>
   <span class="ti-sec-btn" style="cursor:pointer;" onclick="TempleInterior._openTerminal()" title="Project terminal — bash in the project folder (60s/command)">⌨ TERM</span>
   <label class="ti-sec-btn" style="cursor:pointer;">
     + ADD
@@ -2079,11 +2081,60 @@ const TempleInterior = {
             ⬇ pip install ${this._esc(pkg)} (IAQUA venv) + re-run
           </button></div>`);
       }
+      // Error → Send to Poseidon: prefills the chat with the EXACT context
+      // (file, interpreter, stderr) so the fix request is a perfect bug
+      // report instead of "ça marche pas". User edits and sends.
+      if (r.exit_code !== 0 && !mod) {
+        this._lastRunError = { filename, type, interpreter: r.interpreter, stderr: (r.stderr || r.stdout || '').slice(-1200), exit: r.exit_code };
+        parts.push(`<div class="ti-replay-row" style="margin-top:6px;">
+          <button class="btn-secondary" style="font-size:9px;padding:3px 10px;"
+            onclick="TempleInterior._sendRunErrorToPoseidon()">🔱 Send to Poseidon</button></div>`);
+      }
       feed.innerHTML = parts.join('');
       // The run may have written files (matplotlib PNGs, CSVs…) — refresh the list
       this._renderFiles?.();
     } catch (e) {
       feed.innerHTML = `<div class="ti-replay-row ti-replay-ko">✗ ${this._esc(e.message)}</div>`;
+    }
+  },
+
+  // ── AUTO-ANALYZE toggle — event-driven analysis of input drops ──────────
+  // ON: baselines existing files server-side (no task storm for the archive)
+  // then every NEW file in input/ spawns an analysis task via InputWatcher.
+  async _syncAutoAnalyzeBtn() {
+    const pid = this.currentTemple?.project_id || this.currentTemple?.name;
+    const btn = () => document.getElementById('ti-autoanalyze');
+    if (!pid) return;
+    try {
+      const r = await window.api._fetch(`/projects/${encodeURIComponent(pid)}`);
+      const on = !!(r?.project?.auto_analyze ?? r?.entry?.auto_analyze);
+      const b = btn();
+      if (b) {
+        b.classList.toggle('on', on);
+        b.textContent = on ? '◉ AUTO ON' : '◉ AUTO';
+      }
+    } catch {}
+  },
+
+  async _toggleAutoAnalyze(btn) {
+    const pid = this.currentTemple?.project_id || this.currentTemple?.name;
+    if (!pid) return;
+    const turningOn = !btn.classList.contains('on');
+    btn.textContent = '◉ …';
+    try {
+      const r = await fetch(`/api/v2/projects/${encodeURIComponent(pid)}/auto-analyze`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: turningOn }),
+      }).then(x => x.json());
+      if (!r.success) { this._setStatus(`✗ ${r.error || 'toggle failed'}`); btn.textContent = '◉ AUTO'; return; }
+      btn.classList.toggle('on', turningOn);
+      btn.textContent = turningOn ? '◉ AUTO ON' : '◉ AUTO';
+      this._setStatus(turningOn
+        ? `✓ Auto-analyze ON — ${r.baselined} existing file(s) left untouched; every NEW drop spawns an analysis task`
+        : '✓ Auto-analyze OFF');
+    } catch (e) {
+      this._setStatus(`✗ ${e.message}`);
+      btn.textContent = '◉ AUTO';
     }
   },
 
@@ -2130,7 +2181,11 @@ const TempleInterior = {
         }).then(x => x.json());
         if (r.stdout) feed.insertAdjacentHTML('beforeend', `<pre class="ti-run-out">${this._esc(r.stdout)}</pre>`);
         if (r.stderr) feed.insertAdjacentHTML('beforeend', `<pre class="ti-run-err">${this._esc(r.stderr)}</pre>`);
-        if (r.ok === false || r.success === false) feed.insertAdjacentHTML('beforeend', `<div class="ti-replay-row ti-replay-ko">✗ ${this._esc(r.error || `exit ${r.exit_code ?? '?'}`)}</div>`);
+        if (r.ok === false || r.success === false || (Number.isFinite(r.exit_code) && r.exit_code !== 0)) {
+          feed.insertAdjacentHTML('beforeend', `<div class="ti-replay-row ti-replay-ko">✗ ${this._esc(r.error || `exit ${r.exit_code ?? '?'}`)}
+            <button class="btn-secondary" style="font-size:8px;padding:2px 8px;margin-left:8px;"
+              onclick="TempleInterior._sendTermErrorToPoseidon('${this._esc(cmd).replace(/'/g, '&#39;')}', this.closest('.ti-run-console').querySelector('.ti-run-err:last-of-type')?.textContent || '${this._esc((r.error || '').slice(0, 200))}')">🔱 Send to Poseidon</button></div>`);
+        }
         else if (!r.stdout && !r.stderr) feed.insertAdjacentHTML('beforeend', `<div class="ti-replay-row ti-replay-dim">(no output)</div>`);
         // Commands can create/delete files — keep the lists honest.
         this._renderFiles?.();
@@ -2154,6 +2209,30 @@ const TempleInterior = {
       }
     });
     input.focus();
+  },
+
+  // Build the perfect bug report and hand it to the chat as an editable draft.
+  _sendRunErrorToPoseidon() {
+    const e = this._lastRunError;
+    if (!e || !window.PoseidonChat) return;
+    document.querySelectorAll('.ti-replay-overlay').forEach(el => el.remove());
+    const proj = this.currentTemple?.name || '';
+    const draft =
+      `Le script ${e.type}/${e.filename} du projet ${proj} échoue (exit ${e.exit}, ${e.interpreter || 'python'}).\n` +
+      `Corrige-le directement dans le fichier (edit_file), puis explique le fix en une phrase.\n\n` +
+      `ERREUR:\n\`\`\`\n${e.stderr}\n\`\`\``;
+    PoseidonChat.openWithDraft(draft);
+  },
+
+  _sendTermErrorToPoseidon(cmd, stderr) {
+    if (!window.PoseidonChat) return;
+    document.querySelectorAll('.ti-replay-overlay').forEach(el => el.remove());
+    const proj = this.currentTemple?.name || '';
+    const draft =
+      `Cette commande échoue dans le projet ${proj} (cwd = dossier projet) :\n\`${cmd}\`\n` +
+      `Diagnostique et corrige — tu as execute_bash dans le même environnement (venv IAQUA).\n\n` +
+      `ERREUR:\n\`\`\`\n${String(stderr || '').slice(-1200)}\n\`\`\``;
+    PoseidonChat.openWithDraft(draft);
   },
 
   // One-click missing-lib recovery: install into the IAQUA venv, close the

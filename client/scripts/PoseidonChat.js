@@ -67,6 +67,21 @@ const PoseidonChat = {
     this._send();
   },
 
+  // Open the chat with a PREFILLED draft the user can edit before sending.
+  // Used by "Send to Poseidon" on errors (run console / terminal): the draft
+  // carries the exact context (file, command, stderr) — the user adds intent
+  // and hits send. Never auto-sends: an error report deserves a human glance.
+  async openWithDraft(draft) {
+    await this.open();
+    const ta = this.modal?.querySelector('#pc-input');
+    if (!ta) return;
+    ta.value = draft;
+    ta.style.height = 'auto';
+    ta.style.height = Math.min(220, ta.scrollHeight) + 'px';
+    ta.focus();
+    ta.setSelectionRange(ta.value.length, ta.value.length);
+  },
+
   // ── Build Modal ──────────────────────────────────────────────────────────
 
   _buildModal() {

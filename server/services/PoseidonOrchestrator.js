@@ -1436,7 +1436,7 @@ My response: "${ss.last_response_preview}"${tools}
           properties: {
             section_path: {
               type: 'string',
-              description: 'Dot-path inside brain.json. Examples: "skills.create_agent", "skills.research_flow", "fine_tuning", "absolute_rules", "tools_catalog", "user", "current_state".'
+              description: 'Dot-path inside brain.json. Examples: "skills.create_agent", "fine_tuning", "absolute_rules", "tools_catalog", "user", "current_state", "bash_history" (shared command log — .user filters to what the human ran manually in the temple terminal).'
             }
           },
           required: ['section_path']
@@ -3165,6 +3165,28 @@ My response: "${ss.last_response_preview}"${tools}
         return { ok: true, section_path, content: open.map(t =>
           `${t.task_id}: ${t.title} | ${t.lifecycle?.status||'?'} | agent: ${t.assigned_to||'unassigned'}`
         ).join('\n') || '(no open tasks)' };
+      }
+      // bash_history: the SHARED command log — agent execute_bash AND the
+      // user's temple terminal write to the same jsonl with an actor tag.
+      // Poseidon can read "what Richard did by hand" and learn the real
+      // workflow of a project instead of guessing it.
+      if (section_path === 'bash_history' || section_path.startsWith('bash_history.')) {
+        try {
+          const fsp = require('fs').promises;
+          const pathm = require('path');
+          const AQ = require('../aquarium');
+          const raw = await fsp.readFile(pathm.join(AQ.LOGS, 'bash_history.jsonl'), 'utf8').catch(() => '');
+          const wantActor = section_path.split('.')[1] || null;   // bash_history.user / bash_history.agent
+          const lines = raw.trim().split('\n').filter(Boolean).slice(-200)
+            .map(l => { try { return JSON.parse(l); } catch { return null; } })
+            .filter(e => e && (!wantActor || e.actor === wantActor))
+            .slice(-30);
+          if (!lines.length) return { ok: true, section_path, content: '(no bash history yet)' };
+          return { ok: true, section_path, count: lines.length,
+            content: lines.map(e =>
+              `${e.ts?.slice(5, 16) || '?'} [${e.actor || 'agent'}] ${e.cwd ? pathm.basename(e.cwd) + '$ ' : ''}${(e.command || '').slice(0, 140)}${e.exit_code !== 0 && e.exit_code !== undefined ? ` → exit ${e.exit_code}` : ''}`
+            ).join('\n') };
+        } catch (e) { return { ok: false, error: e.message }; }
       }
       // tools_catalog: return the LIVE canonical catalog from
       // _sectionToolsPointer, not the stale brain.json field. The stored

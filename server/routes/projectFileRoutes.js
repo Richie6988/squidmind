@@ -26,6 +26,29 @@ function buildProjectFileRoutes({ rm }) {
 
   const sanitize = (name) => String(name || '').replace(/[^a-zA-Z0-9._\- ()]/g, '_');
 
+  // ── PATCH /:projectId/auto-analyze — toggle input auto-analysis ──────────
+  // ON: baselines the existing input files first (no task storm for the
+  // archive already sitting there), then every NEW drop spawns an analysis
+  // task. OFF: the watcher simply skips the project.
+  router.patch('/:projectId/auto-analyze', express.json({ limit: '8kb' }), async (req, res) => {
+    try {
+      const enabled = !!req.body?.enabled;
+      const proj = await rm.resolveProjectByNameOrId(req.params.projectId);
+      if (!proj?.entry) return res.status(404).json({ success: false, error: 'project not found' });
+      const preg = await rm.getProjectRegistry();
+      const p = preg.projects?.[proj.entry.project_id];
+      if (!p) return res.status(404).json({ success: false, error: 'project not in registry' });
+      p.auto_analyze = enabled;
+      await rm.write('PROJECTS/project_registry.json', preg);
+      let baselined = 0;
+      if (enabled) {
+        const watcher = req.app.get?.('inputWatcher') || global.__inputWatcher;
+        if (watcher?.baseline) baselined = await watcher.baseline(p.folder || proj.entry.folder);
+      }
+      res.json({ success: true, auto_analyze: enabled, baselined });
+    } catch (e) { res.status(500).json({ success: false, error: e.message }); }
+  });
+
   // ── POST /:projectId/exec — project-scoped terminal command ───────────────
   // Free-form bash from the temple TERMINAL. Trust model = execute_bash;
   // routed THROUGH BashExecutor so both paths share the danger-pattern
@@ -41,7 +64,7 @@ function buildProjectFileRoutes({ rm }) {
       if (!fs.existsSync(projDir)) return res.status(404).json({ success: false, error: 'project folder not found' });
       const { BashExecutor } = require('../services/BashExecutor');
       const bash = new BashExecutor();
-      const r = await bash.run({ command, cwd: projDir, timeout_ms: 60_000 });
+      const r = await bash.run({ command, cwd: projDir, timeout_ms: 60_000, actor: 'user' });
       res.json({ success: true, ...r });
     } catch (e) {
       res.status(500).json({ success: false, error: e.message });

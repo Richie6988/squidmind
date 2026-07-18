@@ -181,6 +181,11 @@ const MissionControl = require('./services/MissionControl');
 const missionControl = new MissionControl(sharedRm, modelService, poseidonOrchestrator);
 poseidonOrchestrator.missionControl = missionControl;
 missionControl.start();
+const InputWatcher = require('./services/InputWatcher');
+const inputWatcher = new InputWatcher(sharedRm, poseidonOrchestrator);
+inputWatcher.start();
+servicesRef.inputWatcher = inputWatcher;
+app.set('inputWatcher', inputWatcher);  // auto-analyze route reads it via req.app.get
 // ToolForge: builtin names are reserved — a forged tool must never shadow one
 try {
   const ToolForge = require('./services/ToolForge');

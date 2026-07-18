@@ -87,7 +87,7 @@ class BashExecutor {
    * @param {object}  env           — extra env vars merged onto process.env
    * @returns {Promise<{ok, exit_code, stdout, stderr, duration_ms, danger_flags, killed}>}
    */
-  async run({ command, cwd, timeout_ms = 30_000, env }) {
+  async run({ command, cwd, timeout_ms = 30_000, env, actor = 'agent' }) {
     if (!command || typeof command !== 'string') {
       return { ok: false, error: '"command" must be a non-empty string' };
     }
@@ -181,6 +181,7 @@ class BashExecutor {
         // Log every invocation
         await this._log({
           ts: new Date().toISOString(),
+          actor,
           command, cwd: workDir,
           exit_code: code, duration_ms, killed,
           danger_flags: dangerFlags,
@@ -192,6 +193,7 @@ class BashExecutor {
         clearTimeout(timer);
         await this._log({
           ts: new Date().toISOString(),
+          actor,
           command, cwd: workDir,
           error: err.message, danger_flags: dangerFlags,
         });
