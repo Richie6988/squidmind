@@ -74,14 +74,14 @@ class ImageGenerationService {
    *   modelPath  - absolute path to the .gguf model file
    *   prompt     - text prompt
    *   outputPath - absolute path where the PNG should be written
-   *   width      - image width  (default 512)
-   *   height     - image height (default 512)
+   *   width      - image width  (default 900)
+   *   height     - image height (default 900)
    *   steps      - inference steps (default 20)
    *   cfg        - CFG scale (default 7)
    *   seed       - seed (-1 = random)
    * @returns {Promise<{ ok: true, outputPath: string, bytes: number }|{ ok: false, error: string }>}
    */
-  async generate({ modelPath, prompt, outputPath, width = 512, height = 512, steps = 20, cfg = 7, seed = -1, negativePrompt = '', initImage = null, strength = 0.75 }) {
+  async generate({ modelPath, prompt, outputPath, width = 900, height = 900, steps = 20, cfg = 7, seed = -1, negativePrompt = '', initImage = null, strength = 0.75 }) {
     const isFlux = /flux/i.test(path.basename(modelPath));
 
     // Apply Flux-specific defaults only when user hasn't overridden them

@@ -653,7 +653,7 @@ class OrchestratorTools {
 
       const result = await this.modelService.generateImage({
         modelId: model_id, prompt, outputPath,
-        width: width || 512, height: height || 512,
+        width: width || 900, height: height || 900,
         steps: steps || 20, cfg: cfg_scale || 7,
         seed: seed ?? -1, negativePrompt: negative_prompt || '',
         user_initiated: true,   // chat tool + UI route both land here — the human asked
@@ -674,8 +674,8 @@ class OrchestratorTools {
             prompt,
             negativePrompt: negative_prompt || '',
             outputPath:     upscaledPath,
-            width:          (width  || 512) * scale,
-            height:         (height || 512) * scale,
+            width:          (width  || 900) * scale,
+            height:         (height || 900) * scale,
             steps:          Math.min(steps || 20, 6),
             cfg:            cfg_scale || 7,
             seed:           seed ?? -1,

@@ -922,14 +922,24 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
       if (config.gpuLayers === 'auto' || config.gpuLayers === 'max') {
         if (vramBefore && freeBeforeGb > 0.5) {
           const bytesPerLayerGb = fileSizeGb / estLayers;
-          const frac = Math.min(1.0, (freeBeforeGb * (isMoE ? 0.62 : 0.72)) / fileSizeGb);
-          const canFitFully = frac >= 1.0;
+          // USER DIRECTIVE (July 2026): default placement is ONE CPU LAYER —
+          // estLayers-1 on GPU. Matches Richard's LM Studio reference config
+          // (32/33) and maximizes throughput; the ctx auto-sizing + OOM
+          // ladder + batch auto-shrink downstream fit the context into
+          // whatever VRAM remains. We only fall back to the throughput
+          // budget solver when even n-1 layers of WEIGHTS don't fit.
+          const oneCpuLayers   = Math.max(1, estLayers - 1);
+          const oneCpuWeightGb = oneCpuLayers * bytesPerLayerGb;
+          const canFitOneCpu   = oneCpuWeightGb <= freeBeforeGb * 0.90;  // weights only; ctx negotiates the rest
           let gpuTarget;
-          if (config.gpuLayers === 'max' || canFitFully) {
-            // Fits with headroom — offload everything, KV still fits in the rest.
+          if (config.gpuLayers === 'max') {
             gpuTarget = estLayers;
             config.gpuLayers = gpuTarget;
-            log.info(`  [auto] gpuLayers: ${config.gpuLayers} / ${estLayers} (FULL GPU offload — fits with headroom)`);
+            log.info(`  [max] gpuLayers: ${config.gpuLayers} / ${estLayers} (FULL GPU offload requested)`);
+          } else if (canFitOneCpu) {
+            gpuTarget = oneCpuLayers;
+            config.gpuLayers = gpuTarget;
+            log.info(`  [auto] gpuLayers: ${config.gpuLayers} / ${estLayers} (default: 1 CPU layer — ${oneCpuWeightGb.toFixed(1)}GB weights, ctx gets the rest)`);
           } else {
             // Model larger than VRAM: throughput is the binding constraint,
             // not context. The old frac math put few layers on GPU and then

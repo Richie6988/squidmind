@@ -1472,8 +1472,8 @@ My response: "${ss.last_response_preview}"${tools}
             project_id:      { type: 'string',  description: 'Project ID to link output to (optional)' },
             filename:        { type: 'string',  description: 'Output filename e.g. poster.png (optional)' },
             negative_prompt: { type: 'string',  description: 'Things to avoid (optional, leave empty for Flux)' },
-            width:           { type: 'integer', description: 'Width in pixels (default 512 for Flux-q2, 1024 for q4+)' },
-            height:          { type: 'integer', description: 'Height in pixels (default 512)' },
+            width:           { type: 'integer', description: 'Width in pixels (default 900)' },
+            height:          { type: 'integer', description: 'Height in pixels (default 900)' },
             steps:           { type: 'integer', description: 'Inference steps: 4-8 for Flux-schnell, 20 for SD' },
             cfg_scale:       { type: 'number',  description: 'CFG scale: 1.0 for Flux, 7 for SD (default 1.0)' },
             seed:            { type: 'integer', description: 'Seed for reproducibility (-1 = random)' },
@@ -1511,7 +1511,7 @@ My response: "${ss.last_response_preview}"${tools}
             const isQ2   = mname.includes('q2');
             const defaultSteps = isFlux ? (isQ2 ? 6 : 8) : 20;
             const defaultCfg   = isFlux ? 1.0 : 7.0;
-            const defaultW     = isQ2 ? 950 : (isFlux ? 1024 : 512);
+            const defaultW     = 900;   // USER DIRECTIVE: 900x900 default everywhere
 
             // Build task description with all image params
             const imageParams = {

@@ -565,8 +565,8 @@ class TaskRunner {
 
           const prompt       = ip?.prompt || task.description || task.title.replace(/^generate[: ]*/i, '');
           const negPrompt    = ip?.negative_prompt || '';
-          const width        = ip?.width  || 512;
-          const height       = ip?.height || 512;
+          const width        = ip?.width  || 900;
+          const height       = ip?.height || 900;
           const steps        = ip?.steps  || 6;
           const cfg          = ip?.cfg_scale ?? 1.0;
           const seed         = ip?.seed ?? -1;

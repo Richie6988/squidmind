@@ -1519,13 +1519,13 @@ const ModelLoader = {
     const isFlux = /flux/i.test(f);
     if (isFlux) {
       const isDev = /dev/i.test(f);
-      // Use 950×950 for all Flux models (Q2/Q4/Q8 alike)
-      return { width: 950, height: 950, steps: isDev ? 20 : 8, cfg: 1.0, label: `Flux optimal (950×950)` };
+      // USER DIRECTIVE: 900×900 default everywhere
+      return { width: 900, height: 900, steps: isDev ? 20 : 8, cfg: 1.0, label: `Flux optimal (900×900)` };
     }
     const isXL = /xl|sdxl/i.test(f);
     return isXL
-      ? { width: 1024, height: 1024, steps: 30, cfg: 7.5, label: 'SDXL optimal' }
-      : { width: 512,  height: 512,  steps: 25, cfg: 7.5, label: 'SD1.5 optimal' };
+      ? { width: 900, height: 900, steps: 30, cfg: 7.5, label: 'SDXL optimal (900×900)' }
+      : { width: 900, height: 900, steps: 25, cfg: 7.5, label: 'SD1.5 (900×900)' };
   },
 
   // Default negative prompt applied when user leaves field empty
