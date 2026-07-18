@@ -10,6 +10,16 @@ The interface is a living aquarium: agents swim as animated pixel-art squids, pr
 
 ## What's New — July 2026 sprint
 
+### Late-July wave — execution environment, ops, trust
+
+**Execution unified around one environment.** Temple ▶ RUN button on `.py`/`.sh` files (60s timeout, cwd = file's dir, console overlay) and `.html` live-render in the sandboxed preview; ⌨ TERM project terminal (↑/↓ history, cwd = project root) routed through BashExecutor — one bash policy for the human terminal and agent `execute_bash`. Dedicated Python venv at `<repo>/.pyenv` (lazy-created, `pyenv` tool for install/list/remove, one-click `ModuleNotFoundError` → pip install + re-run) with venv-first PATH everywhere: agent scripts and your ▶ clicks run on identical interpreters and libs.
+
+**Error→fix loop closed.** 🔱 Send to Poseidon on any failed run/terminal command prefills the chat with the exact context (file, interpreter, stderr) — editable, never auto-sent. Shared bash history (`LOGS/bash_history.jsonl`, actor-tagged) readable via `read_my_brain('bash_history')` — Poseidon can learn what you did by hand.
+
+**Event + time triggers.** InputWatcher: ◉ AUTO toggle per project — every NEW file dropped in `input/` spawns a structured analysis task (baseline on enable, partial-upload guard, persisted seen-set, idempotent). Scheduler: `schedule_task` with human-readable recurrence (`daily@08:00`, `weekly:mon@08:00`, `hourly@:MM`, `every:Nh/Nm`), fired tasks are normal tasks, overdue fires ONCE then realigns, listed in the morning brief.
+
+**Ops & trust.** ⏸ PAUSE (Control Tower / API / Telegram `/pause`): freezes every autonomous loop, chat stays alive, persisted across restarts. File versioning: every overwrite of an existing project file (agent `write_file`/`edit_file` AND human IDE saves) snapshots to `.versions/` first (cap 10, restore is itself undoable) — ↩ VERSIONS button with actor-tagged history, line diff, one-click restore. Ctrl+K palette extended with CONTENT search (`GET /api/v2/search`): BM25 inside every project's files + memories, merged below the instant registry matches.
+
 ### Mid-July wave — sovereignty features
 
 **MISSION MODE — bounded autonomy (`MissionControl.js`)**
@@ -88,7 +98,7 @@ A project task can only be assigned to an agent that belongs to the temple: `_cr
 8. [Established Processes & Data Flows](#8-established-processes--data-flows)
 9. [Skills Catalog](#9-skills-catalog)
 10. [Agent Tool Registry](#10-agent-tool-registry)
-11. [Poseidon Tool Registry (43 Canonical Tools)](#11-poseidon-tool-registry-43-canonical-tools)
+11. [Poseidon Tool Registry (45 Canonical Tools)](#11-poseidon-tool-registry-45-canonical-tools)
 12. [Pixel Art & Visual System](#12-pixel-art--visual-system)
 13. [Installation & Running](#13-installation--running)
 
@@ -312,6 +322,13 @@ After wiring, at startup:
 | GET | `/api/v2/health` | CPU/RAM/VRAM + model status + broker state |
 | POST | `/api/v2/heartbeat` | Manual heartbeat trigger (UI refresh) |
 | GET | `/api/v2/brief` | Morning brief JSON (dream-generated; `?fresh=1` rebuilds from registries) |
+| GET/POST | `/api/v2/pause` | Global pause state / toggle (freezes autonomous loops, chat stays alive) |
+| GET | `/api/v2/search?q=` | Content search: BM25 inside project files + memories (Ctrl+K backend) |
+| GET/POST | `/api/v2/pyenv` (+`/install`, `/remove`) | Dedicated Python venv: list / install / uninstall packages |
+| POST | `/api/v2/projects/:id/run` | Execute a `.py`/`.sh` project file (60s timeout, venv python) |
+| POST | `/api/v2/projects/:id/exec` | Project terminal command (via BashExecutor, actor=user) |
+| PATCH | `/api/v2/projects/:id/auto-analyze` | Toggle InputWatcher auto-analysis (baselines existing files on enable) |
+| GET/POST | `/api/v2/projects/:id/versions` (+`/content`, `/restore`) | File version history: list / read / restore |
 | POST | `/api/v2/poseidon/chat` | SSE streaming chat to Poseidon (builds system prompt, runs inference, appends to temp.md) |
 | POST | `/api/v2/poseidon/abort` | Stop current Poseidon generation |
 | GET | `/api/v2/poseidon/session-state` | Current session: turns, context%, last message |
@@ -1158,15 +1175,15 @@ Poseidon can write/update skills via the `write_skill` tool. Dream cycle can upd
 
 ---
 
-## 11. Poseidon Tool Registry (43 Canonical Tools)
+## 11. Poseidon Tool Registry (45 Canonical Tools)
 
-Defined in `PoseidonOrchestrator.buildFunctions()`. Canonical catalog lives in `PoseidonOrchestrator.CANONICAL_TOOL_CATALOG` (single source of truth for the system prompt AND `read_my_brain('tools_catalog')`). 43 tools across 10 categories — plus any forged tools registered at runtime.
+Defined in `PoseidonOrchestrator.buildFunctions()`. Canonical catalog lives in `PoseidonOrchestrator.CANONICAL_TOOL_CATALOG` (single source of truth for the system prompt AND `read_my_brain('tools_catalog')`). 45 tools across 10 categories — plus any forged tools registered at runtime.
 
 | Category | Tools |
 |---|---|
-| meta / self (7) | `read_my_brain`, `update_brain_field`, `write_skill`, `list_skills`, `delete_skill`, `record_skill_outcome`, `forge_tool` |
+| meta / self (8) | `read_my_brain`, `update_brain_field`, `write_skill`, `list_skills`, `delete_skill`, `record_skill_outcome`, `forge_tool`, `pyenv` |
 | agents (5) | `create_agent`, `delete_agent`, `list_agents`, `update_agent_field`, `dispatch_to_agent` |
-| projects (9) | `create_project`, `list_projects`, `plan_project`, `update_project`, `update_project_memory`, `read_project_memory`, `audit_project`, `launch_mission`, `mission_status` |
+| projects (10) | `create_project`, `list_projects`, `plan_project`, `update_project`, `update_project_memory`, `read_project_memory`, `audit_project`, `launch_mission`, `mission_status`, `schedule_task` |
 | tasks (4) | `create_task` (supports `challenge:true` adversarial mode), `list_tasks`, `update_task`, `delete_task` |
 | files (4) | `read_file`, `write_file`, `edit_file`, `list_files` |
 | web & fetch (2) | `web_search` (supports `mode="image"`), `web_fetch` (supports `extract="image"`) |
