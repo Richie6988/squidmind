@@ -2493,6 +2493,27 @@ body.system-paused .right-panel-header h2::after {
   background: rgba(6,255,165,0.10);
   text-shadow: 0 0 6px rgba(6,255,165,0.45);
 }
+/* ── File versions panel + diff ── */
+.ti-ver-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 4px 0;
+  border-bottom: 1px dotted rgba(79,172,254,0.12);
+  font-family: 'Courier New', monospace; font-size: 11px;
+}
+.ti-ver-when  { color: var(--text-primary, #e2e8f0); min-width: 130px; }
+.ti-ver-actor { font-size: 9px; padding: 1px 6px; border-radius: 3px; }
+.ti-ver-actor.agent { color: #4facfe; border: 1px solid rgba(79,172,254,0.4); }
+.ti-ver-actor.user  { color: #06ffa5; border: 1px solid rgba(6,255,165,0.4); }
+.ti-ver-size  { color: var(--ui-muted); flex: 1; text-align: right; margin-right: 6px; }
+.ti-diff-head { font-family: 'Press Start 2P', monospace; font-size: 8px; color: #4facfe; margin: 10px 0 6px 0; }
+.ti-diff-add, .ti-diff-del, .ti-diff-same {
+  font-family: 'Courier New', monospace; font-size: 11px; line-height: 1.5;
+  white-space: pre-wrap; word-break: break-word; padding: 0 6px;
+}
+.ti-diff-add  { color: #06ffa5; background: rgba(6,255,165,0.06); }
+.ti-diff-del  { color: #f87171; background: rgba(248,113,113,0.06); }
+.ti-diff-same { color: var(--ui-muted); font-style: italic; padding: 2px 6px; }
+
 .ti-file-run {
   color: #06ffa5 !important;
   border-color: rgba(6,255,165,0.35) !important;

@@ -385,6 +385,13 @@ class OrchestratorTools {
       }
       
       const after = before.replace(search_text, replace_text);
+      // VERSIONING: same shadow-copy mechanism as write_file — an edit that
+      // breaks a working file is reversible from the temple.
+      try {
+        const AQUARIUM = require('../aquarium');
+        const pm = fullPath.match(new RegExp(`^(${AQUARIUM.PROJECTS.replace(/[/\\]/g, '[/\\\\]')}[/\\\\][^/\\\\]+)[/\\\\](.+)$`));
+        if (pm) await require('./FileVersions').snapshot(pm[1], pm[2], { actor: 'agent' });
+      } catch {}
       await fs.writeFile(fullPath, after, 'utf8');
       
       // Log it

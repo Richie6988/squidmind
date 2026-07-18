@@ -2937,6 +2937,13 @@ My response: "${ss.last_response_preview}"${tools}
         fullPath = path.resolve(workspace, relPath);
       }
       if (!fullPath.startsWith(workspace)) return { ok: false, error: 'Path outside workspace' };
+      // VERSIONING: overwriting a project file snapshots the current content
+      // first (.versions/, cap 10). An agent breaking a working file is
+      // reversible from the temple. Never blocks the write.
+      const projMatch = fullPath.match(new RegExp(`^(${AQUARIUM.PROJECTS.replace(/[/\\]/g, '[/\\\\]')}[/\\\\][^/\\\\]+)[/\\\\](.+)$`));
+      if (projMatch) {
+        await require('./FileVersions').snapshot(projMatch[1], projMatch[2], { actor: 'agent' });
+      }
       await fs.mkdir(path.dirname(fullPath), { recursive: true });
       await fs.writeFile(fullPath, content, 'utf8');
       

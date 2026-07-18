@@ -226,6 +226,9 @@ function buildProjectFileRoutes({ rm }) {
         return res.status(403).json({ success: false, error: 'path traversal' });
       }
       const buf = encoding === 'base64' ? Buffer.from(content, 'base64') : Buffer.from(content, 'utf8');
+      // VERSIONING: the human's save goes through the same shadow-copy
+      // mechanism as agent writes — one mechanism, every door.
+      await require('../services/FileVersions').snapshot(path.join(AQUARIUM.PROJECTS, folder), `input/${safeName}`, { actor: 'user' });
       await fsp.writeFile(dest, buf);
       res.json({ success: true, fileName: safeName, size: buf.length });
     } catch (e) { res.status(500).json({ success: false, error: e.message }); }
@@ -251,6 +254,9 @@ function buildProjectFileRoutes({ rm }) {
         return res.status(403).json({ success: false, error: 'path traversal' });
       }
       const buf = encoding === 'base64' ? Buffer.from(content, 'base64') : Buffer.from(content, 'utf8');
+      // VERSIONING: the human's save goes through the same shadow-copy
+      // mechanism as agent writes — one mechanism, every door.
+      await require('../services/FileVersions').snapshot(path.join(AQUARIUM.PROJECTS, folder), `output/${safeName}`, { actor: 'user' });
       await fsp.writeFile(dest, buf);
       res.json({ success: true, fileName: safeName, size: buf.length });
     } catch (e) { res.status(500).json({ success: false, error: e.message }); }
@@ -296,6 +302,40 @@ function buildProjectFileRoutes({ rm }) {
       if (!filePath.startsWith(AQUARIUM.PROJECTS)) return res.status(403).send('Forbidden');
       res.sendFile(filePath, err => { if (err) res.status(404).json({ error: 'Input file not found' }); });
     } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  // ── File version history — list / read / restore ──────────────────────────
+  // .versions/ shadow store written by FileVersions before every overwrite
+  // (agent write_file / edit_file AND human IDE saves).
+  router.get('/:projectId/versions', async (req, res) => {
+    try {
+      const rel = String(req.query.file || '');
+      if (!/^(output|input)\//.test(rel) || rel.includes('..')) return res.status(400).json({ success: false, error: 'file must be output/<name> or input/<name>' });
+      const folder = await resolveFolder(req.params.projectId);
+      const r = await require('../services/FileVersions').list(path.join(AQUARIUM.PROJECTS, folder), rel);
+      res.json({ success: r.ok !== false, ...r });
+    } catch (e) { res.status(500).json({ success: false, error: e.message }); }
+  });
+
+  router.get('/:projectId/versions/content', async (req, res) => {
+    try {
+      const rel = String(req.query.file || '');
+      if (!/^(output|input)\//.test(rel) || rel.includes('..')) return res.status(400).json({ success: false, error: 'bad file' });
+      const folder = await resolveFolder(req.params.projectId);
+      const r = await require('../services/FileVersions').read(path.join(AQUARIUM.PROJECTS, folder), rel, req.query.ts);
+      res.status(r.ok ? 200 : 404).json({ success: r.ok, ...r });
+    } catch (e) { res.status(500).json({ success: false, error: e.message }); }
+  });
+
+  router.post('/:projectId/versions/restore', express.json({ limit: '8kb' }), async (req, res) => {
+    try {
+      const rel = String(req.body?.file || '');
+      const ts  = req.body?.ts;
+      if (!/^(output|input)\//.test(rel) || rel.includes('..') || !ts) return res.status(400).json({ success: false, error: 'file + ts required' });
+      const folder = await resolveFolder(req.params.projectId);
+      const r = await require('../services/FileVersions').restore(path.join(AQUARIUM.PROJECTS, folder), rel, ts, { actor: 'user' });
+      res.status(r.ok ? 200 : 400).json({ success: r.ok, ...r });
+    } catch (e) { res.status(500).json({ success: false, error: e.message }); }
   });
 
   // ── GET /:projectId/outputs/:filename — serve output file ─────────────────

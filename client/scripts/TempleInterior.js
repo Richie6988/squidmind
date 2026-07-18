@@ -126,6 +126,7 @@ const TempleInterior = {
       <span class="ti-ide-fname" id="ti-ide-fname"
         style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;color:#94a3b8;"></span>
       <button class="ti-tab-sm" id="ti-prev-toggle" onclick="TempleInterior._ideTogglePreview()" title="Toggle between editor and preview">PREVIEW</button>
+      <button class="ti-tab-sm" id="ti-versions-btn" onclick="TempleInterior._openVersions()" title="Version history — every overwrite (agent OR your saves) is snapshotted first" style="display:none;">↩ VERSIONS</button>
       <button class="ti-tab-sm accent" onclick="TempleInterior._ideSave()" id="ti-ide-save-btn" title="Save (Ctrl+S)">SAVE</button>
       <button class="ti-tab-sm" onclick="TempleInterior._closeAllFiles()" title="Close all open files and return to live stream"
         style="border-color:rgba(239,68,68,0.3);color:#94a3b8;">CLOSE ALL</button>
@@ -1884,6 +1885,10 @@ const TempleInterior = {
     const isCode = isPy || isJs || isShell ||
                    /\.(rs|go|java|cpp|c|h|css|yaml|yml|toml|ini|rb|php|swift|kt|r)$/i.test(f.name);
 
+    // Versions button: text files only (binaries are never snapshotted)
+    const verBtn = document.getElementById('ti-versions-btn');
+    if (verBtn) verBtn.style.display = f.isImg ? 'none' : '';
+
     // Decide DEFAULT mode: markdown/html → preview, everything else → editor.
     // Per-file override stored in f._previewMode after user toggles.
     if (typeof f._previewMode === 'undefined') {
@@ -2096,6 +2101,113 @@ const TempleInterior = {
     } catch (e) {
       feed.innerHTML = `<div class="ti-replay-row ti-replay-ko">✗ ${this._esc(e.message)}</div>`;
     }
+  },
+
+  // ── FILE VERSION HISTORY — list, diff, restore ──────────────────────────
+  // Every overwrite (agent write_file/edit_file AND your IDE saves) is
+  // snapshotted server-side first. This panel makes it reversible: pick a
+  // version → compact line diff vs current → RESTORE (itself undoable —
+  // restore snapshots current before overwriting).
+  async _openVersions() {
+    const f = this._openFiles?.[this._activeFileIdx];
+    const pid = this.currentTemple?.project_id || this.currentTemple?.name;
+    if (!f || !pid || f.isImg) return;
+    const rel = `${f.type === 'input' ? 'input' : 'output'}/${f.name}`;
+    let list;
+    try {
+      list = await fetch(`/api/v2/projects/${encodeURIComponent(pid)}/versions?file=${encodeURIComponent(rel)}`).then(x => x.json());
+    } catch (e) { this._setStatus(`✗ ${e.message}`); return; }
+    const versions = list?.versions || [];
+    const ov = document.createElement('div');
+    ov.className = 'ti-replay-overlay';
+    const rows = versions.length
+      ? versions.map(v => `
+        <div class="ti-ver-row" data-ts="${v.ts}">
+          <span class="ti-ver-when">${new Date(v.ts).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>
+          <span class="ti-ver-actor ${/agent/.test(v.actor) ? 'agent' : 'user'}">${this._esc(v.actor)}</span>
+          <span class="ti-ver-size">${this._fmtSize(v.size || 0)}</span>
+          <button class="ti-tab-sm" onclick="TempleInterior._diffVersion('${this._esc(rel)}', ${v.ts}, this)">DIFF</button>
+          <button class="ti-tab-sm accent" onclick="TempleInterior._restoreVersion('${this._esc(rel)}', ${v.ts})">RESTORE</button>
+        </div>`).join('')
+      : `<div class="ti-replay-row ti-replay-dim">No versions yet — the first snapshot appears when this file gets overwritten (by an agent or by your save).</div>`;
+    ov.innerHTML = `
+      <div class="ti-replay-box" style="width:640px;">
+        <div class="ti-replay-head">
+          <span>↩ VERSIONS — ${this._esc(f.name)}</span>
+          <span class="ti-replay-close" title="Close">✕</span>
+        </div>
+        <div class="ti-replay-meta">Snapshots taken BEFORE each overwrite · cap 10 · restore is itself undoable</div>
+        <div class="ti-replay-feed" style="max-height:52vh;">${rows}<div id="ti-ver-diff"></div></div>
+      </div>`;
+    document.body.appendChild(ov);
+    const close = () => ov.remove();
+    ov.querySelector('.ti-replay-close').onclick = close;
+    ov.addEventListener('click', e => { if (e.target === ov) close(); });
+  },
+
+  // Compact line diff: current editor content vs version. LCS is overkill —
+  // a two-pointer walk with lookahead covers real edit patterns and stays
+  // readable; identical runs collapse to "· n unchanged".
+  async _diffVersion(rel, ts, btn) {
+    const pid = this.currentTemple?.project_id || this.currentTemple?.name;
+    const box = document.getElementById('ti-ver-diff');
+    if (!box) return;
+    let r;
+    try {
+      r = await fetch(`/api/v2/projects/${encodeURIComponent(pid)}/versions/content?file=${encodeURIComponent(rel)}&ts=${ts}`).then(x => x.json());
+    } catch (e) { box.innerHTML = `<div class="ti-replay-ko">✗ ${this._esc(e.message)}</div>`; return; }
+    if (!r.success) { box.innerHTML = `<div class="ti-replay-ko">✗ ${this._esc(r.error || 'load failed')}</div>`; return; }
+    const cur = (this._openFiles?.[this._activeFileIdx]?.content ?? document.getElementById('ti-editor')?.value ?? '').split('\n');
+    const old = String(r.content).split('\n');
+    const out = [];
+    let i = 0, j = 0, same = 0;
+    const flushSame = () => { if (same > 2) out.push(`<div class="ti-diff-same">· ${same} unchanged line(s)</div>`); same = 0; };
+    const esc = s => this._esc(s);
+    while (i < old.length || j < cur.length) {
+      if (i < old.length && j < cur.length && old[i] === cur[j]) { same++; i++; j++; continue; }
+      flushSame();
+      // lookahead resync (window 30)
+      let li = -1, lj = -1;
+      for (let k = 1; k < 30 && li < 0; k++) {
+        if (i + k < old.length && old[i + k] === cur[j]) li = k;
+        if (j + k < cur.length && cur[j + k] === old[i]) lj = k;
+      }
+      if (li > 0 && (lj < 0 || li <= lj)) { for (let k = 0; k < li; k++) out.push(`<div class="ti-diff-del">− ${esc(old[i++])}</div>`); }
+      else if (lj > 0)                    { for (let k = 0; k < lj; k++) out.push(`<div class="ti-diff-add">+ ${esc(cur[j++])}</div>`); }
+      else {
+        if (i < old.length) out.push(`<div class="ti-diff-del">− ${esc(old[i++])}</div>`);
+        if (j < cur.length) out.push(`<div class="ti-diff-add">+ ${esc(cur[j++])}</div>`);
+      }
+      if (out.length > 400) { out.push(`<div class="ti-diff-same">… diff truncated (400 lines)</div>`); break; }
+    }
+    flushSame();
+    box.innerHTML = `<div class="ti-diff-head">DIFF: version ${new Date(ts).toLocaleTimeString('fr-FR')} (−) → current (+)</div>` +
+      (out.length ? out.join('') : '<div class="ti-diff-same">Identical to current content.</div>');
+    box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  },
+
+  async _restoreVersion(rel, ts) {
+    const pid = this.currentTemple?.project_id || this.currentTemple?.name;
+    if (!(await SquidModal.confirm(`Restore ${rel.split('/').pop()} to the ${new Date(ts).toLocaleString('fr-FR')} version? Current content is snapshotted first (undoable).`))) return;
+    try {
+      const r = await fetch(`/api/v2/projects/${encodeURIComponent(pid)}/versions/restore`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ file: rel, ts }),
+      }).then(x => x.json());
+      if (!r.success) { this._setStatus(`✗ ${r.error || 'restore failed'}`); return; }
+      document.querySelectorAll('.ti-replay-overlay').forEach(el => el.remove());
+      // Reload the live file into the editor
+      const f = this._openFiles?.[this._activeFileIdx];
+      if (f) {
+        const c = await fetch(`/api/v2/projects/${encodeURIComponent(pid)}/${f.type === 'input' ? 'inputs' : 'outputs'}/${encodeURIComponent(f.name)}`).then(x => x.text()).catch(() => null);
+        if (c !== null) {
+          f.content = c; f.dirty = false;
+          const ed = document.getElementById('ti-editor');
+          if (ed && this._openFiles[this._activeFileIdx] === f) ed.value = c;
+        }
+      }
+      this._setStatus(`↩ Restored to ${new Date(ts).toLocaleTimeString('fr-FR')} — previous state saved as a new version`);
+    } catch (e) { this._setStatus(`✗ ${e.message}`); }
   },
 
   // ── AUTO-ANALYZE toggle — event-driven analysis of input drops ──────────
