@@ -22,6 +22,41 @@
   let overlayEl, inputEl, listEl;
   let selectedIdx = 0;
   let filtered    = [];
+  // CONTENT hits from /api/v2/search (inside files + project memories) —
+  // merged under the instant registry matches. Debounced 250ms, sequenced
+  // so stale responses never clobber a newer query.
+  let contentHits = [];
+  let contentSeq  = 0;
+  let contentTimer = null;
+
+  function scheduleContentSearch(q) {
+    clearTimeout(contentTimer);
+    if (!q || q.length < 2) { contentHits = []; return; }
+    contentTimer = setTimeout(async () => {
+      const seq = ++contentSeq;
+      try {
+        const r = await fetch('/api/v2/search?q=' + encodeURIComponent(q)).then(x => x.ok ? x.json() : null);
+        if (seq !== contentSeq || !overlayEl) return;
+        contentHits = (r?.hits || []).map(h => ({
+          kind: h.type === 'memoryhit' ? 'memory' : 'filehit',
+          icon: h.type === 'memoryhit' ? '🧠' : '📄',
+          label: h.title,
+          detail: h.subtitle,
+          _score: -1,                        // always below registry matches
+          onActivate: () => {
+            window.TempleInterior?.open({ name: h.project, project_id: h.project_id, folder: h.folder, colors: null, color: null, files: [], tasks: [] });
+            if (h.file) {
+              const parts = h.file.split('/');
+              const type = parts[0] === 'input' ? 'input' : 'output';
+              const name = parts.slice(1).join('/');
+              setTimeout(() => window.TempleInterior?._openFile?.(name, '', type, h.folder), 350);
+            }
+          },
+        }));
+        render();
+      } catch {}
+    }, 250);
+  }
 
   function open() {
     if (overlayEl) { inputEl.focus(); return; }
@@ -37,6 +72,8 @@
     listEl    = null;
     selectedIdx = 0;
     filtered  = [];
+    contentHits = [];
+    clearTimeout(contentTimer);
   }
 
   function build() {
@@ -51,7 +88,7 @@
         'border-radius:8px;box-shadow:0 12px 40px rgba(0,0,0,0.6);overflow:hidden;display:flex;flex-direction:column;max-height:70vh;">' +
         '<div style="padding:10px 14px;border-bottom:1px solid rgba(79,172,254,0.15);display:flex;align-items:center;gap:8px;">' +
           '<span style="color:#4facfe;font-size:13px;">⌕</span>' +
-          '<input id="iaqua-cmd-input" type="text" placeholder="Jump to agent, project, task… (Esc to close)" ' +
+          '<input id="iaqua-cmd-input" type="text" placeholder="Jump to anything — or search INSIDE files & memories… (Esc to close)" ' +
             'style="flex:1;background:transparent;border:none;outline:none;color:#dce8f5;font-size:14px;font-family:system-ui,sans-serif;">' +
           '<span style="color:#64748b;font-size:10px;font-family:var(--panel-font-mono,monospace);background:rgba(255,255,255,0.05);padding:2px 6px;border-radius:3px;">ESC</span>' +
         '</div>' +
@@ -65,7 +102,7 @@
     overlayEl.addEventListener('click', (ev) => {
       if (ev.target === overlayEl) close();
     });
-    inputEl.addEventListener('input', () => { selectedIdx = 0; render(); });
+    inputEl.addEventListener('input', () => { selectedIdx = 0; scheduleContentSearch(inputEl.value.trim()); render(); });
     inputEl.addEventListener('keydown', onKey);
     setTimeout(() => inputEl.focus(), 0);
   }
@@ -225,7 +262,15 @@
         })
         .filter(Boolean)
         .sort((a, b) => b._score - a._score)
-        .slice(0, 30);
+        .slice(0, 20);
+      // CONTENT hits (inside files + memories) below the registry matches —
+      // dedup'd against them by label, capped so the list stays scannable.
+      const seen = new Set(filtered.map(f => f.kind + '|' + f.label));
+      for (const h of contentHits) {
+        if (filtered.length >= 30) break;
+        if (seen.has(h.kind + '|' + h.label)) continue;
+        filtered.push(h);
+      }
     }
     if (selectedIdx >= filtered.length) selectedIdx = Math.max(0, filtered.length - 1);
 
@@ -234,7 +279,7 @@
       return;
     }
 
-    const KIND_COLORS = { agent:'#06ffa5', project:'#a78bfa', task:'#4facfe', skill:'#f59e0b', model:'#34d399', action:'#94a3b8' };
+    const KIND_COLORS = { agent:'#06ffa5', project:'#a78bfa', task:'#4facfe', skill:'#f59e0b', model:'#34d399', action:'#94a3b8', filehit:'#e2c56f', memory:'#f0a3ff' };
     listEl.innerHTML = filtered.map((it, i) => {
       const sel = i === selectedIdx;
       return '<div data-idx="' + i + '" style="padding:8px 14px;cursor:pointer;display:flex;gap:10px;align-items:center;border-left:2px solid ' + (sel ? '#4facfe' : 'transparent') + ';background:' + (sel ? 'rgba(79,172,254,0.08)' : 'transparent') + ';">' +

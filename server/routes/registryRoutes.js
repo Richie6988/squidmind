@@ -22,6 +22,16 @@ router.get('/poseidon', async (req, res) => {
   } catch (err) { res.status(500).json({ success: false, error: err.message }); }
 });
 
+// GLOBAL SEARCH — Ctrl+K palette backend. One query across project files
+// (BM25), tasks, skills, and project memories.
+router.get('/search', async (req, res) => {
+  try {
+    const GlobalSearch = require('../services/GlobalSearch');
+    const gs = new GlobalSearch(rm);
+    res.json({ success: true, ...(await gs.search(req.query.q)) });
+  } catch (e) { res.status(500).json({ success: false, error: e.message }); }
+});
+
 // PAUSE — the big red button. Freezes all autonomous loops (tasks,
 // missions, watchers, scheduler, dream); chat stays alive. Persisted.
 router.get('/pause', (req, res) => {
