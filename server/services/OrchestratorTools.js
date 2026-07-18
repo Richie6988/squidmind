@@ -611,7 +611,7 @@ class OrchestratorTools {
           project_id: project_id || null,
         });
         taskId = taskObj?.task_id || null;
-        // Directly overwrite details.json with in_progress status — avoids write() path issues
+        // Write in_progress status through the flat registry path
         if (taskId && taskObj) {
           taskObj.status = 'in_progress';
           taskObj.lifecycle = {

@@ -956,8 +956,8 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
             // attention (fast) and every extra tool call takes 1-2k tokens.
             // On dense archs this simply pushes an ~11k session to ~14k.
             // PROBE-AWARE PATH: when a v2 probe exists AND we know the real
-            // ctx (phase override sets it — agent 6144, review 10240), size
-            // the KV reserve to the actual demand. On a 6144-ctx agent this
+            // ctx (phase override sets it — agent 12288, review 14336), size
+            // the KV reserve to the actual demand. On a phase-ctx agent this
             // reclaims ~1GB from the reserve into 6 extra GPU layers
             // (observed: 25/33 → 31/33 on the qwen3.5-9B agent phase).
             // Overhead scales with GPU layer ratio: node-llama-cpp compute
@@ -1591,8 +1591,8 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
    * current model is unloaded and the target is loaded FRESH with a phase-
    * specific contextLength override:
    *   chat   → Poseidon full context (whatever the user set, honored)
-   *   agent  → 6144 tokens (slim prompt + a single task worth of tools)
-   *   review → 10240 tokens (project memory + one deliverable to judge)
+   *   agent  → 12288 tokens (slim prompt + a single task worth of tools)
+   *   review → 14336 tokens (project memory + one deliverable to judge)
    *
    * The KV cache never crosses phases — the "no hidden KV between roles"
    * discipline you asked for.
@@ -2013,7 +2013,7 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
 
     // If loaded entry has a tiny context (stale load with wrong config), evict and reload.
     // GUARD: only apply for genuine CHAT requests. A phase-swap to agent/review
-    // deliberately loads ctx=6144/10240; TaskRunner then calls this function in
+    // deliberately loads the phase ctx (12288/14336); TaskRunner then calls this function in
     // BG mode to drive the agent. Rejecting that as "too small" evicted the
     // agent-regime model and reloaded at 35k, defeating the phase-swap entirely
     // (observed: agent ran on 35k ctx with a 277-tok prompt — pure waste).

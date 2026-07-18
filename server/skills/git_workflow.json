@@ -13,12 +13,12 @@
   "steps": [
     {
       "order": 1,
-      "action": "github_diff",
+      "action": "git",
       "note": "Review what changed before committing"
     },
     {
       "order": 2,
-      "action": "github_commit",
+      "action": "git",
       "params": [
         "message"
       ],
@@ -26,7 +26,7 @@
     },
     {
       "order": 3,
-      "action": "github_push",
+      "action": "git",
       "note": "Push to main branch"
     }
   ],

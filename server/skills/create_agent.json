@@ -28,7 +28,7 @@
     },
     {
       "order": 3,
-      "action": "log_decision",
+      "action": "update_project_memory",
       "params": {
         "summary": "Created agent X for role Y"
       },

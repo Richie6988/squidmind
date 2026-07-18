@@ -41,12 +41,12 @@
     },
     {
       "order": 4,
-      "action": "github_diff",
+      "action": "git",
       "note": "Verify the change looks right before committing"
     },
     {
       "order": 5,
-      "action": "github_commit",
+      "action": "git",
       "params": [
         "message"
       ],

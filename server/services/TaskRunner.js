@@ -761,7 +761,7 @@ class TaskRunner {
           // ═══ PHASE SWAP: AGENT ═══════════════════════════════════════════
           // Each phase gets its own resident model + context regime. Agent
           // work runs on the project's assigned_model_id (or Poseidon as
-          // fallback) with a tight ctx (6144) — no chat KV leaks in, no
+          // fallback) with the agent phase ctx (12288) — no chat KV leaks in, no
           // agent KV leaks out.
           //
           // QUIESCE FIRST: if a force-release handed us the broker while a

@@ -2489,7 +2489,7 @@ My response: "${ss.last_response_preview}"${tools}
   async _updateTask({ task_id, field, new_value }) {
     try {
       this.rm.invalidateCache();
-      // Read directly from details.json (not flat registry — that path is stale)
+      // Read via getTasksRegistry (flat registry is the single source of truth)
       const task = await this.rm._readTaskDetails(task_id);
       if (!task) return { ok: false, error: `Task ${task_id} not found. Use list_tasks to check IDs.` };
       // STRUCTURAL GUARD — image tasks are pipeline-managed. The model has a

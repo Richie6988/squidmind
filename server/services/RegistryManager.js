@@ -293,8 +293,8 @@ class RegistryManager {
       throw new Error(`Field is read-only: ${fieldPath}`);
     }
 
-    // Route task fields to per-folder structure
-    // fieldPath like "tasks.task_0009.lifecycle.status" → update task_0009/details.json
+    // Route task fields through _writeTaskDetails (name is historical — it
+    // writes the FLAT tasks_registry.json; per-folder details.json is gone)
     if (filePath === 'TASKS/tasks_registry.json') {
       const parts = fieldPath.split('.');
       if (parts[0] === 'tasks' && parts[1]?.startsWith('task_')) {
@@ -1196,7 +1196,6 @@ class RegistryManager {
 
   /**
    * Task folder: workspace/tasks/<task_id>/
-   *   details.json  — full task object
    *   results/      — output files (output.txt, etc.)
    *
    * All task data lives in aquarium/TASKS/tasks_registry.json.
@@ -1444,8 +1443,8 @@ class RegistryManager {
       subject: { type: 'task', id: taskId },
       action: `Task ${outcome}: ${task.title}`,
       changes: [
-        { file: `TASKS/${taskId}/details.json`, field: 'status', to: outcome },
-        { file: `TASKS/${taskId}/details.json`, operation: 'chunks_replaced_with_closure_comments' }
+        { file: 'TASKS/tasks_registry.json', task: taskId, field: 'status', to: outcome },
+        { file: 'TASKS/tasks_registry.json', task: taskId, operation: 'chunks_replaced_with_closure_comments' }
       ]
     });
 

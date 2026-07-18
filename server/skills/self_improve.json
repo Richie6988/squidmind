@@ -4,9 +4,17 @@
   "version": 1,
   "summary": "Systematic protocol to observe your own performance after every task and update skills to improve over time. Run the self-observation loop after EVERY non-trivial task.",
   "triggers": [
-    "improve yourself", "self improve", "skill audit", "update skills",
-    "after task", "skill review", "what skills do i have", "am i improving",
-    "self observation", "retrospective", "learn from this"
+    "improve yourself",
+    "self improve",
+    "skill audit",
+    "update skills",
+    "after task",
+    "skill review",
+    "what skills do i have",
+    "am i improving",
+    "self observation",
+    "retrospective",
+    "learn from this"
   ],
   "steps": [
     {
@@ -41,7 +49,7 @@
     },
     {
       "order": 7,
-      "action": "log_decision",
+      "action": "update_project_memory",
       "note": "Log what you improved and why. Future-you needs this context."
     }
   ],

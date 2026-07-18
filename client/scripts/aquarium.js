@@ -316,7 +316,7 @@ const aquarium = {
     // Moonlight (cooler, dimmer) at night or while dreaming.
     this._bgLightRays(W, H, t, dreaming || hour < 6 || hour >= 22);
 
-    // Depth-layered colorful bubbles (replace seaweed)
+    // Depth-layered colorful bubbles
     this._bgBubbles(W, H, t);
 
     // Subtle vignette
