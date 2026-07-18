@@ -10,10 +10,33 @@ The interface is a living aquarium: agents swim as animated pixel-art squids, pr
 
 ## What's New — July 2026 sprint
 
+### Mid-July wave — sovereignty features
+
+**MISSION MODE — bounded autonomy (`MissionControl.js`)**
+`launch_mission(goal, project, budgets)` starts an autonomous loop: Poseidon plans tasks, agents execute, the quality review judges, and when every mission task is terminal a BG audit turn decides `MISSION_VERDICT: ACHIEVED` (final report + stop) or `CONTINUING` (next minimal wave of tasks). Bounds enforced in code, never by the model: `max_tasks` ≤20 (registry-diff attribution per iteration), `max_iterations` ≤6, `deadline_hours` ≤48 wall-clock kill switch, one active mission per project, iterations only run when the broker is IDLE. Final `MISSION_REPORT_<id>.md` in project output/ (code-built task table + audit verdict); `mission_status` tool for inspection/abort; missions listed in the morning brief.
+
+**TOOL FORGE — self-extension (`ToolForge.js` + `toolforge_runner.js`)**
+Poseidon writes, tests, and registers its OWN tools. The model authors only the async handler body (template/plumbing/envelope are code); registration requires the full gauntlet: name/size/collision checks (builtin names reserved from the canonical catalog), `node --check`, and a LIVE test run with model-provided `test_args` — nothing enters the arsenal without running green. Execution is out-of-process (child fork, 30s SIGKILL timeout, 64KB output cap) so a broken forged tool can fail its call but never take the server down. Versioned updates via candidate files, per-tool stats, auto-disable after 5 consecutive failures. Forged tools serve chat AND BG agents; `forge_tool` itself is chat-only. Session rebuilds at the next safe point (`_forceSessionRebuild`) so new tools appear next turn.
+
+**Quality & context features**
+- *Adversarial challenge (`create_task(challenge:true)`)*: a devil's-advocate pass attacks the deliverable between agent and review; SEVERITY+CRITIQUE persisted and fed to the reviewer ("weigh it, don't rubber-stamp it") — real flaws close through the existing REVISE loop.
+- *BM25 mini-RAG (`ProjectRetriever.js`)*: zero-dependency BM25 over project output/+input/, mtime-fingerprint cache; the agent prompt carries the 2 chunks most relevant to the task as inline excerpts.
+- *Squid XP*: `recordAgentOutcome` — pass=100 XP (+10×score), revise=40, fail=10; level=√(xp/100); phantom-pass reviews grant no score bonus; Lv5 crown / Lv8 halo unlocks (user hat choice wins).
+- *Task replay*: compact timeline (calls/results/thinking/milestones, ≤120 entries) captured on every BG run; ▶ chip on done kanban cards opens a 10× film-mode overlay.
+- *Morning brief*: dream step 10 builds `BRAIN/morning_brief.json` (code-built: done-24h, blockers, phantom-pass count, missions; LLM adds optional SUGGEST lines); `GET /api/v2/brief`; shown once/day; Telegram push.
+
+**Reliability wave (the "converging" sprint)**
+Crash-chain self-heal (null context → auto unload/reload), pre-clip two-tier ctx policy (probe trusted exactly, header only clips >2×, Qwen3.5 header ≈1.8× reality), inflated-KV-probe rejection at read AND write, batch auto-shrink 1024→512 under 2GB free, AbortController wired into node-llama-cpp so budget/loop guards stop the internal tool loop mid-flight, `plan_project` force-stops the model and runs the pipeline on a FRESH session, per-section budget for `update_project_memory`, phantom-PASS reviews flagged `unverified:true`, live context gauge (1s throttle) during generation, teleport animation for agent↔temple transitions with position continuity across `loadSquids`.
+
+**New defaults (user directives)**
+Auto `gpuLayers` = **one CPU layer** (estLayers−1 on GPU) whenever weights fit — budget solver only for oversized models; image generation defaults **900×900 everywhere** (tool, service, routes, UI presets).
+
+### Early-July wave — agentic architecture
+
 The system landed on an agentic architecture that trades speed for correctness. What you can trust in a run now is: each role has its own model + context, no hidden KV leaks between phases, tool calls are verified against the actual filesystem, and structural planning replaces improvised control flow.
 
 **Agentic phase swaps — the core discipline**
-Every phase (chat / agent / review) runs on a **freshly loaded model** with its **own context regime**, and the KV cache from one role never crosses into another. Chat honors the operator's configured context (large, e.g. 45k tokens), agent execution runs on a tight 6k context with a mission-only prompt (~500 tokens), quality review runs on 10k with a validation-only prompt. Projects can bind different models per phase (`assigned_model_id`, `review_model_id`) so a small fast model does the agent work while Poseidon keeps the strategic seat, or the same model is simply reloaded with a different regime — the operator chooses. Direct chat auto-restores the Poseidon regime when a task leaves the aquarium in an agent/review phase. Trade-off explicitly accepted: each swap costs ~30–40s of load; quality of workflow > raw throughput.
+Every phase (chat / agent / review) runs on a **freshly loaded model** with its **own context regime**, and the KV cache from one role never crosses into another. Chat honors the operator's configured context (large, e.g. 45k tokens), agent execution runs on a 12,288-token context with a mission-only prompt (~500 tokens), quality review runs on 14,336 with a validation-only prompt (regimes bumped from the original 6k/10k — too tight for real task work). Projects can bind different models per phase (`assigned_model_id`, `review_model_id`) so a small fast model does the agent work while Poseidon keeps the strategic seat, or the same model is simply reloaded with a different regime — the operator chooses. Direct chat auto-restores the Poseidon regime when a task leaves the aquarium in an agent/review phase. Trade-off explicitly accepted: each swap costs ~30–40s of load; quality of workflow > raw throughput.
 
 **Structural planning — control flow in code, not in the model**
 Multi-task kickoffs are handled by `plan_project(goal, project)`: the model makes one trivial call, then a coded pipeline runs the multi-step work — reads project memory + agent roster, does ONE grammar-constrained generation (`createGrammarForJsonSchema`) that produces a 3-6 task JSON plan whose `agent_id` field is bound to a live registry enum (the model *structurally cannot* invent agents, loop, narrate tools, or output prose), then creates each task via `_createTask`, chains dependencies sequentially, updates memory once. Freeform `create_task` remains for one-off work with idempotency (same-title open task returned, not duplicated) and phantom-dep validation (deps must exist AND belong to the same project). WIP limit of 4 per project on freeform, exempt for plan-pipeline tasks (chained = serial by construction).
@@ -65,7 +88,7 @@ A project task can only be assigned to an agent that belongs to the temple: `_cr
 8. [Established Processes & Data Flows](#8-established-processes--data-flows)
 9. [Skills Catalog](#9-skills-catalog)
 10. [Agent Tool Registry](#10-agent-tool-registry)
-11. [Poseidon Tool Registry (39 Chat Tools)](#11-poseidon-tool-registry-39-chat-tools)
+11. [Poseidon Tool Registry (43 Canonical Tools)](#11-poseidon-tool-registry-43-canonical-tools)
 12. [Pixel Art & Visual System](#12-pixel-art--visual-system)
 13. [Installation & Running](#13-installation--running)
 
@@ -288,6 +311,7 @@ After wiring, at startup:
 | POST | `/api/v2/repair` | Force-repairs all registries via RegistryHealthCheck |
 | GET | `/api/v2/health` | CPU/RAM/VRAM + model status + broker state |
 | POST | `/api/v2/heartbeat` | Manual heartbeat trigger (UI refresh) |
+| GET | `/api/v2/brief` | Morning brief JSON (dream-generated; `?fresh=1` rebuilds from registries) |
 | POST | `/api/v2/poseidon/chat` | SSE streaming chat to Poseidon (builds system prompt, runs inference, appends to temp.md) |
 | POST | `/api/v2/poseidon/abort` | Stop current Poseidon generation |
 | GET | `/api/v2/poseidon/session-state` | Current session: turns, context%, last message |
@@ -531,19 +555,21 @@ Registers 24 tools available to **agents** (not Poseidon — Poseidon has its ow
 
 ### 5.11 Other Services
 
-**LocalModelScanner (325 lines):** Scans MODELS_DIR for `.gguf` files, validates magic bytes, extracts metadata, matches against registry.
+**MissionControl:** Bounded autonomous mission loop — plan→execute→audit iterations with code-enforced budgets (`max_tasks`/`max_iterations`/`deadline_hours`), registry-diff task attribution, broker-idle gating, final report writer. Registry: `BRAIN/missions.json`, tick every 2 min.
 
-**ModelDownloader (192 lines):** Downloads models from HuggingFace Hub with progress tracking. Writes to MODELS/ directory.
+**ToolForge (+ toolforge_runner):** Self-extension. Validates (name/size/collision, `node --check`, live test), versions, and registers model-authored tools in `aquarium/TOOLS/`; executes them out-of-process with a 30s SIGKILL timeout and 64KB output cap; per-tool stats with auto-disable after 5 consecutive failures.
 
-**ImageGenerationService (289 lines):** Calls stable-diffusion.cpp CLI with prompt/negative/steps/cfg params. Saves PNG to TASKS/OUTPUT/.
+**ProjectRetriever:** Zero-dependency BM25 (k1=1.4, b=0.75) over project `output/`+`input/`; paragraph chunking, FR+EN stopwords, per-project index cached by mtime+size fingerprint, 20-project LRU. Feeds the agent prompt with the top task-relevant excerpts.
 
-**HuggingFaceInference (336 lines):** HTTP client for HF Inference API — text generation, code generation, embeddings.
+**ModelDownloader:** Downloads models from HuggingFace Hub with progress tracking. Writes to MODELS/ directory.
 
-**FilesystemTools (513 lines):** Implements `run_javascript` sandbox (temp file + `node` subprocess). Implements `read_media_file` base64 encoder.
+**ImageGenerationService:** Calls stable-diffusion.cpp CLI with prompt/negative/steps/cfg params (900×900 default; img2img via `--init-img` on `img_gen` mode). Saves PNG to TASKS/OUTPUT/.
 
-**FilesystemBrowser (154 lines):** Directory listing with file type detection, size, used by model file browser in UI.
+**FilesystemTools:** Implements `run_javascript` sandbox (temp file + `node` subprocess). Implements `read_media_file` base64 encoder.
 
-**OrchestratorTools (619 lines):** Standalone tool handlers for GitHub integration (status, commit, push), web operations (search, fetch, save), and direct file manipulation called by Poseidon tools.
+**FilesystemBrowser:** Directory listing with file type detection, size, used by model file browser in UI.
+
+**OrchestratorTools:** Standalone tool handlers for the `git` action dispatch, web operations (search, fetch, save), image dispatch/upscale, and direct file manipulation called by Poseidon tools.
 
 ---
 
@@ -1132,53 +1158,28 @@ Poseidon can write/update skills via the `write_skill` tool. Dream cycle can upd
 
 ---
 
-## 11. Poseidon Tool Registry (39 Chat Tools)
+## 11. Poseidon Tool Registry (43 Canonical Tools)
 
-Defined in `PoseidonOrchestrator.buildFunctions()`. These are the tools Poseidon can call during user chat or BG tasks.
+Defined in `PoseidonOrchestrator.buildFunctions()`. Canonical catalog lives in `PoseidonOrchestrator.CANONICAL_TOOL_CATALOG` (single source of truth for the system prompt AND `read_my_brain('tools_catalog')`). 43 tools across 10 categories — plus any forged tools registered at runtime.
 
-| Tool | Purpose |
+| Category | Tools |
 |---|---|
-| `create_agent` | Create new agent with full config |
-| `delete_agent` | Remove agent |
-| `list_agents` | Get all agents with status |
-| `update_agent_field` | Update specific agent field |
-| `create_project` | Create project (folder + registry) |
-| `archive_project` | Archive project |
-| `delete_project` | Delete project + disk folder |
-| `list_projects` | All projects |
-| `create_task` | Create task (uses mutex-safe generateNextId) |
-| `list_tasks` | Filter by status/project/agent |
-| `update_task` | Modify task fields |
-| `delete_task` | Remove task |
-| `assign_agent` | Assign agent to project |
-| `unassign_agent` | Remove agent from project |
-| `update_project` | Update project metadata |
-| `update_project_memory` | Write to specific memory section |
-| `read_project_memory` | Read project memory section |
-| `list_skills` | List all skills |
-| `delete_skill` | Remove skill |
-| `get_logs` | Recent system event logs |
-| `log_decision` | Append a decision to logs |
-| `get_system_state` | Full snapshot of system state |
-| `read_file` | Read file from disk |
-| `write_file` | Write file to disk |
-| `list_files` | List directory |
-| `web_search` | DuckDuckGo search |
-| `web_fetch` | Fetch URL content |
-| `fetch_and_save` | Fetch URL + save to project output |
-| `fetch_image_url` | Download image by URL |
-| `edit_file` | Line-range edit of existing file |
-| `github_status` | Git status of repo |
-| `github_commit` | Stage, commit, push changes |
-| `update_user_context` | Update persistent_context in brain |
-| `write_skill` | Create/update a skill file |
-| `update_brain_field` | Modify specific poseidon_brain.json field |
-| `read_my_brain` | Read brain sections (tasks/projects/agents/skills/soul) |
-| `list_models` | All available models |
-| `generate_image` | Run stable-diffusion.cpp |
-| `dispatch_to_agent` | Create + assign task in one call |
+| meta / self (7) | `read_my_brain`, `update_brain_field`, `write_skill`, `list_skills`, `delete_skill`, `record_skill_outcome`, `forge_tool` |
+| agents (5) | `create_agent`, `delete_agent`, `list_agents`, `update_agent_field`, `dispatch_to_agent` |
+| projects (9) | `create_project`, `list_projects`, `plan_project`, `update_project`, `update_project_memory`, `read_project_memory`, `audit_project`, `launch_mission`, `mission_status` |
+| tasks (4) | `create_task` (supports `challenge:true` adversarial mode), `list_tasks`, `update_task`, `delete_task` |
+| files (4) | `read_file`, `write_file`, `edit_file`, `list_files` |
+| web & fetch (2) | `web_search` (supports `mode="image"`), `web_fetch` (supports `extract="image"`) |
+| git (1) | `git` (action dispatch: status/diff/commit/push) |
+| media / docs (5) | `generate_image` (900×900 default), `edit_image`, `generate_pptx`, `generate_docx`, `list_models` |
+| comms (4) | `send_email`, `list_mcp_servers`, `call_mcp_tool`, `execute_bash` |
+| system / logs (2) | `get_logs`, `update_user_context` |
 
-**BG mode (16 tools, used for background tasks):** create_task, list_tasks, update_task, assign_agent, read_project_memory, update_project_memory, read_file, write_file, list_files, web_search, web_fetch, fetch_and_save, log_decision, write_skill, read_my_brain, generate_image.
+Consolidations vs older versions: `github_*` → single `git` action dispatch; `archive_project`/`assign_agent`/`unassign_agent` → `update_project(field=...)`; `log_decision` → `update_project_memory(section="decision")`; `get_system_state` → `read_my_brain('current_state...')`; `fetch_and_save`/`fetch_image_url` → `web_fetch` options.
+
+**BG mode:** slim subset (execution + files + web + project memory + media + comms) plus ALL enabled forged tools; per-agent `tools_allowed` whitelists gate further. `forge_tool`, agent admin and mission tools are chat-only.
+
+**Forged tools:** stored in `aquarium/TOOLS/` (`manifest.json` + one CJS module per tool), executed out-of-process via `toolforge_runner.js` with a 30s hard timeout. See ToolForge in section 5.
 
 ---
 

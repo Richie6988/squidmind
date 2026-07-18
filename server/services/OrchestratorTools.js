@@ -9,7 +9,8 @@
  *   - web_search (DuckDuckGo HTML API, no key required)
  *   - web_fetch (any URL, returns text)
  *   - edit_file (find/replace inside an existing file)
- *   - github_status / github_diff / github_commit / github_push / github_pull
+ *   - git operations (single `git` action-dispatch tool: status/diff/commit/push)
+ *   - image generation dispatch + upscale
  *
  * Every tool returns { ok: true, ... } on success or { ok: false, error } on
  * failure. Never throws to the caller - the LLM should see structured results

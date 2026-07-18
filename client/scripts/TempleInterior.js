@@ -707,7 +707,7 @@ const TempleInterior = {
   // ── Image quick actions (upscale / edit-with-prompt) ─────────────────────
   async _upscaleImage(filepath, name) {
     if (!filepath) return;
-    const scale = window.confirm('Upscale ' + name + ' by 4×?  OK = 4×, Cancel = 2×') ? 4 : 2;
+    const scale = (await SquidModal.confirm('Upscale ' + name + ' by 4×? OK = 4×, Cancel = 2×')) ? 4 : 2;
     this._setStatus(`Upscaling ${name} ${scale}×…`);
     try {
       // Real Lanczos resample — not a diffusion regen.
@@ -2775,7 +2775,6 @@ const TempleInterior = {
     if (!s) return '';
     return String(s).replace(/[<>&"]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'})[c]);
   },
-  _escape(s) { return this._esc(s); },
 
   // Open a file that was clicked on a done/failed kanban card. Routes to the
   // same _openFile the output-list uses so the preview panel takes over.

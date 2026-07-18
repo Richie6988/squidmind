@@ -112,12 +112,6 @@ body {
 .ml-cat-title,
 .comms-panel-content label,
 .skills-body label,
-.af-section-title,
-.agent-form-section-title {
-  font-family: var(--panel-font) !important;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
 
 /* Panel inputs — crisp and readable */
 .agent-form-row > input,
@@ -194,12 +188,6 @@ body {
 .skills-desc,
 .ml-entry-desc,
 .hf-result-desc,
-.af-tool-desc {
-  font-family: var(--panel-font) !important;
-  font-size: var(--panel-text-xs) !important;
-  line-height: 1.6 !important;
-  letter-spacing: 0 !important;
-}
 
 /* ─── Agent Form specific ─────────────────────────────────────────── */
 .agent-form-row > label {
@@ -213,20 +201,8 @@ body {
 
 /* Accessory tile labels */
 .af-accessory-tile span,
-.af-tile-label {
-  font-family: var(--panel-font) !important;
-  font-size: 9px !important;
-  letter-spacing: 0 !important;
-}
 
 /* Tool category labels */
-.af-tool-cat-title,
-.ml-cat-title {
-  font-family: var(--panel-font) !important;
-  font-size: 9px !important;
-  font-weight: 600 !important;
-  letter-spacing: 0.08em !important;
-}
 
 /* ─── Model Library specific ──────────────────────────────────────── */
 .ml-entry-name,
@@ -362,11 +338,6 @@ header *,
 .poseidon-avatar,
 .squid-name,
 .walker-name,
-.avatar-name,
-.pc-welcome-title,
-.pc-name {
-  /* These keep their existing font declarations — no panel-font override */
-}
 
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -588,12 +559,6 @@ h1 {
   cursor: crosshair;
 }
 
-.aquarium-overlay {
-  position: absolute;
-  top: 16px;
-  left: 16px;
-  z-index: 10;
-}
 
 .panels-container {
   width: 0;
@@ -1631,32 +1596,12 @@ input[type="color"]::-webkit-color-swatch {
   color: var(--success);
 }
 
-.agent-item, .file-item, .task-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px;
-  background: var(--ocean-mid);
-  border: 1px solid var(--border);
-  margin-bottom: 4px;
-  font-size: 9px;
-}
-
-.agent-emoji, .file-icon {
-  font-size: 16px;
-}
 
 .agent-name, .file-name {
   flex: 1;
   color: var(--text-primary);
 }
 
-.agent-status {
-  padding: 2px 6px;
-  background: var(--ocean-light);
-  border: 1px solid var(--border);
-  font-size: 8px;
-}
 
 .file-size {
   color: var(--text-secondary);
@@ -2686,9 +2631,6 @@ input[type="color"]::-webkit-color-swatch {
 }
 
 
-.agents-workspace { position: relative; }
-
-
 /* Project input upload */
 .resource-upload-row {
   display: flex; align-items: center; gap: 8px;
@@ -2744,25 +2686,6 @@ input[type="color"]::-webkit-color-swatch {
   font-size: 10px;
 }
 
-.agent-avatar {
-  background: rgba(0, 0, 0, 0.3);
-  padding: 16px;
-  border-radius: 12px;
-  text-align: center;
-  border: 2px solid rgba(255, 255, 255, 0.2);
-}
-
-.avatar-squid {
-  font-size: 48px;
-  margin-bottom: 8px;
-}
-
-.avatar-name {
-  color: white;
-  font-size: 12px;
-  font-weight: bold;
-  margin-bottom: 4px;
-}
 
 .avatar-status {
   color: rgba(255, 255, 255, 0.7);
@@ -3037,14 +2960,6 @@ input[type="color"]::-webkit-color-swatch {
   }
 }
 
-.agent-avatar.walking {
-  animation: walk 6s linear infinite;
-}
-
-.agent-avatar.walking .avatar-squid {
-  font-size: 32px;
-  animation: bob 0.5s ease-in-out infinite alternate;
-}
 
 @keyframes bob {
   from {
@@ -3419,31 +3334,7 @@ input[type="color"]::-webkit-color-swatch {
 }
 
 /* Agent Avatars */
-.agent-avatar {
-  background: rgba(255, 255, 255, 0.1);
-  border-radius: 8px;
-  padding: 12px;
-  margin: 8px 0;
-  text-align: center;
-  position: relative;
-}
 
-.avatar-squid {
-  font-size: 32px;
-  margin-bottom: 8px;
-}
-
-.avatar-name {
-  font-size: 11px;
-  font-weight: bold;
-  margin-bottom: 4px;
-}
-
-.avatar-specialty {
-  font-size: 9px;
-  color: rgba(255, 255, 255, 0.7);
-  margin-bottom: 4px;
-}
 
 .avatar-status {
   font-size: 9px;
@@ -5515,7 +5406,6 @@ button .pixel-icon {
 }
 
 
-
 .projects-search-input {
   flex: 1;
   background: var(--ocean-mid);
@@ -5729,63 +5619,6 @@ button .pixel-icon {
   color: #06ffa5;
 }
 
-.af-tools-cat-header {
-  margin: 10px 0 4px;
-  font-size: 9px;
-  color: var(--text-secondary);
-  font-family: var(--panel-font);
-  letter-spacing: 1px;
-}
-
-.af-tools-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
-  gap: 6px;
-  margin-bottom: 10px;
-}
-.af-tool-tile {
-  background: var(--ocean-mid);
-  border: 2px solid var(--border);
-  padding: 8px 6px;
-  cursor: pointer;
-  text-align: center;
-  transition: all 0.15s;
-  position: relative;
-}
-.af-tool-tile:hover {
-  border-color: var(--accent);
-  background: rgba(6,255,165,0.05);
-  transform: translateY(-1px);
-}
-.af-tool-tile.selected {
-  border-color: var(--success);
-  background: rgba(6,255,165,0.12);
-  box-shadow: 0 0 8px rgba(6,255,165,0.25);
-}
-.af-tool-tile.selected::after {
-  content: 'X';
-  position: absolute;
-  top: 2px; right: 4px;
-  font-family: var(--panel-font);
-  font-size: 8px;
-  color: var(--success);
-}
-.af-tool-icon {
-  font-family: var(--panel-font);
-  font-size: 9px;
-  color: var(--accent);
-  margin-bottom: 4px;
-  padding: 6px;
-  background: var(--ocean-deep);
-  border: 1px solid var(--border);
-}
-.af-tool-name {
-  font-size: 8px;
-  color: var(--text);
-  font-family: 'Courier New', monospace;
-  word-break: break-word;
-  line-height: 1.2;
-}
 
 /* ── New tool rows (list style) ── */
 .af-tool-row {
@@ -6028,13 +5861,6 @@ button .pixel-icon {
 }
 
 /* ========== Temple interior: walking squid sprites ========== */
-.agent-avatar.walking {
-  display: inline-flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2px;
-  margin: 4px;
-}
 
 .avatar-squid-canvas {
   width: 120px;
@@ -6044,18 +5870,6 @@ button .pixel-icon {
   background: transparent;
 }
 
-.avatar-name {
-  font-family: 'Press Start 2P';
-  font-size: 8px;
-  color: var(--text);
-  text-align: center;
-  margin-top: 4px;
-}
-.avatar-specialty {
-  font-family: 'Courier New', monospace;
-  font-size: 8px;
-  color: var(--accent);
-}
 .avatar-status {
   font-family: 'Courier New', monospace;
   font-size: 8px;
@@ -6100,16 +5914,6 @@ button .pixel-icon {
 }
 
 /* ========== Temple interior button row ========== */
-.avatar-btn-row {
-  display: flex;
-  gap: 4px;
-  margin-top: 4px;
-}
-.avatar-btn-row .btn-config-squid {
-  flex: 1;
-  padding: 3px 4px;
-  font-size: 6px;
-}
 
 /* ========== Chat tool-call bubbles (Poseidon shows thinking) ========== */
 .chat-tool-bubble {
@@ -7699,7 +7503,6 @@ h4.pc-md-h { font-size: 8px; color: #94a3b8; }
 /* ── Actions ── */
 .comms-actions { display: flex; gap: 8px; margin-top: 4px; }
 .comms-error { font-size: 9px; color: var(--danger); margin-top: 6px; }
-
 
 
 /* ── History ── */

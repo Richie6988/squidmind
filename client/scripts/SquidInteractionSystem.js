@@ -712,13 +712,13 @@ class SquidInteractionSystem {
     };
     const projectNum = PROJECT_MAP[templeName.toUpperCase()];
     if (!projectNum) {
-      alert(`No V2 project mapping for temple: ${templeName}`);
+      SquidModal.alert(`No project mapping for temple: ${templeName}`);
       return;
     }
     if (typeof EditorBrowser !== 'undefined') {
       EditorBrowser.openProject(projectNum);
     } else {
-      alert('EditorBrowser not loaded yet');
+      SquidModal.alert('EditorBrowser not loaded yet');
     }
   }
 

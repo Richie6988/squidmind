@@ -3181,7 +3181,7 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
    *   4. CONSOLIDATE — save a reflection summary to dream_memory.json
    *
    * The dream uses the REAL function-calling tools (write_skill, list_skills,
-   * read_my_brain, log_decision) so Poseidon's skill base actually improves.
+   * read_my_brain) so Poseidon's skill base actually improves.
    * Results injected into next chat system prompt as # LAST DREAM.
    */
   async triggerDream(opts = {}) {
@@ -3371,7 +3371,7 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
       if (orchestrator) {
         try {
           const allFns = await orchestrator.buildFunctions('bg');
-          const allowed = new Set(['write_skill','list_skills','read_my_brain','log_decision','write_file','read_file']);
+          const allowed = new Set(['write_skill', 'list_skills', 'read_my_brain', 'write_file', 'read_file']);  // log_decision removed with tool consolidation
           for (const [k, v] of Object.entries(allFns)) {
             if (allowed.has(k)) dreamFunctions[k] = v;
           }

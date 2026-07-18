@@ -37,7 +37,7 @@ const AgentForm = {
       this.toolRegistry = toolsRes.registry || {};
       this.modelRegistry = modelsRes.registry || {};
     } catch (err) {
-      alert('Failed to load agent: ' + err.message);
+      SquidModal.alert('Failed to load agent: ' + err.message);
       return;
     }
     this._buildModal();
@@ -946,7 +946,7 @@ const AgentForm = {
     const aid   = this.agentId;
 
     if (!window.UndoManager) {
-      if (!confirm(`Delete ${name}?\nThis removes the registry entry AND the brain file.`)) return;
+      if (!(await SquidModal.confirm(`Delete ${name}? This removes the registry entry AND the brain file.`))) return;
       try {
         await window.api._fetch(`/agents/${aid}`, { method: 'DELETE' });
         if (window.aquarium?.loadSquids) await window.aquarium.loadSquids();
