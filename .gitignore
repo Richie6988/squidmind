@@ -45,3 +45,4 @@ migrate.js
 # Backup snapshots — never commit user state
 aquarium/.backups/
 BACKUPS/
+.pyenv/

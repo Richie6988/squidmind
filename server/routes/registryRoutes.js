@@ -22,6 +22,25 @@ router.get('/poseidon', async (req, res) => {
   } catch (err) { res.status(500).json({ success: false, error: err.message }); }
 });
 
+// PYENV — dedicated IAQUA Python virtualenv (<repo>/.pyenv, lazy-created).
+// The temple RUN button uses it automatically once it exists.
+router.get('/pyenv', async (req, res) => {
+  try { res.json({ success: true, ...(await require('../services/PyEnvService').list()) }); }
+  catch (e) { res.status(500).json({ success: false, error: e.message }); }
+});
+router.post('/pyenv/install', async (req, res) => {
+  try {
+    const r = await require('../services/PyEnvService').install(req.body?.packages);
+    res.status(r.ok ? 200 : 400).json({ success: r.ok, ...r });
+  } catch (e) { res.status(500).json({ success: false, error: e.message }); }
+});
+router.post('/pyenv/remove', async (req, res) => {
+  try {
+    const r = await require('../services/PyEnvService').remove(req.body?.packages);
+    res.status(r.ok ? 200 : 400).json({ success: r.ok, ...r });
+  } catch (e) { res.status(500).json({ success: false, error: e.message }); }
+});
+
 // MORNING BRIEF — written by the dream cycle (BRAIN/morning_brief.json).
 // On-demand fallback: ?fresh=1 rebuilds from registries right now (no LLM
 // suggestions in that path — those only come from the dream).

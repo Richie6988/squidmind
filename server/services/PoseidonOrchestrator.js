@@ -865,6 +865,23 @@ My response: "${ss.last_response_preview}"${tools}
         }
       }),
 
+      pyenv: defineChatSessionFunction({
+        description: 'Manage the dedicated IAQUA Python virtualenv used by script execution (temple RUN button and python scripts in tasks). action=install with packages=["pandas","matplotlib"] installs libs (plain PyPI names, optional ==version; venv auto-created on first install, 5min timeout). action=list shows installed packages. action=remove uninstalls. Use when a script needs a missing library (ModuleNotFoundError).',
+        params: {
+          type: 'object',
+          properties: {
+            action:   { type: 'string', enum: ['install', 'list', 'remove'], description: 'Default: list' },
+            packages: { type: 'array', items: { type: 'string' }, description: 'e.g. ["pandas", "requests==2.32.0"] — required for install/remove' }
+          }
+        },
+        handler: async ({ action = 'list', packages } = {}) => {
+          const py = require('./PyEnvService');
+          if (action === 'install') return await py.install(packages);
+          if (action === 'remove')  return await py.remove(packages);
+          return await py.list();
+        }
+      }),
+
       create_task: defineChatSessionFunction({
         description: 'Create a task in the tasks registry. Optionally assign to a specific agent. ' +
           'If you set assigned_agent_id, the task is ALREADY assigned and will run automatically — do NOT also call dispatch_to_agent for it (that creates a duplicate). ' +
@@ -1914,6 +1931,7 @@ My response: "${ss.last_response_preview}"${tools}
         'send_email', 'list_mcp_servers', 'call_mcp_tool',
         'execute_bash', 'generate_pptx', 'generate_docx',
         'list_skills', 'read_my_brain', 'record_skill_outcome',
+        'pyenv',
       ]);
       // Forged tools are BG-allowed by design: agents are their main users.
       // (forge_tool itself stays chat-only — self-extension is Poseidon's
@@ -3220,7 +3238,7 @@ PoseidonOrchestrator.prototype._flagSessionRebuild = function () {
 // _sectionToolsPointer (system prompt) and _readMyBrain('tools_catalog').
 // Keep in sync with the function definitions in getPoseidonFunctions().
 PoseidonOrchestrator.CANONICAL_TOOL_CATALOG = {
-  'meta / self':      ['read_my_brain', 'update_brain_field', 'write_skill', 'list_skills', 'delete_skill', 'record_skill_outcome', 'forge_tool'],
+  'meta / self':      ['read_my_brain', 'update_brain_field', 'write_skill', 'list_skills', 'delete_skill', 'record_skill_outcome', 'forge_tool', 'pyenv'],
   'agents':           ['create_agent', 'delete_agent', 'list_agents', 'update_agent_field', 'dispatch_to_agent'],
   'projects':         ['create_project', 'list_projects', 'plan_project', 'update_project', 'update_project_memory', 'read_project_memory', 'audit_project', 'launch_mission', 'mission_status'],
   'tasks':            ['create_task', 'list_tasks', 'update_task', 'delete_task'],

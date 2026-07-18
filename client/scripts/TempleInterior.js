@@ -2062,12 +2062,48 @@ const TempleInterior = {
       if (r.stderr) parts.push(`<pre class="ti-run-err">${this._esc(r.stderr)}</pre>`);
       if (!r.stdout && !r.stderr) parts.push(`<div class="ti-replay-row ti-replay-dim">(no output)</div>`);
       const exitCls = r.exit_code === 0 ? 'ti-replay-ok' : 'ti-replay-ko';
-      parts.push(`<div class="ti-replay-row ti-replay-end ${exitCls}">■ exit ${r.exit_code}${r.killed_by ? ` · killed by ${this._esc(r.killed_by)}` : ''} · ${(r.duration_ms / 1000).toFixed(1)}s</div>`);
+      parts.push(`<div class="ti-replay-row ti-replay-end ${exitCls}">■ exit ${r.exit_code}${r.killed_by ? ` · killed by ${this._esc(r.killed_by)}` : ''} · ${(r.duration_ms / 1000).toFixed(1)}s · ${this._esc(r.interpreter || '')}</div>`);
+      // Missing-lib fast path: ModuleNotFoundError → one-click pip install
+      // into the dedicated IAQUA venv, then re-run automatically.
+      const mod = /ModuleNotFoundError: No module named '([A-Za-z0-9._-]+)'/.exec(r.stderr || '');
+      if (mod) {
+        // Import name → PyPI name for the common divergent cases
+        const PYPI = { cv2: 'opencv-python', PIL: 'pillow', sklearn: 'scikit-learn', yaml: 'pyyaml', bs4: 'beautifulsoup4' };
+        const pkg = PYPI[mod[1]] || mod[1].split('.')[0];
+        parts.push(`<div class="ti-replay-row" style="margin-top:6px;">
+          <button class="btn-primary" style="font-size:9px;padding:3px 10px;"
+            onclick="TempleInterior._pipInstallAndRerun('${this._esc(pkg)}','${this._esc(filename)}','${this._esc(type)}', this)">
+            ⬇ pip install ${this._esc(pkg)} (IAQUA venv) + re-run
+          </button></div>`);
+      }
       feed.innerHTML = parts.join('');
       // The run may have written files (matplotlib PNGs, CSVs…) — refresh the list
       this._renderFiles?.();
     } catch (e) {
       feed.innerHTML = `<div class="ti-replay-row ti-replay-ko">✗ ${this._esc(e.message)}</div>`;
+    }
+  },
+
+  // One-click missing-lib recovery: install into the IAQUA venv, close the
+  // console, re-run the same file. First install also CREATES the venv
+  // (~20s) — subsequent runs use it automatically.
+  async _pipInstallAndRerun(pkg, filename, type, btn) {
+    if (btn) { btn.disabled = true; btn.textContent = `⬇ installing ${pkg}… (first time creates the venv, ~30s)`; }
+    try {
+      const r = await fetch('/api/v2/pyenv/install', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ packages: [pkg] }),
+      }).then(x => x.json());
+      if (!r.success) {
+        if (btn) { btn.disabled = false; btn.textContent = `✗ ${(r.error || 'install failed').slice(0, 60)} — retry`; }
+        return;
+      }
+      // Close the old console and re-run — the fresh console shows the result.
+      document.querySelectorAll('.ti-replay-overlay').forEach(el => el.remove());
+      this._setStatus(`✓ ${pkg} installed in IAQUA venv — re-running ${filename}`);
+      await this._runPython(filename, type);
+    } catch (e) {
+      if (btn) { btn.disabled = false; btn.textContent = `✗ ${e.message.slice(0, 50)} — retry`; }
     }
   },
 

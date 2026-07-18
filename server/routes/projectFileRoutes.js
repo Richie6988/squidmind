@@ -47,8 +47,10 @@ function buildProjectFileRoutes({ rm }) {
       if (!fs.existsSync(target)) return res.status(404).json({ success: false, error: `${filename} not found in ${dir}/` });
 
       const { spawn } = require('child_process');
+      const pyenv = require('../services/PyEnvService');
+      const { bin, preArgs, label } = pyenv.pythonInvocation();
       const t0 = Date.now();
-      const child = spawn('python3', ['-I', target], { cwd: baseDir, stdio: ['ignore', 'pipe', 'pipe'] });
+      const child = spawn(bin, [...preArgs, target], { cwd: baseDir, stdio: ['ignore', 'pipe', 'pipe'] });
       let out = '', err = '', truncated = false, killed = false;
       const CAP = 256 * 1024;
       const clamp = () => { if (out.length + err.length > CAP) { truncated = true; try { child.kill('SIGKILL'); } catch {} } };
@@ -60,6 +62,7 @@ function buildProjectFileRoutes({ rm }) {
         res.json({
           success: true,
           exit_code: code,
+          interpreter: label,
           killed_by: killed ? 'timeout (60s)' : (truncated ? 'output cap (256KB)' : null),
           duration_ms: Date.now() - t0,
           stdout: out.slice(0, CAP),
