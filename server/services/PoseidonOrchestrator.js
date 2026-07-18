@@ -882,6 +882,32 @@ My response: "${ss.last_response_preview}"${tools}
         }
       }),
 
+      schedule_task: defineChatSessionFunction({
+        description: 'RECURRING TASKS — the time trigger. action=create with expr + title (+description/project/assigned_agent_id) schedules a task template that fires automatically: daily@HH:MM, weekly:mon@HH:MM (mon..sun), hourly@:MM, every:Nh, every:Nm (min 5m). Fired tasks land in the kanban like any other and are listed in the morning brief. Use for recurring work: "tous les lundis 8h synthèse de la semaine", nightly source checks, hourly monitors. Other actions: list, delete, enable, disable (schedule_id required).',
+        params: {
+          type: 'object',
+          properties: {
+            action: { type: 'string', enum: ['create', 'list', 'delete', 'enable', 'disable'], description: 'Default: list' },
+            schedule_id: { type: 'string', description: 'e.g. sched_0001 — for delete/enable/disable' },
+            expr:  { type: 'string', description: 'daily@08:00 · weekly:mon@08:00 · hourly@:30 · every:2h · every:30m' },
+            title: { type: 'string', description: 'Task title template — the fire date is appended automatically' },
+            description: { type: 'string', description: 'Full task instructions for the agent' },
+            project: { type: 'string' },
+            assigned_agent_id: { type: 'string' },
+            priority: { type: 'string', enum: ['low', 'medium', 'high'] }
+          }
+        },
+        handler: async ({ action = 'list', schedule_id, expr, title, description, project, assigned_agent_id, priority } = {}) => {
+          const sched = self.scheduler;
+          if (!sched) return { ok: false, error: 'Scheduler not wired' };
+          if (action === 'create')  return await sched.create({ expr, title, description, project, assigned_agent_id, priority });
+          if (action === 'delete')  return await sched.remove(schedule_id);
+          if (action === 'enable')  return await sched.setEnabled(schedule_id, true);
+          if (action === 'disable') return await sched.setEnabled(schedule_id, false);
+          return await sched.list();
+        }
+      }),
+
       create_task: defineChatSessionFunction({
         description: 'Create a task in the tasks registry. Optionally assign to a specific agent. ' +
           'If you set assigned_agent_id, the task is ALREADY assigned and will run automatically — do NOT also call dispatch_to_agent for it (that creates a duplicate). ' +
@@ -3262,7 +3288,7 @@ PoseidonOrchestrator.prototype._flagSessionRebuild = function () {
 PoseidonOrchestrator.CANONICAL_TOOL_CATALOG = {
   'meta / self':      ['read_my_brain', 'update_brain_field', 'write_skill', 'list_skills', 'delete_skill', 'record_skill_outcome', 'forge_tool', 'pyenv'],
   'agents':           ['create_agent', 'delete_agent', 'list_agents', 'update_agent_field', 'dispatch_to_agent'],
-  'projects':         ['create_project', 'list_projects', 'plan_project', 'update_project', 'update_project_memory', 'read_project_memory', 'audit_project', 'launch_mission', 'mission_status'],
+  'projects':         ['create_project', 'list_projects', 'plan_project', 'update_project', 'update_project_memory', 'read_project_memory', 'audit_project', 'launch_mission', 'mission_status', 'schedule_task'],
   'tasks':            ['create_task', 'list_tasks', 'update_task', 'delete_task'],
   'files':            ['read_file', 'write_file', 'edit_file', 'list_files'],
   'web & fetch':      ['web_search', 'web_fetch'],

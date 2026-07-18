@@ -184,6 +184,11 @@ missionControl.start();
 const InputWatcher = require('./services/InputWatcher');
 const inputWatcher = new InputWatcher(sharedRm, poseidonOrchestrator);
 inputWatcher.start();
+const { Scheduler } = require('./services/Scheduler');
+const scheduler = new Scheduler(sharedRm, poseidonOrchestrator);
+poseidonOrchestrator.scheduler = scheduler;
+scheduler.start();
+servicesRef.scheduler = scheduler;
 servicesRef.inputWatcher = inputWatcher;
 app.set('inputWatcher', inputWatcher);  // auto-analyze route reads it via req.app.get
 // ToolForge: builtin names are reserved — a forged tool must never shadow one

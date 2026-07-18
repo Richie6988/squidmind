@@ -309,6 +309,17 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
           iteration: `${m.iteration}/${m.max_iterations}`, tasks: `${m.tasks_created.length}/${m.max_tasks}`,
           goal: m.goal.slice(0, 100) }));
     } catch {}
+    // Scheduled tasks — what fired in the last 24h + what's coming next.
+    let schedules = [];
+    try {
+      const sreg = await this.rm.read('BRAIN/schedules.json').catch(() => null);
+      schedules = Object.values(sreg?.schedules || {})
+        .filter(s => s.enabled)
+        .slice(0, 8)
+        .map(s => ({ id: s.schedule_id, title: s.title, expr: s.expr,
+          fired_24h: s.last_run ? Date.parse(s.last_run) > dayAgo : false,
+          next_run: s.next_run }));
+    } catch {}
     return {
       generated_at: new Date().toISOString(),
       tasks_done_24h: done24,
@@ -316,6 +327,7 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
       open_count: open.length,
       unverified_reviews: unverified,
       missions,
+      schedules,
       suggestions,
     };
   }

@@ -34,6 +34,8 @@ const ui = {
       `<div style="padding:2px 0;color:#f87171;">⚠ ${esc(t.title)}</div>`).join('');
     const suggRows = (b.suggestions || []).map(s =>
       `<div style="padding:2px 0;color:#4facfe;">→ ${esc(s)}</div>`).join('');
+    const schedRows = (b.schedules || []).map(s =>
+      `<div style="padding:2px 0;color:${s.fired_24h ? '#06ffa5' : 'var(--ui-muted,#8899aa)'};">⏰ ${esc(s.title)} <span style="opacity:.6">· ${esc(s.expr)}${s.fired_24h ? ' · fired' : ''}</span></div>`).join('');
     const missionRows = (b.missions || []).map(m => {
       const col = m.status === 'achieved' ? '#06ffa5' : m.status === 'active' ? '#4facfe' : '#f59e0b';
       return `<div style="padding:2px 0;color:${col};">⚑ ${esc(m.mission_id)} [${esc(m.status)}] ${esc(m.goal)} <span style="opacity:.6">· iter ${esc(m.iteration)} · tasks ${esc(m.tasks)}</span></div>`;
@@ -46,6 +48,7 @@ const ui = {
         ${blockRows ? `<div style="margin-top:8px;"><b>Blockers</b></div>${blockRows}` : ''}
         ${b.unverified_reviews ? `<div style="margin-top:8px;color:#f59e0b;">👻 ${b.unverified_reviews} review(s) passed by default — worth a manual check</div>` : ''}
         ${missionRows ? `<div style="margin-top:8px;"><b>Missions</b></div>${missionRows}` : ''}
+        ${schedRows ? `<div style="margin-top:8px;"><b>Scheduled</b></div>${schedRows}` : ''}
         ${suggRows ? `<div style="margin-top:8px;"><b>Suggestions</b></div>${suggRows}` : ''}
         <div style="margin-top:8px;opacity:.5;">${(b.open_count ?? 0)} task(s) still open</div>
       </div>`;
