@@ -26,6 +26,55 @@ function buildProjectFileRoutes({ rm }) {
 
   const sanitize = (name) => String(name || '').replace(/[^a-zA-Z0-9._\- ()]/g, '_');
 
+  // ── POST /:projectId/run — execute a Python output/input file ─────────────
+  // Manual "RUN" from the temple IDE. Trust model = execute_bash (local
+  // machine trusted); the guards here are for STABILITY and containment:
+  //   - .py files only (HTML runs client-side in the sandboxed preview iframe)
+  //   - path forced inside the project folder (no traversal)
+  //   - cwd = the file's own directory → relative reads/writes stay in-project
+  //   - 60s SIGKILL timeout, 256KB combined output cap
+  //   - python3 -I (isolated: no user site-packages injection, no PYTHONPATH)
+  router.post('/:projectId/run', express.json({ limit: '32kb' }), async (req, res) => {
+    try {
+      const { filename, dir = 'output' } = req.body || {};
+      if (!filename) return res.status(400).json({ success: false, error: 'filename required' });
+      if (!/\.py$/i.test(filename)) return res.status(400).json({ success: false, error: 'Only .py files run server-side. HTML renders in the preview panel.' });
+      if (!['output', 'input'].includes(dir)) return res.status(400).json({ success: false, error: 'dir must be output|input' });
+      const folder  = await resolveFolder(req.params.projectId);
+      const baseDir = path.join(AQUARIUM.PROJECTS, folder, dir);
+      const target  = path.join(baseDir, sanitize(filename));
+      if (!target.startsWith(baseDir + path.sep)) return res.status(400).json({ success: false, error: 'path traversal blocked' });
+      if (!fs.existsSync(target)) return res.status(404).json({ success: false, error: `${filename} not found in ${dir}/` });
+
+      const { spawn } = require('child_process');
+      const t0 = Date.now();
+      const child = spawn('python3', ['-I', target], { cwd: baseDir, stdio: ['ignore', 'pipe', 'pipe'] });
+      let out = '', err = '', truncated = false, killed = false;
+      const CAP = 256 * 1024;
+      const clamp = () => { if (out.length + err.length > CAP) { truncated = true; try { child.kill('SIGKILL'); } catch {} } };
+      child.stdout.on('data', d => { out += d; clamp(); });
+      child.stderr.on('data', d => { err += d; clamp(); });
+      const killer = setTimeout(() => { killed = true; try { child.kill('SIGKILL'); } catch {} }, 60_000);
+      child.on('close', (code) => {
+        clearTimeout(killer);
+        res.json({
+          success: true,
+          exit_code: code,
+          killed_by: killed ? 'timeout (60s)' : (truncated ? 'output cap (256KB)' : null),
+          duration_ms: Date.now() - t0,
+          stdout: out.slice(0, CAP),
+          stderr: err.slice(0, 64 * 1024),
+        });
+      });
+      child.on('error', (e) => {
+        clearTimeout(killer);
+        res.json({ success: false, error: `spawn failed: ${e.message} (is python3 installed?)` });
+      });
+    } catch (e) {
+      res.status(500).json({ success: false, error: e.message });
+    }
+  });
+
   // Resolve project folder via the canonical resolver. Falls back to a slugged
   // form of the URL parameter so missing projects still get a deterministic dir.
   const resolveFolder = async (projectId) => {

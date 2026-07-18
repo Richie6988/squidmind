@@ -640,10 +640,17 @@ const TempleInterior = {
           ? `<button class="ti-file-imgact" title="Upscale 2×" onclick="event.stopPropagation();TempleInterior._upscaleImage('${this._esc(f.path||'')}','${ename}')">↑2×</button>
              <button class="ti-file-imgact" title="Edit with prompt (img2img)" onclick="event.stopPropagation();TempleInterior._editImage('${this._esc(f.path||'')}','${ename}')">✎</button>`
           : '';
+        // Executable quick-actions — .py runs server-side (console overlay),
+        // .html renders live in the preview panel's sandboxed iframe.
+        const isPy   = /\.py$/i.test(ename);
+        const isHtml = /\.html?$/i.test(ename);
+        const runActions = (isPy || isHtml)
+          ? `<button class="ti-file-imgact ti-file-run" title="${isPy ? 'Run with python3 (60s timeout)' : 'Render in preview'}" onclick="event.stopPropagation();TempleInterior.${isPy ? `_runPython('${ename}','${type}')` : `_renderHtml('${ename}','${type}')`}">▶</button>`
+          : '';
         return `<div class="ti-file" data-task-id="${f.task_id || ''}" onmouseenter="TempleInterior._haloTask('${this._esc(f.task_id||'')}',true)" onmouseleave="TempleInterior._haloTask('${this._esc(f.task_id||'')}',false)" onclick="TempleInterior._openFile('${ename}','${this._esc(f.path||'')}','${type}','${folder}',${f.size||0})">
           ${thumb}
           <span class="ti-file-name" title="${ename}">${ename}</span>${taskBadge}${sz}${ts}
-          ${imgActions}
+          ${imgActions}${runActions}
           <button class="ti-file-del" onclick="event.stopPropagation();TempleInterior._deleteFile('${folder}','${ename}','${type}')">X</button>
         </div>`;
       }).join('');
@@ -2019,6 +2026,62 @@ const TempleInterior = {
     f._previewMode = !f._previewMode;
     console.info('[IDE] toggled', f.name, '→', f._previewMode ? 'preview' : 'edit', 'content=' + (f.content?.length || 0) + 'B');
     this._ideActivate(this._activeFileIdx);
+  },
+
+  // ── MANUAL EXECUTION — run .py server-side, render .html in the preview ──
+  // Trust model = execute_bash (local machine). Server enforces: .py only,
+  // path inside project, cwd = file's dir, 60s timeout, 256KB cap, python3 -I.
+  async _runPython(filename, type = 'output') {
+    const pid = this.currentTemple?.project_id || this.currentTemple?.name;
+    if (!pid) return;
+    // Console overlay (reuses the replay-overlay chrome)
+    const ov = document.createElement('div');
+    ov.className = 'ti-replay-overlay';
+    ov.innerHTML = `
+      <div class="ti-replay-box" style="width:560px;">
+        <div class="ti-replay-head">
+          <span>▶ RUN — ${this._esc(filename)}</span>
+          <span class="ti-replay-close" title="Close">✕</span>
+        </div>
+        <div class="ti-replay-meta">python3 -I · cwd=${this._esc(type)}/ · 60s timeout</div>
+        <div class="ti-replay-feed ti-run-console"><div class="ti-replay-row ti-replay-dim">running…</div></div>
+      </div>`;
+    document.body.appendChild(ov);
+    const close = () => ov.remove();
+    ov.querySelector('.ti-replay-close').onclick = close;
+    ov.addEventListener('click', e => { if (e.target === ov) close(); });
+    const feed = ov.querySelector('.ti-run-console');
+    try {
+      const r = await fetch(`/api/v2/projects/${encodeURIComponent(pid)}/run`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filename, dir: type }),
+      }).then(x => x.json());
+      if (!r.success) { feed.innerHTML = `<div class="ti-replay-row ti-replay-ko">✗ ${this._esc(r.error || 'run failed')}</div>`; return; }
+      const parts = [];
+      if (r.stdout) parts.push(`<pre class="ti-run-out">${this._esc(r.stdout)}</pre>`);
+      if (r.stderr) parts.push(`<pre class="ti-run-err">${this._esc(r.stderr)}</pre>`);
+      if (!r.stdout && !r.stderr) parts.push(`<div class="ti-replay-row ti-replay-dim">(no output)</div>`);
+      const exitCls = r.exit_code === 0 ? 'ti-replay-ok' : 'ti-replay-ko';
+      parts.push(`<div class="ti-replay-row ti-replay-end ${exitCls}">■ exit ${r.exit_code}${r.killed_by ? ` · killed by ${this._esc(r.killed_by)}` : ''} · ${(r.duration_ms / 1000).toFixed(1)}s</div>`);
+      feed.innerHTML = parts.join('');
+      // The run may have written files (matplotlib PNGs, CSVs…) — refresh the list
+      this._renderFiles?.();
+    } catch (e) {
+      feed.innerHTML = `<div class="ti-replay-row ti-replay-ko">✗ ${this._esc(e.message)}</div>`;
+    }
+  },
+
+  // Render an HTML file live in the preview iframe. The iframe is already
+  // sandboxed (allow-scripts) and the file is served by the project route —
+  // scripts inside the artifact run in the frame, not in the app.
+  _renderHtml(filename, type = 'output') {
+    const pid = this.currentTemple?.project_id || this.currentTemple?.name;
+    const frame = document.getElementById('ti-preview-frame');
+    if (!pid || !frame) return;
+    if (this._leftTab !== 'files') this._switchLeft('files');
+    frame.style.display = '';
+    frame.src = `/api/v2/projects/${encodeURIComponent(pid)}/${type === 'input' ? 'inputs' : 'outputs'}/${encodeURIComponent(filename)}`;
+    this._setStatus(`Rendering ${filename} in preview`);
   },
 
   _renderMarkdownPreview(md) {
