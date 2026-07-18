@@ -79,6 +79,7 @@ class InputWatcher {
   }
 
   async tick() {
+    if (require('./PauseControl').isPaused()) return;   // global pause
     const preg = await this.rm.getProjectRegistry().catch(() => null);
     const projects = Object.values(preg?.projects || {})
       .filter(p => p.auto_analyze && p.status !== 'archived');

@@ -876,6 +876,12 @@ class BotService extends EventEmitter {
         return [
           '🔱 *IAQUA Bot Commands*',
           '',
+          '*System*',
+          '\ / \      — freeze / unfreeze autonomous loops',
+          '',
+          '*System*',
+          '`/pause` / `/resume` — freeze / unfreeze autonomous loops',
+          '',
           '*Models*',
           '`/models`              — list all models',
           '`/load <name>`         — load model (fuzzy match)',
@@ -1007,6 +1013,14 @@ class BotService extends EventEmitter {
         return `⏳ Restarting \`${posId}\`... You'll get a notification when ready.`;
       }
 
+      case '/pause': {
+        const st = require('./PauseControl').setPaused(true, 'telegram');
+        return `⏸ *System PAUSED* (${st.at.slice(11, 16)})\nAutonomous loops frozen: tasks, missions, watchers, dream.\nChat stays alive. \`/resume\` to unfreeze.`;
+      }
+      case '/resume': {
+        require('./PauseControl').setPaused(false, 'telegram');
+        return '▶ *System RESUMED* — autonomous loops back online.';
+      }
       case '/status': {
         try {
           const lines = ['🔱 *IAQUA System Status*', ''];

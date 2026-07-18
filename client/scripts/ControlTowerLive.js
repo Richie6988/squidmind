@@ -15,6 +15,33 @@ const ControlTowerLive = {
   start() {
     this.update();
     this.pollInterval = setInterval(() => this.update(), 5000);
+    this._syncPause();
+  },
+
+  // ── PAUSE — the big red button ──────────────────────────────────────────
+  async _syncPause() {
+    try {
+      const r = await window.api._fetch('/pause');
+      this._renderPause(!!r?.paused);
+    } catch {}
+  },
+  _renderPause(paused) {
+    const b = document.getElementById('ct-pause-btn');
+    if (!b) return;
+    b.classList.toggle('paused', paused);
+    b.textContent = paused ? '▶ RESUME' : '⏸ PAUSE';
+    document.body.classList.toggle('system-paused', paused);
+  },
+  async togglePause() {
+    const b = document.getElementById('ct-pause-btn');
+    const target = !(b?.classList.contains('paused'));
+    try {
+      const r = await fetch('/api/v2/pause', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ paused: target, by: 'control-tower' }),
+      }).then(x => x.json());
+      if (r.success) this._renderPause(!!r.paused);
+    } catch {}
   },
   
   async update() {
@@ -31,6 +58,7 @@ const ControlTowerLive = {
       if (brainRes.status === 'fulfilled') this._renderResources(brainRes.value.brain);
       if (agentsRes.status === 'fulfilled') this._renderSquad(agentsRes.value.registry);
       if (libRes.status === 'fulfilled') this._renderModel(libRes.value);
+      this._syncPause();
       if (statusRes.status === 'fulfilled') {
         this._renderContextBar(statusRes.value);
         // _renderPhase was intentionally removed — Richard's context bar

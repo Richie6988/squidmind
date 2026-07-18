@@ -108,11 +108,12 @@ class HeartbeatService {
 
     // ── DREAM TRIGGER ──────────────────────────────────────────────────────
     // Only trigger dream if:
+    //   0. System is not globally paused (the big red button)
     //   1. Broker is idle (no active or queued LLM work)
     //   2. Poseidon model is loaded
     //   3. Model has been idle for dreamIdleMinutes
     //   4. Cooldown period has passed
-    if (this.modelService) {
+    if (this.modelService && !require('./PauseControl').isPaused()) {
       try {
         const broker = this.modelService.broker;
         const brokerState = broker?.getState?.();

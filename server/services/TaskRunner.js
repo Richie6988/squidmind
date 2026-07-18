@@ -145,6 +145,10 @@ class TaskRunner {
     // for the same (or another) agent — which is exactly the "concurrent
     // tasks running" the user saw. Bail immediately if a tick is in flight.
     if (this._ticking) return;
+    // Global pause: the big red button freezes task pickup. Tasks ALREADY
+    // running finish their current turn (aborting mid-generation would
+    // corrupt state); nothing new starts.
+    if (require('./PauseControl').isPaused()) return;
     this._ticking = true;
     try {
       await this._tickInner();

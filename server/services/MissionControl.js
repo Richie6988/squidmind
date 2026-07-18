@@ -118,6 +118,7 @@ class MissionControl {
    *  run the audit/re-plan iteration. */
   async tick() {
     if (this._ticking) return;
+    if (require('./PauseControl').isPaused()) return;   // global pause
     this._ticking = true;
     try {
       const reg = await this._readReg();

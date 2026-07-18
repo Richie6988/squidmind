@@ -22,6 +22,18 @@ router.get('/poseidon', async (req, res) => {
   } catch (err) { res.status(500).json({ success: false, error: err.message }); }
 });
 
+// PAUSE — the big red button. Freezes all autonomous loops (tasks,
+// missions, watchers, scheduler, dream); chat stays alive. Persisted.
+router.get('/pause', (req, res) => {
+  res.json({ success: true, ...require('../services/PauseControl').state() });
+});
+router.post('/pause', async (req, res) => {
+  try {
+    const st = require('../services/PauseControl').setPaused(!!req.body?.paused, req.body?.by || 'ui');
+    res.json({ success: true, ...st });
+  } catch (e) { res.status(500).json({ success: false, error: e.message }); }
+});
+
 // PYENV — dedicated IAQUA Python virtualenv (<repo>/.pyenv, lazy-created).
 // The temple RUN button uses it automatically once it exists.
 router.get('/pyenv', async (req, res) => {
