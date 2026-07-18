@@ -1165,9 +1165,9 @@ const TempleInterior = {
                       : /[\/\\]temp[\/\\]/i.test(fp) ? 'temp'
                       : 'output';
           const isImg = /\.(png|jpe?g|gif|webp|svg|bmp)$/i.test(bn);
-          const icon = isImg ? '🖼' : /\.(md|txt|log)$/i.test(bn) ? '📄'
-                     : /\.(json|ya?ml|toml|csv|tsv)$/i.test(bn) ? '{}'
-                     : /\.(js|ts|py|rb|go|rs|java|cpp|c|sh)$/i.test(bn) ? '</>' : '·';
+          const icon = isImg ? '<i class="ti-fk" data-k="media">IMG</i>' : /\.(md|txt|log)$/i.test(bn) ? '<i class="ti-fk" data-k="doc">MD</i>'
+                     : /\.(json|ya?ml|toml|csv|tsv)$/i.test(bn) ? '<i class="ti-fk" data-k="data">{}</i>'
+                     : /\.(js|ts|py|rb|go|rs|java|cpp|c|sh)$/i.test(bn) ? '<i class="ti-fk" data-k="code">&lt;/&gt;</i>' : '·';
           return `<span class="ti-kcard-file" onclick="event.stopPropagation();TempleInterior._openKanbanFile('${this._esc(bn)}','${this._esc(fp)}','${ftype}')" title="Open ${this._esc(bn)}">${icon} ${this._esc(bn.length > 26 ? bn.slice(0, 24) + '…' : bn)}</span>`;
         }).join('');
         const more = task.files_written.length > 6 ? `<span class="ti-kcard-file-more">+${task.files_written.length - 6}</span>` : '';
@@ -2083,7 +2083,7 @@ const TempleInterior = {
         parts.push(`<div class="ti-replay-row" style="margin-top:6px;">
           <button class="btn-primary" style="font-size:9px;padding:3px 10px;"
             onclick="TempleInterior._pipInstallAndRerun('${this._esc(pkg)}','${this._esc(filename)}','${this._esc(type)}', this)">
-            ⬇ pip install ${this._esc(pkg)} (IAQUA venv) + re-run
+            ↓ pip install ${this._esc(pkg)} (IAQUA venv) + re-run
           </button></div>`);
       }
       // Error → Send to Poseidon: prefills the chat with the EXACT context
@@ -2093,7 +2093,7 @@ const TempleInterior = {
         this._lastRunError = { filename, type, interpreter: r.interpreter, stderr: (r.stderr || r.stdout || '').slice(-1200), exit: r.exit_code };
         parts.push(`<div class="ti-replay-row" style="margin-top:6px;">
           <button class="btn-secondary" style="font-size:9px;padding:3px 10px;"
-            onclick="TempleInterior._sendRunErrorToPoseidon()">🔱 Send to Poseidon</button></div>`);
+            onclick="TempleInterior._sendRunErrorToPoseidon()">» SEND TO POSEIDON</button></div>`);
       }
       feed.innerHTML = parts.join('');
       // The run may have written files (matplotlib PNGs, CSVs…) — refresh the list
@@ -2296,7 +2296,7 @@ const TempleInterior = {
         if (r.ok === false || r.success === false || (Number.isFinite(r.exit_code) && r.exit_code !== 0)) {
           feed.insertAdjacentHTML('beforeend', `<div class="ti-replay-row ti-replay-ko">✗ ${this._esc(r.error || `exit ${r.exit_code ?? '?'}`)}
             <button class="btn-secondary" style="font-size:8px;padding:2px 8px;margin-left:8px;"
-              onclick="TempleInterior._sendTermErrorToPoseidon('${this._esc(cmd).replace(/'/g, '&#39;')}', this.closest('.ti-run-console').querySelector('.ti-run-err:last-of-type')?.textContent || '${this._esc((r.error || '').slice(0, 200))}')">🔱 Send to Poseidon</button></div>`);
+              onclick="TempleInterior._sendTermErrorToPoseidon('${this._esc(cmd).replace(/'/g, '&#39;')}', this.closest('.ti-run-console').querySelector('.ti-run-err:last-of-type')?.textContent || '${this._esc((r.error || '').slice(0, 200))}')">» SEND TO POSEIDON</button></div>`);
         }
         else if (!r.stdout && !r.stderr) feed.insertAdjacentHTML('beforeend', `<div class="ti-replay-row ti-replay-dim">(no output)</div>`);
         // Commands can create/delete files — keep the lists honest.
@@ -2351,7 +2351,7 @@ const TempleInterior = {
   // console, re-run the same file. First install also CREATES the venv
   // (~20s) — subsequent runs use it automatically.
   async _pipInstallAndRerun(pkg, filename, type, btn) {
-    if (btn) { btn.disabled = true; btn.textContent = `⬇ installing ${pkg}… (first time creates the venv, ~30s)`; }
+    if (btn) { btn.disabled = true; btn.textContent = `↓ installing ${pkg}… (first time creates the venv, ~30s)`; }
     try {
       const r = await fetch('/api/v2/pyenv/install', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -3108,11 +3108,22 @@ const TempleInterior = {
     );
   },
 
+  // File-type badge: label + semantic color per family. Rendered as a
+  // colored chip (see .ti-file-icon[data-k] CSS) — readable at 9px,
+  // no emojis (pixel-UI rule).
+  _FICON: {
+    py:['PY','code'], js:['JS','code'], ts:['TS','code'], jsx:['JSX','code'], tsx:['TSX','code'],
+    sh:['SH','code'], css:['CSS','code'], rs:['RS','code'], go:['GO','code'],
+    json:['{}','data'], yaml:['YML','data'], yml:['YML','data'], csv:['CSV','data'], tsv:['TSV','data'], xml:['XML','data'],
+    md:['MD','doc'], txt:['TXT','doc'], log:['LOG','doc'], pdf:['PDF','doc'], docx:['DOC','doc'], pptx:['PPT','doc'], xlsx:['XLS','doc'],
+    html:['HTM','web'], htm:['HTM','web'],
+    png:['IMG','media'], jpg:['IMG','media'], jpeg:['IMG','media'], webp:['IMG','media'], gif:['IMG','media'], svg:['SVG','media'],
+    mp3:['SND','media'], wav:['SND','media'], mp4:['VID','media'], zip:['ZIP','arc'], gz:['ZIP','arc'],
+  },
   _ficon(name) {
-    const ext = (name.split('.').pop()||'').toLowerCase();
-    return ({ js:'JS',ts:'TS',jsx:'JSX',tsx:'TSX',py:'PY',json:'{}',yaml:'YML',yml:'YML',
-      md:'MD',txt:'TXT',html:'HTM',css:'CSS',csv:'CSV',sh:'SH',
-      pdf:'PDF',zip:'ZIP',mp4:'MP4',mp3:'MP3' })[ext] || '??';
+    const ext = (name.split('.').pop() || '').toLowerCase();
+    const [label, kind] = this._FICON[ext] || ['?', 'misc'];
+    return `<i class="ti-fk" data-k="${kind}">${label}</i>`;
   },
 
   _relTime(iso) {
@@ -3194,14 +3205,14 @@ const TempleInterior = {
         fill.style.width = `${Math.round((e.t / totalT) * 100)}%`;
         let row = null;
         if (e.k === 'call') {
-          row = `<div class="ti-replay-row"><span class="ti-replay-t">${(e.t/1000).toFixed(1)}s</span> <span class="ti-replay-call">⚙ ${esc(e.name)}</span> <span class="ti-replay-dots">…</span></div>`;
+          row = `<div class="ti-replay-row"><span class="ti-replay-t">${(e.t/1000).toFixed(1)}s</span> <span class="ti-replay-call">▸ ${esc(e.name)}</span> <span class="ti-replay-dots">…</span></div>`;
         } else if (e.k === 'result') {
           row = `<div class="ti-replay-row"><span class="ti-replay-t">${(e.t/1000).toFixed(1)}s</span> <span class="${e.ok ? 'ti-replay-ok' : 'ti-replay-ko'}">${e.ok ? '✓' : '✗'} ${esc(e.name)}</span></div>`;
         } else if (e.k === 'think') {
-          row = `<div class="ti-replay-row ti-replay-dim"><span class="ti-replay-t">${(e.t/1000).toFixed(1)}s</span> 💭 thinking…</div>`;
+          row = `<div class="ti-replay-row ti-replay-dim"><span class="ti-replay-t">${(e.t/1000).toFixed(1)}s</span> … thinking…</div>`;
         } else if (e.k === 'text') {
           textCount += e.n || 0;
-          row = `<div class="ti-replay-row ti-replay-dim"><span class="ti-replay-t">${(e.t/1000).toFixed(1)}s</span> ✍ writing (${textCount} chars total)</div>`;
+          row = `<div class="ti-replay-row ti-replay-dim"><span class="ti-replay-t">${(e.t/1000).toFixed(1)}s</span> ≡ writing (${textCount} chars total)</div>`;
         } else if (e.k === 'error') {
           row = `<div class="ti-replay-row"><span class="ti-replay-t">${(e.t/1000).toFixed(1)}s</span> <span class="ti-replay-ko">⚠ ${esc(e.m || 'error')}</span></div>`;
         }
@@ -3213,7 +3224,7 @@ const TempleInterior = {
       if (!stopped) {
         fill.style.width = '100%';
         const verdictBit = task.review?.verdict
-          ? ` · review ${task.review.verdict}${Number.isFinite(task.review.score) ? ` ${task.review.score}/10` : ''}${task.review.unverified ? ' 👻' : ''}`
+          ? ` · review ${task.review.verdict}${Number.isFinite(task.review.score) ? ` ${task.review.score}/10` : ''}${task.review.unverified ? ' ◌' : ''}`
           : '';
         feed.insertAdjacentHTML('beforeend', `<div class="ti-replay-row ti-replay-end">■ ${task.outcome === 'failed' ? 'FAILED' : 'DONE'}${verdictBit}</div>`);
         feed.scrollTop = feed.scrollHeight;

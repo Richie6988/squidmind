@@ -39,7 +39,7 @@
         if (seq !== contentSeq || !overlayEl) return;
         contentHits = (r?.hits || []).map(h => ({
           kind: h.type === 'memoryhit' ? 'memory' : 'filehit',
-          icon: h.type === 'memoryhit' ? '🧠' : '📄',
+          icon: h.type === 'memoryhit' ? '◍' : '▤',
           label: h.title,
           detail: h.subtitle,
           _score: -1,                        // always below registry matches

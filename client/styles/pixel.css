@@ -9119,3 +9119,24 @@ html { zoom: var(--app-zoom); }
   font-family: 'Courier New', monospace;
 }
 .squad-tele-toggle:hover { color: #94a3b8; }
+
+/* ── File-type badges (no emojis — pixel-UI rule) ── */
+.ti-fk {
+  display: inline-block;
+  font-family: 'Courier New', monospace;
+  font-style: normal;
+  font-size: 8px;
+  font-weight: 700;
+  padding: 0 3px;
+  border-radius: 2px;
+  line-height: 12px;
+  vertical-align: middle;
+  border: 1px solid;
+}
+.ti-fk[data-k="code"]  { color: #4facfe; border-color: rgba(79,172,254,0.45); background: rgba(79,172,254,0.08); }
+.ti-fk[data-k="data"]  { color: #f59e0b; border-color: rgba(245,158,11,0.45); background: rgba(245,158,11,0.08); }
+.ti-fk[data-k="doc"]   { color: #e2e8f0; border-color: rgba(226,232,240,0.35); background: rgba(226,232,240,0.06); }
+.ti-fk[data-k="web"]   { color: #06ffa5; border-color: rgba(6,255,165,0.45); background: rgba(6,255,165,0.08); }
+.ti-fk[data-k="media"] { color: #a78bfa; border-color: rgba(167,139,250,0.45); background: rgba(167,139,250,0.08); }
+.ti-fk[data-k="arc"]   { color: #94a3b8; border-color: rgba(148,163,184,0.4); background: rgba(148,163,184,0.07); }
+.ti-fk[data-k="misc"]  { color: var(--ui-muted); border-color: rgba(148,163,184,0.25); }

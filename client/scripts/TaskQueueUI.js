@@ -95,6 +95,18 @@ const TaskQueueUI = {
           .filter(t => !this._dismissed.has(t.task_id))
           .sort((a, b) => new Date(b.completed_at || 0) - new Date(a.completed_at || 0));
       } catch {}
+      // SOUND HOOKS — diff terminal ids across polls: a NEW terminal task
+      // chimes once (SoundFX throttles batches). First poll seeds silently.
+      try {
+        const termNow = new Set(doneTasks.map(t => t.task_id));
+        if (this._sfxSeen) {
+          for (const t of doneTasks) {
+            if (this._sfxSeen.has(t.task_id)) continue;
+            window.SoundFX?.play(t.outcome === 'failed' ? 'taskFail' : 'taskDone');
+          }
+        }
+        this._sfxSeen = termNow;
+      } catch {}
       this._doneTasks = doneTasks;
 
       // ── QUEUE PANE ──
@@ -136,7 +148,7 @@ const TaskQueueUI = {
         const carousel = imgTasks.length
           ? `<div class="tq-img-carousel-wrap">
                <div class="tq-carousel-head">
-                 <span class="tq-carousel-title">${window.PixelIcons?.inline('data',10)||'🖼'} IMAGES (${imgTasks.length})</span>
+                 <span class="tq-carousel-title">${window.PixelIcons?.inline('data',10)||'◫'} IMAGES (${imgTasks.length})</span>
                  <div class="tq-carousel-nav">
                    <button class="tq-carousel-btn" onclick="TaskQueueUI._carouselScroll(-1)" title="Previous">‹</button>
                    <button class="tq-carousel-btn" onclick="TaskQueueUI._carouselScroll(1)" title="Next">›</button>
@@ -807,7 +819,7 @@ ${task.description}`
           <div class="tq-detail-field">
             <div class="tq-detail-result-header">
               <label>Result</label>
-              ${task.result_file ? `<button class="btn-secondary" style="font-size:8px;padding:2px 8px;" id="tqd-load-result">📄 Load full result</button>` : ''}
+              ${task.result_file ? `<button class="btn-secondary" style="font-size:8px;padding:2px 8px;" id="tqd-load-result">▤ Load full result</button>` : ''}
             </div>
             <div class="tq-detail-result" id="tqd-result-box">${task.result_summary ? this._esc(task.result_summary) : '<em style="opacity:.5">Click to load full result</em>'}</div>
           </div>` : ''}
@@ -826,7 +838,7 @@ ${task.description}`
             <div class="tq-detail-files">
               ${task.files_written.map(f => `
                 <a class="tq-detail-file" href="/api/v2/file/${encodeURIComponent(f).replace(/%2F/g,'/')}" target="_blank" rel="noopener" title="Open ${this._esc(f)}">
-                  <span class="tq-file-ico">${/\.(png|jpe?g|webp|gif|svg)$/i.test(f) ? '🖼' : /\.(md|txt)$/i.test(f) ? '📄' : /\.(pptx|docx|pdf)$/i.test(f) ? '📎' : '📁'}</span>
+                  <span class="tq-file-ico">${/\.(png|jpe?g|webp|gif|svg)$/i.test(f) ? '<i class="ti-fk" data-k="media">IMG</i>' : /\.(md|txt)$/i.test(f) ? '<i class="ti-fk" data-k="doc">MD</i>' : /\.(pptx|docx|pdf)$/i.test(f) ? '<i class="ti-fk" data-k="doc">DOC</i>' : '<i class="ti-fk" data-k="misc">·</i>'}</span>
                   <span class="tq-file-name">${this._esc(f.split('/').pop())}</span>
                   <span class="tq-file-path">${this._esc(f.replace(/[^/]+$/, '').replace(/\/$/, ''))}</span>
                 </a>
@@ -912,7 +924,7 @@ ${task.description}`
       } catch (err) {
         box.textContent = 'Error loading result: ' + err.message;
         btn.disabled = false;
-        btn.textContent = '📄 Retry';
+        btn.textContent = '▤ Retry';
       }
     });
   },

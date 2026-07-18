@@ -224,7 +224,7 @@ const SquidInteractions = {
     if (this.status === 'working') {
       const thoughts = [
         '🤔 Analyzing...',
-        '💭 Thinking...',
+        '… Thinking...',
         '[CONFIG] Processing...',
         '🔍 Searching...',
         '✨ Creating...',
@@ -273,7 +273,7 @@ const SquidInteractions = {
     
     if (personality.energy < 50) {
       thoughts.push('⚡ Energy: Low');
-      thoughts.push('💭 Rest needed');
+      thoughts.push('… Rest needed');
     } else {
       thoughts.push('⚡ Energy: OK');
       thoughts.push('💪 Ready');

@@ -138,6 +138,11 @@ const aquarium = {
         // Restore continuity: same position and any in-flight teleport.
         const prev = priorState.get(agent.agent_id || agent.id);
         if (prev) Object.assign(squid, prev);
+        // Level-up chime: server XP raised the level since last render.
+        const prevLvl = this._sfxLevels?.get(agent.agent_id || agent.id);
+        const nowLvl  = squid.stats?.level || 1;
+        if (prevLvl && nowLvl > prevLvl) window.SoundFX?.play('levelUp');
+        (this._sfxLevels = this._sfxLevels || new Map()).set(agent.agent_id || agent.id, nowLvl);
         return squid;
       });
       console.log(`Loaded ${this.squids.length} squids`);

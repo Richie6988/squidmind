@@ -28,14 +28,14 @@ const ui = {
     try { window.localStorage?.setItem('iaqua_brief_seen', today); } catch {}
     const esc = s => String(s ?? '').replace(/[<>&"]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'})[c]);
     const doneRows = (b.tasks_done_24h || []).slice(0, 6).map(t =>
-      `<div style="padding:2px 0;">✓ ${esc(t.title)}${t.agent ? ` <span style="opacity:.6">· ${esc(t.agent)}</span>` : ''}${t.review?.unverified ? ' <span style="color:#f59e0b" title="review defaulted — no parseable verdict">👻</span>' : (Number.isFinite(t.review?.score) ? ` <span style="opacity:.6">${t.review.score}/10</span>` : '')}</div>`
+      `<div style="padding:2px 0;">✓ ${esc(t.title)}${t.agent ? ` <span style="opacity:.6">· ${esc(t.agent)}</span>` : ''}${t.review?.unverified ? ' <span style="color:#f59e0b" title="review defaulted — no parseable verdict">◌</span>' : (Number.isFinite(t.review?.score) ? ` <span style="opacity:.6">${t.review.score}/10</span>` : '')}</div>`
     ).join('') || '<div style="opacity:.6">Nothing finished in the last 24h.</div>';
     const blockRows = (b.blockers || []).slice(0, 4).map(t =>
       `<div style="padding:2px 0;color:#f87171;">⚠ ${esc(t.title)}</div>`).join('');
     const suggRows = (b.suggestions || []).map(s =>
       `<div style="padding:2px 0;color:#4facfe;">→ ${esc(s)}</div>`).join('');
     const schedRows = (b.schedules || []).map(s =>
-      `<div style="padding:2px 0;color:${s.fired_24h ? '#06ffa5' : 'var(--ui-muted,#8899aa)'};">⏰ ${esc(s.title)} <span style="opacity:.6">· ${esc(s.expr)}${s.fired_24h ? ' · fired' : ''}</span></div>`).join('');
+      `<div style="padding:2px 0;color:${s.fired_24h ? '#06ffa5' : 'var(--ui-muted,#8899aa)'};">◷ ${esc(s.title)} <span style="opacity:.6">· ${esc(s.expr)}${s.fired_24h ? ' · fired' : ''}</span></div>`).join('');
     const missionRows = (b.missions || []).map(m => {
       const col = m.status === 'achieved' ? '#06ffa5' : m.status === 'active' ? '#4facfe' : '#f59e0b';
       return `<div style="padding:2px 0;color:${col};">⚑ ${esc(m.mission_id)} [${esc(m.status)}] ${esc(m.goal)} <span style="opacity:.6">· iter ${esc(m.iteration)} · tasks ${esc(m.tasks)}</span></div>`;
@@ -46,12 +46,13 @@ const ui = {
         <div style="margin-bottom:8px;"><b>Done (24h)</b> — ${(b.tasks_done_24h || []).length} task(s)</div>
         ${doneRows}
         ${blockRows ? `<div style="margin-top:8px;"><b>Blockers</b></div>${blockRows}` : ''}
-        ${b.unverified_reviews ? `<div style="margin-top:8px;color:#f59e0b;">👻 ${b.unverified_reviews} review(s) passed by default — worth a manual check</div>` : ''}
+        ${b.unverified_reviews ? `<div style="margin-top:8px;color:#f59e0b;">◌ ${b.unverified_reviews} review(s) passed by default — worth a manual check</div>` : ''}
         ${missionRows ? `<div style="margin-top:8px;"><b>Missions</b></div>${missionRows}` : ''}
         ${schedRows ? `<div style="margin-top:8px;"><b>Scheduled</b></div>${schedRows}` : ''}
         ${suggRows ? `<div style="margin-top:8px;"><b>Suggestions</b></div>${suggRows}` : ''}
         <div style="margin-top:8px;opacity:.5;">${(b.open_count ?? 0)} task(s) still open</div>
       </div>`;
+    if ((b.missions || []).some(m => m.status === 'achieved')) window.SoundFX?.play('missionDone');
     if (window.SquidModal?.custom) SquidModal.custom(html, { okLabel: 'Let\'s go' });
     else if (window.SquidModal?.alert) SquidModal.alert(html.replace(/<[^>]+>/g, ' '));
   },

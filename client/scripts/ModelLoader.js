@@ -609,7 +609,7 @@ const ModelLoader = {
     const caps = [];
     const PI = window.PixelIcons;
     if (mtype === 'image') {
-      caps.push({ icon: PI?.inline('image_model',12)||'🖼', label: 'IMAGE', color: '#a78bfa' });
+      caps.push({ icon: PI?.inline('image_model',12)||'◫', label: 'IMAGE', color: '#a78bfa' });
     } else {
       caps.push({ icon: PI?.inline('text_model',12)||'💬', label: 'TEXT', color: '#4facfe' });
       if (/vision|vlm|vl-|visual|-v\d|qwen.*vl|llava|moondream|minicpm.*v|phi.*vision|pixtral/i.test(combined))
@@ -617,7 +617,7 @@ const ModelLoader = {
       if (/tool|function|fc-|instruct.*fn|qwen.*7b.*instruct|hermes|mistral.*instruct/i.test(combined))
         caps.push({ icon: PI?.inline('tools',12)||'🔧', label: 'TOOLS', color: '#f59e0b' });
       if (/think|reasoning|r1|deepseek.*r|qwq|sky-t1|marco-o1/i.test(combined))
-        caps.push({ icon: PI?.inline('think',12)||'🧠', label: 'THINK', color: '#f472b6' });
+        caps.push({ icon: PI?.inline('think',12)||'◍', label: 'THINK', color: '#f472b6' });
       if (/code|coder|starcoder|codellama|deepseek.*coder|qwen.*coder|wizard.*coder|phind/i.test(combined))
         caps.push({ icon: PI?.inline('code_model',12)||'💻', label: 'CODE', color: '#00ffb4' });
       if (/embed|embedding|bge|nomic|e5-|gte-|jina/i.test(combined))
@@ -1097,13 +1097,13 @@ const ModelLoader = {
         html += data.entries.map(e => {
           if (e.type === 'directory') {
             return `<div class="ml-browse-entry ml-dir" onclick="ModelLoader._browseGo('${this._escapePath(e.path)}')">
-              <span class="ml-entry-icon">${window.PixelIcons?.inline('data',12)||'📁'}</span>
+              <span class="ml-entry-icon">${window.PixelIcons?.inline('data',12)||'▦'}</span>
               <span class="ml-entry-name">${this._escape(e.name)}</span>
               <span class="ml-entry-arrow">›</span>
             </div>`;
           } else {
             return `<div class="ml-browse-entry ml-file" onclick="ModelLoader._selectFile('${this._escapePath(e.path)}', '${this._escape(e.name)}', '${e.size_gb}')">
-              <span class="ml-entry-icon">🧠</span>
+              <span class="ml-entry-icon">◍</span>
               <span class="ml-entry-name">${this._escape(e.name)}</span>
               <span class="ml-entry-size">${e.size_gb} GB</span>
             </div>`;
@@ -1248,8 +1248,8 @@ const ModelLoader = {
             'image-text-to-text':     { icon: PI?.inline('vlm',10)||'👁',        label:'VLM',    color:'#34d399' },
             'visual-question-answering':{ icon: PI?.inline('vlm',10)||'👁',      label:'VLM',    color:'#34d399' },
             'image-to-text':          { icon: PI?.inline('vlm',10)||'👁',        label:'VLM',    color:'#34d399' },
-            'text-to-image':          { icon: PI?.inline('image_model',10)||'🖼', label:'IMG',   color:'#a78bfa' },
-            'image-classification':   { icon: PI?.inline('image_model',10)||'🖼', label:'IMG',   color:'#a78bfa' },
+            'text-to-image':          { icon: PI?.inline('image_model',10)||'◫', label:'IMG',   color:'#a78bfa' },
+            'image-classification':   { icon: PI?.inline('image_model',10)||'◫', label:'IMG',   color:'#a78bfa' },
             'text-classification':    { icon: PI?.inline('target',10)||'🎯',     label:'CLASS',  color:'#7dd3fc' },
             'token-classification':   { icon: PI?.inline('target',10)||'🎯',     label:'NER',    color:'#7dd3fc' },
             'feature-extraction':     { icon: PI?.inline('embed',10)||'📐',      label:'EMBED',  color:'#94a3b8' },
@@ -1258,7 +1258,7 @@ const ModelLoader = {
             'code-generation':        { icon: PI?.inline('code_model',10)||'💻', label:'CODE',   color:'#00ffb4' },
             'translation':            { icon: PI?.inline('text_model',10)||'💬', label:'TRANSL', color:'#4facfe' },
             'summarization':          { icon: PI?.inline('text_model',10)||'💬', label:'SUMM',   color:'#4facfe' },
-            'question-answering':     { icon: PI?.inline('brain',10)||'🧠',      label:'Q&A',    color:'#f472b6' },
+            'question-answering':     { icon: PI?.inline('brain',10)||'◍',      label:'Q&A',    color:'#f472b6' },
           };
           const cap = capMap[c] || { icon: '', label: c.replace(/-/g,' ').toUpperCase().slice(0,8), color:'#64748b' };
           return `<span class="ml-hf-cap" style="background:${cap.color}18;border-color:${cap.color}44;color:${cap.color};display:inline-flex;align-items:center;gap:2px;">${cap.icon}${cap.label}</span>`;

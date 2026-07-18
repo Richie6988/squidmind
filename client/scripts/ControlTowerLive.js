@@ -40,7 +40,7 @@ const ControlTowerLive = {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ paused: target, by: 'control-tower' }),
       }).then(x => x.json());
-      if (r.success) this._renderPause(!!r.paused);
+      if (r.success) { this._renderPause(!!r.paused); window.SoundFX?.play(r.paused ? 'pause' : 'resume'); }
     } catch {}
   },
   
