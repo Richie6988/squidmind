@@ -131,7 +131,22 @@ class BashExecutor {
       // Use /bin/sh -c so full shell syntax works (pipes, redirects, &&)
       const child = spawn('/bin/sh', ['-c', command], {
         cwd:   workDir,
-        env:   { ...process.env, ...(env || {}) },
+        // IAQUA venv first in PATH: `python` / `pip` inside agent bash
+        // commands resolve to the dedicated venv once it exists — agent
+        // scripts and the temple RUN button see the SAME environment.
+        env:   (() => {
+          const base = { ...process.env, ...(env || {}) };
+          try {
+            const path = require('path');
+            const fs = require('fs');
+            const venvBin = path.join(__dirname, '..', '..', '.pyenv', 'bin');
+            if (fs.existsSync(path.join(venvBin, 'python'))) {
+              base.PATH = `${venvBin}:${base.PATH || ''}`;
+              base.VIRTUAL_ENV = path.dirname(venvBin);
+            }
+          } catch {}
+          return base;
+        })(),
         stdio: ['ignore', 'pipe', 'pipe'],
       });
       const MAX_BYTES = 20 * 1024;

@@ -26,6 +26,28 @@ function buildProjectFileRoutes({ rm }) {
 
   const sanitize = (name) => String(name || '').replace(/[^a-zA-Z0-9._\- ()]/g, '_');
 
+  // ── POST /:projectId/exec — project-scoped terminal command ───────────────
+  // Free-form bash from the temple TERMINAL. Trust model = execute_bash;
+  // routed THROUGH BashExecutor so both paths share the danger-pattern
+  // gate, the venv-first PATH, timeouts and output caps. cwd = the project
+  // folder root (so `ls output/`, `python output/x.py`, `git …` all work).
+  router.post('/:projectId/exec', express.json({ limit: '32kb' }), async (req, res) => {
+    try {
+      const { command } = req.body || {};
+      if (!command || typeof command !== 'string') return res.status(400).json({ success: false, error: 'command required' });
+      if (command.length > 4000) return res.status(400).json({ success: false, error: 'command too long (4KB max)' });
+      const folder = await resolveFolder(req.params.projectId);
+      const projDir = path.join(AQUARIUM.PROJECTS, folder);
+      if (!fs.existsSync(projDir)) return res.status(404).json({ success: false, error: 'project folder not found' });
+      const { BashExecutor } = require('../services/BashExecutor');
+      const bash = new BashExecutor();
+      const r = await bash.run({ command, cwd: projDir, timeout_ms: 60_000 });
+      res.json({ success: true, ...r });
+    } catch (e) {
+      res.status(500).json({ success: false, error: e.message });
+    }
+  });
+
   // ── POST /:projectId/run — execute a Python output/input file ─────────────
   // Manual "RUN" from the temple IDE. Trust model = execute_bash (local
   // machine trusted); the guards here are for STABILITY and containment:
@@ -38,7 +60,9 @@ function buildProjectFileRoutes({ rm }) {
     try {
       const { filename, dir = 'output' } = req.body || {};
       if (!filename) return res.status(400).json({ success: false, error: 'filename required' });
-      if (!/\.py$/i.test(filename)) return res.status(400).json({ success: false, error: 'Only .py files run server-side. HTML renders in the preview panel.' });
+      const isPy = /\.py$/i.test(filename);
+      const isSh = /\.sh$/i.test(filename);
+      if (!isPy && !isSh) return res.status(400).json({ success: false, error: 'Only .py and .sh files run server-side. HTML renders in the preview panel.' });
       if (!['output', 'input'].includes(dir)) return res.status(400).json({ success: false, error: 'dir must be output|input' });
       const folder  = await resolveFolder(req.params.projectId);
       const baseDir = path.join(AQUARIUM.PROJECTS, folder, dir);
@@ -48,9 +72,26 @@ function buildProjectFileRoutes({ rm }) {
 
       const { spawn } = require('child_process');
       const pyenv = require('../services/PyEnvService');
-      const { bin, preArgs, label } = pyenv.pythonInvocation();
+      // Both interpreters get the venv-first PATH so `python` inside a .sh
+      // resolves to the IAQUA venv — same environment everywhere.
+      const venvEnv = (() => {
+        const base = { ...process.env };
+        const venvBin = path.join(__dirname, '..', '..', '.pyenv', 'bin');
+        if (fs.existsSync(path.join(venvBin, 'python'))) {
+          base.PATH = `${venvBin}:${base.PATH || ''}`;
+          base.VIRTUAL_ENV = path.dirname(venvBin);
+        }
+        return base;
+      })();
+      let bin, args, label;
+      if (isPy) {
+        ({ bin, preArgs: args, label } = pyenv.pythonInvocation());
+        args = [...args, target];
+      } else {
+        bin = '/bin/bash'; args = [target]; label = 'bash' + (venvEnv.VIRTUAL_ENV ? ' (venv PATH)' : '');
+      }
       const t0 = Date.now();
-      const child = spawn(bin, [...preArgs, target], { cwd: baseDir, stdio: ['ignore', 'pipe', 'pipe'] });
+      const child = spawn(bin, args, { cwd: baseDir, stdio: ['ignore', 'pipe', 'pipe'], env: venvEnv });
       let out = '', err = '', truncated = false, killed = false;
       const CAP = 256 * 1024;
       const clamp = () => { if (out.length + err.length > CAP) { truncated = true; try { child.kill('SIGKILL'); } catch {} } };

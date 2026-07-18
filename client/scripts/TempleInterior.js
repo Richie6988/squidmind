@@ -584,6 +584,7 @@ const TempleInterior = {
     const folder = this._folder();
     c.innerHTML = `
 <div class="ti-sec">INPUT FILES
+  <span class="ti-sec-btn" style="cursor:pointer;" onclick="TempleInterior._openTerminal()" title="Project terminal — bash in the project folder (60s/command)">⌨ TERM</span>
   <label class="ti-sec-btn" style="cursor:pointer;">
     + ADD
     <input type="file" multiple style="display:none" onchange="TempleInterior._handleUpload(event,'${folder}','input')">
@@ -640,12 +641,13 @@ const TempleInterior = {
           ? `<button class="ti-file-imgact" title="Upscale 2×" onclick="event.stopPropagation();TempleInterior._upscaleImage('${this._esc(f.path||'')}','${ename}')">↑2×</button>
              <button class="ti-file-imgact" title="Edit with prompt (img2img)" onclick="event.stopPropagation();TempleInterior._editImage('${this._esc(f.path||'')}','${ename}')">✎</button>`
           : '';
-        // Executable quick-actions — .py runs server-side (console overlay),
+        // Executable quick-actions — .py/.sh run server-side (console overlay),
         // .html renders live in the preview panel's sandboxed iframe.
         const isPy   = /\.py$/i.test(ename);
+        const isSh   = /\.sh$/i.test(ename);
         const isHtml = /\.html?$/i.test(ename);
-        const runActions = (isPy || isHtml)
-          ? `<button class="ti-file-imgact ti-file-run" title="${isPy ? 'Run with python3 (60s timeout)' : 'Render in preview'}" onclick="event.stopPropagation();TempleInterior.${isPy ? `_runPython('${ename}','${type}')` : `_renderHtml('${ename}','${type}')`}">▶</button>`
+        const runActions = (isPy || isSh || isHtml)
+          ? `<button class="ti-file-imgact ti-file-run" title="${isHtml ? 'Render in preview' : `Run with ${isPy ? 'python (IAQUA venv)' : 'bash'} (60s timeout)`}" onclick="event.stopPropagation();TempleInterior.${isHtml ? `_renderHtml('${ename}','${type}')` : `_runPython('${ename}','${type}')`}">▶</button>`
           : '';
         return `<div class="ti-file" data-task-id="${f.task_id || ''}" onmouseenter="TempleInterior._haloTask('${this._esc(f.task_id||'')}',true)" onmouseleave="TempleInterior._haloTask('${this._esc(f.task_id||'')}',false)" onclick="TempleInterior._openFile('${ename}','${this._esc(f.path||'')}','${type}','${folder}',${f.size||0})">
           ${thumb}
@@ -2028,9 +2030,10 @@ const TempleInterior = {
     this._ideActivate(this._activeFileIdx);
   },
 
-  // ── MANUAL EXECUTION — run .py server-side, render .html in the preview ──
-  // Trust model = execute_bash (local machine). Server enforces: .py only,
-  // path inside project, cwd = file's dir, 60s timeout, 256KB cap, python3 -I.
+  // ── MANUAL EXECUTION — run .py/.sh server-side, render .html in preview ──
+  // Trust model = execute_bash (local machine). Server enforces: .py/.sh only,
+  // path inside project, cwd = file's dir, 60s timeout, 256KB cap; python via
+  // the IAQUA venv when it exists, bash with venv-first PATH.
   async _runPython(filename, type = 'output') {
     const pid = this.currentTemple?.project_id || this.currentTemple?.name;
     if (!pid) return;
@@ -2043,7 +2046,7 @@ const TempleInterior = {
           <span>▶ RUN — ${this._esc(filename)}</span>
           <span class="ti-replay-close" title="Close">✕</span>
         </div>
-        <div class="ti-replay-meta">python3 -I · cwd=${this._esc(type)}/ · 60s timeout</div>
+        <div class="ti-replay-meta">cwd=${this._esc(type)}/ · 60s timeout · interpreter shown at exit</div>
         <div class="ti-replay-feed ti-run-console"><div class="ti-replay-row ti-replay-dim">running…</div></div>
       </div>`;
     document.body.appendChild(ov);
@@ -2082,6 +2085,75 @@ const TempleInterior = {
     } catch (e) {
       feed.innerHTML = `<div class="ti-replay-row ti-replay-ko">✗ ${this._esc(e.message)}</div>`;
     }
+  },
+
+  // ── PROJECT TERMINAL — free-form bash, cwd = project folder ─────────────
+  // Same console chrome as RUN/replay. Command history with ↑/↓, Enter runs,
+  // Esc closes. Every command goes through BashExecutor server-side (danger
+  // gate + venv-first PATH + 60s timeout) — `python` here IS the IAQUA venv.
+  _openTerminal() {
+    const pid = this.currentTemple?.project_id || this.currentTemple?.name;
+    if (!pid) return;
+    const ov = document.createElement('div');
+    ov.className = 'ti-replay-overlay';
+    ov.innerHTML = `
+      <div class="ti-replay-box" style="width:620px;">
+        <div class="ti-replay-head">
+          <span>⌨ TERMINAL — ${this._esc(this.currentTemple?.name || pid)}</span>
+          <span class="ti-replay-close" title="Close (Esc)">✕</span>
+        </div>
+        <div class="ti-replay-meta">cwd = project folder · 60s/command · venv PATH active when .pyenv exists</div>
+        <div class="ti-replay-feed ti-run-console" style="min-height:220px;max-height:52vh;"></div>
+        <div style="display:flex;gap:6px;padding:8px 12px;border-top:1px solid rgba(79,172,254,0.2);">
+          <span style="color:#06ffa5;font-family:'Courier New',monospace;font-size:12px;line-height:24px;">$</span>
+          <input class="ti-term-input" type="text" spellcheck="false" placeholder="ls output/ · python output/script.py · pip list"
+            style="flex:1;background:var(--ocean-deep,#020810);border:1px solid rgba(79,172,254,0.3);color:#e2e8f0;border-radius:3px;padding:4px 8px;font-family:'Courier New',monospace;font-size:12px;outline:none;">
+        </div>
+      </div>`;
+    document.body.appendChild(ov);
+    const feed  = ov.querySelector('.ti-run-console');
+    const input = ov.querySelector('.ti-term-input');
+    const close = () => ov.remove();
+    ov.querySelector('.ti-replay-close').onclick = close;
+    ov.addEventListener('click', e => { if (e.target === ov) close(); });
+    const history = []; let hIdx = -1;
+    let running = false;
+    const runCmd = async (cmd) => {
+      if (running) return;
+      running = true;
+      feed.insertAdjacentHTML('beforeend', `<div class="ti-replay-row" style="color:#06ffa5;">$ ${this._esc(cmd)}</div>`);
+      feed.scrollTop = feed.scrollHeight;
+      try {
+        const r = await fetch(`/api/v2/projects/${encodeURIComponent(pid)}/exec`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ command: cmd }),
+        }).then(x => x.json());
+        if (r.stdout) feed.insertAdjacentHTML('beforeend', `<pre class="ti-run-out">${this._esc(r.stdout)}</pre>`);
+        if (r.stderr) feed.insertAdjacentHTML('beforeend', `<pre class="ti-run-err">${this._esc(r.stderr)}</pre>`);
+        if (r.ok === false || r.success === false) feed.insertAdjacentHTML('beforeend', `<div class="ti-replay-row ti-replay-ko">✗ ${this._esc(r.error || `exit ${r.exit_code ?? '?'}`)}</div>`);
+        else if (!r.stdout && !r.stderr) feed.insertAdjacentHTML('beforeend', `<div class="ti-replay-row ti-replay-dim">(no output)</div>`);
+        // Commands can create/delete files — keep the lists honest.
+        this._renderFiles?.();
+      } catch (e) {
+        feed.insertAdjacentHTML('beforeend', `<div class="ti-replay-row ti-replay-ko">✗ ${this._esc(e.message)}</div>`);
+      } finally {
+        running = false;
+        feed.scrollTop = feed.scrollHeight;
+      }
+    };
+    input.addEventListener('keydown', async (e) => {
+      if (e.key === 'Escape') { close(); return; }
+      if (e.key === 'ArrowUp')   { if (history.length) { hIdx = Math.max(0, hIdx < 0 ? history.length - 1 : hIdx - 1); input.value = history[hIdx]; e.preventDefault(); } return; }
+      if (e.key === 'ArrowDown') { if (hIdx >= 0) { hIdx = hIdx + 1 >= history.length ? -1 : hIdx + 1; input.value = hIdx < 0 ? '' : history[hIdx]; e.preventDefault(); } return; }
+      if (e.key === 'Enter') {
+        const cmd = input.value.trim();
+        if (!cmd) return;
+        history.push(cmd); hIdx = -1;
+        input.value = '';
+        await runCmd(cmd);
+      }
+    });
+    input.focus();
   },
 
   // One-click missing-lib recovery: install into the IAQUA venv, close the
