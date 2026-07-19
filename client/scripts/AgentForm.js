@@ -970,14 +970,17 @@ const AgentForm = {
       onCommit: async () => {
         try {
           await window.api._fetch(`/agents/${aid}`, { method: 'DELETE' });
+          window.aquarium?.unhideSquid?.(aid);   // registry is clean now — tombstone done
           if (window.aquarium?.loadSquids) await window.aquarium.loadSquids();
         } catch (e) {
+          window.aquarium?.unhideSquid?.(aid);   // delete failed — let the poll restore it
           if (window.aquarium?.loadSquids) await window.aquarium.loadSquids();
           throw e;
         }
       },
       onCancel: async () => {
-        // Restore by reloading the canvas (registry untouched)
+        // UNDO: drop the tombstone, reload from registry (untouched)
+        window.aquarium?.unhideSquid?.(aid);
         if (window.aquarium?.loadSquids) await window.aquarium.loadSquids();
       },
     });

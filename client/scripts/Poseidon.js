@@ -194,30 +194,26 @@ class Poseidon {
     ctx.fill();
     ctx.stroke();
     
-    // CROWN — proper three-point silhouette. (The old path went base →
-    // shoulder → middle → shoulder with no valleys, which renders as ONE
-    // spike with slanted sides, not a crown.)
+    // CROWN — original silhouette restored (user preference): base line up
+    // to a single central peak with slanted shoulders. The 3-spike rebuild
+    // was geometrically "correct" but Richard liked this look better.
     ctx.fillStyle = '#FFD700';
     ctx.strokeStyle = '#FFA500';
     ctx.lineWidth = 2;
     ctx.beginPath();
-    const cw = this.size;                    // shorthand
-    ctx.moveTo(-cw * 0.40, -cw * 0.45);      // base left
-    ctx.lineTo(-cw * 0.30, -cw * 0.68);      // ▲ left point
-    ctx.lineTo(-cw * 0.15, -cw * 0.52);      // ▽ valley
-    ctx.lineTo(0,          -cw * 0.78);      // ▲ middle point (tallest)
-    ctx.lineTo( cw * 0.15, -cw * 0.52);      // ▽ valley
-    ctx.lineTo( cw * 0.30, -cw * 0.68);      // ▲ right point
-    ctx.lineTo( cw * 0.40, -cw * 0.45);      // base right
+    ctx.moveTo(-this.size * 0.4, -this.size * 0.45);   // base left
+    ctx.lineTo(this.size * 0.4, -this.size * 0.45);    // base right
+    ctx.lineTo(this.size * 0.3, -this.size * 0.65);    // right shoulder
+    ctx.lineTo(0, -this.size * 0.75);                  // central peak
+    ctx.lineTo(-this.size * 0.3, -this.size * 0.65);   // left shoulder
     ctx.closePath();
     ctx.fill();
     ctx.stroke();
     
-    // Crown gem — centered in the middle spike (at -0.68 it overflowed the
-    // spike edges; at -0.60 the spike half-width ≈ 0.10 > gem radius 0.08)
+    // Crown gem — back at -0.68, centered in the tall single peak
     ctx.fillStyle = '#FF1493'; // Pink gem
     ctx.beginPath();
-    ctx.arc(0, -this.size * 0.60, this.size * 0.08, 0, Math.PI * 2);
+    ctx.arc(0, -this.size * 0.68, this.size * 0.08, 0, Math.PI * 2);
     ctx.fill();
     
     // Eyes (wise and powerful) — one path per eye: chained arcs in a single

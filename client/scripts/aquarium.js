@@ -50,7 +50,7 @@ const aquarium = {
 
   async updateSquidsStatus() {
     try {
-      const agents = await api.agents.flat();
+      const agents = this._liveAgents(await api.agents.flat());
       // Delta detection: squids created by Poseidon (via chat tool call) are
       // written to the registry but nothing on the client tells the aquarium
       // to reload — the poll below only mutated existing squids' status, so
@@ -97,15 +97,33 @@ const aquarium = {
   },
 
   // Optimistic remove for UndoManager — visual only, no server call.
-  // Call loadSquids() to restore from registry.
+  // TOMBSTONE: during the undo grace the registry STILL contains the agent,
+  // so the 2s id-diff poll would resurrect the squid as a ghost, then the
+  // commit would kill it again — the flicker Richard reported. The
+  // tombstone set makes every load path treat the agent as already gone
+  // until unhideSquid() (UNDO) or the commit clears it. 60s auto-expiry in
+  // case a commit throws and never cleans up.
   hideSquid(agentId) {
     if (!this.squids) return;
+    (this._tombstones = this._tombstones || new Map()).set(agentId, Date.now());
     this.squids = this.squids.filter(s => s.id !== agentId && s.agent?.agent_id !== agentId);
+  },
+
+  unhideSquid(agentId) {
+    this._tombstones?.delete(agentId);
+  },
+
+  _liveAgents(agents) {
+    const tomb = this._tombstones;
+    if (!tomb || !tomb.size) return agents;
+    const now = Date.now();
+    for (const [id, at] of tomb) { if (now - at > 60_000) tomb.delete(id); }
+    return agents.filter(a => !tomb.has(a.agent_id || a.id));
   },
 
   async loadSquids() {
     try {
-      const agents = await api.agents.flat();
+      const agents = this._liveAgents(await api.agents.flat());
       // Capture prior assignment state per agent BEFORE recreating squids —
       // we need it to decide whether to animate (transition) or snap (first
       // load). Map: agentId → templeName they were inside, or null.
