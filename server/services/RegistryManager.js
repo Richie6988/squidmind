@@ -1096,8 +1096,9 @@ class RegistryManager {
    */
   async ensureSystemProjects() {
     const SPECS = [
-      { name: 'GALLERY',  folder: 'GALLERY',  description: 'System project — all images generated outside a project land here.' },
-      { name: 'GODSTUFF', folder: 'GODSTUFF', description: "System project — Poseidon's ad-hoc creations and projectless task outputs." },
+      { name: 'GALLERY',   folder: 'GALLERY',   description: 'System project — all images generated outside a project land here.' },
+      { name: 'GODSTUFF',  folder: 'GODSTUFF',  description: "System project — Poseidon's ad-hoc creations and projectless task outputs." },
+      { name: 'TEMPLATES', folder: 'TEMPLATES', description: 'System project — style reference documents. default.pptx / default.docx are auto-applied when generating documents; named variants are selectable by name.' },
     ];
     const fsp = require('fs').promises;
     const pathm = require('path');

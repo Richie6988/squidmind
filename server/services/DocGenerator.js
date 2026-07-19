@@ -24,6 +24,54 @@ const log = {
 class DocGenerator {
   constructor({ rm } = {}) {
     this.rm = rm;
+    this._pyDepsReady = null;   // memoized install promise
+  }
+
+  // ── TEMPLATED GENERATION — python-pptx/python-docx in the IAQUA venv ──
+  // The only way to truly inherit a reference file's masters, layouts,
+  // logos, fonts and styles. Deps install lazily on first templated call
+  // (through our own PyEnvService), and any failure falls back to the JS
+  // generators — templates can never make generation WORSE than before.
+  async _ensurePyDeps() {
+    if (!this._pyDepsReady) {
+      this._pyDepsReady = (async () => {
+        const py = require('./PyEnvService');
+        const r = await py.install(['python-pptx', 'python-docx']);
+        if (!r.ok) throw new Error(r.error || 'pip install failed');
+        return true;
+      })().catch(e => { this._pyDepsReady = null; throw e; });
+    }
+    return this._pyDepsReady;
+  }
+
+  async _runPyGen(script, spec) {
+    const os = require('os');
+    const { spawn } = require('child_process');
+    const py = require('./PyEnvService');
+    await this._ensurePyDeps();
+    const specPath = path.join(os.tmpdir(), `iaqua_gen_${Date.now()}_${Math.random().toString(36).slice(2)}.json`);
+    await fsp.writeFile(specPath, JSON.stringify(spec), 'utf8');
+    const { bin } = py.pythonInvocation();
+    const scriptPath = path.join(__dirname, '..', 'pygen', script);
+    return await new Promise((resolve) => {
+      const child = spawn(bin, [scriptPath, specPath], { stdio: ['ignore', 'pipe', 'pipe'] });
+      let out = '', err = '';
+      const killer = setTimeout(() => { try { child.kill('SIGKILL'); } catch {} }, 60_000);
+      child.stdout.on('data', d => out += d);
+      child.stderr.on('data', d => err += d);
+      child.on('error', e => { clearTimeout(killer); resolve({ ok: false, error: `spawn: ${e.message}` }); });
+      child.on('close', () => {
+        clearTimeout(killer);
+        fsp.unlink(specPath).catch(() => {});
+        try { resolve(JSON.parse(out.trim().split('\n').pop())); }
+        catch { resolve({ ok: false, error: (err || out || 'no output').slice(-500) }); }
+      });
+    });
+  }
+
+  _resolveTemplate(ext, name) {
+    try { return require('./TemplateGallery').resolve(ext, name); }
+    catch { return { path: null }; }
   }
 
   async _resolveOutputPath({ filename, project_id, ext }) {
@@ -48,9 +96,26 @@ class DocGenerator {
    *   theme:  'dark' | 'light' (default 'light')
    * @returns {Promise<{ok, outputPath?, error?}>}
    */
-  async generatePptx({ slides, filename, project_id, title, author, theme }) {
+  async generatePptx({ slides, filename, project_id, title, author, theme, template }) {
     if (!Array.isArray(slides) || slides.length === 0) {
       return { ok: false, error: 'slides array is required and must be non-empty' };
+    }
+    // TEMPLATE BRANCH — default.pptx auto-applies; template:"none" opts out;
+    // template:"<name>" picks a named variant. Python failure → JS fallback.
+    const tpl = this._resolveTemplate('pptx', template);
+    if (tpl.error) return { ok: false, error: tpl.error };
+    if (tpl.path) {
+      try {
+        const outputPath = await this._resolveOutputPath({ filename, project_id, ext: 'pptx' });
+        const r = await this._runPyGen('gen_pptx.py', { template: tpl.path, output: outputPath, title, author, slides });
+        if (r.ok) {
+          log.info(`wrote ${r.slides}-slide deck (template: ${tpl.name}) → ${outputPath}`);
+          return { ...r, template: tpl.name };
+        }
+        log.warn(`template path failed (${r.error}) — falling back to plain generator`);
+      } catch (e) {
+        log.warn(`template path failed (${e.message}) — falling back to plain generator`);
+      }
     }
     let pptxgen;
     try { pptxgen = require('pptxgenjs'); }
@@ -115,9 +180,24 @@ class DocGenerator {
    *             markdown engine — sufficient for LLM-generated content.
    * @returns {Promise<{ok, outputPath?, error?}>}
    */
-  async generateDocx({ markdown, filename, project_id, title }) {
+  async generateDocx({ markdown, filename, project_id, title, template }) {
     if (!markdown || typeof markdown !== 'string') {
       return { ok: false, error: 'markdown is required and must be a string' };
+    }
+    const tpl = this._resolveTemplate('docx', template);
+    if (tpl.error) return { ok: false, error: tpl.error };
+    if (tpl.path) {
+      try {
+        const outputPath = await this._resolveOutputPath({ filename, project_id, ext: 'docx' });
+        const r = await this._runPyGen('gen_docx.py', { template: tpl.path, output: outputPath, title, markdown });
+        if (r.ok) {
+          log.info(`wrote docx (template: ${tpl.name}) → ${outputPath}`);
+          return { ...r, template: tpl.name };
+        }
+        log.warn(`template path failed (${r.error}) — falling back to plain generator`);
+      } catch (e) {
+        log.warn(`template path failed (${e.message}) — falling back to plain generator`);
+      }
     }
     let docx;
     try { docx = require('docx'); }
