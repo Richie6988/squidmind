@@ -500,12 +500,6 @@ h1 {
   color: var(--text-secondary);
 }
 
-#api-status {
-  color: var(--success);
-  font-size: 14px;
-  /* No animation - clean dot */
-}
-
 @keyframes pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.5; }
@@ -2462,15 +2456,33 @@ input[type="color"]::-webkit-color-swatch {
 /* ── Manual RUN (python console + html render) ── */
 .ct-pause-btn {
   font-family: 'Press Start 2P', monospace;
-  font-size: 8px;
-  padding: 4px 8px;
-  background: rgba(79,172,254,0.08);
+  font-size: 7px;
+  letter-spacing: 0.5px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 9px;
+  background: linear-gradient(180deg, rgba(79,172,254,0.12), rgba(79,172,254,0.04));
   border: 1px solid rgba(79,172,254,0.35);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.06);
   color: var(--text-primary, #e2e8f0);
   border-radius: 3px;
   cursor: pointer;
+  white-space: nowrap;
+  transition: border-color 0.15s, box-shadow 0.15s, transform 0.08s;
 }
-.ct-pause-btn:hover { border-color: rgba(79,172,254,0.7); }
+.ct-pause-btn:hover {
+  border-color: rgba(79,172,254,0.75);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.06), 0 0 8px rgba(79,172,254,0.25);
+}
+.ct-pause-btn:active { transform: translateY(1px); }
+/* SFX enabled — quiet green state */
+.ct-pause-btn.on {
+  color: #06ffa5;
+  border-color: rgba(6,255,165,0.55);
+  background: linear-gradient(180deg, rgba(6,255,165,0.14), rgba(6,255,165,0.04));
+  text-shadow: 0 0 5px rgba(6,255,165,0.4);
+}
 .ct-pause-btn.paused {
   background: rgba(248,113,113,0.15);
   border-color: rgba(248,113,113,0.6);
@@ -4174,8 +4186,11 @@ body.system-paused .right-panel-header h2::after {
 
 .right-panel-header {
   background: linear-gradient(90deg, rgba(79,172,254,0.06), transparent);
-  padding: 13px 14px;
+  padding: 10px 14px;
   border-bottom: 1px solid rgba(255,255,255,0.06);
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .right-panel-header h2 {
@@ -4183,6 +4198,10 @@ body.system-paused .right-panel-header h2::after {
   color: #4facfe;
   margin: 0;
   letter-spacing: 1px;
+  flex: 1;                 /* pushes the control chips to the right edge */
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
 }
 
 .right-panel-content {
