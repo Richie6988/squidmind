@@ -2968,7 +2968,7 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
         // Build a compact summary for the next session
         const openTasksSnap = (() => {
           try {
-            const reg = this.rm.cache?.get?.('TASKS/tasks_registry.json');
+            const reg = this.rm.cache?.get?.('PROJECTS/tasks_registry.json');
             const tasks = Object.values(reg?.tasks || {})
               .filter(t => !['done','completed','failed','cancelled','archived'].includes(t.lifecycle?.status || t.status))
               .slice(0, 8)
@@ -3576,12 +3576,13 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
       return { ok: false, error: `Model file not found: ${entry.file_path || entry.file_name}. Re-scan the library.` };
     }
 
-    // All outputs go to TASKS/OUTPUT/ — flat, named after task ID
+    // Projectless image outputs go to GALLERY/output — named after task ID
     if (!outputPath) {
       const AQUARIUM = require('../aquarium');
       const fname = task_id ? `${task_id}.png` : `generated_${Date.now()}.png`;
-      await require('fs').promises.mkdir(AQUARIUM.OUTPUT, { recursive: true });
-      outputPath = path.join(AQUARIUM.OUTPUT, fname);
+      const galleryOut = path.join(AQUARIUM.PROJECTS, 'GALLERY', 'output');
+      await require('fs').promises.mkdir(galleryOut, { recursive: true });
+      outputPath = path.join(galleryOut, fname);
     }
 
     // Acquire IMAGE slot — waits for any LLM work to finish first

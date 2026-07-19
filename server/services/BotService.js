@@ -665,7 +665,6 @@ class BotService extends EventEmitter {
       `[REMOTE SESSION — Telegram/Discord]`,
       `Aquarium root: ${AQUARIUM.ROOT}`,
       `  PROJECTS: ${AQUARIUM.PROJECTS}`,
-      `  TASKS:    ${AQUARIUM.TASKS}`,
       `  AGENTS:   ${AQUARIUM.AGENTS}`,
       `  BRAIN:    ${AQUARIUM.BRAIN}`,
       `  LOGS:     ${AQUARIUM.LOGS}`,

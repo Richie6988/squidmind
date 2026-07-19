@@ -11,7 +11,7 @@
  *   BRAIN/dream_memory.json
  *   AGENTS/agent_registry.json
  *   PROJECTS/project_registry.json
- *   TASKS/results_log.json
+ *   PROJECTS/results_log.json
  *   MODELS/model_registry.json
  *
  * Recovery: copy file from .backups/<snapshot_id>/<rel_path> back to live location.
@@ -36,8 +36,8 @@ class BackupService {
       'BRAIN/dream_memory.json',
       'AGENTS/agent_registry.json',
       'PROJECTS/project_registry.json',
-      'TASKS/results_log.json',
-      'TASKS/tasks_registry.json',
+      'PROJECTS/results_log.json',
+      'PROJECTS/tasks_registry.json',
       'MODELS/model_registry.json',
       'SKILLS/skills_registry.json',
     ];

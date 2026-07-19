@@ -9,7 +9,7 @@
  *
  * Output path resolution mirrors the image tools:
  *   - project_id set → PROJECTS/<folder>/output/<filename>
- *   - otherwise      → TASKS/OUTPUT/<filename> (or explicit outputPath)
+ *   - otherwise      → PROJECTS/GODSTUFF/output/<filename> (or explicit outputPath)
  */
 
 const path = require('path');
@@ -37,8 +37,9 @@ class DocGenerator {
       await fsp.mkdir(dir, { recursive: true });
       return path.join(dir, fname);
     }
-    await fsp.mkdir(AQUARIUM.OUTPUT, { recursive: true });
-    return path.join(AQUARIUM.OUTPUT, fname);
+    const godOut = path.join(AQUARIUM.PROJECTS, 'GODSTUFF', 'output');
+    await fsp.mkdir(godOut, { recursive: true });
+    return path.join(godOut, fname);
   }
 
   /**

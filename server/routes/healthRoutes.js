@@ -37,7 +37,7 @@ function buildHealthRoutes({ rm, repairAllRegistries, dataRoot, refs }) {
     const coreRegistries = [
       'BRAIN/poseidon_brain.json',
       'AGENTS/agent_registry.json',
-      'TASKS/tasks_registry.json',
+      'PROJECTS/tasks_registry.json',
       'PROJECTS/project_registry.json',
       'MODELS/model_registry.json',
     ];

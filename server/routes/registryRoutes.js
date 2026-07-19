@@ -307,7 +307,7 @@ async function agentStatsHandler(req, res) {
     const fsp = require('fs').promises;
     const path = require('path');
     let rlog = { results: {} };
-    try { rlog = JSON.parse(await fsp.readFile(path.join(AQUARIUM.TASKS, 'results_log.json'), 'utf8')); } catch {}
+    try { rlog = JSON.parse(await fsp.readFile(AQUARIUM.RESULTS_LOG, 'utf8')); } catch {}
     const entries = Array.isArray(rlog.results) ? rlog.results : Object.values(rlog.results || {});
 
     // Resolve agent display names
@@ -425,23 +425,13 @@ router.get('/tasks/:id/result', async (req, res) => {
       } catch {}
     }
 
-    // Check TASKS/OUTPUT/<taskId>.txt|.json (flat output folder)
+    // Check GODSTUFF/output/<taskId>.<ext> (projectless task outputs)
+    const _godOut = path.join(AQUARIUM.PROJECTS, 'GODSTUFF', 'output');
     for (const ext of ['txt', 'json', 'md', 'csv']) {
-      const outPath = path.join(AQUARIUM.OUTPUT, `${taskId}.${ext}`);
+      const outPath = path.join(_godOut, `${taskId}.${ext}`);
       try {
         const text = await fs.readFile(outPath, 'utf8');
         return res.json({ success: true, task_id: taskId, content: text, path: outPath });
-      } catch {}
-    }
-
-    // Legacy fallback: old per-folder output.txt
-    for (const legPath of [
-      path.join(AQUARIUM.TASKS, taskId, 'output.txt'),
-      path.join(AQUARIUM.TASKS, taskId, 'results', 'output.txt'),
-    ]) {
-      try {
-        const text = await fs.readFile(legPath, 'utf8');
-        return res.json({ success: true, task_id: taskId, content: text, path: legPath });
       } catch {}
     }
 
@@ -459,14 +449,10 @@ router.delete('/tasks/:id', async (req, res) => {
     const AQUARIUM = require('../aquarium');
     const taskId   = req.params.id;
 
-    // 1. Remove per-folder task directory (covers per-folder format)
-    const taskDir = path.join(AQUARIUM.TASKS, taskId);
-    try { await fsp.rm(taskDir, { recursive: true, force: true }); } catch {}
-
-    // 2. Remove from flat tasks_registry.json (covers flat-registry tasks)
+    // 1. Remove from flat tasks_registry.json
     rm.invalidateCache();
     try {
-      const flatPath = path.join(AQUARIUM.TASKS, 'tasks_registry.json');
+      const flatPath = AQUARIUM.TASKS_REGISTRY;
       const raw = await fsp.readFile(flatPath, 'utf8').catch(() => null);
       if (raw) {
         const reg = JSON.parse(raw);
@@ -482,9 +468,10 @@ router.delete('/tasks/:id', async (req, res) => {
     const taskRunner = servicesRef.taskRunner;
     if (taskRunner?.markDeleted) taskRunner.markDeleted(taskId);
 
-    // 3. Remove output files from TASKS/OUTPUT/ (.md, .json, .png)
+    // 2. Remove projectless output files from GODSTUFF/output/
+    const _godOutDel = path.join(AQUARIUM.PROJECTS, 'GODSTUFF', 'output');
     for (const ext of ['md', 'txt', 'json', 'png']) {
-      try { await fsp.unlink(path.join(AQUARIUM.OUTPUT, `${taskId}.${ext}`)); } catch {}
+      try { await fsp.unlink(path.join(_godOutDel, `${taskId}.${ext}`)); } catch {}
     }
 
     // 4. Remove from results_log.json if present
@@ -765,7 +752,7 @@ router.get('/tasks/:id/stream', async (req, res) => {
       ? task.result_file
       : (() => {
           for (const ext of ['txt', 'md', 'json', 'csv']) {
-            const p = path.join(AQUARIUM.OUTPUT, `${taskId}.${ext}`);
+            const p = path.join(AQUARIUM.PROJECTS, 'GODSTUFF', 'output', `${taskId}.${ext}`);
             if (fs.existsSync(p)) return p;
           }
           return null;

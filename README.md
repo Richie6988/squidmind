@@ -10,6 +10,10 @@ The interface is a living aquarium: agents swim as animated pixel-art squids, pr
 
 ## What's New — July 2026 sprint
 
+### Late-July wave 2 — the TASKS simplification
+
+**`aquarium/TASKS/` is gone.** Tasks are always project work now. The two escape hatches it contained became first-class **system projects**: `GALLERY` (images generated outside any project) and `GODSTUFF` (Poseidon's ad-hoc files and projectless task outputs). A task created without a project defaults to GODSTUFF. Consequence: every project feature — temple UI, ▶ RUN, ⌨ TERM, ↩ versions, BM25/Ctrl+K, RAG, ◉ AUTO, backups — now applies to **all** content; the `if (project) … else TASKS/…` special-casing across ~38 callsites is dead. Task registries are metadata, not content: `tasks_registry.json` and `results_log.json` moved to `PROJECTS/`. System projects are seeded at boot, flagged `system:true`, undeletable, and refused by `launch_mission`. Old `TASKS/` dirs are removed at boot (fresh-start policy).
+
 ### Late-July wave — execution environment, ops, trust
 
 **Execution unified around one environment.** Temple ▶ RUN button on `.py`/`.sh` files (60s timeout, cwd = file's dir, console overlay) and `.html` live-render in the sandboxed preview; ⌨ TERM project terminal (↑/↓ history, cwd = project root) routed through BashExecutor — one bash policy for the human terminal and agent `execute_bash`. Dedicated Python venv at `<repo>/.pyenv` (lazy-created, `pyenv` tool for install/list/remove, one-click `ModuleNotFoundError` → pip install + re-run) with venv-first PATH everywhere: agent scripts and your ▶ clicks run on identical interpreters and libs.
@@ -267,15 +271,15 @@ AQUARIUM.ROOT              — absolute path to aquarium/
 AQUARIUM.MODELS            — aquarium/MODELS/
 AQUARIUM.AGENTS            — aquarium/AGENTS/
 AQUARIUM.PROJECTS          — aquarium/PROJECTS/
-AQUARIUM.TASKS             — aquarium/TASKS/
-AQUARIUM.OUTPUT            — aquarium/TASKS/OUTPUT/
+(no TASKS constants — tasks are project work; ad-hoc content lives in
+ PROJECTS/GALLERY and PROJECTS/GODSTUFF system projects)
 AQUARIUM.SKILLS            — aquarium/SKILLS/
 AQUARIUM.BRAIN             — aquarium/BRAIN/
 AQUARIUM.CHANNELS          — aquarium/CHANNELS/
 AQUARIUM.SOUL              — aquarium/BRAIN/soul.json
 AQUARIUM.TEMP_LOG          — aquarium/BRAIN/temp.md
-AQUARIUM.RESULTS_LOG       — aquarium/TASKS/results_log.json
-AQUARIUM.TASKS_REGISTRY    — aquarium/TASKS/tasks_registry.json
+AQUARIUM.RESULTS_LOG       — aquarium/PROJECTS/results_log.json
+AQUARIUM.TASKS_REGISTRY    — aquarium/PROJECTS/tasks_registry.json
 AQUARIUM.MODEL_REGISTRY    — aquarium/MODELS/model_registry.json
 AQUARIUM.POSEIDON_BRAIN    — aquarium/BRAIN/poseidon_brain.json
 AQUARIUM.DREAM_MEMORY      — aquarium/BRAIN/dream_memory.json

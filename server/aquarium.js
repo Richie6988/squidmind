@@ -4,8 +4,10 @@
  * aquarium.js — Single source of truth for all data paths.
  *
  * Root: <repo>/aquarium/
- * Layout: uppercase subdirectories (BRAIN, AGENTS, MODELS, PROJECTS, TASKS,
- * LOGS, TOOLS, SKILLS, CHANNELS).
+ * Layout: uppercase subdirectories (BRAIN, AGENTS, MODELS, PROJECTS,
+ * LOGS, TOOLS, SKILLS, CHANNELS). No TASKS dir: tasks are project work;
+ * task registries live in PROJECTS/, ad-hoc content in the GALLERY and
+ * GODSTUFF system projects.
  *
  * Logical paths used in code are always the canonical uppercase form
  * (e.g. 'AGENTS/agent_registry.json', `BRAIN/poseidon_brain.json`). The
@@ -38,7 +40,7 @@ function detectModelsDir() {
 // Kept for API stability (RegistryManager + FilesystemTools call it on every
 // read/write). If a legacy lowercase prefix slips through (e.g. from a stored
 // JSON record), warn loudly so we can fix the producer.
-const CANONICAL_PREFIXES = /^(MODELS|AGENTS|PROJECTS|TASKS|LOGS|TOOLS|SKILLS|BRAIN|CHANNELS)[\/]/;
+const CANONICAL_PREFIXES = /^(MODELS|AGENTS|PROJECTS|LOGS|TOOLS|SKILLS|BRAIN|CHANNELS)[\/]/;
 const LEGACY_PREFIXES    = /^(main|agents|projects|tasks|logs|tools|models)[\/]/;
 
 function resolvePath(logical) {
@@ -62,9 +64,11 @@ const AQUARIUM = {
   MODELS:   path.join(AQ_ROOT, 'MODELS'),
   AGENTS:   path.join(AQ_ROOT, 'AGENTS'),
   PROJECTS: path.join(AQ_ROOT, 'PROJECTS'),
-  TASKS:    path.join(AQ_ROOT, 'TASKS'),
-  IMAGES:   path.join(AQ_ROOT, 'TASKS/IMAGES'),
-  OUTPUT:   path.join(AQ_ROOT, 'TASKS/OUTPUT'),
+  // SIMPLIFICATION (session 11): aquarium/TASKS is gone. Tasks are always
+  // project work now — content that used to escape into TASKS/OUTPUT and
+  // TASKS/IMAGES lives in the GODSTUFF and GALLERY system projects, where
+  // every project feature (RUN, versions, RAG, search, backups) applies.
+  // The task registries are metadata, not content — they live in PROJECTS/.
   LOGS:     path.join(AQ_ROOT, 'LOGS'),
   TOOLS:    path.join(AQ_ROOT, 'TOOLS'),
   SKILLS:   path.join(AQ_ROOT, 'SKILLS'),
@@ -77,7 +81,6 @@ const AQUARIUM = {
   brain:    (...p) => path.join(AQ_ROOT, 'BRAIN',    ...p),
   agents:   (...p) => path.join(AQ_ROOT, 'AGENTS',   ...p),
   projects: (...p) => path.join(AQ_ROOT, 'PROJECTS', ...p),
-  tasks:    (...p) => path.join(AQ_ROOT, 'TASKS',    ...p),
   skills:   (...p) => path.join(AQ_ROOT, 'SKILLS',   ...p),
   channels: (...p) => path.join(AQ_ROOT, 'CHANNELS', ...p),
   logs:     (...p) => path.join(AQ_ROOT, 'LOGS',     ...p),
@@ -93,8 +96,8 @@ const AQUARIUM = {
   COMMS_CONFIG:     path.join(AQ_ROOT, 'CHANNELS/comms_config.json'),
   AGENT_REGISTRY:   path.join(AQ_ROOT, 'AGENTS/agent_registry.json'),
   PROJECT_REGISTRY: path.join(AQ_ROOT, 'PROJECTS/project_registry.json'),
-  TASKS_REGISTRY:   path.join(AQ_ROOT, 'TASKS/tasks_registry.json'),
-  RESULTS_LOG:      path.join(AQ_ROOT, 'TASKS/results_log.json'),
+  TASKS_REGISTRY:   path.join(AQ_ROOT, 'PROJECTS/tasks_registry.json'),
+  RESULTS_LOG:      path.join(AQ_ROOT, 'PROJECTS/results_log.json'),
   MODEL_REGISTRY:   path.join(AQ_ROOT, 'MODELS/model_registry.json'),
   TOOL_REGISTRY:    path.join(AQ_ROOT, 'TOOLS/tool_registry.json'),
   LOGS_FILE:        path.join(AQ_ROOT, 'LOGS/logs.json'),
@@ -114,7 +117,7 @@ const AQUARIUM = {
     { seed: 'model_registry.json',   dst: AQUARIUM.models('model_registry.json') },
     { seed: 'tool_registry.json',    dst: path.join(AQUARIUM.TOOLS, 'tool_registry.json') },
     { seed: 'logs.json',             dst: AQUARIUM.logs('logs.json') },
-    { seed: 'tasks_registry.json',   dst: AQUARIUM.tasks('tasks_registry.json') },
+    { seed: 'tasks_registry.json',   dst: AQUARIUM.TASKS_REGISTRY },
     { seed: 'comms_config.json',     dst: AQUARIUM.channels('comms_config.json') },
     { seed: 'mcp_servers.json',      dst: AQUARIUM.channels('mcp_servers.json') },
     { seed: 'soul.json',             dst: AQUARIUM.SOUL },
@@ -144,7 +147,6 @@ const AQUARIUM = {
   // Seed skills — copy ONLY if file absent (first install). Never re-seed deleted skills.
   try {
     fs.mkdirSync(AQUARIUM.SKILLS, { recursive: true });
-    fs.mkdirSync(AQUARIUM.OUTPUT, { recursive: true });
 
     if (fs.existsSync(SKILLS_SEED)) {
       // Load deletion blocklist — skills deleted via DELETE route are never re-seeded

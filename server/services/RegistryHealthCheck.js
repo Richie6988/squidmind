@@ -44,7 +44,7 @@ const _RAW_DEFAULTS = {
       registries: {
         agents: 'AGENTS/agent_registry.json',
         projects: 'PROJECTS/project_registry.json',
-        tasks: 'TASKS/tasks_registry.json',
+        tasks: 'PROJECTS/tasks_registry.json',
         tools: 'TOOLS/tool_registry.json',
         models: 'MODELS/model_registry.json'
       },
@@ -94,7 +94,7 @@ const _RAW_DEFAULTS = {
     }
   }),
   
-  'TASKS/tasks_registry.json': () => ({
+  'PROJECTS/tasks_registry.json': () => ({
     schema_version: '2.0.0',
     schema_type: 'tasks_registry',
     metadata: {

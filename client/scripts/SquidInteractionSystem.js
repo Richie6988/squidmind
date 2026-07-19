@@ -852,6 +852,10 @@ class SquidInteractionSystem {
         const regRes = await window.api._fetch('/projects');
         const project = Object.values(regRes.registry.projects).find(p => p.name === templeName);
         if (!project) throw new Error('Project not found');
+        if (project.system) {
+          status.textContent = `${templeName} is a system project (home for projectless content) — it cannot be deleted.`;
+          return;
+        }
 
         const agentCount = (project.assigned_agents || []).length;
 

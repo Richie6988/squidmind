@@ -287,28 +287,21 @@ async function start() {
     console.log('🦑 Starting SquidMind...');
 
     // Ensure Aquarium directory structure exists
-    const _dirs = [AQUARIUM.MODELS, AQUARIUM.AGENTS, AQUARIUM.PROJECTS, AQUARIUM.TASKS,
+    const _dirs = [AQUARIUM.MODELS, AQUARIUM.AGENTS, AQUARIUM.PROJECTS,
                    AQUARIUM.LOGS, AQUARIUM.TOOLS, AQUARIUM.SKILLS, AQUARIUM.BRAIN, AQUARIUM.CHANNELS];
     for (const dir of _dirs) {
       await fs.mkdir(dir, { recursive: true }).catch(() => {});
     }
 
-    // Legacy cleanup: old versions created per-task folders TASKS/task_NNNN/.
-    // Canonical layout is now TASKS/OUTPUT/<task_id>.<ext> (flat). Sweep any
-    // orphan task_* directories at boot so they don't clutter file browsers
-    // and don't get mistaken for live data.
+    // SIMPLIFICATION: no aquarium/TASKS anymore — tasks are project work.
+    // If an old TASKS/ dir exists from a previous layout, remove it whole
+    // (fresh-start policy; registries were reseeded under PROJECTS/).
+    await fs.rm(path.join(AQUARIUM.ROOT, 'TASKS'), { recursive: true, force: true }).catch(() => {});
+    // Seed GALLERY + GODSTUFF system projects (idempotent).
     try {
-      const entries = await fs.readdir(AQUARIUM.TASKS, { withFileTypes: true }).catch(() => []);
-      let removed = 0;
-      for (const e of entries) {
-        if (e.isDirectory() && /^task_\d+/.test(e.name)) {
-          const dp = path.join(AQUARIUM.TASKS, e.name);
-          await fs.rm(dp, { recursive: true, force: true }).catch(() => {});
-          removed++;
-        }
-      }
-      if (removed > 0) console.log(`[Boot] Cleaned up ${removed} legacy TASKS/task_* folder(s)`);
-    } catch { /* non-fatal */ }
+      const { created } = await sharedRm.ensureSystemProjects();
+      if (created) console.log(`[Boot] System projects ensured (${created} created/flagged)`);
+    } catch (e) { console.warn('[Boot] ensureSystemProjects:', e.message); }
 
     // Initialize tool registry (filesystem tools, etc.)
     await toolRegistry.init();

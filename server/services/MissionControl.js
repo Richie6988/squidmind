@@ -51,6 +51,13 @@ class MissionControl {
   /** Launch a mission. Called by the launch_mission tool. */
   async launch({ goal, project, max_tasks = 8, max_iterations = 3, deadline_hours = 12 }) {
     if (!goal || !project) return { ok: false, error: 'goal and project are required' };
+    // System projects (GALLERY, GODSTUFF) are content homes, not mission
+    // territory — an autonomous loop electing domicile in the commons
+    // would fill it with unowned work. Missions need a real project.
+    try {
+      const pe = await this.rm.resolveProjectByNameOrId(project);
+      if (pe?.entry?.system) return { ok: false, error: `"${pe.entry.name}" is a system project — create or pick a real project for the mission.` };
+    } catch {}
     max_tasks       = Math.min(LIMITS.max_tasks, Math.max(1, Number(max_tasks) || 8));
     max_iterations  = Math.min(LIMITS.max_iterations, Math.max(1, Number(max_iterations) || 3));
     deadline_hours  = Math.min(LIMITS.deadline_hours, Math.max(1, Number(deadline_hours) || 12));

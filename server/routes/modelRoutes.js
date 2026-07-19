@@ -660,7 +660,7 @@ function buildRouter(modelService) {
   });
 
   // POST /api/v2/models/generate-image
-  // Uses OrchestratorTools so a task is created in right panel + output in TASKS/<id>/output/
+  // Uses OrchestratorTools so a task is created in right panel + output in GALLERY/output/
   router.post('/generate-image', async (req, res) => {
     try {
       const { modelId, model_id, prompt, negativePrompt, negative_prompt,

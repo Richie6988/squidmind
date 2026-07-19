@@ -28,7 +28,7 @@ function classifyError(msg) {
   return 'unknown';
 }
 
-const DONE_FILE = path.join(AQUARIUM.TASKS, '_done.json');
+const DONE_FILE = path.join(AQUARIUM.PROJECTS, '_done.json');
 
 /**
  * CANONICAL TASK STATUSES: todo / wip / done.
@@ -64,7 +64,7 @@ class TaskRunner {
   /** Load persisted _done set from disk (called once at startup) */
   async loadDone() {
     try {
-      await fs.mkdir(AQUARIUM.TASKS, { recursive: true });
+      await fs.mkdir(AQUARIUM.PROJECTS, { recursive: true });
       const raw = await fs.readFile(DONE_FILE, 'utf8');
       const ids = JSON.parse(raw);
       if (Array.isArray(ids)) ids.forEach(id => this._done.add(id));
@@ -75,7 +75,7 @@ class TaskRunner {
     // (handles tasks created before per-folder migration)
     try {
       const TERMINAL_STATUSES = new Set(['done','completed','failed','cancelled','archived']);
-      const flatPath = require('path').join(AQUARIUM.TASKS, 'tasks_registry.json');
+      const flatPath = AQUARIUM.TASKS_REGISTRY;
       const raw = await fs.readFile(flatPath, 'utf8');
       const reg = JSON.parse(raw);
       for (const [id, task] of Object.entries(reg.tasks || {})) {
@@ -90,7 +90,7 @@ class TaskRunner {
   /** Persist _done set to disk */
   async _saveDone() {
     try {
-      await fs.mkdir(AQUARIUM.TASKS, { recursive: true });
+      await fs.mkdir(AQUARIUM.PROJECTS, { recursive: true });
       await fs.writeFile(DONE_FILE, JSON.stringify([...this._done]), 'utf8');
     } catch (e) {
       log.warn(' _saveDone failed:', e.message);
@@ -204,7 +204,7 @@ class TaskRunner {
       // Spawn a FRESH task so each run is independently tracked.
       // The original task stays in registry as the template.
       try {
-        const reg = await this.rm.read('TASKS/tasks_registry.json');
+        const reg = await this.rm.read('PROJECTS/tasks_registry.json');
         const nextId = reg.metadata?.next_id || 1;
         const cronTaskId = `task_${String(nextId).padStart(4, '0')}_cron_${Date.now()}`;
         reg.tasks = reg.tasks || {};
@@ -232,7 +232,7 @@ class TaskRunner {
         }
         reg.metadata = reg.metadata || {};
         reg.metadata.next_id = nextId + 1;
-        await this.rm.write('TASKS/tasks_registry.json', reg);
+        await this.rm.write('PROJECTS/tasks_registry.json', reg);
         // Run the fresh task
         const freshTask = reg.tasks[cronTaskId];
         this._runTask(freshTask).catch(e =>
@@ -1121,7 +1121,7 @@ class TaskRunner {
           for (const w of ledger) {
             try {
               const rel = w.path || String(w);
-              const abs = path.isAbsolute(rel) ? rel : path.join(AQUARIUM.ROOT || path.dirname(AQUARIUM.TASKS), rel);
+              const abs = path.isAbsolute(rel) ? rel : path.join(AQUARIUM.ROOT || AQUARIUM.ROOT, rel);
               await fs.unlink(abs).catch(() => {});
             } catch {}
           }
@@ -1279,7 +1279,7 @@ class TaskRunner {
               const rel = ledger2[ledger2.length - 1].path || String(ledger2[ledger2.length - 1]);
               const candidates = [
                 rel,
-                path.join(AQUARIUM.ROOT || path.dirname(AQUARIUM.TASKS), rel),
+                path.join(AQUARIUM.ROOT || AQUARIUM.ROOT, rel),
                 task.project_name ? path.join(AQUARIUM.PROJECTS, require('./RegistryManager').projectFolder({ name: task.project_name }), rel) : null,
               ].filter(Boolean);
               for (const cand of candidates) {
@@ -1360,7 +1360,7 @@ class TaskRunner {
             for (const w of ledger) {
               try {
                 const rel = w.path || String(w);
-                const abs = path.isAbsolute(rel) ? rel : path.join(AQUARIUM.ROOT || path.dirname(AQUARIUM.TASKS), rel);
+                const abs = path.isAbsolute(rel) ? rel : path.join(AQUARIUM.ROOT || AQUARIUM.ROOT, rel);
                 await fs.unlink(abs).catch(() => {});
               } catch {}
             }
@@ -1566,7 +1566,7 @@ class TaskRunner {
     try {
       const task = await this.rm._readTaskDetails(taskId);
 
-      // Resolve output path: project folder if task belongs to one, else TASKS/OUTPUT/
+      // Resolve output path: project folder if task belongs to one, else GODSTUFF/output
       let outputPath;
       const projectId   = task?.project_id || task?.context?.project_id || null;
       const projectName = task?.project_name || task?.context?.project_name || null;
@@ -1583,9 +1583,10 @@ class TaskRunner {
       }
 
       if (!outputPath) {
-        await fs.mkdir(AQUARIUM.OUTPUT, { recursive: true });
+        const godOut = require('path').join(AQUARIUM.PROJECTS, 'GODSTUFF', 'output');
+        await fs.mkdir(godOut, { recursive: true });
         const isJson = text.trim().startsWith('{') || text.trim().startsWith('[');
-        outputPath = require('path').join(AQUARIUM.OUTPUT, `${taskId}.${isJson ? 'json' : 'md'}`);
+        outputPath = require('path').join(godOut, `${taskId}.${isJson ? 'json' : 'md'}`);
       }
 
       await fs.writeFile(outputPath, text, 'utf8');

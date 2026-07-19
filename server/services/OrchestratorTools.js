@@ -634,7 +634,7 @@ class OrchestratorTools {
 
       // Route output:
       //   With project: PROJECTS/<folder>/output/<safeFilename>
-      //   Without:      TASKS/OUTPUT/<task_id>.png   (no per-task folder)
+      //   Without:      GALLERY/output/<task_id>.png (system project)
       const AQUARIUM = require('../aquarium');
       let outputDir, outFilename, serveBase;
       if (project_id) {
@@ -648,9 +648,9 @@ class OrchestratorTools {
         } catch {}
       }
       if (!outputDir) {
-        // Flat layout: every task-scoped image lands in TASKS/OUTPUT/<task_id>.png
+        // Projectless task images land in GALLERY/output/<task_id>.png
         // (or generated_<ts>.png as fallback when no task could be created).
-        outputDir   = AQUARIUM.OUTPUT;
+        outputDir   = path.join(AQUARIUM.PROJECTS, 'GALLERY', 'output');
         outFilename = taskId ? `${taskId}.png` : (safeFilename || `generated_${Date.now()}.png`);
         serveBase   = require('path').join(outputDir, outFilename);
       }
@@ -823,19 +823,21 @@ class OrchestratorTools {
           const fname = (output_path || `fetch_${Date.now()}.md`).replace(/^(?:output|OUTPUT|temp|TEMP)\//, '');
           savePath = path.join(outDir, path.basename(fname));
         } catch {
-          // Last-resort fallback — flat TASKS/OUTPUT/, no per-task folder.
-          await fs.mkdir(AQUARIUM.OUTPUT, { recursive: true });
+          // Last-resort fallback — GODSTUFF/output, named after the task.
+          const godOut = path.join(AQUARIUM.PROJECTS, 'GODSTUFF', 'output');
+          await fs.mkdir(godOut, { recursive: true });
           const raw = output_path || 'fetch.md';
           const ext = raw.split('.').pop().toLowerCase();
-          savePath = path.join(AQUARIUM.OUTPUT, `${task_id || 'tmp_' + Date.now()}.${ext === 'txt' ? 'md' : ext}`);
+          savePath = path.join(godOut, `${task_id || 'tmp_' + Date.now()}.${ext === 'txt' ? 'md' : ext}`);
         }
       } else if (task_id) {
-        // Flat layout — single file in TASKS/OUTPUT named after the task ID.
-        // No per-task folder. Multiple fetches under the same task overwrite.
-        await fs.mkdir(AQUARIUM.OUTPUT, { recursive: true });
+        // Projectless task — single file in GODSTUFF/output named after the
+        // task ID. Multiple fetches under the same task overwrite.
+        const godOut = path.join(AQUARIUM.PROJECTS, 'GODSTUFF', 'output');
+        await fs.mkdir(godOut, { recursive: true });
         const raw = output_path || 'fetch.md';
         const ext = raw.split('.').pop().toLowerCase();
-        savePath = path.join(AQUARIUM.OUTPUT, `${task_id}.${ext === 'txt' ? 'md' : ext}`);
+        savePath = path.join(godOut, `${task_id}.${ext === 'txt' ? 'md' : ext}`);
       } else {
         return { ok: false, error: 'Provide task_id or project_id so the file has a destination' };
       }

@@ -135,7 +135,7 @@ class PoseidonOrchestrator {
     const [agentReg, projectReg, taskReg, modelReg] = await Promise.all([
       this.rm.read('AGENTS/agent_registry.json').catch(() => ({ agents: {} })),
       this.rm.read('PROJECTS/project_registry.json').catch(() => ({ projects: {} })),
-      this.rm.read('TASKS/tasks_registry.json').catch(() => ({ tasks: {} })),
+      this.rm.read('PROJECTS/tasks_registry.json').catch(() => ({ tasks: {} })),
       this.rm.read('MODELS/model_registry.json').catch(() => ({ models: {} }))
     ]);
     
@@ -398,7 +398,7 @@ My response: "${ss.last_response_preview}"${tools}
       lines.push(`  list_files("PROJECTS/${_exampleFolder}/output")  → output files`);
       lines.push(`  read_file("PROJECTS/${_exampleFolder}/project_memory.json") → project memory`);
       lines.push(`  write_file("PROJECTS/${_exampleFolder}/output/report.md", content) → save output`);
-      lines.push('  list_files("TASKS/OUTPUT")              → task outputs (no project)');
+      lines.push('  list_files("PROJECTS/GODSTUFF/output")  → ad-hoc outputs (no project)');
       lines.push('  list_files("PROJECTS")                  → list all project folders');
       lines.push('CRITICAL: folder name = project NAME not project_id. Use list_files("PROJECTS") to see all folders.');
       lines.push('MULTI-STEP TASKS: after each step call update_task(id, "progress", "step N/M done: ...") so context resets dont lose state.');
@@ -1084,7 +1084,7 @@ My response: "${ss.last_response_preview}"${tools}
             const mem = await self.rm.getProjectMemory(projectId).catch(() => ({}));
 
             // 3. Active + planned tasks (from registry)
-            const taskReg = await self.rm.read('TASKS/tasks_registry.json');
+            const taskReg = await self.rm.read('PROJECTS/tasks_registry.json');
             const allTasks = Object.values(taskReg.tasks || {});
             const projectTasks = allTasks.filter(t =>
               t.project_id === projectId || t.project_name === entry.name
@@ -1615,7 +1615,7 @@ My response: "${ss.last_response_preview}"${tools}
         params: {
           type: 'object',
           properties: {
-            source_image:    { type: 'string',  description: 'Absolute path OR aquarium-relative path to the source image (e.g. TASKS/OUTPUT/task_0032.png).' },
+            source_image:    { type: 'string',  description: 'Absolute path OR aquarium-relative path to the source image (e.g. PROJECTS/GALLERY/output/task_0032.png).' },
             prompt:          { type: 'string',  description: 'What the image should become / gain / lose.' },
             strength:        { type: 'number',  description: '0..1 — how much to deviate from the source (default 0.6). 0.2 = subtle, 0.85 = strong.' },
             model_id:        { type: 'string',  description: 'Image model or partial name (default: auto-pick from library).' },
@@ -1782,7 +1782,7 @@ My response: "${ss.last_response_preview}"${tools}
           'Each slide has a title, plus either `bullets` (array of strings) or `body` (single string). ' +
           'First slide auto-detects as a title slide if it has no body/bullets. Add speaker `notes` per slide if useful. ' +
           'Theme: "light" (default) or "dark". Output goes to PROJECTS/<folder>/output/ if project_id set, ' +
-          'else TASKS/OUTPUT/.',
+          'else PROJECTS/GALLERY/output/.',
         params: {
           type: 'object',
           properties: {
@@ -1821,7 +1821,7 @@ My response: "${ss.last_response_preview}"${tools}
           'Supports # ## ### headings, - or * unordered lists, 1. 2. 3. numbered lists, ' +
           '**bold**, *italic*, and blank-line-separated paragraphs. ' +
           'For structured docs prefer explicit headings so the outline pane renders properly. ' +
-          'Output goes to PROJECTS/<folder>/output/ if project_id set, else TASKS/OUTPUT/.',
+          'Output goes to PROJECTS/<folder>/output/ if project_id set, else PROJECTS/GALLERY/output/.',
         params: {
           type: 'object',
           properties: {
@@ -2317,7 +2317,7 @@ My response: "${ss.last_response_preview}"${tools}
 
       // Delegate to RegistryManager.deleteProject — single cascade implementation.
       // It removes: project folder, frees agents, cascade-deletes all related
-      // tasks (live registry + results_log), removes TASKS/OUTPUT files, then
+      // tasks (live registry + results_log), removes GODSTUFF output files, then
       // unregisters the project. Without this delegation, Poseidon's deletion
       // bypassed the task cascade and left orphaned tasks behind.
       const result = await this.rm.deleteProject(targetId);
@@ -2385,6 +2385,14 @@ My response: "${ss.last_response_preview}"${tools}
 
   async _createTaskInner({ title, description, acceptance_criteria, project, assigned_agent_id, priority, depends_on, challenge = false, _pipeline = false, regCache = null }) {
     try {
+      // SIMPLIFICATION: tasks are ALWAYS project work now. A task created
+      // without a project belongs to GODSTUFF — its outputs land in
+      // PROJECTS/GODSTUFF/output where every project feature applies, and
+      // idempotence-by-title is scoped there. GODSTUFF membership is open:
+      // any agent can work there (the temple-membership guard below only
+      // applies to real projects).
+      if (!project) project = 'GODSTUFF';
+
       // (No WIP limit — user directive.) The anti-loop safety net is the
       // IDEMPOTENT-BY-TITLE guard in the outer _createTask: two attempts
       // with the same title in the same project return the existing task
@@ -2395,8 +2403,9 @@ My response: "${ss.last_response_preview}"${tools}
 
       // TEMPLE MEMBERSHIP — a project task can only be assigned to an agent
       // that is ASSIGNED TO THAT PROJECT (present in the temple). Assigning
-      // outsiders made no sense and confused the aquarium view.
-      if (project && assigned_agent_id) {
+      // outsiders made no sense and confused the aquarium view. GODSTUFF is
+      // exempt: it's the commons.
+      if (project && project !== 'GODSTUFF' && assigned_agent_id) {
         try {
           const projEntry = await this.rm.resolveProjectByNameOrId(project);
           const members = projEntry?.entry?.assigned_agents || [];
@@ -2412,7 +2421,7 @@ My response: "${ss.last_response_preview}"${tools}
       }
 
       // Use the serialized generateNextId — prevents duplicate IDs on concurrent calls
-      const taskId = await this.rm.generateNextId('TASKS/tasks_registry.json');
+      const taskId = await this.rm.generateNextId('PROJECTS/tasks_registry.json');
 
       // Normalise depends_on: accept string or array, keep valid-looking ids only
       let deps = (Array.isArray(depends_on) ? depends_on : (depends_on ? [depends_on] : []))
@@ -2501,7 +2510,7 @@ My response: "${ss.last_response_preview}"${tools}
     try {
       this.rm.invalidateCache();
       // Use getTasksRegistry() which scans both flat file AND per-folder tasks
-      const reg = await this.rm.getTasksRegistry().catch(() => this.rm.read('TASKS/tasks_registry.json').catch(() => ({ tasks: {} })));
+      const reg = await this.rm.getTasksRegistry().catch(() => this.rm.read('PROJECTS/tasks_registry.json').catch(() => ({ tasks: {} })));
       let tasks = Object.values(reg.tasks || {});
       if (status && status !== 'all') {
         const NORM = { open:'todo', planned:'todo', queued:'todo', assigned:'todo', pending:'todo',
@@ -2589,11 +2598,11 @@ My response: "${ss.last_response_preview}"${tools}
   async _deleteTask({ task_id }) {
     try {
       this.rm.invalidateCache();
-      const reg = await this.rm.read('TASKS/tasks_registry.json');
+      const reg = await this.rm.read('PROJECTS/tasks_registry.json');
       if (!reg.tasks?.[task_id]) return { ok: false, error: `Task ${task_id} not found.` };
       const title = reg.tasks[task_id].title;
       delete reg.tasks[task_id];
-      await this.rm.write('TASKS/tasks_registry.json', reg);
+      await this.rm.write('PROJECTS/tasks_registry.json', reg);
       await this.rm.log({ event_type: 'task_deleted', severity: 'info',
         actor: { type: 'system', id: 'poseidon_main' },
         subject: { type: 'task', id: task_id },
@@ -2885,7 +2894,7 @@ My response: "${ss.last_response_preview}"${tools}
       this.rm.invalidateCache();
       const brain = await this.rm.getPoseidonBrain();
       const agentReg = await this.rm.read('AGENTS/agent_registry.json').catch(() => ({ agents: {} }));
-      const taskReg = await this.rm.read('TASKS/tasks_registry.json').catch(() => ({ tasks: {} }));
+      const taskReg = await this.rm.read('PROJECTS/tasks_registry.json').catch(() => ({ tasks: {} }));
       const taskValues = Object.values(taskReg.tasks || {});
       return {
         ok: true,
@@ -2970,7 +2979,7 @@ My response: "${ss.last_response_preview}"${tools}
       //   "PROJECTS/NEWS"     → aquarium/PROJECTS/NEWS/ (exact name)
       //   "PROJECTS/PROJECT_001" → aquarium/PROJECTS/PROJECT_001/
       //   "NEWS"              → searched in PROJECTS/ folders by name
-      //   "TASKS/OUTPUT"      → aquarium/TASKS/OUTPUT/
+      //   "PROJECTS/GODSTUFF/output" → the projectless-work home
       let fullPath;
       const upper = relPath.toUpperCase();
       if (/^(PROJECTS|TASKS|MODELS|AGENTS|SKILLS|BRAIN|LOGS|CHANNELS)(\/|$)/.test(upper)) {

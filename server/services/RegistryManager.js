@@ -156,7 +156,7 @@ class RegistryManager {
           const AQUARIUM = require('../aquarium');
           const path = require('path');
           const fsSync = require('fs');
-          const resultsPath = path.join(AQUARIUM.TASKS, 'results_log.json');
+          const resultsPath = AQUARIUM.RESULTS_LOG;
           if (fsSync.existsSync(resultsPath)) {
             const rl = JSON.parse(fsSync.readFileSync(resultsPath, 'utf8'));
             for (const tid of Object.keys(rl.results || {})) {
@@ -295,7 +295,7 @@ class RegistryManager {
 
     // Route task fields through _writeTaskDetails (name is historical — it
     // writes the FLAT tasks_registry.json; per-folder details.json is gone)
-    if (filePath === 'TASKS/tasks_registry.json') {
+    if (filePath === 'PROJECTS/tasks_registry.json') {
       const parts = fieldPath.split('.');
       if (parts[0] === 'tasks' && parts[1]?.startsWith('task_')) {
         const taskId = parts[1];
@@ -1085,11 +1085,72 @@ class RegistryManager {
    * Delete a project: remove from registry, free all assigned agents, log.
    * Does NOT delete task history — tasks keep their project_name for reference.
    */
+  /**
+   * Seed the two system projects if missing — the canonical homes for
+   * projectless content:
+   *   GALLERY  — images generated outside any project context
+   *   GODSTUFF — Poseidon's ad-hoc files and projectless task outputs
+   * Every project feature (temple UI, RUN/TERM, versions, RAG, Ctrl+K,
+   * backups) applies to them for free. system:true blocks deletion and
+   * excludes them from mission assignment.
+   */
+  async ensureSystemProjects() {
+    const SPECS = [
+      { name: 'GALLERY',  folder: 'GALLERY',  description: 'System project — all images generated outside a project land here.' },
+      { name: 'GODSTUFF', folder: 'GODSTUFF', description: "System project — Poseidon's ad-hoc creations and projectless task outputs." },
+    ];
+    const fsp = require('fs').promises;
+    const pathm = require('path');
+    const AQUARIUM = require('../aquarium');
+    this.invalidateCache();
+    const reg = await this.getProjectRegistry();
+    reg.projects = reg.projects || {};
+    let created = 0;
+    for (const spec of SPECS) {
+      const exists = Object.values(reg.projects).some(p => p.name === spec.name || p.folder === spec.folder);
+      // Folders always ensured (content may arrive before the registry write)
+      for (const sub of ['input', 'output']) {
+        await fsp.mkdir(pathm.join(AQUARIUM.PROJECTS, spec.folder, sub), { recursive: true }).catch(() => {});
+      }
+      if (exists) {
+        // Backfill the system flag on pre-existing entries
+        const p = Object.values(reg.projects).find(p => p.name === spec.name || p.folder === spec.folder);
+        if (p && !p.system) { p.system = true; created++; }
+        continue;
+      }
+      const pid = await this.generateNextId('PROJECTS/project_registry.json');
+      this.invalidateCache();
+      const fresh = await this.getProjectRegistry();
+      fresh.projects[pid] = {
+        project_id: pid,
+        name: spec.name,
+        folder: spec.folder,
+        description: spec.description,
+        status: 'active',
+        system: true,
+        assigned_agents: [],
+        created_at: new Date().toISOString(),
+        created_by: 'system',
+      };
+      await this.write('PROJECTS/project_registry.json', fresh);
+      Object.assign(reg, fresh);
+      created++;
+    }
+    if (created > 0) {
+      await this.write('PROJECTS/project_registry.json', reg);
+      this.invalidateCache();
+    }
+    return { created };
+  }
+
   async deleteProject(projectId) {
     this.invalidateCache();
     const reg = await this.getProjectRegistry();
     const entry = reg.projects?.[projectId];
     if (!entry) throw new Error(`Project ${projectId} not found`);
+    // System projects (GALLERY, GODSTUFF) are load-bearing — they're the
+    // canonical home for projectless content. Refuse deletion.
+    if (entry.system) throw new Error(`${entry.name} is a system project and cannot be deleted`);
 
     const projectName = entry.name;
     const assignedAgents = [...(entry.assigned_agents || [])];
@@ -1114,7 +1175,7 @@ class RegistryManager {
       const fsp      = require('fs').promises;
 
       // ── Live registry ──
-      const liveTasksPath = path.join(AQUARIUM.TASKS, 'tasks_registry.json');
+      const liveTasksPath = AQUARIUM.TASKS_REGISTRY;
       let liveReg = { metadata: { next_id: 1 }, tasks: {} };
       try { liveReg = JSON.parse(await fsp.readFile(liveTasksPath, 'utf8')); } catch {}
       const belongs = (t) =>
@@ -1127,7 +1188,7 @@ class RegistryManager {
       await fsp.writeFile(liveTasksPath, JSON.stringify(liveReg, null, 2), 'utf8');
 
       // ── Results log (terminal tasks live here after purge) ──
-      const resultsPath = path.join(AQUARIUM.TASKS, 'results_log.json');
+      const resultsPath = AQUARIUM.RESULTS_LOG;
       let resLog = { results: {} };
       try { resLog = JSON.parse(await fsp.readFile(resultsPath, 'utf8')); } catch {}
       Object.entries(resLog.results || {}).forEach(([tid, t]) => {
@@ -1135,8 +1196,8 @@ class RegistryManager {
       });
       await fsp.writeFile(resultsPath, JSON.stringify(resLog, null, 2), 'utf8');
 
-      // ── Per-task OUTPUT files (flat layout: TASKS/OUTPUT/<id>.<ext>) ──
-      const outDir = AQUARIUM.OUTPUT;
+      // ── Projectless output files (GODSTUFF/output/<id>.<ext>) ──
+      const outDir = path.join(AQUARIUM.PROJECTS, 'GODSTUFF', 'output');
       try {
         const entries = await fsp.readdir(outDir).catch(() => []);
         for (const fname of entries) {
@@ -1198,28 +1259,30 @@ class RegistryManager {
    * Task folder: workspace/tasks/<task_id>/
    *   results/      — output files (output.txt, etc.)
    *
-   * All task data lives in aquarium/TASKS/tasks_registry.json.
+   * All task data lives in aquarium/PROJECTS/tasks_registry.json.
    * No per-folder structure. No details.json files. Single flat JSON.
    */
 
   _taskDir(taskId) {
     // Kept only for output file path resolution — no task data is stored here
     const AQUARIUM = require('../aquarium');
-    return require('path').join(AQUARIUM.TASKS, taskId);
+    // SIMPLIFICATION: no per-task folders anymore — projectless work
+    // lives in the GODSTUFF system project.
+    return require('path').join(AQUARIUM.PROJECTS, 'GODSTUFF', 'output');
   }
 
   async _readTaskDetails(taskId) {
     try {
       const AQUARIUM = require('../aquarium');
       const path = require('path');
-      const flatPath = path.join(AQUARIUM.TASKS, 'tasks_registry.json');
+      const flatPath = AQUARIUM.TASKS_REGISTRY;
       const reg = JSON.parse(require('fs').readFileSync(flatPath, 'utf8'));
       if (reg.tasks?.[taskId]) return reg.tasks[taskId];
       // Not in the live registry — it may be a terminal task (completed/
       // failed/cancelled) that was moved to results_log.json. Look there
       // too, so operations like "drag a Done card back to To-Do for a new
       // iteration" can find the task instead of 404-ing with "Task not found".
-      const resultsPath = path.join(AQUARIUM.TASKS, 'results_log.json');
+      const resultsPath = AQUARIUM.RESULTS_LOG;
       if (require('fs').existsSync(resultsPath)) {
         const rl = JSON.parse(require('fs').readFileSync(resultsPath, 'utf8'));
         const found = rl.results?.[taskId] || (Array.isArray(rl.results) ? rl.results.find(r => r.task_id === taskId) : null);
@@ -1236,7 +1299,7 @@ class RegistryManager {
     // write has landed AND the read fails / default kicks in, we clobber
     // last_id_used=48 with last_id_used=0. Next task then generates as
     // task_0001, colliding with the seed.
-    const reg = await this.read('TASKS/tasks_registry.json').catch(() => null)
+    const reg = await this.read('PROJECTS/tasks_registry.json').catch(() => null)
               || { metadata: { next_id: 1, id_format: 'task_NNNN' }, tasks: {} };
     if (!reg.metadata) reg.metadata = { next_id: 1, id_format: 'task_NNNN' };
     if (!reg.tasks)    reg.tasks    = {};
@@ -1259,7 +1322,7 @@ class RegistryManager {
         const AQUARIUM = require('../aquarium');
         const path = require('path');
         const fsSync = require('fs');
-        const resultsPath = path.join(AQUARIUM.TASKS, 'results_log.json');
+        const resultsPath = AQUARIUM.RESULTS_LOG;
         if (fsSync.existsSync(resultsPath)) {
           const rl = JSON.parse(fsSync.readFileSync(resultsPath, 'utf8'));
           let changed = false;
@@ -1275,14 +1338,14 @@ class RegistryManager {
       } catch { /* non-fatal */ }
     }
 
-    await this.write('TASKS/tasks_registry.json', reg);
+    await this.write('PROJECTS/tasks_registry.json', reg);
   }
 
   async getTasksRegistry() {
     const fs   = require('fs');
     const path = require('path');
     const AQUARIUM = require('../aquarium');
-    const flatPath = path.join(AQUARIUM.TASKS, 'tasks_registry.json');
+    const flatPath = AQUARIUM.TASKS_REGISTRY;
     if (!fs.existsSync(flatPath)) {
       return { metadata: { next_id: 1, id_format: 'task_NNNN' }, tasks: {} };
     }
@@ -1304,7 +1367,7 @@ class RegistryManager {
   }
 
   async createTask(taskData) {
-    const taskId = await this.generateNextId('TASKS/tasks_registry.json');
+    const taskId = await this.generateNextId('PROJECTS/tasks_registry.json');
     const now = new Date().toISOString();
 
     // A task is ALWAYS bound to an agent. If the caller didn't pick one,
@@ -1443,8 +1506,8 @@ class RegistryManager {
       subject: { type: 'task', id: taskId },
       action: `Task ${outcome}: ${task.title}`,
       changes: [
-        { file: 'TASKS/tasks_registry.json', task: taskId, field: 'status', to: outcome },
-        { file: 'TASKS/tasks_registry.json', task: taskId, operation: 'chunks_replaced_with_closure_comments' }
+        { file: 'PROJECTS/tasks_registry.json', task: taskId, field: 'status', to: outcome },
+        { file: 'PROJECTS/tasks_registry.json', task: taskId, operation: 'chunks_replaced_with_closure_comments' }
       ]
     });
 
@@ -1551,7 +1614,7 @@ class RegistryManager {
       registry.metadata.total_active++;
     }
 
-    await this.write('TASKS/tasks_registry.json', registry);
+    await this.write('PROJECTS/tasks_registry.json', registry);
 
     await this.log({
       event_type: 'task_started',
@@ -1600,7 +1663,7 @@ class RegistryManager {
     }
     task.execution.output_tokens_used = (task.execution.output_tokens_used || 0) + (report.output_tokens || 0);
 
-    await this.write('TASKS/tasks_registry.json', registry);
+    await this.write('PROJECTS/tasks_registry.json', registry);
 
     await this.log({
       event_type: 'task_chunk_completed',
@@ -1648,7 +1711,7 @@ class RegistryManager {
         chunk.status = 'approved';
         chunk.approval_status = 'approved_complete';
         // Auto-close the whole task
-        await this.write('TASKS/tasks_registry.json', registry);
+        await this.write('PROJECTS/tasks_registry.json', registry);
         await this.closeTask(taskId, 'completed', {
           summary: reason || 'Task completed successfully after final chunk approval',
           what_went_well: 'Chunks executed and approved sequentially',
@@ -1682,7 +1745,7 @@ class RegistryManager {
         chunk.status = 'approved';
         chunk.approval_status = 'task_stopped';
         logEventType = 'approval_denied';
-        await this.write('TASKS/tasks_registry.json', registry);
+        await this.write('PROJECTS/tasks_registry.json', registry);
         await this.closeTask(taskId, 'cancelled', {
           summary: reason || 'Task stopped by Poseidon',
           what_went_well: '',
@@ -1697,7 +1760,7 @@ class RegistryManager {
         throw new Error(`Unknown decision: ${decision}`);
     }
 
-    await this.write('TASKS/tasks_registry.json', registry);
+    await this.write('PROJECTS/tasks_registry.json', registry);
 
     await this.log({
       event_type: logEventType,
