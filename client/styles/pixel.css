@@ -9159,3 +9159,34 @@ html { zoom: var(--app-zoom); }
 .ti-fk[data-k="media"] { color: #a78bfa; border-color: rgba(167,139,250,0.45); background: rgba(167,139,250,0.08); }
 .ti-fk[data-k="arc"]   { color: #94a3b8; border-color: rgba(148,163,184,0.4); background: rgba(148,163,184,0.07); }
 .ti-fk[data-k="misc"]  { color: var(--ui-muted); border-color: rgba(148,163,184,0.25); }
+
+/* ── Templates panel ── */
+.tpl-section { margin-bottom: 14px; }
+.tpl-section-head {
+  font-family: 'Press Start 2P', monospace; font-size: 8px;
+  color: #4facfe; letter-spacing: 1px;
+  padding: 6px 0; border-bottom: 1px solid rgba(79,172,254,0.2);
+  margin-bottom: 6px;
+}
+.tpl-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 4px;
+  border-bottom: 1px dotted rgba(79,172,254,0.1);
+  font-family: 'Courier New', monospace; font-size: 12px;
+}
+.tpl-name { flex: 1; color: var(--text-primary, #e2e8f0); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tpl-meta { color: var(--ui-muted); font-size: 10px; }
+.tpl-btn {
+  font-family: 'Press Start 2P', monospace; font-size: 6px;
+  padding: 3px 7px; cursor: pointer; border-radius: 3px;
+  background: rgba(79,172,254,0.08); border: 1px solid rgba(79,172,254,0.35);
+  color: var(--text-primary, #e2e8f0);
+}
+.tpl-btn:hover { border-color: rgba(79,172,254,0.7); }
+.tpl-btn.tpl-del { color: #f87171; border-color: rgba(248,113,113,0.4); background: rgba(248,113,113,0.06); }
+.tpl-default-on {
+  font-family: 'Press Start 2P', monospace; font-size: 6px;
+  color: #06ffa5; border: 1px solid rgba(6,255,165,0.5); border-radius: 3px;
+  padding: 3px 7px; text-shadow: 0 0 5px rgba(6,255,165,0.4);
+}
+.tpl-empty { color: var(--ui-muted); font-size: 11px; font-style: italic; padding: 8px 4px; }

@@ -40,7 +40,7 @@ function detectModelsDir() {
 // Kept for API stability (RegistryManager + FilesystemTools call it on every
 // read/write). If a legacy lowercase prefix slips through (e.g. from a stored
 // JSON record), warn loudly so we can fix the producer.
-const CANONICAL_PREFIXES = /^(MODELS|AGENTS|PROJECTS|LOGS|TOOLS|SKILLS|BRAIN|CHANNELS)[\/]/;
+const CANONICAL_PREFIXES = /^(MODELS|AGENTS|PROJECTS|TEMPLATES|LOGS|TOOLS|SKILLS|BRAIN|CHANNELS)[\/]/;
 const LEGACY_PREFIXES    = /^(main|agents|projects|tasks|logs|tools|models)[\/]/;
 
 function resolvePath(logical) {
@@ -69,6 +69,7 @@ const AQUARIUM = {
   // TASKS/IMAGES lives in the GODSTUFF and GALLERY system projects, where
   // every project feature (RUN, versions, RAG, search, backups) applies.
   // The task registries are metadata, not content — they live in PROJECTS/.
+  TEMPLATES: path.join(AQ_ROOT, 'TEMPLATES'),
   LOGS:     path.join(AQ_ROOT, 'LOGS'),
   TOOLS:    path.join(AQ_ROOT, 'TOOLS'),
   SKILLS:   path.join(AQ_ROOT, 'SKILLS'),
@@ -147,6 +148,7 @@ const AQUARIUM = {
   // Seed skills — copy ONLY if file absent (first install). Never re-seed deleted skills.
   try {
     fs.mkdirSync(AQUARIUM.SKILLS, { recursive: true });
+    fs.mkdirSync(AQUARIUM.TEMPLATES, { recursive: true });
 
     if (fs.existsSync(SKILLS_SEED)) {
       // Load deletion blocklist — skills deleted via DELETE route are never re-seeded

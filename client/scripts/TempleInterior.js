@@ -649,16 +649,13 @@ const TempleInterior = {
         const isPy   = /\.py$/i.test(ename);
         const isSh   = /\.sh$/i.test(ename);
         const isHtml = /\.html?$/i.test(ename);
-        // TEMPLATES temple: flag the auto-applied style references
-        const isDefaultTpl = this.currentTemple?.name === 'TEMPLATES' && /^default\.(pptx|docx|xlsx)$/i.test(ename);
-        const tplBadge = isDefaultTpl ? '<i class="ti-fk" data-k="web" title="Auto-applied to every generated document of this format">★ DEFAULT</i>' : '';
         const runActions = (isPy || isSh || isHtml)
           ? `<button class="ti-file-imgact ti-file-run" title="${isHtml ? 'Render in preview' : `Run with ${isPy ? 'python (IAQUA venv)' : 'bash'} (60s timeout)`}" onclick="event.stopPropagation();TempleInterior.${isHtml ? `_renderHtml('${ename}','${type}')` : `_runPython('${ename}','${type}')`}">▶</button>`
           : '';
         return `<div class="ti-file" data-task-id="${f.task_id || ''}" onmouseenter="TempleInterior._haloTask('${this._esc(f.task_id||'')}',true)" onmouseleave="TempleInterior._haloTask('${this._esc(f.task_id||'')}',false)" onclick="TempleInterior._openFile('${ename}','${this._esc(f.path||'')}','${type}','${folder}',${f.size||0})">
           ${thumb}
           <span class="ti-file-name" title="${ename}">${ename}</span>${taskBadge}${sz}${ts}
-          ${tplBadge}${imgActions}${runActions}
+          ${imgActions}${runActions}
           <button class="ti-file-del" onclick="event.stopPropagation();TempleInterior._deleteFile('${folder}','${ename}','${type}')">X</button>
         </div>`;
       }).join('');

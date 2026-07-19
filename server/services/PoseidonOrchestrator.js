@@ -399,7 +399,7 @@ My response: "${ss.last_response_preview}"${tools}
       lines.push(`  read_file("PROJECTS/${_exampleFolder}/project_memory.json") → project memory`);
       lines.push(`  write_file("PROJECTS/${_exampleFolder}/output/report.md", content) → save output`);
       lines.push('  list_files("PROJECTS/GODSTUFF/output")  → ad-hoc outputs (no project)');
-      lines.push('  TEMPLATES project = the user\'s STYLE gallery: default.pptx / default.docx there AUTO-APPLY to generate_pptx / generate_docx (masters, fonts, colors, logos inherited). Named variants via template:"<name>". template:"none" for plain output.');
+      lines.push('  STYLE TEMPLATES: the user manages reference .pptx/.docx in the Templates panel (stored in TEMPLATES/). The default per format AUTO-APPLIES to generate_pptx / generate_docx (masters, fonts, colors, logos inherited). Named variants via template:"<name>". template:"none" for plain output.');
       lines.push('  list_files("PROJECTS")                  → list all project folders');
       lines.push('CRITICAL: folder name = project NAME not project_id. Use list_files("PROJECTS") to see all folders.');
       lines.push('MULTI-STEP TASKS: after each step call update_task(id, "progress", "step N/M done: ...") so context resets dont lose state.');
@@ -1807,7 +1807,7 @@ My response: "${ss.last_response_preview}"${tools}
             title:      { type: 'string', description: 'Deck metadata title' },
             author:     { type: 'string', description: 'Deck metadata author' },
             theme:      { type: 'string', description: '"light" or "dark" (ignored when a template applies)' },
-            template:   { type: 'string', description: 'Style template from the TEMPLATES project. Omit = auto-apply default.pptx if the user has set one. "none" = plain generation. "<name>" = TEMPLATES/output/<name>.pptx. Templates carry the user\'s masters, fonts, colors and logos — the deck inherits them fully.' }
+            template:   { type: 'string', description: 'Style template from the user\'s Templates panel. Omit = auto-apply the format default if the user set one. "none" = plain generation. "<name>" = TEMPLATES/output/<name>.pptx. Templates carry the user\'s masters, fonts, colors and logos — the deck inherits them fully.' }
           },
           required: ['slides']
         },
@@ -1831,7 +1831,7 @@ My response: "${ss.last_response_preview}"${tools}
             filename:   { type: 'string' },
             project_id: { type: 'string' },
             title:      { type: 'string', description: 'Optional centred title above the body' },
-            template:   { type: 'string', description: 'Style template from the TEMPLATES project. Omit = auto-apply default.docx if set. "none" = plain. "<name>" = TEMPLATES/output/<name>.docx. The document inherits the template\'s fonts, heading styles, margins, headers/footers.' }
+            template:   { type: 'string', description: 'Style template from the user\'s Templates panel. Omit = auto-apply the format default if set. "none" = plain. "<name>" = TEMPLATES/output/<name>.docx. The document inherits the template\'s fonts, heading styles, margins, headers/footers.' }
           },
           required: ['markdown']
         },

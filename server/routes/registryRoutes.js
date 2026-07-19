@@ -22,6 +22,34 @@ router.get('/poseidon', async (req, res) => {
   } catch (err) { res.status(500).json({ success: false, error: err.message }); }
 });
 
+// TEMPLATES — style references managed by the header Templates panel.
+// Files live in aquarium/TEMPLATES/ (system assets, like MODELS/SKILLS).
+router.get('/templates', (req, res) => {
+  try { res.json({ success: true, ...require('../services/TemplateGallery').list() }); }
+  catch (e) { res.status(500).json({ success: false, error: e.message }); }
+});
+router.post('/templates', express.json({ limit: '50mb' }), async (req, res) => {
+  try {
+    const { filename, content, encoding = 'base64' } = req.body || {};
+    const safe = String(filename || '').replace(/[/\\]/g, '').trim();
+    if (!safe || !/\.(pptx|docx|xlsx)$/i.test(safe)) return res.status(400).json({ success: false, error: 'filename with .pptx/.docx/.xlsx extension required' });
+    if (!content) return res.status(400).json({ success: false, error: 'content required' });
+    const buf = encoding === 'base64' ? Buffer.from(content, 'base64') : Buffer.from(content, 'utf8');
+    const fsp2 = require('fs').promises;
+    await fsp2.mkdir(AQUARIUM.TEMPLATES, { recursive: true });
+    await fsp2.writeFile(path.join(AQUARIUM.TEMPLATES, safe), buf);
+    res.json({ success: true, file: safe, size: buf.length });
+  } catch (e) { res.status(500).json({ success: false, error: e.message }); }
+});
+router.delete('/templates/:file', (req, res) => {
+  const r = require('../services/TemplateGallery').remove(req.params.file);
+  res.status(r.ok ? 200 : 404).json({ success: r.ok, ...r });
+});
+router.post('/templates/default', express.json({ limit: '8kb' }), (req, res) => {
+  const r = require('../services/TemplateGallery').setDefault(req.body?.ext, req.body?.file ?? null);
+  res.status(r.ok ? 200 : 400).json({ success: r.ok, ...r });
+});
+
 // GLOBAL SEARCH — Ctrl+K palette backend. One query across project files
 // (BM25), tasks, skills, and project memories.
 router.get('/search', async (req, res) => {

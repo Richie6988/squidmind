@@ -297,6 +297,25 @@ async function start() {
     // If an old TASKS/ dir exists from a previous layout, remove it whole
     // (fresh-start policy; registries were reseeded under PROJECTS/).
     await fs.rm(path.join(AQUARIUM.ROOT, 'TASKS'), { recursive: true, force: true }).catch(() => {});
+    // MIGRATION (one boot): yesterday's TEMPLATES system project moves to
+    // the top-level aquarium/TEMPLATES dir — templates are system assets,
+    // not work content. Files from its output/ are carried over, then the
+    // project folder and registry entry are removed.
+    try {
+      const oldTpl = path.join(AQUARIUM.PROJECTS, 'TEMPLATES');
+      const oldOut = path.join(oldTpl, 'output');
+      const names = await fs.readdir(oldOut).catch(() => []);
+      for (const n of names) {
+        await fs.rename(path.join(oldOut, n), path.join(AQUARIUM.TEMPLATES, n)).catch(() => {});
+      }
+      await fs.rm(oldTpl, { recursive: true, force: true }).catch(() => {});
+      const preg = await sharedRm.getProjectRegistry().catch(() => null);
+      if (preg?.projects) {
+        const tid = Object.keys(preg.projects).find(id => preg.projects[id].name === 'TEMPLATES');
+        if (tid) { delete preg.projects[tid]; await sharedRm.write('PROJECTS/project_registry.json', preg); sharedRm.invalidateCache(); }
+      }
+      if (names.length) console.log(`[Boot] Migrated ${names.length} template(s) to aquarium/TEMPLATES/`);
+    } catch (e) { console.warn('[Boot] template migration:', e.message); }
     // Seed GALLERY + GODSTUFF system projects (idempotent).
     try {
       const { created } = await sharedRm.ensureSystemProjects();
