@@ -2297,6 +2297,17 @@ const TempleInterior = {
           feed.insertAdjacentHTML('beforeend', `<div class="ti-replay-row ti-replay-ko">✗ ${this._esc(r.error || `exit ${r.exit_code ?? '?'}`)}
             <button class="btn-secondary" style="font-size:8px;padding:2px 8px;margin-left:8px;"
               onclick="TempleInterior._sendTermErrorToPoseidon('${this._esc(cmd).replace(/'/g, '&#39;')}', this.closest('.ti-run-console').querySelector('.ti-run-err:last-of-type')?.textContent || '${this._esc((r.error || '').slice(0, 200))}')">» SEND TO POSEIDON</button></div>`);
+          // PRE-VENV HINT — on Ubuntu there is no bare `python`/`pip` until
+          // the IAQUA venv exists (only python3/pip3). Instead of a cryptic
+          // exit 1/127, explain the state and offer the fix in one click.
+          const notFound = /\b(python|pip):\s*(command\s+)?not found/.test(`${r.stderr || ''} ${r.error || ''}`)
+            || (/^\s*which\s+(python|pip)\s*$/.test(cmd) && r.exit_code === 1);
+          if (notFound && !document.getElementById('ti-venv-hint')) {
+            feed.insertAdjacentHTML('beforeend', `<div class="ti-replay-row ti-replay-dim" id="ti-venv-hint" style="margin-top:4px;">
+              Bare <b>python</b>/<b>pip</b> don't exist before the IAQUA venv — use <b>python3</b>/<b>pip3</b>, or:
+              <button class="btn-primary" style="font-size:8px;padding:2px 8px;margin-left:6px;"
+                onclick="TempleInterior._ensureVenv(this)">CREATE IAQUA VENV (~20s)</button></div>`);
+          }
         }
         else if (!r.stdout && !r.stderr) feed.insertAdjacentHTML('beforeend', `<div class="ti-replay-row ti-replay-dim">(no output)</div>`);
         // Commands can create/delete files — keep the lists honest.
@@ -2345,6 +2356,23 @@ const TempleInterior = {
       `Diagnostique et corrige — tu as execute_bash dans le même environnement (venv IAQUA).\n\n` +
       `ERREUR:\n\`\`\`\n${String(stderr || '').slice(-1200)}\n\`\`\``;
     PoseidonChat.openWithDraft(draft);
+  },
+
+  // One-click venv creation from the terminal hint (pre-venv state).
+  async _ensureVenv(btn) {
+    if (btn) { btn.disabled = true; btn.textContent = 'creating venv…'; }
+    try {
+      const r = await fetch('/api/v2/pyenv/ensure', { method: 'POST' }).then(x => x.json());
+      if (!r.success) {
+        if (btn) { btn.disabled = false; btn.textContent = `✗ ${(r.error || 'failed').slice(0, 60)} — retry`; }
+        return;
+      }
+      if (btn) btn.closest('#ti-venv-hint')?.replaceChildren(
+        Object.assign(document.createElement('span'), { textContent: `✓ IAQUA venv ready${r.created ? '' : ' (already existed)'} — try: which python` }));
+      this._setStatus('✓ IAQUA venv ready — python/pip now resolve to .pyenv');
+    } catch (e) {
+      if (btn) { btn.disabled = false; btn.textContent = `✗ ${e.message.slice(0, 50)} — retry`; }
+    }
   },
 
   // One-click missing-lib recovery: install into the IAQUA venv, close the

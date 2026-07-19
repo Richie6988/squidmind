@@ -56,6 +56,15 @@ router.post('/pyenv/install', async (req, res) => {
     res.status(r.ok ? 200 : 400).json({ success: r.ok, ...r });
   } catch (e) { res.status(500).json({ success: false, error: e.message }); }
 });
+// Explicit venv creation with no package — used by the terminal's
+// "CREATE IAQUA VENV" hint button (pre-venv, `which python` fails on
+// Ubuntu since only python3 exists; the venv brings the bare `python`).
+router.post('/pyenv/ensure', async (req, res) => {
+  try {
+    const r = await require('../services/PyEnvService').ensure();
+    res.status(r.ok ? 200 : 500).json({ success: r.ok, ...r });
+  } catch (e) { res.status(500).json({ success: false, error: e.message }); }
+});
 router.post('/pyenv/remove', async (req, res) => {
   try {
     const r = await require('../services/PyEnvService').remove(req.body?.packages);
