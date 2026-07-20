@@ -362,13 +362,35 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
     if (!this._libPromise) {
       this._libPromise = (async () => {
         const llamaCpp = await import('node-llama-cpp');
+        // Release-aware init. 'lastBuild' (a local CUDA build) is preferred
+        // ONLY when it matches the npm package's pinned llama.cpp release.
+        // A stale local build silently shadowing a fresh prebuilt is how
+        // "unknown model architecture: gemma4" survived the 3.19.0 upgrade:
+        // the new binaries were installed but never used.
+        let expected = null;
         try {
-          this.llama = await llamaCpp.getLlama('lastBuild');
-          log.info(' node-llama-cpp initialized (custom build)');
+          // The package's exports map blocks subpath requires — resolve the
+          // main entry (always exported), walk up to the package root, read
+          // the pinned-release file directly.
+          const path = require('path');
+          const entry = require.resolve('node-llama-cpp');
+          let d = path.dirname(entry);
+          while (d && path.basename(d) !== 'node-llama-cpp' && d !== path.dirname(d)) d = path.dirname(d);
+          expected = JSON.parse(require('fs').readFileSync(path.join(d, 'llama', 'binariesGithubRelease.json'), 'utf8'))?.release || null;
+        } catch {}
+        try {
+          const local = await llamaCpp.getLlama('lastBuild');
+          const rel = local?.llamaCppRelease?.release || null;
+          if (local?.buildType === 'localBuild' && expected && rel && rel !== expected) {
+            log.warn(` STALE local llama.cpp build detected (${rel}, package ships ${expected}) — ignoring it in favor of the prebuilt. To rebuild CUDA-optimized at the current release: npm run rebuild-llama. To drop the stale build: npx node-llama-cpp source clear`);
+            this.llama = await llamaCpp.getLlama();
+          } else {
+            this.llama = local;
+          }
         } catch {
           this.llama = await llamaCpp.getLlama();
-          log.info(' node-llama-cpp initialized (prebuilt)');
         }
+        log.info(` node-llama-cpp initialized · llama.cpp ${this.llama?.llamaCppRelease?.release || '?'} · build: ${this.llama?.buildType || '?'}`);
         return this.llama;
       })();
     }
@@ -672,14 +694,15 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
       if (/unknown model architecture|unknown arch/i.test(err.message)) {
         const arch = err.message.match(/unknown model architecture: '([^']+)'/)?.[1] || 'unknown';
         throw new Error(
-          `Architecture '${arch}' not supported by your installed llama.cpp build.\n` +
-          `FIX 1 (fast, usually enough): npm install\n` +
-          `  → package.json now pins node-llama-cpp ^3.19.0 (prebuilt binaries\n` +
-          `    include gemma4 and other 2026 architectures).\n` +
-          `FIX 2 (only if the arch is NEWER than the bundled release):\n` +
-          `  npx node-llama-cpp source download --release latest\n` +
-          `  CMAKE_ARGS="-DGGML_CUDA=ON" npx node-llama-cpp source build\n` +
-          `  (or: npm run rebuild-llama — ~5-10 min)`
+          `Architecture '${arch}' not supported by the llama.cpp build IN USE.\n` +
+          `Check the boot line "node-llama-cpp initialized · llama.cpp <release> · build: <type>".\n` +
+          `FIX 0 — build: localBuild with an old release = a stale local build is\n` +
+          `  shadowing the npm prebuilt (auto-ignored since this update; if you\n` +
+          `  still see it): npx node-llama-cpp source clear\n` +
+          `FIX 1 — npm install (package pins node-llama-cpp ^3.19.0; its prebuilt\n` +
+          `  b9842 binaries include gemma4).\n` +
+          `FIX 2 — only if the arch is NEWER than the bundled release:\n` +
+          `  npm run rebuild-llama (~5-10 min, CUDA source build at latest)`
         );
       }
       throw err;
@@ -1121,6 +1144,13 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
           break;
         } catch (loadErr) {
           const msg = loadErr.message || '';
+          // FAIL-FAST: these are NOT memory failures — lowering gpuLayers
+          // will never fix them, and the 5-rung ladder just burns ~10s and
+          // buries the real error under misleading "VRAM/alloc" retries
+          // (field log: gemma4 unknown-arch retried 32→19→11→4→0).
+          if (/unknown (model )?architecture|no such file|failed to open|unknown tokenizer|unrecognized tokenizer/i.test(msg)) {
+            throw loadErr;
+          }
           // llama.cpp tensor-shape errors surface as "missing blk.X.<tensor>.weight"
           // when the GGUF file's architecture doesn't match what the loader
           // expects (e.g. a text-encoder GGUF loaded as a chat model, an SSM
