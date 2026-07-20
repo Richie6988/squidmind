@@ -562,7 +562,7 @@ const PoseidonChat = {
       if (!tNode) { tNode = document.createElement('div'); tNode.className = 'pc-text-final'; el.appendChild(tNode); }
       const iWrap = document.createElement('div');
       iWrap.className = 'pc-img-wrap';
-      iWrap.innerHTML = `<img class="pc-md-img" src="${p.url}" alt="${p.alt||''}" loading="lazy"><div class="pc-img-caption">${p.caption||p.alt||''}</div>`;
+      iWrap.innerHTML = `<a class="pc-img-open" href="${p.url}" target="_blank" title="Open original">&#8599;</a><img class="pc-md-img" src="${p.url}" alt="${p.alt||''}" loading="lazy"><div class="pc-img-caption">${p.caption||p.alt||''}</div>`;
       tNode.appendChild(iWrap);
       return;
     }
@@ -783,7 +783,7 @@ const PoseidonChat = {
         var n = imgBlocks.length;
         imgBlocks.push(
           '<div class="pc-img-wrap">' +
-          '<img class="pc-md-img" src="' + url + '" alt="' + alt.replace(/"/g,'&quot;') + '" loading="lazy" ' +
+          '<a class="pc-img-open" href="' + url + '" target="_blank" title="Open original">&#8599;</a><img class="pc-md-img" src="' + url + '" alt="' + alt.replace(/"/g,'&quot;') + '" loading="lazy" ' +
           'onerror="this.style.display=\'none\'; if(this.nextSibling)this.nextSibling.style.display=\'block\'">' +
           '<div style="display:none;color:#475569;font-size:10px;padding:4px;">⚠ Could not load image</div>' +
           (alt ? '<div class="pc-img-caption">' + alt + '</div>' : '') +
@@ -797,12 +797,12 @@ const PoseidonChat = {
     // Bare image URLs on their own line
     s = s.replace(/^(https?:\/\/\S+\.(?:png|jpg|jpeg|gif|webp|svg)\S*)$/gim, function(_, url) {
       var n = imgBlocks.length;
-      imgBlocks.push('<div class="pc-img-wrap"><img class="pc-md-img" src="' + url + '" alt="" loading="lazy"></div>');
+      imgBlocks.push('<div class="pc-img-wrap"><a class="pc-img-open" href="' + url + '" target="_blank" title="Open original">&#8599;</a><img class="pc-md-img" src="' + url + '" alt="" loading="lazy"></div>');
       return '\x00IMG' + n + '\x00';
     });
     s = s.replace(/^(https?:\/\/\S+\.(?:png|jpg|jpeg|gif|webp|svg)(\?\S*)?)$/gim, function(_, url) {
       var idx2 = imgBlocks.length;
-      imgBlocks.push('<div class="pc-img-wrap"><img class="pc-md-img" src="' + url + '" alt="" loading="lazy"></img></div>');
+      imgBlocks.push('<div class="pc-img-wrap"><a class="pc-img-open" href="' + url + '" target="_blank" title="Open original">&#8599;</a><img class="pc-md-img" src="' + url + '" alt="" loading="lazy"></img></div>');
       return '\x00IMG' + idx2 + '\x00';
     });
 

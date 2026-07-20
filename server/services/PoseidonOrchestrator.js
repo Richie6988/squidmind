@@ -3159,6 +3159,13 @@ My response: "${ss.last_response_preview}"${tools}
       }
 
       // ── Brain JSON fallback ──────────────────────────────────────────────
+      // Coach redirect: the model sometimes invents "tasks.<something>"
+      // paths (observed: literal placeholder "tasks.<last_open>"). Tasks
+      // are NOT in brain.json — send it to the right tool instead of a
+      // confusing path-walk error.
+      if (/^tasks(\.|$)/i.test(section_path)) {
+        return { ok: false, error: 'Tasks are not in the brain. Use list_tasks (optionally filtered by project or status) — it returns each task with its id, title, status, and assignee.' };
+      }
       this.rm.invalidateCache();
       const brain = await this.rm.getPoseidonBrain();
       const parts = section_path.split('.').filter(Boolean);

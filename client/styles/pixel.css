@@ -6488,6 +6488,9 @@ option {
   transition: opacity 0.15s;
 }
 .pc-msg:hover .pc-msg-actions { opacity: 1; }
+/* AI messages: copy on the LEFT — the right side belongs to user messages.
+   Offset matches the avatar-dot column so it aligns under the bubble. */
+.pc-msg-ai .pc-msg-actions { justify-content: flex-start; padding-left: 34px; }
 .pc-copy-btn {
   background: none; border: 1px solid rgba(255,255,255,0.1);
   color: rgba(148,163,184,0.6);
@@ -7097,6 +7100,7 @@ option {
 
 /* ── PoseidonChat: Images */
 .pc-img-wrap {
+  position: relative;
   margin: 10px 0;
   border-radius: 10px;
   overflow: hidden;
@@ -9190,3 +9194,23 @@ html { zoom: var(--app-zoom); }
   padding: 3px 7px; text-shadow: 0 0 5px rgba(6,255,165,0.4);
 }
 .tpl-empty { color: var(--ui-muted); font-size: 11px; font-style: italic; padding: 8px 4px; }
+
+
+/* ── Open-original affordance on chat images ── */
+.pc-img-open {
+  position: absolute;
+  top: 6px; right: 6px;
+  z-index: 2;
+  width: 22px; height: 22px;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(2,8,16,0.72);
+  border: 1px solid rgba(79,172,254,0.4);
+  border-radius: 4px;
+  color: #e2e8f0;
+  font-size: 12px;
+  text-decoration: none;
+  opacity: 0;
+  transition: opacity 0.15s, border-color 0.15s;
+}
+.pc-img-wrap:hover .pc-img-open { opacity: 1; }
+.pc-img-open:hover { border-color: rgba(79,172,254,0.9); color: #4facfe; }

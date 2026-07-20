@@ -27,7 +27,7 @@ const CommsPanel = {
     this.modal.innerHTML = `
       <div class="modal-content comms-content">
         <div class="modal-header">
-          <h2>📡 Remote Comms</h2>
+          <h2>Channels</h2>
           <button class="btn-close" onclick="CommsPanel.close()">x</button>
         </div>
         <div class="comms-tabs">

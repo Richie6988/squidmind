@@ -19,12 +19,11 @@
       <h1>IAQUA</h1>
       <div class="header-nav">
         <button class="btn-nav" onclick="AgentForm.openNew()" title="Create a new agent (squid) with custom personality, skills, and appearance">+ New Agent</button>
-<button class="btn-nav" onclick="CommandPalette.open()" title="Search agents, projects, tasks, models, skills (Ctrl+K)">⌕ Search <span style="opacity:0.5;font-size:8px;margin-left:4px;">^K</span></button>
 <button class="btn-nav" onclick="ModelLoader.open()" title="Browse local GGUF models, import from HuggingFace, assign Poseidon">[MODELS] Models</button>
         <button class="btn-nav" onclick="ui.openLogsModal()" title="System event log (Esc to close)">[LOGS] Logs</button>
         <button class="btn-nav skills-nav-btn" onclick="SkillsPanel.open()" title="Poseidon skills library">&#9670; Skills</button>
         <button class="btn-nav" onclick="TemplatesPanel.open()" title="Style templates — generated pptx/docx inherit your masters, fonts, colors">&#9646; Templates</button>
-        <button class="btn-nav comms-nav-btn" onclick="CommsPanel.open()" title="Remote comms (Telegram/Discord)">Comms</button>
+        <button class="btn-nav comms-nav-btn" onclick="CommsPanel.open()" title="Remote channels (Telegram/Discord)">Channels</button>
       </div>
     </div>
   </header>
@@ -318,7 +317,6 @@
   <script src="scripts/CommsPanel.js"></script>
   <script src="scripts/KeyboardShortcuts.js"></script>
   <script src="scripts/SoundFX.js"></script>
-  <script src="scripts/CommandPalette.js"></script>
   <script src="scripts/NotificationPoller.js"></script>
 </body>
 </html>

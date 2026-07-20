@@ -9,7 +9,7 @@
  */
 (function () {
   const TOPMOST_MODAL_SELECTORS = [
-    '#iaqua-cmd-palette',           // Command Palette — highest priority (above SquidModal)
+              // Command Palette — highest priority (above SquidModal)
     '.squid-modal-overlay',         // SquidModal.alert/confirm/prompt
     '.agent-form-modal',
     '.modal[id="model-modal"]',
@@ -33,11 +33,6 @@
   function closeTopmostModal() {
     const m = getTopmostOpenModal();
     if (!m) return false;
-
-    if (m.id === 'iaqua-cmd-palette' && window.CommandPalette?.close) {
-      window.CommandPalette.close();
-      return true;
-    }
 
     // Each modal has its own close logic — try the known handles in order
     if (m.classList.contains('squid-modal-overlay')) {

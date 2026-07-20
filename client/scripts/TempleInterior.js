@@ -1036,7 +1036,7 @@ const TempleInterior = {
   </div>
 
   <div class="ti-mem-section">
-    <div class="ti-mem-label">AGENT COMMS</div>
+    <div class="ti-mem-label">AGENT CHANNELS</div>
     ${listItems(mem?.agents_communication, 80)}
   </div>
 
@@ -2756,20 +2756,25 @@ const TempleInterior = {
         if (e.type === 'task_lifecycle') continue;
         if (e.type === 'task_start') {
           if (current) groups.push(current);
-          current = { task_id: e.task_id || 'unknown', title: e.title || e.task_id || 'task', agent: e.agent || '', events: [], ended: false };
+          current = { task_id: e.task_id || 'unknown', title: e.title || e.task_id || 'task', agent: e.agent || '', project: e.project || null, events: [], ended: false };
         } else if (e.type === 'task_end') {
           if (current) { current.ended = true; groups.push(current); current = null; }
         } else if (current) {
           current.events.push(e);
-        } else {
-          // orphan events (no task_start) — make a default group
-          current = { task_id: 'orphan', title: 'reasoning', agent: '', events: [e], ended: false };
         }
+        // No orphan catch-all: events outside a task_start/end frame are
+        // Poseidon-outside (chat phases, system chatter) — the temple's
+        // live stream shows THIS PROJECT'S AGENTS only.
       }
       if (current) groups.push(current);
 
+      // TEMPLE SCOPE: only tasks belonging to THIS project. Poseidon's
+      // outside thinking and other projects' agents don't leak in here.
+      const _tname = this.currentTemple?.name;
+      const scoped = groups.filter(g => g.project && _tname && g.project === _tname);
+
       // Render each group
-      const groupsHtml = groups.map((g, i) => {
+      const groupsHtml = scoped.map((g, i) => {
         const collapsed = this._reasoningCollapsed[g.task_id + '_' + i];
         const statusIcon = g.ended ? '✓' : '●';
         const statusColor = g.ended ? '#06ffa5' : '#fbbf24';
@@ -2795,7 +2800,7 @@ const TempleInterior = {
       const dotColor = isConnected ? '#06ffa5' : (isConnecting ? '#fbbf24' : '#ef4444');
       const stateLabel = isConnected ? 'LIVE FEED CONNECTED' : (isConnecting ? 'CONNECTING…' : 'DISCONNECTED — RETRYING');
       const totalEvents = log.length;
-      const empty = groups.length === 0
+      const empty = scoped.length === 0
         ? `<div style="color:#94a3b8;padding:32px 20px;text-align:center;font-family:var(--panel-font),sans-serif;">
             <div style="display:inline-flex;align-items:center;gap:10px;margin-bottom:14px;padding:8px 16px;border:1px solid ${dotColor};border-radius:6px;background:rgba(6,255,165,0.05);">
               <span style="width:10px;height:10px;border-radius:50%;background:${dotColor};box-shadow:0 0 8px ${dotColor};display:inline-block;animation:${isConnected ? 'ti-dot-pulse 2s ease-in-out infinite' : 'none'};"></span>
