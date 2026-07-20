@@ -466,7 +466,9 @@ const TempleInterior = {
           walker.title = `${a.display_name || a.agent_id} — click for actions`;
           walker.onclick = (e) => { e.stopPropagation(); TempleInterior._showAgentPopover(a.agent_id, walker); };
           const cvs = document.createElement('canvas');
-          cvs.width = 52; cvs.height = 58;
+          // 64×80: enough headroom above the body for XP headwear (crown
+          // Lv5 / halo Lv8) and the glow blur — 52×58 cropped the head.
+          cvs.width = 64; cvs.height = 80;
           const lbl = document.createElement('div');
           lbl.className = 'ti-walker-name';
           lbl.textContent = (a.display_name || a.agent_id).slice(0, 10).toUpperCase();
@@ -3028,7 +3030,7 @@ const TempleInterior = {
       // ── Glow halo underneath ────────────────────────────────────────
       const glowPulse = 0.12 + 0.06 * Math.sin(frame * 0.04);
       const glowR = size * 1.8;
-      const shadowX = CW/2, shadowY = CH/2 + size * 0.9;
+      const shadowX = CW/2, shadowY = CH*0.62 + size * 0.9;
       const shadowGrad = ctx.createRadialGradient(shadowX, shadowY, 0, shadowX, shadowY, glowR);
       shadowGrad.addColorStop(0,   `rgba(${hexToRgb(primary)},${glowPulse})`);
       shadowGrad.addColorStop(1,   'rgba(0,0,0,0)');
@@ -3039,18 +3041,36 @@ const TempleInterior = {
       // Cache one Squid instance per walker to avoid per-frame allocation
       if (!ctx.__cachedSq && typeof Squid !== 'undefined') {
         try {
-          ctx.__cachedSq = new Squid({ id:'__tw__', name:'', status:'idle', appearance:{...app}, x:CW/2, y:CW/2 });
+          // FULL-FIDELITY walker: pass stats + accessories + outfit from the
+          // REAL aquarium squid so XP headwear (crown Lv5 / halo Lv8),
+          // custom eyes and outfits render exactly like the main aquarium —
+          // the old { appearance }-only clone was the "downgraded" look.
+          ctx.__cachedSq = new Squid({
+            id:'__tw__', name:'', status:'idle',
+            appearance: {...app},
+            accessories: squid.accessories || app.accessories || null,
+            outfit: squid.outfit || undefined,
+            stats: squid.stats ? { ...squid.stats, xp: squid.stats.experience ?? squid.stats.xp } : undefined,
+            x: CW/2, y: CH*0.62,
+          });
           ctx.__cachedSq.isDragging = true; ctx.__cachedSq.isSleeping = false;
           ctx.__cachedSq.isHovered = false; ctx.__cachedSq.insideTemple = null;
           ctx.__cachedSq.jumpHeight = 0; ctx.__cachedSq.heartParticles = [];
           ctx.__cachedSq._confetti = null; ctx.__cachedSq.baseSize = size / 40;
           ctx.__cachedSq.alpha = 1;
+          // The HTML label below the canvas already names the agent, and the
+          // status dot is the walker's .running CSS state — the in-canvas
+          // name tag and indicator would double them (and the tag drew ABOVE
+          // the head, part of the crop). Instance-level no-ops, Squid.js
+          // untouched.
+          ctx.__cachedSq.drawNameTag = () => {};
+          ctx.__cachedSq.drawStatusIndicator = () => {};
         } catch { ctx.__cachedSq = null; }
       }
       if (ctx.__cachedSq) {
         try {
           const sq = ctx.__cachedSq;
-          sq.x = CW/2; sq.y = CH/2 - 2 + bob;
+          sq.x = CW/2; sq.y = CH*0.62 + bob;
           sq.animFrame = wp; sq.bobOffset = 0;
           ctx.save();
           ctx.shadowColor = primary; ctx.shadowBlur = 8 + glowPulse * 18;
@@ -3065,7 +3085,7 @@ const TempleInterior = {
       ctx.save();
       ctx.shadowColor = primary;
       ctx.shadowBlur = 10 + glowPulse * 16;
-      ctx.translate(CW/2, CH/2-2+bob);
+      ctx.translate(CW/2, CH*0.62+bob);
       if (!fR) ctx.scale(-1,1);
       const grad = ctx.createRadialGradient(-size*.15,-size*.2,0,0,0,size);
       grad.addColorStop(0, br(primary,1.25)); grad.addColorStop(.6, primary); grad.addColorStop(1, dk(primary,.75));

@@ -392,7 +392,19 @@ const PoseidonChat = {
       const res = await fetch('/api/v2/poseidon/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: msg, history: this.history.slice(0, -2) })
+        body: JSON.stringify({
+          message: msg, history: this.history.slice(0, -2),
+          // TEMPLE CONTEXT — when the user chats while standing inside a
+          // temple, tasks default to that project + its agents (server-side
+          // deterministic floor; the prompt directive rides along too).
+          project: (() => {
+            try {
+              const tiRoot = document.getElementById('temple-interior');
+              const t = (tiRoot && tiRoot.style.display !== 'none') ? window.TempleInterior?.currentTemple : null;
+              return t ? { name: t.name, id: t.project_id || null } : null;
+            } catch { return null; }
+          })(),
+        })
       });
 
       if (!res.ok) {

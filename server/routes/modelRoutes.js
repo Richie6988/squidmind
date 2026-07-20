@@ -863,6 +863,19 @@ function buildPoseidonChatRoute(modelService) {
     let chunkCount = 0;
     let toolCallCount = 0;
     const bus = global.ReasoningBus;
+    // DETERMINISTIC PROJECT CONTEXT — the prompt directive above asks the
+    // model to set project on its tasks, but small models forget. This is
+    // the hard floor: while THIS chat turn runs, any create_task without a
+    // project lands in the temple the user is talking from (and gets a
+    // temple-member agent). Cleared in finally — a turn-scoped value, not
+    // sticky state.
+    const _orch = modelService.orchestrator;
+    if (_orch && project && (project.name || project.id)) {
+      try {
+        const resolvedCtx = await modelService.rm.resolveProjectByNameOrId(project.id || project.name).catch(() => null);
+        _orch._chatProjectContext = resolvedCtx?.entry?.name || project.name || project.id;
+      } catch { _orch._chatProjectContext = project.name || project.id; }
+    }
     // Hold off BG tasks / auto-review while this chat turn runs, so the
     // heartbeat doesn't swap Poseidon into a background task between the
     // user's messages. Refreshed at the end for a post-reply grace window.
@@ -902,6 +915,7 @@ function buildPoseidonChatRoute(modelService) {
         }
       }
       if (bus) bus.push({ type: 'task_end', task_id: 'poseidon_chat' });
+      if (_orch) _orch._chatProjectContext = null;
       res.write(`event: end\ndata: ${JSON.stringify({
         chunks: chunkCount, tool_calls: toolCallCount,
         turn: modelService.loaded.get(modelService.poseidonModelId)?.sessionTurns ?? 0,
@@ -909,8 +923,10 @@ function buildPoseidonChatRoute(modelService) {
     } catch (err) {
       log.error('[Chat SSE] chatWithPoseidon error:', err.message, err.stack?.split('\n').slice(1,3).join(' '));
       if (bus) bus.push({ type: 'task_end', task_id: 'poseidon_chat' });
+      if (_orch) _orch._chatProjectContext = null;
       res.write(`event: error\ndata: ${JSON.stringify({ error: err.message })}\n\n`);
     } finally {
+      if (_orch) _orch._chatProjectContext = null;
       // Post-reply grace: keep BG paused a bit longer so the user can read
       // and start typing their next message before the heartbeat resumes
       // background work.

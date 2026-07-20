@@ -2290,13 +2290,23 @@ My response: "${ss.last_response_preview}"${tools}
 
   async _createTaskInner({ title, description, acceptance_criteria, project, assigned_agent_id, priority, depends_on, challenge = false, _pipeline = false, regCache = null }) {
     try {
-      // SIMPLIFICATION: tasks are ALWAYS project work now. A task created
-      // without a project belongs to GODSTUFF — its outputs land in
-      // PROJECTS/GODSTUFF/output where every project feature applies, and
-      // idempotence-by-title is scoped there. GODSTUFF membership is open:
-      // any agent can work there (the temple-membership guard below only
-      // applies to real projects).
-      if (!project) project = 'GODSTUFF';
+      // SIMPLIFICATION: tasks are ALWAYS project work now. Default chain:
+      //   1. explicit project from the model
+      //   2. the temple the user is CHATTING FROM (_chatProjectContext,
+      //      set per-turn by the chat route when the UI sends its temple)
+      //   3. GODSTUFF — the commons
+      // GODSTUFF membership is open: any agent can work there (the
+      // temple-membership guard below only applies to real projects).
+      if (!project) project = this._chatProjectContext || 'GODSTUFF';
+
+      // TEMPLE-MEMBER AUTO-ASSIGN — a task created without an agent gets
+      // one from ITS project's roster (load-balanced), so temple work stays
+      // with temple agents instead of sitting unassigned or drifting to
+      // outsiders. pickDefaultAgent prefers project members and falls back
+      // to the full roster only when the temple is empty.
+      if (!assigned_agent_id && project && project !== 'GODSTUFF') {
+        try { assigned_agent_id = await this.rm.pickDefaultAgent(project) || undefined; } catch {}
+      }
 
       // (No WIP limit — user directive.) The anti-loop safety net is the
       // IDEMPOTENT-BY-TITLE guard in the outer _createTask: two attempts
