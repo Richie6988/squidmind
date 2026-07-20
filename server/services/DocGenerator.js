@@ -32,7 +32,7 @@ class DocGenerator {
   // logos, fonts and styles. Deps install lazily on first templated call
   // (through our own PyEnvService), and any failure falls back to the JS
   // generators — templates can never make generation WORSE than before.
-  async _ensurePyDeps() {
+  async _ensurePyDeps(extra = []) {
     if (!this._pyDepsReady) {
       this._pyDepsReady = (async () => {
         const py = require('./PyEnvService');
@@ -41,14 +41,28 @@ class DocGenerator {
         return true;
       })().catch(e => { this._pyDepsReady = null; throw e; });
     }
-    return this._pyDepsReady;
+    await this._pyDepsReady;
+    for (const dep of extra) {
+      this._extraDeps = this._extraDeps || {};
+      if (!this._extraDeps[dep]) {
+        this._extraDeps[dep] = (async () => {
+          const py = require('./PyEnvService');
+          const r = await py.install([dep]);
+          if (!r.ok) throw new Error(r.error || `pip install ${dep} failed`);
+          return true;
+        })().catch(e => { this._extraDeps[dep] = null; throw e; });
+      }
+      await this._extraDeps[dep];
+    }
+    return true;
   }
 
-  async _runPyGen(script, spec) {
+  async _runPyGen(script, spec, extraDeps = []) {
     const os = require('os');
     const { spawn } = require('child_process');
     const py = require('./PyEnvService');
-    await this._ensurePyDeps();
+    await this._ensurePyDeps(extraDeps);
+    spec.asset_root = require('../aquarium').ROOT;
     const specPath = path.join(os.tmpdir(), `iaqua_gen_${Date.now()}_${Math.random().toString(36).slice(2)}.json`);
     await fsp.writeFile(specPath, JSON.stringify(spec), 'utf8');
     const { bin } = py.pythonInvocation();
@@ -100,21 +114,26 @@ class DocGenerator {
     if (!Array.isArray(slides) || slides.length === 0) {
       return { ok: false, error: 'slides array is required and must be non-empty' };
     }
-    // TEMPLATE BRANCH — default.pptx auto-applies; template:"none" opts out;
-    // template:"<name>" picks a named variant. Python failure → JS fallback.
+    // PYTHON ENGINE — used when a template applies (default.pptx or named)
+    // OR when any slide carries rich content (image/table/chart): python-pptx
+    // renders those natively; the JS fallback is text-only. Failure falls
+    // back to JS, dropping rich elements with a warning in the result.
     const tpl = this._resolveTemplate('pptx', template);
     if (tpl.error) return { ok: false, error: tpl.error };
-    if (tpl.path) {
+    const hasRich = (slides || []).some(s => s && (s.image || s.table || s.chart));
+    if (tpl.path || hasRich) {
       try {
         const outputPath = await this._resolveOutputPath({ filename, project_id, ext: 'pptx' });
-        const r = await this._runPyGen('gen_pptx.py', { template: tpl.path, output: outputPath, title, author, slides });
+        const r = await this._runPyGen('gen_pptx.py', { template: tpl.path || null, output: outputPath, title, author, slides });
         if (r.ok) {
-          log.info(`wrote ${r.slides}-slide deck (template: ${tpl.name}) → ${outputPath}`);
-          return { ...r, template: tpl.name };
+          log.info(`wrote ${r.slides}-slide deck (${tpl.name ? `template: ${tpl.name}` : 'blank'}${hasRich ? ', rich content' : ''}) → ${outputPath}`);
+          return { ...r, template: tpl.name || null };
         }
-        log.warn(`template path failed (${r.error}) — falling back to plain generator`);
+        log.warn(`python engine failed (${r.error}) — falling back to plain generator`);
+        if (hasRich) return { ok: false, error: `Rich content (image/table/chart) needs the python engine, which failed: ${r.error}` };
       } catch (e) {
-        log.warn(`template path failed (${e.message}) — falling back to plain generator`);
+        log.warn(`python engine failed (${e.message}) — falling back to plain generator`);
+        if (hasRich) return { ok: false, error: `Rich content (image/table/chart) needs the python engine, which failed: ${e.message}` };
       }
     }
     let pptxgen;
@@ -180,23 +199,29 @@ class DocGenerator {
    *             markdown engine — sufficient for LLM-generated content.
    * @returns {Promise<{ok, outputPath?, error?}>}
    */
-  async generateDocx({ markdown, filename, project_id, title, template }) {
+  async generateDocx({ markdown, filename, project_id, title, template, charts }) {
     if (!markdown || typeof markdown !== 'string') {
       return { ok: false, error: 'markdown is required and must be a string' };
     }
     const tpl = this._resolveTemplate('docx', template);
     if (tpl.error) return { ok: false, error: tpl.error };
-    if (tpl.path) {
+    const hasRichDoc = /!\[[^\]]*\]\(|^\s*\|.+\|\s*$|\{\{chart:\d+\}\}/m.test(markdown) || (Array.isArray(charts) && charts.length > 0);
+    if (tpl.path || hasRichDoc) {
       try {
         const outputPath = await this._resolveOutputPath({ filename, project_id, ext: 'docx' });
-        const r = await this._runPyGen('gen_docx.py', { template: tpl.path, output: outputPath, title, markdown });
+        const needsCharts = /\{\{chart:\d+\}\}/.test(markdown);
+        const r = await this._runPyGen('gen_docx.py',
+          { template: tpl.path || null, output: outputPath, title, markdown, charts: charts || [] },
+          needsCharts ? ['matplotlib'] : []);
         if (r.ok) {
-          log.info(`wrote docx (template: ${tpl.name}) → ${outputPath}`);
-          return { ...r, template: tpl.name };
+          log.info(`wrote docx (${tpl.name ? `template: ${tpl.name}` : 'blank'}${hasRichDoc ? ', rich content' : ''}) → ${outputPath}`);
+          return { ...r, template: tpl.name || null };
         }
-        log.warn(`template path failed (${r.error}) — falling back to plain generator`);
+        log.warn(`python engine failed (${r.error}) — falling back to plain generator`);
+        if (hasRichDoc) return { ok: false, error: `Rich content (images/tables/charts) needs the python engine, which failed: ${r.error}` };
       } catch (e) {
-        log.warn(`template path failed (${e.message}) — falling back to plain generator`);
+        log.warn(`python engine failed (${e.message}) — falling back to plain generator`);
+        if (hasRichDoc) return { ok: false, error: `Rich content (images/tables/charts) needs the python engine, which failed: ${e.message}` };
       }
     }
     let docx;

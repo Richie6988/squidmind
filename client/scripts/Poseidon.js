@@ -126,11 +126,6 @@ class Poseidon {
     ctx.font = '12px "Press Start 2P"';
     ctx.textAlign = 'center';
     ctx.fillText('POSEIDON', this.x, floatY + this.size + 20);
-    
-    // Level indicator
-    ctx.fillStyle = '#888';
-    ctx.font = '8px "Press Start 2P"';
-    ctx.fillText(`Divine Level ∞`, this.x, floatY + this.size + 35);
   }
 
   /**

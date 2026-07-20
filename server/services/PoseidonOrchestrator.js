@@ -1683,9 +1683,11 @@ My response: "${ss.last_response_preview}"${tools}
       generate_pptx: defineChatSessionFunction({
         description: 'Generate a PowerPoint (.pptx) file from a structured slide array. ' +
           'Each slide has a title, plus either `bullets` (array of strings) or `body` (single string). ' +
-          'First slide auto-detects as a title slide if it has no body/bullets. Add speaker `notes` per slide if useful. ' +
-          'Theme: "light" (default) or "dark". Output goes to PROJECTS/<folder>/output/ if project_id set, ' +
-          'else PROJECTS/GALLERY/output/.',
+          'Slides can ALSO carry rich content: `image` (aquarium path like "PROJECTS/HEXOD/output/map.png", or {path, caption}), ' +
+          '`table` ({headers:[...], rows:[[...]]}), `chart` ({type:"bar"|"line"|"pie", categories:[...], series:[{name, values}]}). ' +
+          'Rich content renders under the title (lower half when text is present). ' +
+          'First slide auto-detects as a title slide if it has no content. Add speaker `notes` per slide if useful. ' +
+          'Output goes to PROJECTS/<folder>/output/ if project_id set, else PROJECTS/GALLERY/output/.',
         params: {
           type: 'object',
           properties: {
@@ -1699,7 +1701,10 @@ My response: "${ss.last_response_preview}"${tools}
                   bullets: { type: 'array', items: { type: 'string' }, description: 'Bulleted content (mutually exclusive with body)' },
                   body:    { type: 'string', description: 'Single-paragraph body (used when bullets empty)' },
                   notes:   { type: 'string', description: 'Speaker notes' },
-                  layout:  { type: 'string', description: '"title" forces title-slide layout; omit for auto' }
+                  layout:  { type: 'string', description: '"title" forces title-slide layout; omit for auto' },
+                  image:   { type: 'string', description: 'Aquarium-relative image path (e.g. "PROJECTS/HEXOD/output/map.png") shown in the content zone' },
+                  table:   { type: 'object', description: '{headers:[str], rows:[[str]]} — rendered as a real table' },
+                  chart:   { type: 'object', description: '{type:"bar"|"line"|"pie", categories:[str], series:[{name:str, values:[number]}]} — native chart' }
                 },
                 required: ['title']
               }
@@ -1723,7 +1728,10 @@ My response: "${ss.last_response_preview}"${tools}
       generate_docx: defineChatSessionFunction({
         description: 'Generate a Word (.docx) file from markdown content. ' +
           'Supports # ## ### headings, - or * unordered lists, 1. 2. 3. numbered lists, ' +
-          '**bold**, *italic*, and blank-line-separated paragraphs. ' +
+          '**bold**, *italic*, and blank-line-separated paragraphs. RICH CONTENT: ' +
+          '![caption](PROJECTS/<folder>/output/img.png) embeds an image full-width; ' +
+          'markdown tables (| a | b | rows with |---|---| separator) become real Word tables; ' +
+          '{{chart:0}} on its own line embeds charts[0] rendered as a graph (pass the charts param). ' +
           'For structured docs prefer explicit headings so the outline pane renders properly. ' +
           'Output goes to PROJECTS/<folder>/output/ if project_id set, else PROJECTS/GALLERY/output/.',
         params: {
@@ -1733,6 +1741,7 @@ My response: "${ss.last_response_preview}"${tools}
             filename:   { type: 'string' },
             project_id: { type: 'string' },
             title:      { type: 'string', description: 'Optional centred title above the body' },
+            charts:     { type: 'array', description: 'Chart specs referenced by {{chart:N}} tokens in the markdown: [{type:"bar"|"line"|"pie", categories:[str], series:[{name:str, values:[number]}]}]', items: { type: 'object' } },
             template:   { type: 'string', description: 'Style template from the user\'s Templates panel. Omit = auto-apply the format default if set. "none" = plain. "<name>" = TEMPLATES/output/<name>.docx. The document inherits the template\'s fonts, heading styles, margins, headers/footers.' }
           },
           required: ['markdown']
