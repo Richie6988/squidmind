@@ -46,3 +46,4 @@ migrate.js
 aquarium/.backups/
 BACKUPS/
 .pyenv/
+__pycache__/
