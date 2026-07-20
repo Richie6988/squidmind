@@ -417,7 +417,7 @@ My response: "${ss.last_response_preview}"${tools}
       lines.push('  RULE: before create_task, mentally list all items. Create N separate tasks, one per item.');
       lines.push('  RULE: every task that produces content or files MUST include acceptance_criteria (2-4 concrete, checkable statements). The quality review judges the deliverable against them — vague criteria = vague deliverables.');
       lines.push('  RULE: task descriptions must be EXECUTION-READY. The agent executes — it does not plan. A good description contains: (1) numbered imperative steps in order, (2) the exact output filename (e.g. output/newsletter_draft.md), (3) concrete inputs (URLs, source files, topics). "Set up the pipeline" is a BAD description; "1. web_search top AI news today 2. pick 5 stories 3. write 600-word digest to output/digest.md" is a GOOD one.');
-      lines.push('  RULE — PROJECT KICKOFF/RESTART or ANY goal needing 2+ tasks: call plan_project ONCE with {goal, project}. The pipeline reads memory, generates the plan, creates ALL tasks with criteria and agents, chains them, and updates memory FOR you. Do NOT create_task one by one for multi-task goals, do NOT touch project memory yourself in that flow.');
+      lines.push('  RULE — PROJECT KICKOFF/RESTART or ANY goal needing 2+ tasks: call plan_project ONCE with {goal, project} to get the context (vision, roster, open tasks), THEN create the plan YOURSELF in the same reply: 3-8 create_task calls in execution order (numbered imperative description + exact output/ filename, 2-4 checkable acceptance_criteria, agent_id from the roster, depends_on chained to the previous task id), then ONE update_project_memory(section="next_steps").');
       lines.push('  RULE: task title must be specific: "Scrape BBC News https://bbc.com/news" not "Check all sources".');
       lines.push('  RULE: after creating tasks → STOP. Do NOT execute. Reply: "Created N tasks: [list]".');
       lines.push('  RULE: inline execution only for single, immediate actions (read one file, answer one question).');
@@ -560,121 +560,10 @@ My response: "${ss.last_response_preview}"${tools}
   // TOOL DEFINITIONS - bound to node-llama-cpp function-calling protocol
   // ===================================================================
 
-  /**
-   * runPlanPipeline — structure in code, one constrained decision in the model.
-   *
-   * The old architecture asked the model to improvise a multi-step kickoff
-   * with 52 free tools — small local models loop, groom memory, and narrate.
-   * Here the CODE does the sequencing and the model makes exactly ONE
-   * decision, grammar-constrained to a JSON plan schema (it structurally
-   * cannot loop, cannot call tools, cannot output anything but a valid plan):
-   *   1. code reads project memory + agent roster
-   *   2. one session.prompt with createGrammarForJsonSchema → plan JSON
-   *   3. code validates, creates each task (execution-ready fields), chains
-   *      dependencies sequentially, updates memory ONCE
-   * Async generator: yields {type:'status'|'text'} events for the chat stream.
-   */
-  async *runPlanPipeline({ session, llama, goal, project }) {
-    const proj = await this.rm.resolveProjectByNameOrId(project);
-    if (!proj) {
-      yield { type: 'text', chunk: `\n\n_[Plan pipeline: project "${project}" not found — create it first.]_` };
-      return;
-    }
-    // 1. Context gathered in CODE (no model calls, no loops possible)
-    const projName = proj.entry?.name || project;
-    const memory = await this.rm.getProjectMemory(proj.id).catch(() => null);
-    const areg   = await this.rm.getAgentRegistry();
-    let agents = Object.values(areg.agents || {});
-    // Temple membership: the plan can only assign agents PRESENT in the
-    // project. If the project has an assigned roster, restrict to it.
-    const members = proj.entry?.assigned_agents || [];
-    if (members.length) {
-      const inProject = agents.filter(a => members.includes(a.agent_id));
-      if (inProject.length) agents = inProject;
-    }
-    const agentIds = agents.map(a => a.agent_id);
-    const roster = agents.map(a =>
-      `${a.agent_id} = ${a.display_name} (${a.specialization || 'general'})`).join('; ');
-    const memBits = memory ? [
-      memory.vision ? `Vision: ${String(memory.vision).slice(0, 250)}` : '',
-      memory.decisions?.length ? `Last decision: ${String(memory.decisions[memory.decisions.length - 1]?.content || '').slice(0, 200)}` : '',
-    ].filter(Boolean).join('\n') : '';
-
-    // 2. ONE grammar-constrained generation — the only model decision
-    const planSchema = {
-      type: 'object',
-      properties: {
-        tasks: {
-          type: 'array',
-          items: {
-            type: 'object',
-            properties: {
-              title:               { type: 'string' },
-              description:         { type: 'string' },
-              acceptance_criteria: { type: 'string' },
-              agent_id:            { enum: agentIds.length ? agentIds : ['poseidon_main'] },
-            },
-            required: ['title', 'description', 'acceptance_criteria', 'agent_id'],
-          },
-        },
-      },
-      required: ['tasks'],
-    };
-    const grammar = await llama.createGrammarForJsonSchema(planSchema);
-    const planPrompt =
-      `[PLANNING — output ONLY the JSON plan]\n` +
-      `Goal: ${goal}\nProject: ${projName}\n` +
-      (memBits ? `${memBits}\n` : '') +
-      `Agents: ${roster}\n\n` +
-      `Produce 3 to 6 atomic tasks that fully accomplish the goal, in execution order.\n` +
-      `Each description = numbered imperative steps + the exact output filename under output/ (e.g. "1. web_search X 2. shortlist 10 3. write to output/sources.md").\n` +
-      `Each acceptance_criteria = 2-4 concrete checkable statements (counts, filenames, word limits).\n` +
-      `Assign each task to the best-fitting agent from the list.`;
-    const raw = await session.prompt(planPrompt, { grammar, maxTokens: 1800 });
-    let plan;
-    try { plan = JSON.parse(raw); }
-    catch { yield { type: 'text', chunk: '\n\n_[Plan pipeline: the model produced unparseable JSON despite the grammar — aborted, nothing created.]_' }; return; }
-    const tasks = (plan.tasks || []).filter(t => t.title && t.description).slice(0, 6);
-    if (!tasks.length) {
-      yield { type: 'text', chunk: '\n\n_[Plan pipeline: empty plan — nothing created.]_' };
-      return;
-    }
-
-    // 3. Execution in CODE: create tasks, chain deps sequentially, ONE memory update
-    yield { type: 'text', chunk: `\n\n**Plan for ${projName}** — ${tasks.length} tasks:\n` };
-    const createdIds = [];
-    for (const t of tasks) {
-      const res = await this._createTask({
-        title: t.title,
-        description: t.description,
-        acceptance_criteria: t.acceptance_criteria || null,
-        project: projName,
-        assigned_agent_id: agentIds.includes(t.agent_id) ? t.agent_id : null,
-        priority: 'high',
-        depends_on: createdIds.length ? [createdIds[createdIds.length - 1]] : [],
-      });
-      const id = res?.task_id || null;
-      if (res?.ok === false) {
-        yield { type: 'text', chunk: `⚠ "${t.title}" not created: ${String(res.error).slice(0, 160)}\n` };
-        continue;
-      }
-      if (id) createdIds.push(id);
-      const agentName = agents.find(a => a.agent_id === t.agent_id)?.display_name || t.agent_id;
-      yield { type: 'text', chunk: `${createdIds.length}. **${t.title}** → ${agentName}${id ? ` (${id})` : ''}\n` };
-    }
-    await this.rm.updateProjectMemory(proj.id, 'next_steps',
-      tasks.map((t, i) => `${createdIds[i] || '?'}: ${t.title}`), 'plan_pipeline').catch(() => {});
-    await this.rm.updateProjectMemory(proj.id, 'decision',
-      `Plan pipeline created ${createdIds.length} chained tasks for goal: ${String(goal).slice(0, 140)}`, 'plan_pipeline').catch(() => {});
-    await this.rm.log({
-      event_type: 'plan_pipeline',
-      actor: { type: 'system', id: 'plan_pipeline' },
-      subject: { type: 'project', id: proj.id },
-      action: `Structured plan: ${createdIds.length} tasks created for "${projName}"`,
-      context: { goal: String(goal).slice(0, 200), task_ids: createdIds }
-    }).catch(() => {});
-    yield { type: 'text', chunk: `\nTasks are chained (each starts when the previous completes) and will run automatically. Quality review validates each deliverable.\n` };
-  }
+  // (runPlanPipeline removed — plan_project is conversational now: the tool
+  // returns context, the model creates the tasks itself via create_task.
+  // The grammar-constrained fresh-session pipeline produced empty plans on
+  // abstract goals; deleted per the dead-code policy.)
 
   async buildFunctions(mode = 'chat', allowedTools = null) {
     const { defineChatSessionFunction } = await this._llamaCpp();
@@ -773,7 +662,7 @@ My response: "${ss.last_response_preview}"${tools}
       }),
 
       plan_project: defineChatSessionFunction({
-        description: 'THE tool for project kickoffs, restarts, and any goal needing 2+ tasks. Call it ONCE with the goal — a structured pipeline then reads the project memory, generates a validated task plan (grammar-constrained), creates ALL the tasks with acceptance criteria and agent assignments, chains their dependencies, and updates project memory — automatically, right after your reply. Do NOT create_task manually for multi-task goals, do NOT touch project memory yourself: the pipeline does it better.',
+        description: 'PLANNING CONTEXT for project kickoffs, restarts, and any goal needing 2+ tasks. Call it ONCE with {goal, project}: it returns the project vision/memory, the agent roster (temple members), and existing open tasks. THEN, in this same reply, YOU create the plan: 3-8 create_task calls (each with numbered imperative description, exact output/ filename, 2-4 checkable acceptance_criteria, best-fit agent_id from the roster, and depends_on chaining to the previous task id), followed by ONE update_project_memory(section="next_steps"). Use your judgment on task breakdown — that is the point.',
         params: {
           type: 'object',
           properties: {
@@ -783,26 +672,39 @@ My response: "${ss.last_response_preview}"${tools}
           required: ['goal', 'project']
         },
         handler: async ({ goal, project }) => {
-          self.pendingPlan = { goal, project };
-          // Mark this session for immediate abort after this handler returns.
-          // Small models routinely IGNORE the "STOP — no other tool calls"
-          // instruction and keep looping (observed: read_my_brain → list_tasks
-          // → read_project_memory ×5 until budget guard kills the turn). The
-          // ModelService abort catch checks pendingPlan and runs the pipeline
-          // itself — the model doesn't get to interfere.
-          if (self.modelService?.getPoseidonEntry) {
-            const entry = self.modelService.getPoseidonEntry();
-            if (entry) {
-              entry._planPipelineTrigger = true;
-              // RACE GUARD: capture THIS turn's controller now. If the turn
-              // ends before the timeout fires (fast decode), dereferencing
-              // entry._abortController at fire time would abort the NEXT
-              // turn's controller — killing an innocent unrelated generation.
-              const ctrl = entry._abortController;
-              setTimeout(() => { try { if (ctrl && !ctrl.signal.aborted) ctrl.abort(); } catch {} }, 50);
-            }
+          // Context gathered in CODE — planning judgment stays in the MODEL,
+          // in this session, with its full personality and conversation.
+          // (The old grammar-constrained fresh-session pipeline produced
+          // empty plans on abstract goals; the conversational path was
+          // creating agents and projects flawlessly in the same breath.)
+          const proj = await self.rm.resolveProjectByNameOrId(project);
+          if (!proj) return { ok: false, error: `Project "${project}" not found — create_project first.` };
+          const memory = await self.rm.getProjectMemory(proj.id).catch(() => null);
+          const areg = await self.rm.getAgentRegistry();
+          let agents = Object.values(areg.agents || {});
+          const members = proj.entry?.assigned_agents || [];
+          if (members.length) {
+            const inProject = agents.filter(a => members.includes(a.agent_id));
+            if (inProject.length) agents = inProject;
           }
-          return { ok: true, message: `Structured planning pipeline engaged for "${project}". Generating the plan now — task list follows in this reply.` };
+          const roster = agents.map(a => ({ agent_id: a.agent_id, name: a.display_name, specialization: a.specialization || 'general' }));
+          let openTasks = [];
+          try {
+            const treg = await self.rm.getTasksRegistry();
+            openTasks = Object.values(treg.tasks || {})
+              .filter(t => (t.project_name === proj.entry?.name || t.project_id === proj.id))
+              .map(t => `${t.task_id}: ${t.title} [${t.lifecycle?.status || t.status}]`).slice(0, 12);
+          } catch {}
+          return {
+            ok: true,
+            project: proj.entry?.name || project,
+            goal,
+            vision: memory?.vision ? String(memory.vision).slice(0, 300) : null,
+            last_decision: memory?.decisions?.length ? String(memory.decisions[memory.decisions.length - 1]?.content || '').slice(0, 200) : null,
+            roster,
+            existing_open_tasks: openTasks,
+            now_do_this: 'Create the plan NOW in this reply: 3-8 create_task calls in execution order — each with a numbered imperative description ending in the exact output/ filename, 2-4 checkable acceptance_criteria, agent_id from the roster above, and depends_on:[previous_task_id] to chain them. Do not duplicate existing_open_tasks (idempotence will block same titles). Finish with ONE update_project_memory(section="next_steps", content=the task list).',
+          };
         }
       }),
 

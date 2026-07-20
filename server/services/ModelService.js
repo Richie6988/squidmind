@@ -2842,24 +2842,8 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
         }
       }
 
-      // ── STRUCTURED PLAN PIPELINE (plan_project tool) ────────────────────
-      // The chat model's only job was ONE plan_project call; the actual
-      // multi-step work (context → grammar-constrained plan → task creation
-      // → memory) runs HERE in code, streamed into the same reply. Small
-      // models cannot loop or groom memory inside this — structurally.
-      if (this.orchestrator?.pendingPlan && !_bgMode) {
-        const pp = this.orchestrator.pendingPlan;
-        this.orchestrator.pendingPlan = null;
-        yield { type: 'status', message: `Generating structured plan for ${pp.project}…` };
-        try {
-          for await (const ev of this.orchestrator.runPlanPipeline({ session, llama: this.llama, ...pp })) {
-            yield ev;
-          }
-        } catch (planErr) {
-          log.warn(` plan pipeline failed: ${planErr.message}`);
-          yield { type: 'text', chunk: `\n\n_[Plan pipeline failed: ${planErr.message} — nothing was created.]_` };
-        }
-      }
+      // (plan_project is conversational now — the model creates tasks itself
+      // via create_task in the same turn; no post-turn pipeline.)
 
       // ── Per-turn performance telemetry ──────────────────────────────────
       // Objective numbers instead of "it feels slow": time-to-first-token
@@ -3039,74 +3023,7 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
       const isIntentionalAbort = /aborted|AbortError|The operation was aborted/i.test(err.message)
         && entry._abortController?.signal?.aborted;
       if (isIntentionalAbort) {
-        // plan_project sets _planPipelineTrigger and calls abort so the model
-        // can't disobey the STOP instruction. Run the pipeline here BEFORE
-        // returning — otherwise we'd swallow both the abort AND the plan.
-        if (entry._planPipelineTrigger && this.orchestrator?.pendingPlan) {
-          entry._planPipelineTrigger = false;
-          const pp = this.orchestrator.pendingPlan;
-          this.orchestrator.pendingPlan = null;
-          log.info(` Generation aborted by plan_project — running pipeline for ${pp.project}`);
-          yield { type: 'text', chunk: `\n\nBuilding the plan for ${pp.project}…\n` };
-          yield { type: 'status', message: `Generating structured plan for ${pp.project}…` };
-          try {
-            // Fresh AbortController for the pipeline (previous one is aborted).
-            entry._abortController = new AbortController();
-            entry._abortRequested  = false;
-            // RISK MITIGATION: do NOT reuse the aborted chat session for the
-            // grammar-constrained plan prompt. Its native state after a
-            // mid-tool-loop abort can be inconsistent (partial tool frames,
-            // stale KV positions) and a grammar prompt on it can throw or
-            // hang. Dispose it FIRST, then build a minimal fresh session on
-            // a fresh sequence — same pattern as the dream cycle.
-            try { if (entry.session?.dispose) await entry.session.dispose(); } catch {}
-            try { if (entry._currentSequence?.dispose) await entry._currentSequence.dispose(); } catch {}
-            entry.session          = null;
-            entry._currentSequence = null;
-            await new Promise(r => setTimeout(r, 150));  // let llama.cpp release the slot
-            let planSeq = null;
-            const seqDeadline = Date.now() + 15_000;
-            while (Date.now() < seqDeadline) {
-              try { planSeq = entry.context.getSequence(); break; } catch {}
-              await new Promise(r => setTimeout(r, 500));
-            }
-            if (!planSeq) throw new Error('no free sequence for plan session');
-            const llamaCpp = await import('node-llama-cpp');
-            const planSession = new llamaCpp.LlamaChatSession({
-              contextSequence: planSeq,
-              systemPrompt: 'You are a precise project planner. Output only what is asked.',
-              chatWrapper: 'auto',
-            });
-            try {
-              for await (const ev of this.orchestrator.runPlanPipeline({ session: planSession, llama: this.llama, ...pp })) {
-                yield ev;
-                // RISK MITIGATION: honor the user's Stop button mid-pipeline.
-                // Task creation stops at the next yield boundary; tasks
-                // already created stay (they're valid), nothing half-written.
-                if (entry._abortRequested) {
-                  entry._abortRequested = false;
-                  yield { type: 'text', chunk: '\n\n_[Plan interrupted by user — tasks already created remain valid.]_' };
-                  break;
-                }
-              }
-            } finally {
-              try { if (planSession.dispose) await planSession.dispose(); } catch {}
-              try { if (planSeq.dispose) await planSeq.dispose(); } catch {}
-            }
-          } catch (planErr) {
-            log.warn(` plan pipeline failed after abort: ${planErr.message}`);
-            yield { type: 'text', chunk: `\n\n_[Plan pipeline failed: ${planErr.message} — no tasks created.]_` };
-          }
-          // Session already disposed above — just make sure state is clean
-          // for the next chat turn (fresh session with checkpoint injection).
-          entry.session          = null;
-          entry._currentSequence = null;
-          entry.sessionTurns     = 0;
-          entry._thinkBuf        = '';
-          entry._inThink         = false;
-          return;
-        }
-        log.info(` Generation aborted by guard — session preserved, turn ended cleanly`);
+        log.info(` Generation aborted by guard — session preserved, turn ended cleanly`);        log.info(` Generation aborted by guard — session preserved, turn ended cleanly`);
         yield { type: 'text', chunk: '\n\n_[Guard triggered — the same tool was called too many times, so I stopped this turn. Try a different approach.]_' };
         // Still dispose the session because node-llama-cpp's internal state
         // after abort can be inconsistent (partial tool loop mid-flight).
