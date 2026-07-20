@@ -216,24 +216,38 @@ class Poseidon {
     ctx.arc(0, -this.size * 0.68, this.size * 0.08, 0, Math.PI * 2);
     ctx.fill();
     
-    // Eyes (wise and powerful) — one path per eye: chained arcs in a single
-    // path draw a filled chord bar between them (same bug as the trident tips).
-    ctx.fillStyle = '#FFD700';
-    ctx.beginPath();
-    ctx.arc(-this.size * 0.2, -this.size * 0.1, this.size * 0.12, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.beginPath();
-    ctx.arc(this.size * 0.2, -this.size * 0.1, this.size * 0.12, 0, Math.PI * 2);
-    ctx.fill();
-    
-    // Pupils (deep blue)
-    ctx.fillStyle = '#000080';
-    ctx.beginPath();
-    ctx.arc(-this.size * 0.2, -this.size * 0.1, this.size * 0.05, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.beginPath();
-    ctx.arc(this.size * 0.2, -this.size * 0.1, this.size * 0.05, 0, Math.PI * 2);
-    ctx.fill();
+    // Eyes — OPEN when the system lives, CLOSED when the god naps.
+    // Asleep (nothing loaded, not dreaming): two gentle downward golden
+    // arcs — restful lids, no pupils. Awake: the wise open eyes.
+    const _asleep = !this._sysLoaded && !this._sysDreaming;
+    if (_asleep) {
+      ctx.strokeStyle = '#FFD700';
+      ctx.lineWidth = Math.max(2, this.size * 0.045);
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.arc(-this.size * 0.2, -this.size * 0.13, this.size * 0.11, Math.PI * 0.15, Math.PI * 0.85);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(this.size * 0.2, -this.size * 0.13, this.size * 0.11, Math.PI * 0.15, Math.PI * 0.85);
+      ctx.stroke();
+    } else {
+      ctx.fillStyle = '#FFD700';
+      ctx.beginPath();
+      ctx.arc(-this.size * 0.2, -this.size * 0.1, this.size * 0.12, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(this.size * 0.2, -this.size * 0.1, this.size * 0.12, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Pupils (deep blue)
+      ctx.fillStyle = '#000080';
+      ctx.beginPath();
+      ctx.arc(-this.size * 0.2, -this.size * 0.1, this.size * 0.05, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(this.size * 0.2, -this.size * 0.1, this.size * 0.05, 0, Math.PI * 2);
+      ctx.fill();
+    }
     
     // BEARD (flowing, majestic!)
     ctx.fillStyle = '#E0E0E0'; // White/silver beard

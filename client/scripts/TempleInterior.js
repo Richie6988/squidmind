@@ -49,6 +49,8 @@ const TempleInterior = {
       const _rPanel = document.getElementById('ti-reasoning-panel');
       if (_rPanel) this._startReasoningStream(_rPanel);
     }
+    // Permanent terminal dock (bottom 1/4 of the center column)
+    this._initTerminalDock();
 
     this._pollTimer = setInterval(() => {
       this._renderHeader();
@@ -157,6 +159,24 @@ const TempleInterior = {
     <!-- Status bar — always at bottom, flex-shrink:0 -->
     <div class="ti-ide-status" id="ti-ide-status"
       style="flex-shrink:0;font-size:8px;padding:2px 8px;background:#020d1c;border-top:1px solid var(--border);color:#475569;letter-spacing:.06em;">READY</div>
+    <!-- PERMANENT TERMINAL DOCK — 1/4 of the center column, always open.
+         Live stream / editor / preview keep the top 3/4 (#ti-content-area
+         is flex:1). Same execution path as agent execute_bash: BashExecutor,
+         venv-first PATH, danger gate, 60s/command. -->
+    <div id="ti-terminal-dock" style="flex:0 0 25%;min-height:110px;display:flex;flex-direction:column;border-top:1px solid rgba(79,172,254,0.25);background:#010509;overflow:hidden;">
+      <div style="flex-shrink:0;display:flex;align-items:center;gap:8px;padding:3px 10px;border-bottom:1px solid rgba(79,172,254,0.12);background:#020c18;">
+        <span style="font-family:'Press Start 2P',monospace;font-size:7px;color:#4facfe;letter-spacing:1px;">⌨ TERMINAL</span>
+        <span style="font-size:9px;color:#475569;font-family:'Courier New',monospace;">cwd = project root · venv PATH when .pyenv exists · 60s/cmd</span>
+        <span style="flex:1;"></span>
+        <button class="ti-tab-sm" onclick="TempleInterior._termClear()" title="Clear terminal output" style="font-size:6px;">CLEAR</button>
+      </div>
+      <div id="ti-term-feed" class="ti-run-console" style="flex:1;min-height:0;overflow-y:auto;padding:6px 10px;"></div>
+      <div style="flex-shrink:0;display:flex;gap:6px;padding:5px 10px;border-top:1px solid rgba(79,172,254,0.12);">
+        <span style="color:#06ffa5;font-family:'Courier New',monospace;font-size:12px;line-height:22px;">$</span>
+        <input id="ti-term-input" type="text" spellcheck="false" placeholder="ls output/ · python output/script.py · pip list"
+          style="flex:1;background:var(--ocean-deep,#020810);border:1px solid rgba(79,172,254,0.3);color:#e2e8f0;border-radius:3px;padding:3px 8px;font-family:'Courier New',monospace;font-size:12px;outline:none;">
+      </div>
+    </div>
   </div>
 
   <!-- RIGHT: kanban -->
@@ -587,7 +607,6 @@ const TempleInterior = {
     c.innerHTML = `
 <div class="ti-sec">INPUT FILES
   <span class="ti-sec-btn ti-autoanalyze-btn" id="ti-autoanalyze" style="cursor:pointer;" onclick="TempleInterior._toggleAutoAnalyze(this)" title="Auto-analyze: every NEW file dropped in input/ spawns an analysis task (existing files are not touched)">◉ AUTO</span>
-  <span class="ti-sec-btn" style="cursor:pointer;" onclick="TempleInterior._openTerminal()" title="Project terminal — bash in the project folder (60s/command)">⌨ TERM</span>
   <label class="ti-sec-btn" style="cursor:pointer;">
     + ADD
     <input type="file" multiple style="display:none" onchange="TempleInterior._handleUpload(event,'${folder}','input')">
@@ -2250,112 +2269,73 @@ const TempleInterior = {
     }
   },
 
-  // ── PROJECT TERMINAL — free-form bash, cwd = project folder ─────────────
-  // Same console chrome as RUN/replay. Command history with ↑/↓, Enter runs,
-  // Esc closes. Every command goes through BashExecutor server-side (danger
-  // gate + venv-first PATH + 60s timeout) — `python` here IS the IAQUA venv.
-  _openTerminal() {
-    const pid = this.currentTemple?.project_id || this.currentTemple?.name;
-    if (!pid) return;
-    const ov = document.createElement('div');
-    ov.className = 'ti-replay-overlay';
-    ov.innerHTML = `
-      <div class="ti-replay-box" style="width:620px;">
-        <div class="ti-replay-head">
-          <span>⌨ TERMINAL — ${this._esc(this.currentTemple?.name || pid)}</span>
-          <span class="ti-replay-close" title="Close (Esc)">✕</span>
-        </div>
-        <div class="ti-replay-meta">cwd = project folder · 60s/command · venv PATH active when .pyenv exists</div>
-        <div class="ti-replay-feed ti-run-console" style="min-height:220px;max-height:52vh;"></div>
-        <div style="display:flex;gap:6px;padding:8px 12px;border-top:1px solid rgba(79,172,254,0.2);">
-          <span style="color:#06ffa5;font-family:'Courier New',monospace;font-size:12px;line-height:24px;">$</span>
-          <input class="ti-term-input" type="text" spellcheck="false" placeholder="ls output/ · python output/script.py · pip list"
-            style="flex:1;background:var(--ocean-deep,#020810);border:1px solid rgba(79,172,254,0.3);color:#e2e8f0;border-radius:3px;padding:4px 8px;font-family:'Courier New',monospace;font-size:12px;outline:none;">
-        </div>
-      </div>`;
-    document.body.appendChild(ov);
-    const feed  = ov.querySelector('.ti-run-console');
-    const input = ov.querySelector('.ti-term-input');
-    const close = () => ov.remove();
-    ov.querySelector('.ti-replay-close').onclick = close;
-    ov.addEventListener('click', e => { if (e.target === ov) close(); });
-    const history = []; let hIdx = -1;
-    let running = false;
-    const runCmd = async (cmd) => {
-      if (running) return;
-      running = true;
-      feed.insertAdjacentHTML('beforeend', `<div class="ti-replay-row" style="color:#06ffa5;">$ ${this._esc(cmd)}</div>`);
-      feed.scrollTop = feed.scrollHeight;
-      try {
-        const r = await fetch(`/api/v2/projects/${encodeURIComponent(pid)}/exec`, {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ command: cmd }),
-        }).then(x => x.json());
-        if (r.stdout) feed.insertAdjacentHTML('beforeend', `<pre class="ti-run-out">${this._esc(r.stdout)}</pre>`);
-        if (r.stderr) feed.insertAdjacentHTML('beforeend', `<pre class="ti-run-err">${this._esc(r.stderr)}</pre>`);
-        if (r.ok === false || r.success === false || (Number.isFinite(r.exit_code) && r.exit_code !== 0)) {
-          feed.insertAdjacentHTML('beforeend', `<div class="ti-replay-row ti-replay-ko">✗ ${this._esc(r.error || `exit ${r.exit_code ?? '?'}`)}
-            <button class="btn-secondary" style="font-size:8px;padding:2px 8px;margin-left:8px;"
-              onclick="TempleInterior._sendTermErrorToPoseidon('${this._esc(cmd).replace(/'/g, '&#39;')}', this.closest('.ti-run-console').querySelector('.ti-run-err:last-of-type')?.textContent || '${this._esc((r.error || '').slice(0, 200))}')">» SEND TO POSEIDON</button></div>`);
-          // PRE-VENV HINT — on Ubuntu there is no bare `python`/`pip` until
-          // the IAQUA venv exists (only python3/pip3). Instead of a cryptic
-          // exit 1/127, explain the state and offer the fix in one click.
-          const notFound = /\b(python|pip):\s*(command\s+)?not found/.test(`${r.stderr || ''} ${r.error || ''}`)
-            || (/^\s*which\s+(python|pip)\s*$/.test(cmd) && r.exit_code === 1);
-          if (notFound && !document.getElementById('ti-venv-hint')) {
-            feed.insertAdjacentHTML('beforeend', `<div class="ti-replay-row ti-replay-dim" id="ti-venv-hint" style="margin-top:4px;">
-              Bare <b>python</b>/<b>pip</b> don't exist before the IAQUA venv — use <b>python3</b>/<b>pip3</b>, or:
-              <button class="btn-primary" style="font-size:8px;padding:2px 8px;margin-left:6px;"
-                onclick="TempleInterior._ensureVenv(this)">CREATE IAQUA VENV (~20s)</button></div>`);
-          }
-        }
-        else if (!r.stdout && !r.stderr) feed.insertAdjacentHTML('beforeend', `<div class="ti-replay-row ti-replay-dim">(no output)</div>`);
-        // Commands can create/delete files — keep the lists honest.
-        this._renderFiles?.();
-      } catch (e) {
-        feed.insertAdjacentHTML('beforeend', `<div class="ti-replay-row ti-replay-ko">✗ ${this._esc(e.message)}</div>`);
-      } finally {
-        running = false;
-        feed.scrollTop = feed.scrollHeight;
-      }
-    };
+  // ── PERMANENT TERMINAL DOCK — bottom 1/4 of the temple center ──────────
+  // Same policy as agent execute_bash (BashExecutor: venv PATH, danger
+  // gate, 60s). History ↑/↓ per temple session, Esc blurs (dock never
+  // closes), pre-venv hint + » SEND TO POSEIDON preserved from the old
+  // overlay terminal (which this replaces).
+  _initTerminalDock() {
+    const input = document.getElementById('ti-term-input');
+    const feed  = document.getElementById('ti-term-feed');
+    if (!input || !feed) return;
+    this._termHistory = [];
+    this._termHIdx = -1;
+    this._termRunning = false;
+    feed.innerHTML = '<div class="ti-replay-row ti-replay-dim">Project terminal ready.</div>';
     input.addEventListener('keydown', async (e) => {
-      if (e.key === 'Escape') { close(); return; }
-      if (e.key === 'ArrowUp')   { if (history.length) { hIdx = Math.max(0, hIdx < 0 ? history.length - 1 : hIdx - 1); input.value = history[hIdx]; e.preventDefault(); } return; }
-      if (e.key === 'ArrowDown') { if (hIdx >= 0) { hIdx = hIdx + 1 >= history.length ? -1 : hIdx + 1; input.value = hIdx < 0 ? '' : history[hIdx]; e.preventDefault(); } return; }
+      if (e.key === 'Escape') { input.blur(); return; }
+      if (e.key === 'ArrowUp')   { if (this._termHistory.length) { this._termHIdx = Math.max(0, this._termHIdx < 0 ? this._termHistory.length - 1 : this._termHIdx - 1); input.value = this._termHistory[this._termHIdx]; e.preventDefault(); } return; }
+      if (e.key === 'ArrowDown') { if (this._termHIdx >= 0) { this._termHIdx = this._termHIdx + 1 >= this._termHistory.length ? -1 : this._termHIdx + 1; input.value = this._termHIdx < 0 ? '' : this._termHistory[this._termHIdx]; e.preventDefault(); } return; }
       if (e.key === 'Enter') {
         const cmd = input.value.trim();
         if (!cmd) return;
-        history.push(cmd); hIdx = -1;
+        this._termHistory.push(cmd); this._termHIdx = -1;
         input.value = '';
-        await runCmd(cmd);
+        await this._termExec(cmd, feed);
       }
     });
-    input.focus();
   },
 
-  // Build the perfect bug report and hand it to the chat as an editable draft.
-  _sendRunErrorToPoseidon() {
-    const e = this._lastRunError;
-    if (!e || !window.PoseidonChat) return;
-    document.querySelectorAll('.ti-replay-overlay').forEach(el => el.remove());
-    const proj = this.currentTemple?.name || '';
-    const draft =
-      `Le script ${e.type}/${e.filename} du projet ${proj} échoue (exit ${e.exit}, ${e.interpreter || 'python'}).\n` +
-      `Corrige-le directement dans le fichier (edit_file), puis explique le fix en une phrase.\n\n` +
-      `ERREUR:\n\`\`\`\n${e.stderr}\n\`\`\``;
-    PoseidonChat.openWithDraft(draft);
+  _termClear() {
+    const feed = document.getElementById('ti-term-feed');
+    if (feed) feed.innerHTML = '<div class="ti-replay-row ti-replay-dim">Cleared.</div>';
   },
 
-  _sendTermErrorToPoseidon(cmd, stderr) {
-    if (!window.PoseidonChat) return;
-    document.querySelectorAll('.ti-replay-overlay').forEach(el => el.remove());
-    const proj = this.currentTemple?.name || '';
-    const draft =
-      `Cette commande échoue dans le projet ${proj} (cwd = dossier projet) :\n\`${cmd}\`\n` +
-      `Diagnostique et corrige — tu as execute_bash dans le même environnement (venv IAQUA).\n\n` +
-      `ERREUR:\n\`\`\`\n${String(stderr || '').slice(-1200)}\n\`\`\``;
-    PoseidonChat.openWithDraft(draft);
+  async _termExec(cmd, feed) {
+    const pid = this.currentTemple?.project_id || this.currentTemple?.name;
+    if (!pid || this._termRunning) return;
+    this._termRunning = true;
+    feed.insertAdjacentHTML('beforeend', `<div class="ti-replay-row" style="color:#06ffa5;">$ ${this._esc(cmd)}</div>`);
+    feed.scrollTop = feed.scrollHeight;
+    try {
+      const r = await fetch(`/api/v2/projects/${encodeURIComponent(pid)}/exec`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ command: cmd }),
+      }).then(x => x.json());
+      if (r.stdout) feed.insertAdjacentHTML('beforeend', `<pre class="ti-run-out">${this._esc(r.stdout)}</pre>`);
+      if (r.stderr) feed.insertAdjacentHTML('beforeend', `<pre class="ti-run-err">${this._esc(r.stderr)}</pre>`);
+      if (r.ok === false || r.success === false || (Number.isFinite(r.exit_code) && r.exit_code !== 0)) {
+        feed.insertAdjacentHTML('beforeend', `<div class="ti-replay-row ti-replay-ko">✗ ${this._esc(r.error || `exit ${r.exit_code ?? '?'}`)}
+          <button class="btn-secondary" style="font-size:8px;padding:2px 8px;margin-left:8px;"
+            onclick="TempleInterior._sendTermErrorToPoseidon('${this._esc(cmd).replace(/'/g, '&#39;')}', this.closest('.ti-run-console').querySelector('.ti-run-err:last-of-type')?.textContent || '${this._esc((r.error || '').slice(0, 200))}')">» SEND TO POSEIDON</button></div>`);
+        // PRE-VENV HINT — bare python/pip don't exist before the IAQUA venv.
+        const notFound = /\b(python|pip):\s*(command\s+)?not found/.test(`${r.stderr || ''} ${r.error || ''}`)
+          || (/^\s*which\s+(python|pip)\s*$/.test(cmd) && r.exit_code === 1);
+        if (notFound && !document.getElementById('ti-venv-hint')) {
+          feed.insertAdjacentHTML('beforeend', `<div class="ti-replay-row ti-replay-dim" id="ti-venv-hint" style="margin-top:4px;">
+            Bare <b>python</b>/<b>pip</b> don't exist before the IAQUA venv — use <b>python3</b>/<b>pip3</b>, or:
+            <button class="btn-primary" style="font-size:8px;padding:2px 8px;margin-left:6px;"
+              onclick="TempleInterior._ensureVenv(this)">CREATE IAQUA VENV (~20s)</button></div>`);
+        }
+      }
+      else if (!r.stdout && !r.stderr) feed.insertAdjacentHTML('beforeend', `<div class="ti-replay-row ti-replay-dim">(no output)</div>`);
+      this._renderFiles?.();
+    } catch (e) {
+      feed.insertAdjacentHTML('beforeend', `<div class="ti-replay-row ti-replay-ko">✗ ${this._esc(e.message)}</div>`);
+    } finally {
+      this._termRunning = false;
+      feed.scrollTop = feed.scrollHeight;
+    }
   },
 
   // One-click venv creation from the terminal hint (pre-venv state).

@@ -23,6 +23,7 @@ const SoundFX = {
   init() {
     try { this._enabled = window.localStorage?.getItem('iaqua_sfx') === '1'; } catch {}
     this._renderToggle();
+    this._bindCta();
   },
 
   _ac() {
@@ -86,8 +87,31 @@ const SoundFX = {
       case 'pause':       return this._tone([[440, 0, 0.10], [330, 0.10, 0.16]]);
       case 'resume':      return this._tone([[330, 0, 0.10], [440, 0.10, 0.16]]);
       case 'error':       return this._tone([[180, 0, 0.10, 'square'], [180, 0.14, 0.10, 'square']], { gain: 0.08 });
+      case 'action':      return this._tone([[880, 0, 0.05], [1174.66, 0.04, 0.07]], { gain: 0.07 });   // crisp CTA blip
       default: return;
     }
+  },
+
+  // ── CTA blips via ONE delegated listener ────────────────────────────────
+  // Primary action buttons get a crisp confirmation blip. Delegation means
+  // zero per-site edits and future buttons matching these selectors are
+  // covered automatically. Excluded: the pause chip (has its own semantic
+  // pair) and anything inside a disabled control.
+  _CTA_SELECTOR: [
+    '.btn-primary', '.ti-tab-sm.accent', '.ti-file-run', '.ti-file-imgact',
+    '.skills-new-btn', '.tpl-btn', '.ti-sec-btn', '.pc-send', '.btn-nav',
+  ].join(','),
+
+  _bindCta() {
+    if (this._ctaBound) return;
+    this._ctaBound = true;
+    document.addEventListener('click', (e) => {
+      if (!this._enabled) return;
+      const el = e.target?.closest?.(this._CTA_SELECTOR);
+      if (!el || el.disabled) return;
+      if (el.closest('#ct-pause-btn') || el.id === 'ct-pause-btn') return;  // has its own sounds
+      this.play('action');
+    }, { capture: true });
   },
 };
 
