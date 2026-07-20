@@ -33,6 +33,19 @@ const TempleInterior = {
     }
     root.className = 'temple-interior';
     root.style.display = '';
+
+    // ── GALLERY MODE — the system project GALLERY is Photos, not an IDE ──
+    // No file rails, no agents, no kanban, no terminal, no reasoning
+    // stream: a date-grouped thumbnail grid + a lightbox with the existing
+    // image actions. Everything else about temples stays untouched.
+    if ((temple.name || '').toUpperCase() === 'GALLERY') {
+      root.innerHTML = this._buildGalleryShell(temple);
+      this._galSig = '';
+      this._renderGallery();
+      this._pollTimer = setInterval(() => this._renderGallery(), 4000);
+      return;
+    }
+
     root.innerHTML = this._buildShell(temple);
 
     this._switchLeft('files');
@@ -65,10 +78,151 @@ const TempleInterior = {
 
   close() {
     clearInterval(this._pollTimer);
+    this._galClose();
     Object.values(this._rafMap).forEach(id => cancelAnimationFrame(id));
     this._rafMap = {};
     const root = document.getElementById('temple-interior');
     if (root) { root.style.display = 'none'; }
+  },
+
+  // ═══ GALLERY MODE — the smartphone gallery for the GALLERY temple ═════════
+  _buildGalleryShell(temple) {
+    return `
+<div class="ti-header">
+  <span class="ti-header-title">GALLERY</span>
+  <span class="gal-count" id="gal-count"></span>
+  <span style="flex:1;"></span>
+  <button class="ti-header-close" onclick="TempleInterior.close()">✕ CLOSE</button>
+</div>
+<div id="gal-body" class="gal-body">
+  <div id="gal-grid" class="gal-scroll"></div>
+</div>`;
+  },
+
+  async _renderGallery() {
+    const grid = document.getElementById('gal-grid');
+    if (!grid) return;
+    let files = [];
+    try {
+      const res = await fetch('/api/v2/projects/GALLERY/outputs');
+      files = ((await res.json()).files || []).filter(f => /\.(png|jpe?g|gif|webp)$/i.test(f.name));
+    } catch { return; }
+    files.sort((a, b) => new Date(b.mtime || 0) - new Date(a.mtime || 0));
+    // Signature skip: don't rebuild (and reload every <img>) when nothing changed
+    const sig = files.length + ':' + (files[0]?.mtime || '') + ':' + (files[0]?.name || '');
+    if (sig === this._galSig) return;
+    this._galSig = sig;
+    this._galFiles = files;
+    const cnt = document.getElementById('gal-count');
+    if (cnt) cnt.textContent = files.length ? `${files.length} image${files.length > 1 ? 's' : ''}` : '';
+
+    if (!files.length) {
+      grid.innerHTML = `<div class="gal-empty">No images yet.<br><span>Every image generated outside a project lands here automatically.</span></div>`;
+      return;
+    }
+    // ── Date buckets: TODAY / YESTERDAY / day-of-month / older months ──
+    const now = new Date();
+    const dayKey = (d) => d.toISOString().slice(0, 10);
+    const todayK = dayKey(now);
+    const yestK  = dayKey(new Date(now.getTime() - 86400000));
+    const MONTHS = ['JANVIER','FÉVRIER','MARS','AVRIL','MAI','JUIN','JUILLET','AOÛT','SEPTEMBRE','OCTOBRE','NOVEMBRE','DÉCEMBRE'];
+    const label = (m) => {
+      const d = new Date(m || 0);
+      const k = dayKey(d);
+      if (k === todayK) return "AUJOURD'HUI";
+      if (k === yestK)  return 'HIER';
+      if (d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth())
+        return `${d.getDate()} ${MONTHS[d.getMonth()]}`;
+      return `${MONTHS[d.getMonth()]} ${d.getFullYear()}`;
+    };
+    let html = '', lastLbl = null;
+    files.forEach((f, i) => {
+      const l = label(f.mtime);
+      if (l !== lastLbl) { html += `<div class="gal-date">${l}</div>`; lastLbl = l; }
+      const url = `/api/v2/projects/GALLERY/outputs/${encodeURIComponent(f.name)}`;
+      html += `<div class="gal-cell" onclick="TempleInterior._galOpen(${i})" title="${this._esc(f.name)}">
+        <img src="${url}" loading="lazy" decoding="async" alt="">
+      </div>`;
+    });
+    grid.innerHTML = html;
+  },
+
+  // ── Lightbox ─────────────────────────────────────────────────────────────
+  _galOpen(idx) {
+    this._galIdx = idx;
+    let lb = document.getElementById('gal-lightbox');
+    if (!lb) {
+      lb = document.createElement('div');
+      lb.id = 'gal-lightbox';
+      lb.className = 'gal-lb';
+      lb.onclick = (e) => { if (e.target === lb) TempleInterior._galClose(); };
+      document.body.appendChild(lb);
+      this._galKeyHandler = (e) => {
+        if (!document.getElementById('gal-lightbox')) return;
+        if (e.key === 'Escape')      { e.stopPropagation(); TempleInterior._galClose(); }
+        if (e.key === 'ArrowRight')  TempleInterior._galNav(1);
+        if (e.key === 'ArrowLeft')   TempleInterior._galNav(-1);
+      };
+      document.addEventListener('keydown', this._galKeyHandler, true);
+    }
+    this._galRenderLb();
+  },
+
+  _galNav(d) {
+    const n = this._galFiles?.length || 0;
+    if (!n) return;
+    this._galIdx = (this._galIdx + d + n) % n;
+    this._galRenderLb();
+  },
+
+  _galRenderLb() {
+    const lb = document.getElementById('gal-lightbox');
+    const f  = this._galFiles?.[this._galIdx];
+    if (!lb || !f) return;
+    const url  = `/api/v2/projects/GALLERY/outputs/${encodeURIComponent(f.name)}`;
+    const date = f.mtime ? new Date(f.mtime).toLocaleString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
+    lb.innerHTML = `
+<button class="gal-lb-nav gal-lb-prev" onclick="event.stopPropagation();TempleInterior._galNav(-1)">‹</button>
+<div class="gal-lb-stage"><img src="${url}" alt=""></div>
+<button class="gal-lb-nav gal-lb-next" onclick="event.stopPropagation();TempleInterior._galNav(1)">›</button>
+<div class="gal-lb-foot">
+  <span class="gal-lb-meta">${this._esc(f.name)} · ${date} · ${this._galIdx + 1}/${this._galFiles.length}</span>
+  <span class="gal-lb-actions">
+    <button class="tpl-btn" title="Upscale 2×" onclick="event.stopPropagation();TempleInterior._upscaleImage('${this._esc(f.path || '')}','${this._esc(f.name)}')">↑2×</button>
+    <button class="tpl-btn" title="Edit with prompt (img2img)" onclick="event.stopPropagation();TempleInterior._editImage('${this._esc(f.path || '')}','${this._esc(f.name)}')">✎ EDIT</button>
+    <button class="tpl-btn" title="Ask Poseidon about this image" onclick="event.stopPropagation();TempleInterior._galToPoseidon('${this._esc(f.name)}')">» POSEIDON</button>
+    <a class="tpl-btn" href="${url}" target="_blank" title="Open original" onclick="event.stopPropagation()">↗</a>
+    <a class="tpl-btn" href="${url}" download="${this._esc(f.name)}" title="Download" onclick="event.stopPropagation()">⬇</a>
+    <button class="tpl-btn tpl-del" title="Delete" onclick="event.stopPropagation();TempleInterior._galDelete('${this._esc(f.name)}')">X</button>
+  </span>
+</div>`;
+  },
+
+  async _galDelete(name) {
+    // _deleteFile owns the confirm dialog — no double-ask here.
+    try { await this._deleteFile('GALLERY', name, 'output'); } catch {}
+    this._galSig = '';
+    await this._renderGallery();
+    const n = this._galFiles?.length || 0;
+    if (!n) return this._galClose();
+    this._galIdx = Math.min(this._galIdx, n - 1);
+    this._galRenderLb();
+  },
+
+  _galToPoseidon(name) {
+    this._galClose();
+    if (window.PoseidonChat?.openWithDraft) {
+      window.PoseidonChat.openWithDraft(`Regarde l'image PROJECTS/GALLERY/output/${name} : `);
+    }
+  },
+
+  _galClose() {
+    const lb = document.getElementById('gal-lightbox');
+    if (lb) lb.remove();
+    if (this._galKeyHandler) {
+      document.removeEventListener('keydown', this._galKeyHandler, true);
+      this._galKeyHandler = null;
+    }
   },
 
   // ═══ SHELL ═══════════════════════════════════════════════════════════════
