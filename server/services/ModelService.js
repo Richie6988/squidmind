@@ -672,12 +672,14 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
       if (/unknown model architecture|unknown arch/i.test(err.message)) {
         const arch = err.message.match(/unknown model architecture: '([^']+)'/)?.[1] || 'unknown';
         throw new Error(
-          `Architecture '${arch}' not supported by current llama.cpp build.\n` +
-          `Run these commands in your IAQUA folder to add support:\n` +
+          `Architecture '${arch}' not supported by your installed llama.cpp build.\n` +
+          `FIX 1 (fast, usually enough): npm install\n` +
+          `  → package.json now pins node-llama-cpp ^3.19.0 (prebuilt binaries\n` +
+          `    include gemma4 and other 2026 architectures).\n` +
+          `FIX 2 (only if the arch is NEWER than the bundled release):\n` +
           `  npx node-llama-cpp source download --release latest\n` +
           `  CMAKE_ARGS="-DGGML_CUDA=ON" npx node-llama-cpp source build\n` +
-          `Or: npm run rebuild-llama\n` +
-          `(~5-10 min. Fixes Gemma4, Llama4, and other new architectures.)`
+          `  (or: npm run rebuild-llama — ~5-10 min)`
         );
       }
       throw err;
