@@ -1293,8 +1293,33 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
         if (probeInflated) {
           log.warn(`  [auto] cached probe ${(probeData.kvPerTok/1024).toFixed(1)}KB/tok >2x header ${(headerKvOnGpu/1024).toFixed(1)}KB/tok — ignoring, using header`);
         }
-        const measuredKvPerTok = probeInflated ? 0 : (probeData?.kvPerTok || 0);
-        const measuredFixedGb  = probeData && !probeInflated ? probeData.fixedBytes / 1024 ** 3 : 0;
+        // SYMMETRIC GUARD — a probe far BELOW the header is just as poisonous,
+        // and worse: it inflates the ctx target instead of shrinking it, so
+        // the OOM ladder walks every rung down to 2048, re-measures garbage at
+        // 2048 (where the fixed-buffer subtraction leaves only noise), and
+        // caches it again. Self-perpetuating. Observed with Gemma 4 12B:
+        // cached 11KB/tok vs header 227KB/tok (head_dim=256 → ~20x under),
+        // target 79872 → 7 OOM retries → ctx=2048 → unusable.
+        // The header is architecture physics (block_count × kv_heads ×
+        // key_length from the GGUF); a differential measurement is noisy.
+        // Below 40% of header = not a measurement, a bug. Purge it for good.
+        const probeDeflated = probeData?.kvPerTok
+          && headerKvOnGpu > 0
+          && probeData.kvPerTok < headerKvOnGpu * 0.4;
+        if (probeDeflated) {
+          log.warn(`  [auto] cached probe ${(probeData.kvPerTok/1024).toFixed(1)}KB/tok <40% of header ${(headerKvOnGpu/1024).toFixed(1)}KB/tok — poisoned entry, purging cache and using header`);
+          try {
+            ModelService._kvProbe.delete(probeKey);
+            const p = require('path').join(require('../aquarium').LOGS, 'kv_probe_cache.json');
+            const fsp2 = require('fs').promises;
+            const existing = JSON.parse(await fsp2.readFile(p, 'utf8').catch(() => '{}'));
+            delete existing[probeKey];
+            await fsp2.writeFile(p, JSON.stringify(existing, null, 2)).catch(() => {});
+          } catch {}
+          probeData = null;
+        }
+        const measuredKvPerTok = (probeInflated || probeDeflated) ? 0 : (probeData?.kvPerTok || 0);
+        const measuredFixedGb  = probeData && !probeInflated && !probeDeflated ? probeData.fixedBytes / 1024 ** 3 : 0;
         const bytesPerTok = measuredKvPerTok > 0
           ? Math.round(measuredKvPerTok * 1.05)      // measured + 5% safety
           : headerKvBytesPerTok > 0
@@ -1482,7 +1507,20 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
                   ? headerKvBytesPerTok * (layersNow / estLayers)
                   : 0;
                 const inflated = headerKvOnGpu > 0 && measuredKv > headerKvOnGpu * 2;
-                if (inflated) {
+                // A measurement is only meaningful when the context cost
+                // DOMINATES the fixed buffers we subtract. At ctx=2048 the
+                // subtraction (0.3GB guess) eats nearly the whole delta and
+                // the residual is noise — that noise, cached, becomes a
+                // 20x-too-low KV estimate that inflates the next load's ctx
+                // target into an OOM cascade (Gemma 4 field log). Only trust
+                // measurements from a context worth measuring.
+                const tooSmallToMeasure = config.contextLength < 8192;
+                const deflated = headerKvOnGpu > 0 && measuredKv < headerKvOnGpu * 0.4;
+                if (tooSmallToMeasure) {
+                  log.info(`  📏 KV measurement NOT cached (ctx=${config.contextLength} < 8192 — fixed buffers dominate, residual is noise)`);
+                } else if (deflated) {
+                  log.warn(`  📏 REJECTED post-hoc KV: measured ${(measuredKv/1024).toFixed(1)}KB/tok < 40% of header ${(headerKvOnGpu/1024).toFixed(1)}KB/tok — refusing to cache a deflated value`);
+                } else if (inflated) {
                   log.warn(`  📏 REJECTED post-hoc KV: measured ${(measuredKv/1024).toFixed(1)}KB/tok vs header ${(headerKvOnGpu/1024).toFixed(1)}KB/tok — fixedGuess was too low, refusing to cache inflated value`);
                 } else {
                 ModelService._kvProbe = ModelService._kvProbe || new Map();
@@ -1555,6 +1593,28 @@ Resume: call read_my_brain('tasks') and read_my_brain('projects') to re-orient.`
           `[ModelService] ⚠ Context ${config.contextLength} < ${ModelService.MIN_VIABLE_CTX} minimum. ` +
           `Chat may fail. Try: smaller model, fewer GPU layers, or CPU-only mode.`
         );
+        // CONCRETE suggestion instead of "fewer GPU layers": solve the layer
+        // budget from header physics. Weights AND KV both scale with the
+        // GPU-layer share, so lowering layers frees VRAM twice over — the
+        // counter-intuitive move that actually buys context.
+        //   L ≤ totalLayers × (free − margin) / (fileSizeGb + kvGbPerTok×ctx)
+        try {
+          if (headerKvBytesPerTok > 0 && estLayers > 0 && freeBeforeGb > 1) {
+            const kvGbPerTok = headerKvBytesPerTok / 1024 ** 3;
+            const budget = freeBeforeGb - 0.9;                 // fixed CUDA + compute buffers
+            const suggest = (target) => {
+              const L = Math.floor(estLayers * budget / (fileSizeGb + kvGbPerTok * target));
+              return Math.max(0, Math.min(estLayers, L));
+            };
+            const s8 = suggest(8192), s16 = suggest(16384);
+            log.warn(
+              `[ModelService] → This model's KV is ${Math.round(headerKvBytesPerTok / 1024)}KB/token at full layers ` +
+              `(head_dim from the GGUF header) — expensive. On ${freeBeforeGb.toFixed(1)}GB free, set gpuLayers ` +
+              `≈${s8} for ctx 8192, or ≈${s16} for ctx 16384 (CPU layers slow decode but KV follows the layers, ` +
+              `so each one you move off the GPU buys context).`
+            );
+          }
+        } catch { /* guidance only — never break the load */ }
       }
 
       // ── Step 6: Register as loaded ────────────────────────────────────────
