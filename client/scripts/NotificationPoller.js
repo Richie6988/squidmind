@@ -45,7 +45,7 @@
               action: ok && e.result_file ? {
                 label: 'VIEW',
                 onClick: () => {
-                  if (window.TaskQueueUI?.openTaskResult) window.TaskQueueUI.openTaskResult(e.task_id);
+                  if (window.TaskQueueUI?.openInTemple) window.TaskQueueUI.openInTemple(e.task_id);
                 }
               } : null,
               duration: 8000,
@@ -130,7 +130,7 @@
               action: ok && data.result_file ? {
                 label: 'VIEW',
                 onClick: () => {
-                  if (window.TaskQueueUI?.openTaskResult) window.TaskQueueUI.openTaskResult(tid);
+                  if (window.TaskQueueUI?.openInTemple) window.TaskQueueUI.openInTemple(tid);
                 }
               } : null,
               duration: 8000,

@@ -130,28 +130,16 @@
         </div>
         
         <!-- Task Queue (interactive) -->
-        <div class="monitor-section tq-two-pane-section">
-          <div class="tq-pane-wrap">
-            <div class="tq-pane" id="tq-pane-queue">
-              <div class="tq-pane-header">
-                <span class="tq-pane-title">QUEUE</span>
-                <span class="tq-pane-count" id="tq-queue-count">—</span>
-                <button class="tq-del-all-btn" onclick="TaskQueueUI.deleteAllQueued()" title="Delete all queued tasks">&#10005; ALL</button>
-              </div>
-              <div id="task-queue" class="tq-pane-body">
-                <p class="hint" style="font-size: 9px; color: var(--text-secondary);">Loading...</p>
-              </div>
+        <div class="monitor-section tq-single-section">
+          <div class="tq-pane" id="tq-pane-all">
+            <div class="tq-pane-header">
+              <span class="tq-pane-title">TASKS</span>
+              <span class="tq-pane-count" id="tq-all-count">—</span>
+              <button class="tq-del-all-btn" onclick="TaskQueueUI.deleteAllQueued()" title="Delete all queued tasks">&#10005; QUEUE</button>
+              <button class="tq-del-all-btn" onclick="TaskQueueUI.dismissAllResults()" title="Clear finished tasks from view">&#10005; DONE</button>
             </div>
-            <div class="tq-pane-divider" id="tq-divider"></div>
-            <div class="tq-pane" id="tq-pane-results">
-              <div class="tq-pane-header">
-                <span class="tq-pane-title">RESULTS</span>
-                <span class="tq-pane-count" id="tq-results-count">—</span>
-                <button class="tq-del-all-btn" onclick="TaskQueueUI.dismissAllResults()" title="Clear results from view">&#10005; ALL</button>
-              </div>
-              <div id="task-results" class="tq-pane-body">
-                <p class="hint" style="font-size: 9px; color: var(--text-secondary);">No results yet.</p>
-              </div>
+            <div id="task-list" class="tq-pane-body">
+              <p class="hint" style="font-size: 9px; color: var(--text-secondary);">Loading...</p>
             </div>
           </div>
         </div>

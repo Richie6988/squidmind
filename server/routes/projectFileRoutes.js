@@ -349,6 +349,28 @@ function buildProjectFileRoutes({ rm }) {
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
 
+  // ── GET /:projectId/thumb/:filename — cached downscaled thumbnail ────────
+  // Grids ask for this; only the lightbox pulls /outputs/. On any failure
+  // (unsupported format, decode error) we redirect to the original so a
+  // broken thumbnailer degrades to "heavy" rather than "empty".
+  router.get('/:projectId/thumb/:filename', async (req, res) => {
+    const safeFile = sanitize(req.params.filename);
+    const w = Math.min(640, Math.max(64, parseInt(req.query.w, 10) || 320));
+    try {
+      const folder  = await resolveFolder(req.params.projectId);
+      const projDir = path.join(AQUARIUM.PROJECTS, folder);
+      if (!projDir.startsWith(AQUARIUM.PROJECTS)) return res.status(403).send('Forbidden');
+      const r = await require('../services/ThumbService').get(projDir, safeFile, w);
+      if (!r.ok) {
+        if (r.code === 404) return res.status(404).json({ error: 'Output file not found' });
+        return res.redirect(302, `/api/v2/projects/${encodeURIComponent(req.params.projectId)}/outputs/${encodeURIComponent(safeFile)}`);
+      }
+      // Thumbs are content-addressed by mtime; let the browser keep them.
+      res.set('Cache-Control', 'private, max-age=300');
+      res.sendFile(r.path, err => { if (err) res.status(404).end(); });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
   return router;
 }
 

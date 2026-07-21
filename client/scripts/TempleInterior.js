@@ -76,6 +76,63 @@ const TempleInterior = {
     }, 3000);
   },
 
+  /**
+   * focusTask — the door from the Control Tower into the work.
+   * A task lives in a project, so clicking it in the task list opens THAT
+   * temple and focuses the result inside it: the kanban card pulses and
+   * scrolls into view, and the task's output file opens in the preview.
+   * Replaces the old dead-end detail modal.
+   */
+  async focusTask(task) {
+    const wanted = task.project_name || task.project || null;
+    let temple = null;
+    try {
+      const r = await window.api._fetch('/projects');
+      const list = Object.values(r.registry?.projects || {});
+      const p = list.find(x => x.name === wanted || x.project_id === task.project_id);
+      if (p) temple = { name: p.name, project_id: p.project_id, folder: p.folder, colors: p.colors || null, color: p.color || null, files: [], tasks: [] };
+    } catch {}
+    if (!temple) {
+      if (!wanted) return SquidModal.alert('This task has no project.');
+      temple = { name: wanted, project_id: task.project_id || null, folder: wanted, files: [], tasks: [] };
+    }
+    this.open(temple);
+    // GALLERY has no kanban/files rails — the grid IS the view.
+    if ((temple.name || '').toUpperCase() === 'GALLERY') return;
+    this._switchLeft('files');
+    this._pendingFocus = task.task_id;
+    this._applyPendingFocus();
+  },
+
+  /**
+   * The temple renders asynchronously (files and tasks are fetched), so poll
+   * briefly for the target elements instead of guessing a delay.
+   */
+  _applyPendingFocus(tries = 0) {
+    const id = this._pendingFocus;
+    if (!id) return;
+    const card = document.querySelector(`.ti-kcard[data-task-id="${id}"]`);
+    const file = document.querySelector(`.ti-file[data-task-id="${id}"]`);
+    if (!card && !file) {
+      if (tries < 20) return setTimeout(() => this._applyPendingFocus(tries + 1), 200);
+      this._pendingFocus = null;
+      return;
+    }
+    this._pendingFocus = null;
+    if (card) {
+      card.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      card.classList.add('ti-focus-pulse');
+      setTimeout(() => card.classList.remove('ti-focus-pulse'), 4000);
+    }
+    if (file) {
+      file.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      file.classList.add('ti-focus-pulse');
+      setTimeout(() => file.classList.remove('ti-focus-pulse'), 4000);
+      // Reuse the row's own handler — no duplicated argument parsing.
+      try { file.click(); } catch {}
+    }
+  },
+
   close() {
     clearInterval(this._pollTimer);
     this._galClose();
@@ -139,9 +196,12 @@ const TempleInterior = {
     files.forEach((f, i) => {
       const l = label(f.mtime);
       if (l !== lastLbl) { html += `<div class="gal-date">${l}</div>`; lastLbl = l; }
-      const url = `/api/v2/projects/GALLERY/outputs/${encodeURIComponent(f.name)}`;
+      // THUMBNAIL, not the original: a 1024² render is ~1.6MB, its 320px
+      // thumb ~33KB (49x). A 30-image grid drops from ~48MB to ~1MB. The
+      // lightbox is the only place that pulls the full file.
+      const thumb = `/api/v2/projects/GALLERY/thumb/${encodeURIComponent(f.name)}?w=320`;
       html += `<div class="gal-cell" onclick="TempleInterior._galOpen(${i})" title="${this._esc(f.name)}">
-        <img src="${url}" loading="lazy" decoding="async" alt="">
+        <img src="${thumb}" loading="lazy" decoding="async" alt="">
       </div>`;
     });
     grid.innerHTML = html;

@@ -35,39 +35,11 @@ const TaskQueueUI = {
 
   // ── Render ─────────────────────────────────────────────────────────────────────────────
 
-  _initDivider() {
-    const div = document.getElementById('tq-divider');
-    if (!div || div._initDone) return;
-    div._initDone = true;
-    let dragging = false, startY = 0, startH1 = 0, startH2 = 0;
-    div.addEventListener('mousedown', e => {
-      dragging = true; startY = e.clientY;
-      startH1 = document.getElementById('tq-pane-queue').offsetHeight;
-      startH2 = document.getElementById('tq-pane-results').offsetHeight;
-      document.body.style.userSelect = 'none';
-      document.body.style.cursor = 'row-resize';
-    });
-    document.addEventListener('mousemove', e => {
-      if (!dragging) return;
-      const dy = e.clientY - startY;
-      const p1 = document.getElementById('tq-pane-queue');
-      const p2 = document.getElementById('tq-pane-results');
-      if (p1) p1.style.height = Math.max(60, startH1 + dy) + 'px';
-      if (p2) p2.style.height = Math.max(60, startH2 - dy) + 'px';
-    });
-    document.addEventListener('mouseup', () => {
-      if (!dragging) return;
-      dragging = false;
-      document.body.style.userSelect = '';
-      document.body.style.cursor = '';
-    });
-  },
+  // (_initDivider removed with the two-pane layout — one list, no split.)
 
   async _render() {
-    const queueEl   = document.getElementById('task-queue');
-    const resultsEl = document.getElementById('task-results');
-    if (!queueEl) return;
-    this._initDivider();
+    const listEl0 = document.getElementById('task-list');
+    if (!listEl0) return;
     try {
       try {
         const ws = await window.api._fetch('/agents/pool/status');
@@ -109,67 +81,52 @@ const TaskQueueUI = {
       } catch {}
       this._doneTasks = doneTasks;
 
-      // ── QUEUE PANE ──
-      const qc = document.getElementById('tq-queue-count');
-      if (qc) qc.textContent = this._tasks.length;
-      queueEl.innerHTML = '';
-      if (this._tasks.length === 0) {
-        queueEl.innerHTML = '<div style="padding:14px 10px;text-align:center;font-family:system-ui,sans-serif;"><p style="color:#94a3b8;font-size:11px;margin-bottom:8px;line-height:1.5;">Queue is empty.<br>Ask Poseidon to create a task.</p><button onclick="window.PoseidonChat?.open()" title="Open Poseidon chat to dispatch a task" style="background:rgba(79,172,254,0.15);border:1px solid rgba(79,172,254,0.3);color:#4facfe;padding:5px 11px;font-size:10px;border-radius:5px;cursor:pointer;font-family:system-ui;font-weight:600;">Open Poseidon</button></div>';
-      } else {
-        this._tasks.forEach((t, idx) => queueEl.appendChild(this._makeItem(t, idx)));
-      }
+      // ── ONE LIST ──────────────────────────────────────────────────────
+      // Tasks used to live in two panes (QUEUE | RESULTS) with images in a
+      // third carousel — the same schism as TASKS/ vs projects, surviving in
+      // the UI. An image generation IS a task. One list, one scroll, macarons
+      // carrying the state; ordered actionable-first (running → review →
+      // queued → finished by recency) so monitoring still works when a burst
+      // of completions lands.
+      const listEl = document.getElementById('task-list');
+      if (!listEl) return;
+      const total = this._tasks.length + doneTasks.length;
+      const ac = document.getElementById('tq-all-count');
+      if (ac) ac.textContent = total || '—';
 
-      // ── RESULTS PANE ──
-      if (!resultsEl) return;
-      const rc = document.getElementById('tq-results-count');
-      if (rc) rc.textContent = doneTasks.length;
-      if (doneTasks.length === 0) {
-        resultsEl.innerHTML = '<p class="hint" style="font-size:9px;color:var(--text-secondary);padding:8px;">No results yet.</p>';
+      listEl.innerHTML = '';
+      if (total === 0) {
+        listEl.innerHTML = '<div style="padding:14px 10px;text-align:center;font-family:system-ui,sans-serif;"><p style="color:#94a3b8;font-size:11px;margin-bottom:8px;line-height:1.5;">No tasks.<br>Ask Poseidon to create one.</p><button onclick="window.PoseidonChat?.open()" title="Open Poseidon chat to dispatch a task" style="background:rgba(79,172,254,0.15);border:1px solid rgba(79,172,254,0.3);color:#4facfe;padding:5px 11px;font-size:10px;border-radius:5px;cursor:pointer;font-family:system-ui;font-weight:600;">Open Poseidon</button></div>';
       } else {
-        // Image tasks pinned at top, then rest sorted by recency.
-        // Server writes task_type 'image_generation' but earlier code only
-        // checked for 'image_gen' — both accepted here. Titles can start with
-        // "Image:" (current) or "Generate:" (older format).
-        // The output_preview fallback only triggers when the URL clearly
-        // points at an image file (extension or generated/ path) — otherwise
-        // text/JSON outputs would also be treated as images.
-        const looksLikeImageUrl = (url) =>
-          !!url && (/\.(png|jpe?g|gif|webp|bmp|svg|avif)(\?|#|$)/i.test(url)
-                    || /\/(generated|images?)\//i.test(url));
-        const isImg = t =>
-          t.task_type === 'image_generation' ||
-          t.task_type === 'image_gen' ||
-          /^image[: ]/i.test(t.title || '') ||
-          looksLikeImageUrl(t.output_preview);
-        const getStatus = t => t.lifecycle?.status || t.status || '';
-        const isOkStatus = t => { const s = getStatus(t); return s === 'completed' || (s === 'done' && t.outcome !== 'failed'); };
-        const imgTasks  = doneTasks.filter(t => isImg(t) && isOkStatus(t));
-        const restTasks = doneTasks.filter(t => !isImg(t) || !isOkStatus(t));
-        const carousel = imgTasks.length
-          ? `<div class="tq-img-carousel-wrap">
-               <div class="tq-carousel-head">
-                 <span class="tq-carousel-title">${window.PixelIcons?.inline('data',10)||'◫'} IMAGES (${imgTasks.length})</span>
-                 <div class="tq-carousel-nav">
-                   <button class="tq-carousel-btn" onclick="TaskQueueUI._carouselScroll(-1)" title="Previous">‹</button>
-                   <button class="tq-carousel-btn" onclick="TaskQueueUI._carouselScroll(1)" title="Next">›</button>
-                 </div>
-               </div>
-               <div class="tq-img-carousel" id="tq-img-carousel">
-                 ${imgTasks.map(t => this._makeImageCard(t)).join('')}
-               </div>
-             </div>`
-          : '';
-        resultsEl.innerHTML = carousel + restTasks.map(t => this._makeDoneItem(t)).join('');
+        // Active rows keep their full control surface (drag-reorder, assign,
+        // start/stop) — a finished task simply has fewer verbs available.
+        this._tasks.forEach((t, idx) => listEl.appendChild(this._makeItem(t, idx)));
+        if (doneTasks.length) {
+          listEl.insertAdjacentHTML('beforeend', doneTasks.map(t => this._makeDoneRow(t)).join(''));
+        }
       }
     } catch (err) {
-      queueEl.innerHTML = `<p class="hint" style="font-size:9px;color:var(--danger);">Failed: ${this._esc(err.message)}</p>`;
+      listEl0.innerHTML = `<p class="hint" style="font-size:9px;color:var(--danger);">Failed: ${this._esc(err.message)}</p>`;
     }
   },
-  _makeDoneItem(t) {
-    // results_log entries have flat structure: status, completed_at, assigned_name at top level
-    const _s    = t.lifecycle?.status || t.status;
-    const ok    = _s === 'completed' || (_s === 'done' && t.outcome !== 'failed');
-    const icon  = ok ? '✓' : '✗';
+  /**
+   * _macaron — ONE status vocabulary across the whole list. Active and
+   * finished rows read the same way, which is the point of merging them.
+   */
+  _macaron(t) {
+    const s = t.lifecycle?.status || t.status || '';
+    const failed = s === 'failed' || s === 'cancelled' || (s === 'done' && t.outcome === 'failed');
+    if (failed) return '<span class="tq-mac tq-mac-err" title="Task failed">✗ ERROR</span>';
+    if (s === 'completed' || s === 'done') return '<span class="tq-mac tq-mac-ok" title="Completed">✓ DONE</span>';
+    if (t.review?.pending || t.review?.unverified || s === 'review')
+      return '<span class="tq-mac tq-mac-review" title="Poseidon is checking this deliverable">★ REVIEW</span>';
+    if (s === 'in_progress' || s === 'wip' || s === 'running')
+      return '<span class="tq-mac tq-mac-run" title="Running now">● RUNNING</span>';
+    return '<span class="tq-mac tq-mac-queued" title="Waiting for an agent">QUEUED</span>';
+  },
+
+  /** Terminal-task row: macaron, image thumbnail when relevant, one click. */
+  _makeDoneRow(t) {
     const agent = t.assigned_name || t.assigned_to || '—';
     const completedAt = t.lifecycle?.completed_at || t.completed_at;
     const when  = completedAt ? this._elapsed(completedAt) : '';
@@ -178,54 +135,56 @@ const TaskQueueUI = {
       t.task_type === 'image_gen' ||
       /^image[: ]/i.test(t.title || '') ||
       (!!t.output_preview && /\.(png|jpe?g|gif|webp|bmp|svg|avif)(\?|#|$)/i.test(t.output_preview));
-    const imgPreview = (isImageTask && t.output_preview)
-      ? `<div style="margin:4px 0;"><img src="${t.output_preview}" style="max-width:100%;max-height:140px;border:1px solid rgba(255,255,255,0.1);border-radius:3px;" onerror="this.style.display='none'"></div>`
+    // The image panel is gone, but the visual scan it gave shouldn't be:
+    // an image task carries its own thumbnail as the row icon. Served by
+    // the thumb endpoint (~33KB) — never the full render.
+    const thumbUrl = (isImageTask && t.output_preview)
+      ? t.output_preview.replace('/outputs/', '/thumb/') + (t.output_preview.includes('?') ? '&' : '?') + 'w=96'
       : '';
-    const summaryText = t.result_summary
-      ? this._esc(t.result_summary.slice(0, 120)) + (t.result_summary.length > 120 ? '…' : '')
-      : (t.output_preview ? '' : '<em style="opacity:.5">—</em>');
-    const summary = imgPreview + (summaryText ? `<span>${summaryText}</span>` : '');
+    const thumb = thumbUrl
+      ? `<img class="tq-row-thumb" src="${thumbUrl}" alt="" loading="lazy" onerror="this.style.display='none'">`
+      : '';
+    const summary = t.result_summary
+      ? this._esc(t.result_summary.slice(0, 110)) + (t.result_summary.length > 110 ? '…' : '')
+      : '';
     return `
-      <div class="tq-done-item" style="position:relative;padding-right:28px;">
-        <button onclick="event.stopPropagation();TaskQueueUI.dismissResult('${t.task_id}')" title="Dismiss" style="position:absolute;top:4px;right:4px;background:rgba(239,68,68,0.12);border:1px solid rgba(239,68,68,0.25);color:#ef4444;border-radius:4px;padding:0 5px;font-size:8px;cursor:pointer;line-height:18px;">✕</button>
-        <div style="cursor:pointer" onclick="TaskQueueUI.openTaskResult('${t.task_id}')">
-        <div class="tq-done-row1">
-          <span class="tq-done-icon ${ok ? 'ok' : 'fail'}">${icon}</span>
-          <span class="tq-done-title">${this._esc(t.title)}</span>
-        </div>
-        <div class="tq-done-agent" style="display:flex;gap:8px;align-items:center;">
-          <span>${this._esc(agent)}</span>
-          ${when ? `<span style="color:#334155;font-size:7px;">${when}</span>` : ''}
-        </div>
-        <div class="tq-done-summary">${summary}</div>
+      <div class="tq-done-item tq-unified-row" onclick="TaskQueueUI.openInTemple('${t.task_id}')" title="Open the temple and preview the result">
+        <button onclick="event.stopPropagation();TaskQueueUI.dismissResult('${t.task_id}')" title="Dismiss from this list" class="tq-row-dismiss">✕</button>
+        ${thumb}
+        <div class="tq-row-main">
+          <div class="tq-row-head">
+            ${this._macaron(t)}
+            <span class="tq-done-title">${this._esc(t.title)}</span>
+          </div>
+          <div class="tq-done-agent">
+            <span>${this._esc(agent)}</span>
+            ${when ? `<span style="color:#334155;font-size:7px;">${when}</span>` : ''}
+            ${t.project_name ? `<span class="tq-row-proj">${this._esc(t.project_name)}</span>` : ''}
+          </div>
+          ${summary ? `<div class="tq-done-summary">${summary}</div>` : ''}
         </div>
       </div>`;
   },
 
-  _carouselScroll(dir) {
-    const el = document.getElementById('tq-img-carousel');
-    if (!el) return;
-    // Scroll by roughly one card width (thumb + gap)
-    el.scrollBy({ left: dir * 200, behavior: 'smooth' });
-  },
-
-  _makeImageCard(t) {
-    const when  = t.lifecycle?.completed_at ? this._elapsed(t.lifecycle.completed_at) : '';
-    const src   = t.output_preview || '';
-    const label = t.title.replace(/^(image|generate)[: ]*/i, '');
-    return `<div class="tq-img-card" onclick="TaskQueueUI.openTaskResult('${t.task_id}')">
-      <div class="tq-img-thumb-wrap">
-        ${src
-          ? `<img class="tq-img-thumb" src="${src}" onerror="this.closest('.tq-img-card').querySelector('.tq-img-placeholder').style.display='flex';this.style.display='none'" alt="${this._esc(label)}">`
-          : ''}
-        <div class="tq-img-placeholder" style="${src ? 'display:none' : ''}">NO IMAGE</div>
-      </div>
-      <div class="tq-img-meta">
-        <span class="tq-img-label">${this._esc(label)}</span>
-        <span class="tq-img-when">${when}</span>
-      </div>
-      <button onclick="event.stopPropagation();TaskQueueUI.dismissResult('${t.task_id}')" class="tq-img-del">X</button>
-    </div>`;
+  /**
+   * openInTemple — the door from the Control Tower into the work itself.
+   * Replaces the old detail modal: a task lives in a project, so clicking it
+   * opens that temple and focuses the result there (kanban card highlighted,
+   * output file previewed) instead of showing a dead-end popup.
+   */
+  async openInTemple(taskId) {
+    let task = null;
+    try {
+      const r = await window.api.tasks.list();
+      task = r.registry.tasks?.[taskId];
+      if (!task) {
+        const rr = await window.api._fetch('/tasks/results');
+        task = rr.results?.[taskId];
+      }
+    } catch (e) { return SquidModal.alert('Could not load task: ' + e.message); }
+    if (!task) return SquidModal.alert('Task not found.');
+    if (!window.TempleInterior?.focusTask) return this.openTaskResult(taskId);
+    await window.TempleInterior.focusTask(task);
   },
 
   _makeItem(t, idx) {
@@ -317,14 +276,14 @@ const TaskQueueUI = {
           <span class="tq-rank">#${idx + 1}</span>
           <span class="tq-dot ${statusDot.cls} ${isRunning ? 'tq-dot-pulse' : ''}" title="${statusDot.label}">⬤</span>
           <span class="tq-title tq-title-link" title="Click to view/edit details">${this._esc(t.title)}</span>
-          ${awaitingReview ? `<span class="tq-review-badge" title="Poseidon reviewing this deliverable">⭐ REVIEW</span>` : ''}
+          ${this._macaron(t)}
           ${canStart ? `<button class="tq-quickact tq-play" onclick="event.stopPropagation();TaskQueueUI.quickStart('${t.task_id}')" title="Start task">▶</button>` : ''}
           ${canStop  ? `<button class="tq-quickact tq-stop" onclick="event.stopPropagation();TaskQueueUI.quickStop('${t.task_id}')" title="Stop task">■</button>` : ''}
           <button class="tq-cancel" onclick="TaskQueueUI.deleteTask('${t.task_id}')" title="Delete task">✕</button>
         </div>
         <div class="tq-row2">
           ${typeBadge}
-          ${isRunning ? '' : `<span class="tq-status-label">${awaitingReview ? 'awaiting review' : statusDot.label}</span>`}
+
           <button class="tq-assignee ${assignee ? 'tq-assigned' : 'tq-unassigned'}"
                   onclick="TaskQueueUI.openAssignPicker('${t.task_id}', this)"
                   title="Click to assign agent">${this._esc(agentName)}</button>
